@@ -28,8 +28,8 @@ export function useWorkforceTask<T = unknown>() {
     },
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['workforce'] }); },
     onError: async (error) => {
-      if (isApiError(error) && [401, 403].includes(error.status)) {
-        // Immediately hide successful data from an earlier authorization, then re-check active readers.
+      if (isApiError(error) && [401, 403, 404].includes(error.status)) {
+        // Immediately hide successful data from an earlier authorization or removed target, then re-check active readers.
         await Promise.all([qc.resetQueries({ queryKey: ['workforce'] }), qc.invalidateQueries({ queryKey: ['meta'] })]);
       }
     },

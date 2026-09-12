@@ -13,7 +13,7 @@
 
 ## データと実行環境
 
-最新 migration は `0010_workforce_platform.sql`（13の従業員業務表・領収書1表・業種別案件10表・会社所属のsiteIds）。`0009_operations_control.sql` は所属・営業計画と利用者/日次報告状態の追加。前版の業界追加は `0008_industry_templates.sql`（15 表）。既存伝票を残す追加移行で、適用後に API/MCP を再起動する。0009 適用前の JWT は無効で再ログインが必要。
+最新 migration は `0011_auto.sql`（シフト条件・週間希望・計画・公開勤務の4表）。社員管理・推薦は [設計](architecture/shift-planning.md) と [仕様](specs/employee-shift-planner.md)、[操作](operations/shift-planning.md) を参照する。通常更新ロックの変更理由はADR-0020に記載。前版の `0010_workforce_platform.sql`（13の従業員業務表・領収書1表・業種別案件10表・会社所属のsiteIds）。`0009_operations_control.sql` は所属・営業計画と利用者/日次報告状態の追加。前版の業界追加は `0008_industry_templates.sql`（15 表）。既存伝票を残す追加移行で、適用後に API/MCP を再起動する。0009 適用前の JWT は無効で再ログインが必要。
 
 認証と会社選択はタブ単位。会社所属変更は次の API で反映し、パスワード/有効状態/テナント管理者変更は sessionVersion で失効する。画面操作は [運営ガイド](manual/appendix-e-operations-control.md) にまとめた。
 

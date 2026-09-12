@@ -9,11 +9,14 @@ import { seedWorkforce } from './seed.ts';
 import { grantLeaveAction, requestLeaveAction, reviewLeaveAction, cancelLeaveAction } from './actions/leave.ts';
 import { calculatePayrollAction, confirmPayrollAction, cancelPayrollAction } from './actions/payroll.ts';
 import { myPortalAction, managementPortalAction, initializePolicyAction } from './actions/portals.ts';
+import { saveShiftProfileAction, saveShiftAvailabilityAction } from './actions/shift-people.ts';
+import { shiftBoardAction, myShiftsAction } from './actions/shift-portals.ts';
+import { saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction } from './actions/shift-plans.ts';
 import { registerMasterGuards } from './master-guards.ts';
 
 export const WorkforceModule = defineModule({
   name: 'workforce', label: label('従業員・労務', 'Workforce'), depends: [], entities: Object.values(entities),
-  actions: [registerEmployeeAction, punchAction, submitAttendanceAction, reviewAttendanceAction, requestCorrectionAction, reviewCorrectionAction, saveExpenseAction, submitExpenseAction, reviewExpenseAction, settleExpenseAction, cancelExpenseAction, grantLeaveAction, requestLeaveAction, reviewLeaveAction, cancelLeaveAction, calculatePayrollAction, confirmPayrollAction, cancelPayrollAction, myPortalAction, managementPortalAction, initializePolicyAction],
+  actions: [shiftBoardAction, myShiftsAction, saveShiftProfileAction, saveShiftAvailabilityAction, saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction, registerEmployeeAction, punchAction, submitAttendanceAction, reviewAttendanceAction, requestCorrectionAction, reviewCorrectionAction, saveExpenseAction, submitExpenseAction, reviewExpenseAction, settleExpenseAction, cancelExpenseAction, grantLeaveAction, requestLeaveAction, reviewLeaveAction, cancelLeaveAction, calculatePayrollAction, confirmPayrollAction, cancelPayrollAction, myPortalAction, managementPortalAction, initializePolicyAction],
   hooks: () => { registerWorkflowGuards(); registerMasterGuards(); }, seed: seedWorkforce,
   menus: [
     { label: label('自分の勤怠・申請', 'My work and requests'), route: '/me', order: 80 },

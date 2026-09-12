@@ -27,6 +27,7 @@ describe('workforce generic screens', () => {
   it('keeps workflow transactions read-only while preserving authorized employee maintenance', () => {
     expect(workforceEntityForUi(entity('workforce_expense')).ops).toEqual(['read', 'export']);
     expect(workforceEntityForUi(entity('workforce_payroll')).ops).toEqual(['read', 'export']);
+    for (const name of ['workforce_shift_profile', 'workforce_shift_availability', 'workforce_shift_plan', 'workforce_shift_assignment']) expect(workforceEntityForUi(entity(name)).ops).toEqual(['read', 'export']);
     expect(workforceEntityForUi(entity('workforce_employee')).ops).toEqual(['read', 'update', 'export']);
   });
   it('keeps normal site, policy, pay-term and other business metadata unchanged', () => {

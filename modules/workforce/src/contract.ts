@@ -36,7 +36,7 @@ export const allowanceSchema = z.object({ name: z.string().trim().min(1).max(100
 export const payrollConfirmInput = z.object({ payrollId: id, expectedVersion: version, deductions: z.array(deductionSchema).length(8), allowances: z.array(allowanceSchema).max(30), calculationConfirmed: z.literal(true), reason }).strict();
 export const payrollCancelInput = z.object({ payrollId: id, expectedVersion: version, reason }).strict();
 
-export const employeeSummary = z.object({ id, userId: id, siteId: id, code: z.string(), name: z.string(), active: z.boolean(), version });
+export const employeeSummary = z.object({ id, userId: id, siteId: id, code: z.string(), name: z.string(), active: z.boolean(), hiredOn: date, terminatedOn: date.nullable(), version });
 export const attendanceSummary = z.object({ id, employeeId: id, employeeName: z.string(), workDate: date, status: z.enum(attendanceStatuses), clockIn: timestamp, clockOut: timestamp.nullable(), breakStartedAt: timestamp.nullable(), breaks: z.array(breakSchema), workedMinutes: z.number(), nightMinutes: z.number(), dayKind: z.enum(['workday', 'statutory_holiday']), version });
 export const correctionSummary = z.object({ id, attendanceId: id, employeeId: id, employeeName: z.string(), workDate: date, status: z.enum(requestStatuses), clockIn: timestamp, clockOut: timestamp, breaks: z.array(breakSchema), reason: z.string(), reviewReason: z.string().nullable(), version });
 export const leaveSummary = z.object({ id, employeeId: id, employeeName: z.string(), leaveDate: date, portion: z.enum(['full', 'morning', 'afternoon']), days: z.string(), status: z.enum(requestStatuses), reason: z.string(), reviewReason: z.string().nullable(), version });

@@ -128,7 +128,7 @@ node scripts/setup-test-cluster.mjs \
 SETUP_TEST_ENV_FILE=/home/operator/setup-acceptance-001/test.env pnpm test:setup
 ```
 
-同じ major の `pg_dump` / `pg_restore` を PATH に置いてください。検証は初回、読取専用計画、稼働接続拒否、no-op、資格情報を変えた再開、実データあり0008から現行0010への更新、schema drift 拒否、移行失敗 rollback と再開、非空復元先拒否を含みます。既存の `TEST_DATABASE_URL` へ fallback しません。再度行う際は別の新規ディレクトリと未使用 port を使います。検証後の cluster は `pg_ctl -D <この試験のdirectory>/data -m fast -w stop` で停止できます。ファイル・DB は検査用に残り、自動消去しません。
+同じ major の `pg_dump` / `pg_restore` を PATH に置いてください。検証は初回、読取専用計画、稼働接続拒否、no-op、資格情報を変えた再開、実データあり0008から現行0011への更新、schema drift 拒否、移行失敗 rollback と再開、非空復元先拒否を含みます。既存の `TEST_DATABASE_URL` へ fallback しません。再度行う際は別の新規ディレクトリと未使用 port を使います。検証後の cluster は `pg_ctl -D <この試験のdirectory>/data -m fast -w stop` で停止できます。ファイル・DB は検査用に残り、自動消去しません。
 
 ## 参照した一次資料
 

@@ -91,9 +91,11 @@ const accessRoute = createRoute({ getParentRoute: () => appRoute, path: '/admin/
 const employeeRoute = createRoute({ getParentRoute: () => appRoute, path: '/me', component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage') });
 const workforceRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce', component: lazyRouteComponent(() => import('./pages/workforce-page.tsx'), 'WorkforcePage') });
 
+const shiftRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/shifts', component: lazyRouteComponent(() => import('./pages/shift-page.tsx'), 'ShiftPage') });
+
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', beforeLoad: () => { if (!getToken()) throw redirect({ to: '/login' }); }, component: lazyRouteComponent(() => import('./pages/account-page.tsx'), 'AccountPage') });
 
-const routeTree = rootRoute.addChildren([loginRoute, accountRoute, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, accountRoute, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute])]);
 
 export const router = createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
 

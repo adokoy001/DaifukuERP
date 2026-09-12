@@ -78,6 +78,13 @@
       "when": 1789187971063,
       "tag": "0010_workforce_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789201447155,
+      "tag": "0011_auto",
+      "breakpoints": true
     }
   ]
 }

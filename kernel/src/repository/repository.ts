@@ -41,13 +41,13 @@ export class Repository<E extends EntityDef> {
     return combine(scopeCondition(this.ctx, this.entity), rowFilter(this.ctx, this.entity, op)) as SQL;
   }
 
-  private async rawById(id: string, op: Op, lock = false): Promise<Raw | null> {
+  private async rawById(id: string, op: Op, lock: boolean | 'no key update' = false): Promise<Raw | null> {
     const query = this.ctx.db
       .select()
       .from(this.entity.table)
       .where(combine(this.visibility(op), eq(this.entity.col('id'), id)))
       .limit(1);
-    const rows = await (lock ? query.for('update') : query);
+    const rows = await (lock ? query.for(lock === 'no key update' ? 'no key update' : 'update') : query);
     return (rows[0] as Raw | undefined) ?? null;
   }
 
@@ -168,7 +168,8 @@ export class Repository<E extends EntityDef> {
     if (!initial) throw new NotFound(e.name, id);
     assertOwnedInput(this.ctx, e, patch as Raw, 'update', initial);
     const parents = await lockParents(this.ctx, e, { ...initial, ...patch }, initial, 'update', patch as Raw);
-    const before = await this.rawById(id, 'update', true);
+    // Serialize writers without blocking FK key-share while hooks acquire business locks (ADR-0020).
+    const before = await this.rawById(id, 'update', 'no key update');
     if (!before) throw new NotFound(e.name, id);
     this.assertVersion(id, before, opts.expectedVersion);
     const draft: Raw = { ...(patch as Raw) };

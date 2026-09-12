@@ -1,6 +1,7 @@
 import { registry, repo, StateError, ValidationError, withLock, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
 import { WorkforceAttendance, WorkforceAttendanceCorrection, WorkforceEmployee, WorkforceExpense, WorkforceLeaveGrant, WorkforceLeaveRequest, WorkforcePayPolicy, WorkforcePayTerms, WorkforcePeriodLock, WorkforceSite } from './entities/index.ts';
 import { allRows, D, employeeLock } from './common.ts';
+import { assertShiftEmploymentChange, guardShiftSite } from './shift-master-guards.ts';
 import { stableJson } from './services/json.ts';
 
 function invalid(path: string, message: string): never { throw new ValidationError(message, [{ path, message }]); }
@@ -48,6 +49,7 @@ async function employee(ctx: Context, args: HookArgs): Promise<void> {
     if (!(await repo(ctx, WorkforceSite).get(row.siteId)).active) invalid('siteId', 'Choose an active work site.');
     const previous = args.previous as unknown as Infer<typeof WorkforceEmployee> | undefined;
     if (!previous) return;
+    await assertShiftEmploymentChange(ctx, previous, row);
     if (previous.hiredOn !== row.hiredOn || previous.terminatedOn !== row.terminatedOn) {
       const locks = await allRows(ctx, WorkforcePeriodLock, { employeeId: row.id, active: true });
       if (locks.some((lock) => frozenCoverageChanged({ validFrom: previous.hiredOn, validTo: previous.terminatedOn ?? '9999-12-31' }, { validFrom: row.hiredOn, validTo: row.terminatedOn ?? '9999-12-31' }, lock.periodStart, lock.periodEnd))) throw new StateError('Employment dates are used by confirmed payroll', 'Preserve historical employment coverage; future termination dates may be recorded without cancelling historical payroll.');
@@ -78,6 +80,7 @@ async function assertNoPending(ctx: Context, employeeId: string): Promise<void> 
 export function registerMasterGuards(): void {
   for (const phase of ['before_create', 'before_update'] as const) {
     registry.registerHook(WorkforcePayPolicy.name, phase, policy);
+    registry.registerHook(WorkforceSite.name, phase, guardShiftSite);
     registry.registerHook(WorkforcePayTerms.name, phase, terms);
     registry.registerHook(WorkforceEmployee.name, phase, employee);
   }
