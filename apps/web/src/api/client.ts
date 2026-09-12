@@ -1,15 +1,11 @@
 // Thin fetch wrapper: tab-local credentials and company, error body -> ApiError, 401 -> session cleared.
+import { apiBaseUrl } from './base-url.ts';
 import type { ErrorBody, ErrorCode, LoginUser, ValidationIssue } from './types.ts';
 
 const TOKEN_KEY = 'daifuku.token';
 const USER_KEY = 'daifuku.user';
 
-function readEnv(): string {
-  const raw: unknown = import.meta.env.VITE_API_URL;
-  return typeof raw === 'string' && raw.length > 0 ? raw.replace(/\/+$/, '') : 'http://localhost:3000';
-}
-
-export const API_URL = readEnv();
+export const API_URL = apiBaseUrl(import.meta.env.VITE_API_URL, import.meta.env.PROD);
 
 export class ApiError extends Error {
   readonly status: number;

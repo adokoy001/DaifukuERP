@@ -1,6 +1,6 @@
 import { changeOwnPassword, companyMemberships, hashPassword, newId, users } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/server.ts';
 
@@ -23,7 +23,7 @@ async function createAccount(withCompany = true) {
 function loginAs(email: string, password: string) {
   return app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
 }
-function post(url: string, token: string, payload: unknown = {}, headers: Record<string, string> = {}) {
+function post(url: string, token: string, payload: InjectOptions['payload'] = {}, headers: Record<string, string> = {}) {
   return app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}`, ...headers } });
 }
 function me(token: string) {

@@ -25,6 +25,8 @@ Daifukuは、会計・販売・購買・入出金・在庫・契約・従業員�
 | 認証・本人確認 | OIDC SSOの明示紐付け、TOTP/使い捨て回復コード、招待/再設定メール、暗号化outboxとTLS SMTP配送 |
 | POS・企業運営 | Square署名Webhookの決済仮勘定転記、JPYの管理用連結精算表、契約と確認売上に基づくFC請求/支払 |
 | 給与・勤務制度 | 2026年月額甲欄の税/保険自動算定、本人申告と年末調整、通常/1か月変形/1〜3か月フレックス |
+| 店舗機器連携 | 店舗から外向きWSS/HTTPS、拠点限定中継、IPPテキスト印刷、模擬釣銭、結果不明時の実機確認 |
+| クラウド・オンプレ | Linux共通配布物、同一オリジンWeb/API、Caddy/systemd構成生成、起動準備確認、設定/データ分離 |
 | 導入・更新 | 対象の事前点検、計画表示、バックアップの別DB実復元、移行、資格情報を上書きしない再開 |
 
 業界テンプレートは **15種類** です。小売、不動産賃貸、電器店、農家、飲食店チェーン、卸売、製造、建設、物流、宿泊、診療所、介護、教育、専門サービス、美容を用意しています。会社を分けて適用し、サンプル業務から請求や入金へつなげて試せます。[業種別の範囲と固有項目](docs/domain/industry-catalog.md) を参照してください。診療・介護の制度請求など、各業種の全機能を網羅するものではありません。
@@ -76,14 +78,14 @@ pnpm run setup --help
 
 `pnpm run setup install` / `upgrade` は既定で計画のみを表示します。実行には対象の明示、保守時間、別の空DBでの復元確認が必要です。接続秘密・初回管理者パスワード・DB dump・添付本体はGit管理外に置きます。`pnpm setup` はpnpm本体の別コマンドなので、`run` を省略しないでください。
 
-Web配布、TLS、常駐化、ログ保全、監視、バックアップ運用は導入先で構成します。ソースをGitHubへ公開しても、アプリや業務DBが自動で公開されることはありません。
+[クラウド・オンプレ共通配備](docs/operations/deployment.md) で固定依存を含む配布物とCaddy/systemd構成を生成できます。Linuxの単一API構成を対象とし、OS/TLSの導入、監視、バックアップ運用は導入先で確認します。店舗LANの機器接続は [機器の操作](docs/manual/appendix-j-store-devices.md) と [中継の設置](docs/operations/edge-agent.md) を参照してください。ソースをGitHubへ公開しても、アプリや業務DBが自動で公開されることはありません。
 
 ログイン後はメニューの「自分のアカウント」から、本人のパスワード変更と全端末ログアウトを行えます。会社未所属でも利用できます。[基本の本人設定](docs/operations/account-security.md) を参照してください。SSO・MFA・招待/再設定メールを導入する場合は [認証とメールの設定](docs/operations/enterprise-identity.md)、Squareと企業運営は [導入・操作ガイド](docs/manual/appendix-h-enterprise-operations.md) を追加で確認します。外部IdP・Squareの実利用者/実加盟店への接続は未検証です。
 
 ## 開発と検証
 
 ```bash
-pnpm gate                          # 型、lint、依存境界、単体、DB試験、文書リンク
+pnpm gate                          # 型、lint、依存境界、単体、DB試験、配布回帰、文書リンク
 pnpm --filter @daifuku/web test
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build
@@ -96,7 +98,7 @@ DB試験は `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` の専用DBを初期
 ## 構造と文書
 
 ```text
-apps/                 API・Web・MCP・共通runtime
+apps/                 API・Web・MCP・店舗中継・共通runtime
   ↓
 packs/                業界ごとの追加機能
   ↓
@@ -111,6 +113,7 @@ kernel/               DSL・Repository・権限・伝票・監査
 - [従業員・労務ガイド](docs/manual/appendix-f-workforce.md) / [15業界の操作ガイド](docs/manual/appendix-g-industry-catalog.md)
 - [操作マニュアル](docs/manual/00-index.md) / [最新の運営・権限・BIガイド](docs/manual/appendix-e-operations-control.md)
 - [企業向け認証・POS・連結・FC](docs/manual/appendix-h-enterprise-operations.md) / [給与・年調・勤務制度](docs/manual/appendix-i-fiscal-and-work-systems.md)
+- [店舗機器の操作](docs/manual/appendix-j-store-devices.md) / [中継エージェント](docs/operations/edge-agent.md) / [クラウド・オンプレ配備](docs/operations/deployment.md)
 - [業界テンプレートガイド](docs/manual/appendix-d-industry-templates.md)
 - [設計判断](docs/adr/) / [仕様と受入基準](docs/specs/) / [実装規約](docs/conventions/)
 - [品質改善計画](docs/quality-roadmap.md) / [本人のアカウント管理](docs/operations/account-security.md)
@@ -119,6 +122,8 @@ kernel/               DSL・Repository・権限・伝票・監査
 ## 現在の境界
 
 全業界・全制度を網羅するものではありません。SSOは明示紐付け、MFAは個人単位、Squareは決済/返金の仮勘定転記、連結はJPYの管理用精算表、FCは同一会社の請求/支払という範囲です。POS商品/在庫の自動連携、法定連結開示、多通貨、賞与/乙欄/非居住者給与、行政・銀行への送信、1年変形/裁量勤務、自由SQLの外部BI/定期配信は対象外です。勤務制度は開始前に確認・確定し、日跨ぎ勤務の給与自動計算は引き続き拒否します。
+
+プリンター初版はIPPのテキスト印刷、自動釣銭機はシミュレーターです。実釣銭機、USB/シリアル、ESC/POS、機器と会計の自動連動、HA/マルチリージョンは未対応です。
 
 外部providerの本番受入、負荷容量、運用監視、証憑の適格性は導入先で確認します。合成IdPとTLS SMTP、署名付き合成Square通知による試験を実接続の証明とは扱いません。詳細は [現在地](docs/STATUS.md) と [制限事項](docs/manual/10-limitations.md) にまとめています。
 

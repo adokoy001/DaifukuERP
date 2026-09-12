@@ -1,5 +1,6 @@
 // Environment loading for main.ts and the db CLI. Reads the nearest .env upward from cwd (repo root in practice).
 import { loadDotEnv } from '@daifuku/runtime';
+import { trustedProxyPeers } from './deployment/proxy.ts';
 export { loadDotEnv } from '@daifuku/runtime';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -23,6 +24,7 @@ export interface ApiConfig {
   port: number;
   host: string;
   corsOrigins: readonly string[];
+  trustedProxies: readonly string[];
 }
 
 function corsOrigins(value: string | undefined, production: boolean): readonly string[] {
@@ -55,7 +57,11 @@ export function readApiConfig(env: Environment): ApiConfig {
   if (/[\r\n\0]/.test(jwtSecret) || (exposed && (jwtSecret.length < 32 || new Set(jwtSecret).size < 8 || /dev-secret-change-me|^password$|^secret$/i.test(jwtSecret)))) {
     throw new ApiConfigError('JWT_SECRET must contain no newline or NUL; production or non-loopback HOST requires a random secret of at least 32 characters and 8 distinct characters, excluding known development values');
   }
+  let trustedProxies: readonly string[];
+  try { trustedProxies = trustedProxyPeers(env.TRUSTED_PROXY_CIDRS); }
+  catch { throw new ApiConfigError('TRUSTED_PROXY_CIDRS must be a bounded list of explicit IP addresses or CIDRs; broad trust is forbidden.'); }
   return {
+    trustedProxies,
     databaseUrl: requireEnv('DATABASE_URL', env),
     databaseUrlOwner: requireEnv('DATABASE_URL_OWNER', env),
     jwtSecret,

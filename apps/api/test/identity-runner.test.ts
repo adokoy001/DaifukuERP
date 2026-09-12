@@ -30,10 +30,11 @@ describe('identity fixture runner isolation', () => {
     await writeFile(cli, fixture); await available(3109); await available(5189);
     const child = spawn(process.execPath, [runner], { env: environment(cli), stdio: ['ignore', 'pipe', 'pipe'] });
     const finished = once(child, 'exit'), serviceIds: number[] = []; let output = '';
-    const ready = Promise.withResolvers<void>();
-    child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); if (output.includes('fixture-listening:5189:')) ready.resolve(); });
+    let signalReady: () => void = () => {};
+    const ready = new Promise<void>((resolve) => { signalReady = resolve; });
+    child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); if (output.includes('fixture-listening:5189:')) signalReady(); });
     try {
-      await Promise.race([ready.promise, finished.then(() => { throw new Error('Fixture exited before readiness'); })]);
+      await Promise.race([ready, finished.then(() => { throw new Error('Fixture exited before readiness'); })]);
       for (const match of output.matchAll(/fixture-listening:\d+:(\d+)/g)) serviceIds.push(Number(match[1]));
       child.kill(signal); expect((await finished)[0]).toBe(signal === 'SIGINT' ? 130 : 143);
       await available(3109); await available(5189);

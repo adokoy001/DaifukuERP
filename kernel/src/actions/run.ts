@@ -6,6 +6,7 @@ import { assertOp } from '../permissions.ts';
 import { registry } from '../registry.ts';
 
 export function checkActionPermission(ctx: Context, action: ActionDef): void {
+  if (ctx.actor.type === 'relay' && action.relayAccess !== true) throw new PermissionDenied(action.name, 'relay-action', ctx.roles);
   if (ctx.accessScope === 'stores' && !action.generic && action.storeAccess !== true) throw new PermissionDenied(action.name, 'store-action', ctx.roles);
   if (ctx.accessScope === 'sites' && !action.generic && action.siteAccess !== true && !(action.storeAccess === true && ctx.storeIds?.length)) throw new PermissionDenied(action.name, 'site-action', ctx.roles);
   if (registry.hasPack(action.module) && !(ctx.appliedPacks ?? []).includes(action.module)) throw new PermissionDenied(action.name, 'pack-not-applied', ctx.roles);

@@ -67,6 +67,8 @@ export interface ViewsConfig {
 }
 
 export interface EntityConfig<F extends FieldMap = FieldMap> {
+  /** Explicit machine operations and an independent gateway AND boundary. */
+  relayAccess?: { operations: readonly Op[]; field: string };
   /** Store-limited contexts fail closed unless this policy is declared. */
   storeAccess?: StoreAccessPolicy;
   /** Generic site boundary. Sites scope may also explicitly use legacy storeIds. */

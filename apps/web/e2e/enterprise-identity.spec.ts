@@ -1,5 +1,5 @@
 // Run only against identity-e2e-server.ts and the synthetic loopback OIDC/TLS SMTP fixtures.
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 const initialPassword = 'identity-test-password';
 let recovery: string[] = [];
@@ -79,4 +79,24 @@ test.describe.serial('enterprise identity with synthetic OIDC and verified TLS S
     await page.goto(resetLink); await page.locator('#mail-password').fill('another-invited-password'); await page.locator('#mail-confirm').fill('another-invited-password'); await page.getByRole('button', { name: 'パスワードを再設定', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('使用済み・期限切れ');
   });
+  test('MFA-protected relay pairing is transient and revocation blocks the machine credential', async ({ page, request }) => {
+    await passwordLogin(page); const signedIn = page.waitForResponse((response) => response.url().endsWith('/auth/mfa/verify'));
+    await loginMfa(page, recovery[4] ?? ''); const session = await (await signedIn).json();
+    const headers = { authorization: 'Bearer ' + session.token };
+    const siteReply = await request.post('http://localhost:3109/api/workforce_site', { headers, data: { code: 'PAIRING', name: '接続確認拠点' } }); expect(siteReply.ok()).toBe(true); const site = await siteReply.json();
+    const gatewayReply = await request.post('http://localhost:3109/actions/edge.create_gateway', { headers, data: { siteId: site.id, code: 'PAIRING', name: '本人確認する中継' } }); expect(gatewayReply.ok()).toBe(true);
+    await page.goto('/operations/devices'); await page.getByRole('button', { name: '接続コード', exact: true }).click();
+    await verify(page, 'wrong-password', recovery[5]); await expect(page.getByRole('alert')).toBeVisible();
+    await verify(page, initialPassword, recovery[5]); const dialog = page.getByRole('dialog'), code = dialog.getByLabel('接続コード', { exact: true });
+    await expect(code).toHaveValue(/^[A-Za-z0-9_-]{43}$/); const pairingToken = await code.inputValue();
+    expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(pairingToken); expect(page.url()).not.toContain(pairingToken);
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).last().click(); await expect(page.getByLabel('接続コード', { exact: true })).toHaveCount(0);
+    const credentialSecret = randomBytes(32).toString('base64url');
+    const pair = await request.post('http://localhost:3109/relay/pair', { data: { pairingToken, credentialSecret, protocolVersion: 1, agentVersion: 'ui-test' } }); expect(pair.ok()).toBe(true);
+    await page.getByRole('button', { name: '最新の状況を取得', exact: true }).click(); await page.getByRole('button', { name: '接続資格を失効', exact: true }).click();
+    await page.getByLabel('失効理由', { exact: true }).fill('機器入替の本人確認を検証'); await verify(page, initialPassword, recovery[6]);
+    await expect(page.getByRole('status')).toContainText('接続資格を失効しました');
+    const denied = await request.get('http://localhost:3109/relay/session', { headers: { authorization: 'Bearer ' + credentialSecret } }); expect(denied.status()).toBe(401);
+  });
+
 });

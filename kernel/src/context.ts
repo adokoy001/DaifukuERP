@@ -7,7 +7,7 @@ import type { StoragePort } from './storage.ts';
 export type Db = Parameters<Parameters<PostgresJsDatabase['transaction']>[0]>[0];
 
 export interface Actor {
-  type: 'user' | 'agent' | 'system';
+  type: 'user' | 'agent' | 'system' | 'relay';
   /** user id, agent id, or 'system' */
   id: string;
   /** For agents: the user they act for. Recorded in the audit log. */
@@ -20,7 +20,10 @@ export interface Logger {
   error(msg: string, data?: Record<string, unknown>): void;
 }
 
+export interface RelayBinding { credentialId: string; credentialVersion: number; gatewayId: string; siteId: string }
+
 export interface Context {
+  readonly relay?: RelayBinding;
   /** Session generation carried through authenticated, cross-company work. */
   readonly sessionVersion?: number;
   readonly mfaVerified?: boolean;
@@ -47,6 +50,7 @@ export interface Context {
 }
 
 export interface ContextParams {
+  relay?: RelayBinding;
   /** Authenticated session generation for long-lived adapters such as MCP. */
   sessionVersion?: number;
   mfaVerified?: boolean;

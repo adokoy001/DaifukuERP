@@ -1,0 +1,19 @@
+{
+  "apiBaseUrl": "https://erp.example.jp/api",
+  "requestTimeoutMs": 10000,
+  "printWaitMs": 60000,
+  "devices": [
+    {
+      "deviceId": "11111111-1111-4111-8111-111111111111",
+      "localDeviceId": "receipt-printer",
+      "driver": "ipp_text",
+      "printerUri": "ipps://printer.example.lan:631/ipp/print"
+    },
+    {
+      "deviceId": "22222222-2222-4222-8222-222222222222",
+      "localDeviceId": "cash-demo",
+      "driver": "simulator",
+      "simulationConfirmed": true
+    }
+  ]
+}

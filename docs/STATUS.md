@@ -1,8 +1,18 @@
-# 現在地（2026-09-12 企業運営拡張・統合受入済み）
+# 現在地（2026-09-12 店舗機器・クラウド/オンプレ共通配備）
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
 
-## 企業運営拡張
+## 店舗機器とクラウド/オンプレ共通配備
+
+[統合仕様](specs/deployment-edge.md) に基づき、同じ版付きLinux配布物とCaddy/systemd参照構成、店舗LANから外向きに接続する中継agentを追加しました。WSSは仕事の存在だけを通知し、本体・結果・状態はHTTPSで取得/報告します。店舗側の受信port開放は不要ですが、ERPのHTTPS入口への到達経路は必要です。
+
+会社/拠点に限定した機器資格情報、MFAを含む接続コード発行・失効、冪等な依頼、lease、耐久journal、開始後に結果不明となった処理の手動解決を実装しています。初版のadapterはIPPテキスト印刷/状態照会と明示された模擬機器です。実釣銭機のvendor protocol、実機適合、業務伝票への自動転記、OSへの本番service導入は別途受入します。
+
+全gate（型/Lint/依存境界、単体635件、DB589件、配布補助5件、文書リンク）成功後、最終レビュー後の全単体640件・配布補助8件と画面権限再取得も確認しました。通常ブラウザー45件、追加の役割/店舗変更2件、認証専用3件、0008→0013更新と別DB復元、同一候補bundleの2つのTLS profileを検証済みです。最終集計と限定事項は [作業記録](log/2026-09-12-deployment-edge.md) に記載しています。
+
+操作は [店舗機器マニュアル](manual/appendix-j-store-devices.md)、設置は [共通配備](operations/deployment.md) と [中継agent](operations/edge-agent.md)、設計は [ADR-0023](adr/0023-outbound-relay-principal-and-fencing.md) を参照してください。
+
+## 企業運営拡張（前回の受入記録）
 
 [統合仕様](specs/enterprise-operations.md) と [構造](architecture/enterprise-operations.md) に沿い、認証・メール、POS、連結精算、FC精算、給与税保険/年末調整、勤務制度を実装しています。全体の型/Lint/依存境界、単体592件・DB568件、文書リンクが成功しました。通常ブラウザー42件と専用認証2件、既存データを保つ移行、0008から0012への更新・別DB実復元・失敗再開も成功しています。検証方法と対象外は [作業記録](log/2026-09-12-enterprise-operations.md) に記載しています。
 

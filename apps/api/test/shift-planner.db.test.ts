@@ -1,7 +1,7 @@
 import { companyMemberships, hashPassword, newId, users } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { MyShifts, ShiftBoard } from '@daifuku/mod-workforce/shift-contract';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/server.ts';
 
@@ -10,12 +10,12 @@ let employee: { id: string; token: string; employeeId: string }, manager: { id: 
 const weekStart = '2026-09-14';
 const days = Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-${14 + i}`, preference: 'preferred', startMinute: 540, endMinute: 1020 }));
 const profile = { skills: ['接客'], employmentType: 'part_time', targetMinutes: 1200, maxWeeklyMinutes: 1800, maxDailyMinutes: 480, maxDays: 5, maxConsecutiveDays: 5, minRestMinutes: 660 };
-const request = (method: 'GET' | 'POST' | 'PATCH', url: string, token: string, payload?: unknown) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, ...(payload === undefined ? {} : { payload }) });
+const request = (method: 'GET' | 'POST' | 'PATCH', url: string, token: string, payload?: InjectOptions['payload']) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, ...(payload === undefined ? {} : { payload }) });
 async function login(email: string, password: string) {
   const response = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
   expect(response.statusCode, response.body).toBe(200); return response.json<{ token: string }>().token;
 }
-async function command(name: string, token: string, input: unknown) {
+async function command(name: string, token: string, input: InjectOptions['payload']) {
   const response = await request('POST', '/actions/workforce.' + name, token, input);
   expect(response.statusCode, response.body).toBe(200); return response.json<{ id: string; version: number }>();
 }

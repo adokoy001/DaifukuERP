@@ -1,0 +1,25 @@
+[Unit]
+Description=Daifuku outbound LAN device agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=daifuku-edge
+Group=daifuku-edge
+UMask=0077
+ExecStart=/usr/bin/node /opt/daifuku-edge/current/edge.mjs run --config /etc/daifuku-edge/config.json --state /var/lib/daifuku-edge
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/daifuku-edge
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=256
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

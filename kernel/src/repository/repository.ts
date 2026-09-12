@@ -13,7 +13,7 @@ import { registry, type HookPhase } from '../registry.ts';
 import { aggregate, type AggregateQuery, type AggregateRow } from './aggregate.ts';
 import { combine, DEFAULT_LIMIT, MAX_LIMIT, orderClauses, searchCondition, whereCondition, type ListQuery } from './query.ts';
 import { changedKeys, fromDb, snapshot, toDb } from './rows.ts';
-import { scopeCondition } from './scope.ts';
+import { assertRelayWrite, scopeCondition } from './scope.ts';
 import { assertOwnedInput } from './ownership.ts';
 import { lockParents, touchParents, validateReferences } from './integrity.ts';
 import { DOCUMENT_WRITE } from './authority.ts';
@@ -151,6 +151,7 @@ export class Repository<E extends EntityDef> {
     if (e.scope === 'company' && !this.ctx.companyId) throw new StateError(`${e.name} requires a company context`, 'Select a company (companyId) in the context.');
     await this.runHooks('before_create', row);
     await assertStoreWrite(this.ctx, e, row);
+    assertRelayWrite(this.ctx, e, row);
     const parents = await lockParents(this.ctx, e, row, undefined, 'create', draft);
     await validateReferences(this.ctx, e, row);
     const inserted = await this.withConstraintErrors(() => this.ctx.db.insert(e.table).values(toDb(row) as never).returning());
@@ -181,6 +182,7 @@ export class Repository<E extends EntityDef> {
     const merged: Raw = { ...before, ...values, updatedAt: this.ctx.now(), updatedBy: this.actorUserId(), version: (before.version as number) + 1 };
     await this.runHooks('before_update', merged, before);
     await assertStoreWrite(this.ctx, e, merged);
+    assertRelayWrite(this.ctx, e, merged);
     await validateReferences(this.ctx, e, merged);
     const rows = await this.withConstraintErrors(() =>
       this.ctx.db

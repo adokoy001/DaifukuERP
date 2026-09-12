@@ -25,7 +25,7 @@ export async function putCompanyMembership(ctx: Context, userId: string, company
     if (storeIds.some((s) => !allowed.has(s))) throw new ValidationError('Store is outside the selected company', [{ path: 'storeIds', message: 'Choose stores in this company.' }]);
   }
   if (input.accessScope === 'sites') {
-    if (!siteIds.length || roles.some((r) => !['workforce_employee', 'workforce_manager', 'chain_staff', 'chain_manager'].includes(r))) throw new ValidationError('Site assignments need sites and limited staff roles', [{ path: 'roles', message: 'Use workforce_employee/workforce_manager or chain staff roles.' }]);
+    if (!siteIds.length || roles.some((r) => !['workforce_employee', 'workforce_manager', 'chain_staff', 'chain_manager', 'edge_manager', 'edge_operator'].includes(r))) throw new ValidationError('Site assignments need sites and limited staff roles', [{ path: 'roles', message: 'Use workforce, chain staff, or edge device roles.' }]);
     const allowed = new Set((await directoryStores(ctx, companyId, 'sites')).map((s) => s.id));
     if (siteIds.some((s) => !allowed.has(s))) throw new ValidationError('Site is outside the selected company', [{ path: 'siteIds', message: 'Choose sites in this company.' }]);
     const stores = new Set((await directoryStores(ctx, companyId)).map((s) => s.id));

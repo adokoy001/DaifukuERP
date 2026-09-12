@@ -13,6 +13,7 @@
 | Web | 単体・型とproduction build | `pnpm --filter @daifuku/web test` / `typecheck` / `build` |
 | E2E | 実画面の導線・失効・スマホ操作 | CONTRIBUTINGの空DB fixture + Playwright |
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
+| 配布・機器 | 固定graph・改変検知・agent journal/実通信 | `pnpm test:deploy`、`pnpm --filter @daifuku/edge build`、専用DBで実API/TLS試験 |
 | 文書 | AI入口と現行ソースの整合 | 主要文書のリンクと構成/契約を照合 |
 
 DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。
@@ -41,3 +42,5 @@ Entityとsystem tableの定義を変更したら、`pnpm db:schema`、`pnpm db:g
 4. GitHub Actionsの対象commitを確認して最終結果を記録する。
 
 ソース公開とアプリのインターネット配信は別の操作です。接続権限の不足でpushできない場合、未公開と明記し、準備済みのcommit/保存先/必要な設定を示します。公開承認済みでも、接続成功やCI成功を推測して報告しません。
+
+共通実行配布物は [`scripts/build-release.mjs`](../../scripts/build-release.mjs) を使います。offline frozen依存からAPI graph・Web・店舗agentを作り、ファイル内容/permission/symlinkをmanifestで検証します。設定とDBは含めません。詳細は [共通配備](../operations/deployment.md)。

@@ -4,9 +4,9 @@
 
 | Job | 検証 | データ |
 | --- | --- | --- |
-| gate | 型・lint・依存境界・unit（Web含む）・DB・文書リンク、Web 型とビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
-| e2e | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与などのブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e` |
-| identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定の専用ブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
+| gate | 型・lint・依存境界・unit（Web含む）・DB・配布補助・文書リンク、API/Web 型とWeb/中継agentビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
+| e2e | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与・店舗機器・権限再取得などのブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e` |
+| identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定・中継pairing/失効の専用ブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
 | setup | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開 | 一時ディレクトリに新規クラスタ、ランダム資格情報 |
 
 権限は `contents: read` だけです。checkout の資格情報は保存しません。fork PR は `pull_request` で検証し、repository secrets、実環境、`pull_request_target` を使いません。依存は pnpm の固定バージョンと `--frozen-lockfile`、ブラウザは lockfile に対応する Playwright の Chromium を使います。

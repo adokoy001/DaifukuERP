@@ -1,6 +1,8 @@
-# 大福帳 ユーザーマニュアル（2026-09-12 企業運営拡張版）
+# 大福帳 ユーザーマニュアル（2026-09-12 店舗機器・共通配備版）
 
-**現行の導入は [README](../../README.md)、会社・店舗の権限と本部運営・BIは [付録 E](appendix-e-operations-control.md) を参照してください。** 画面全体の変更は [付録 C](appendix-c-ui-refresh.md)、3業界の操作は [付録 D](appendix-d-industry-templates.md) にあります。付録C/D/E/F/G以外の既存スクリーンショットは旧版のデモ画面です。配置・配色・一部の入力欄は現在と異なります。
+**現行の導入は [README](../../README.md)、会社・店舗の権限と本部運営・BIは [付録 E](appendix-e-operations-control.md) を参照してください。** 画面全体の変更は [付録 C](appendix-c-ui-refresh.md)、3業界の操作は [付録 D](appendix-d-industry-templates.md) にあります。付録C/D/E/F/G/H/I/J以外の既存スクリーンショットは旧版のデモ画面です。配置・配色・一部の入力欄は現在と異なります。
+
+店舗機器とクラウド・オンプレ導入は [付録J](appendix-j-store-devices.md) を参照してください。
 
 企業向けの認証・POS・連結・FCは [付録H](appendix-h-enterprise-operations.md)、給与税保険・年調・勤務制度は [付録I](appendix-i-fiscal-and-work-systems.md) を参照してください。
 
@@ -66,6 +68,7 @@
 | [付録 G 15業界カタログ](appendix-g-industry-catalog.md) | 業種ごとの案件・完了・請求・取消 |
 | [付録 H 認証・POS・連結・FC](appendix-h-enterprise-operations.md) | 本人確認とメール、Square、管理用連結精算表、フランチャイズ |
 | [付録 I 給与税保険・年調・勤務制度](appendix-i-fiscal-and-work-systems.md) | 2026年自動算定、本人申告、事前所定と変形/フレックス |
+| [付録 J 店舗・機器連携](appendix-j-store-devices.md) | 中継登録、印刷・模擬釣銭、結果確認、クラウド・オンプレ配備 |
 
 ---
 

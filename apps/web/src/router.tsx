@@ -86,6 +86,7 @@ const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: '/tem
 const actionRoute = createRoute({ getParentRoute: () => appRoute, path: '/a/$action', component: ActionPage });
 
 const operationsRoute = createRoute({ getParentRoute: () => appRoute, path: '/operations', validateSearch: (raw: Record<string, unknown>): { from?: string; to?: string; asOf?: string; storeId?: string } => Object.fromEntries(Object.entries(raw).filter(([key, value]) => ['from', 'to', 'asOf', 'storeId'].includes(key) && typeof value === 'string')), component: lazyRouteComponent(() => import('./pages/operations-page.tsx'), 'OperationsPage') });
+const edgeRoute = createRoute({ getParentRoute: () => appRoute, path: '/operations/devices', component: lazyRouteComponent(() => import('./pages/edge-page.tsx'), 'EdgePage') });
 const reportsRoute = createRoute({ getParentRoute: () => appRoute, path: '/reports', component: lazyRouteComponent(() => import('./pages/reports-page.tsx'), 'ReportsPage') });
 const accessRoute = createRoute({ getParentRoute: () => appRoute, path: '/admin/users', component: lazyRouteComponent(() => import('./pages/access-page.tsx'), 'AccessPage') });
 const employeeRoute = createRoute({ getParentRoute: () => appRoute, path: '/me', component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage') });
@@ -109,7 +110,7 @@ const publicIdentityRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/auth/recovery-codes', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'RecoveryCodesPage') }),
 ];
 
-const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, edgeRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute])]);
 
 export const router = createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
 

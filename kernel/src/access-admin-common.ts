@@ -40,6 +40,7 @@ export function availableRoles(): string[] {
   const roles = new Set(['admin', 'viewer', 'settings']);
   for (const e of registry.allEntities()) for (const role of Object.keys(e.config.permissions.roles)) roles.add(role);
   for (const a of registry.allActions()) if (a.permission !== 'authenticated' && 'roles' in a.permission) for (const role of a.permission.roles) roles.add(role);
+  roles.delete('relay');
   return [...roles].sort();
 }
 export async function directoryStores(ctx: Context, companyId?: string, kind: 'stores' | 'sites' = 'stores') {

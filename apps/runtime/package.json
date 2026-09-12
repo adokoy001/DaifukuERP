@@ -34,6 +34,7 @@
     "@daifuku/mod-workforce-evidence": "workspace:*",
     "@daifuku/mod-pos-integration": "workspace:*",
     "@daifuku/mod-group-accounting": "workspace:*",
-    "@daifuku/mod-franchise": "workspace:*"
+    "@daifuku/mod-franchise": "workspace:*",
+    "@daifuku/mod-edge-integration": "workspace:*"
   }
 }

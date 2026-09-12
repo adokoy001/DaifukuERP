@@ -47,6 +47,8 @@ export type ActionPermission =
   | { roles: readonly string[] };
 
 export interface ActionConfig<I extends z.ZodType, O extends z.ZodType> {
+  /** Reviewed machine-only transport may invoke this action; false by default. */
+  relayAccess?: boolean;
   /** Explicitly reviewed for a store-limited context. Generic CRUD uses its entity policy. */
   storeAccess?: boolean;
   /** Explicitly supported by generic site contexts; all repository boundaries still apply. */

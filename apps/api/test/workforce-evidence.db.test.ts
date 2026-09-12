@@ -1,7 +1,7 @@
 // Employee receipt ownership must hold through binary REST, generated CRUD and live membership changes.
 import { bootstrapTenant, companyMemberships, configureStorage, defineAction, hashPassword, label, LocalStorage, newId, repo, tableResult, users } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions } from 'fastify';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,7 +25,7 @@ let siteId: string;
 let aliceId: string;
 const PDF = Buffer.from('%PDF-1.7\nSynthetic receipt for integration testing.\n%%EOF');
 
-async function call(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, token: string, payload?: unknown, headers: Record<string, string> = {}) {
+async function call(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, token: string, payload?: InjectOptions['payload'], headers: Record<string, string> = {}) {
   return app.inject({ method, url, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers }, ...(payload === undefined ? {} : { payload }) });
 }
 async function login(email: string, password = 'test-password') {
@@ -51,7 +51,7 @@ async function upload(id: string, version: number, token = alice, bytes = PDF, e
   const parts = [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="expectedVersion"\r\n\r\n${version}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="receipt.pdf"\r\nContent-Type: application/pdf\r\n\r\n`), bytes, Buffer.from(`\r\n${extraField ? `--${boundary}\r\nContent-Disposition: form-data; name="${extraField}"\r\n\r\nforged\r\n` : ''}--${boundary}--\r\n`)];
   return call('POST', `/api/workforce/expenses/${id}/receipts`, token, Buffer.concat(parts), { 'content-type': `multipart/form-data; boundary=${boundary}` });
 }
-async function command(action: string, token: string, input: unknown) {
+async function command(action: string, token: string, input: InjectOptions['payload']) {
   const result = await call('POST', `/actions/workforce.${action}`, token, input);
   expect(result.statusCode, result.body).toBe(200);
   return result.json<{ id: string; version: number; status: string }>();
