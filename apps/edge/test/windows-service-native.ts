@@ -5,6 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { pathsScript } from '../setup/windows/paths-script.ts';
 import { serviceScript } from '../setup/windows/service-script.ts';
 import { windowsSetupScript } from '../setup/windows/script.ts';
+import { windowsPowerShellEnvironment } from '../src/windows-environment.ts';
 
 const tests = String.raw`
 $ErrorActionPreference='Stop'
@@ -108,7 +109,7 @@ const script = `$s=[IO.MemoryStream]::new([Convert]::FromBase64String('${packed}
 const executable = process.platform === 'win32' ? 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
 const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
   stdio: ['pipe', 'inherit', 'inherit'], shell: false, windowsHide: true,
-  env: { ...process.env, PSModulePath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules' },
+  env: windowsPowerShellEnvironment(),
 });
 child.stdin.end(JSON.stringify(scripts));
 child.on('error', () => { process.exitCode = 1; });

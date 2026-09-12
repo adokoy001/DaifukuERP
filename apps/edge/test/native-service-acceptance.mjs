@@ -8,6 +8,7 @@ import { promisify, parseArgs } from 'node:util';
 import { basename, dirname, join, resolve } from 'node:path';
 import { chown, chmod, lstat, mkdir, open, readFile, readdir } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import { linuxPathDiagnostics, normalizeLinuxFixture } from './native-linux-fixture.mjs';
 const execute = promisify(execFile);
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const { values } = parseArgs({ strict: true, options: { bundle: { type: 'string' }, 'update-bundle': { type: 'string' }, 'allow-disposable-service': { type: 'boolean' } } });
@@ -76,6 +77,11 @@ if (process.platform === 'win32') {
 await assertNoNativeServiceAndAccount();
 assert.equal(await exists(defaults.root), false, 'existing installation is never adopted by acceptance');
 assert.equal(await exists(defaults.state), false, 'existing state is never adopted by acceptance');
+if (process.platform === 'linux') {
+  process.stdout.write(JSON.stringify({ type: 'native_linux_path_preflight', paths: await linuxPathDiagnostics(initial) }) + '\n');
+  const normalized = await normalizeLinuxFixture({ platform: process.platform, githubActions: process.env.GITHUB_ACTIONS, explicit: values['allow-disposable-service'], uid: process.getuid() });
+  process.stdout.write(JSON.stringify({ type: 'native_linux_fixture_preparation', ...normalized }) + '\n');
+}
 const fixtureRoot = process.platform === 'win32' ? join(process.env.ProgramData ?? 'C:\\ProgramData', 'DaifukuEdgeAcceptance-' + randomUUID()) : (process.platform === 'darwin' ? '/private/var/' : '/var/') + 'daifuku-edge-acceptance-' + randomUUID();
 if (process.platform === 'win32') {
   await ps(`$ErrorActionPreference='Stop'; $path=([Console]::In.ReadLine()|ConvertFrom-Json).path;
@@ -108,6 +114,7 @@ async function ownMarker() {
 }
 async function diagnostics(source) {
   const report = { stage, platform: process.platform };
+  if (process.platform === 'linux') report.paths = await linuxPathDiagnostics(source);
   try {
     const status = await setup(source, 'status');
     report.setup = { serviceExists: status.serviceExists, serviceOwned: status.serviceOwned, serviceRunning: status.serviceRunning, runtimeStatusFresh: status.runtimeStatusFresh, conflicts: status.conflicts };

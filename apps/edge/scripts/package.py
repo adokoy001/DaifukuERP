@@ -78,6 +78,35 @@ exec "$base/runtime/node" "$base/setup/setup.mjs" "$@"
 '''}
 
 
+def verify_archive(path, name, expected):
+    """Read the deliverable back, including executable bits and exact entry topology."""
+    expected = {name + '/' + relative: data for relative, data in expected.items()}
+    if path.suffix == '.zip':
+        with zipfile.ZipFile(path) as archive:
+            entries = archive.infolist()
+            if sorted(item.filename for item in entries) != sorted(expected):
+                raise ValueError('archive_entries_mismatch')
+            for item in entries:
+                if sha(archive.read(item)) != sha(expected[item.filename]):
+                    raise ValueError('archive_content_mismatch')
+    else:
+        with tarfile.open(path, 'r:gz') as archive:
+            entries = archive.getmembers()
+            if any(not (item.isfile() or item.isdir()) for item in entries):
+                raise ValueError('archive_links_forbidden')
+            regular = [item for item in entries if item.isfile()]
+            if sorted(item.name for item in regular) != sorted(expected):
+                raise ValueError('archive_entries_mismatch')
+            for item in regular:
+                with archive.extractfile(item) as stream:
+                    if sha(stream.read()) != sha(expected[item.name]):
+                        raise ValueError('archive_content_mismatch')
+                if item.uid != 0 or item.gid != 0:
+                    raise ValueError('archive_build_identity_exposed')
+                if item.name.endswith(('/runtime/node', '/setup.sh')) and item.mode != 0o755:
+                    raise ValueError('archive_executable_mode_missing')
+
+
 def package(target, release_id, output, cache):
     platform, arch = target.split('-')
     files = runtime_files(target, cache)
@@ -121,6 +150,7 @@ def package(target, release_id, output, cache):
                 entry.mtime = 0
                 return entry
             archive.add(directory, arcname=name, filter=public_metadata)
+    verify_archive(archive_path, name, {**files, 'manifest.json': raw})
     (output / (archive_path.name + '.sha256')).write_text(sha(archive_path.read_bytes()) + '  ' + archive_path.name + '\n')
     return {'target': target, 'directory': str(directory), 'archive': str(archive_path), 'manifestHash': sha(raw), 'archiveHash': sha(archive_path.read_bytes())}
 

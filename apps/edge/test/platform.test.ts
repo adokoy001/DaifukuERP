@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chmod, lstat, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { privateDirectory, readPrivateJson, syncJson } from '../src/files.ts';
 import { acquireWriter } from '../src/lock.ts';
 import { readPrivateSource } from '../setup/source.ts';
-const base = process.platform === 'win32' ? process.env.ProgramData ?? 'C:\\ProgramData' : tmpdir();
+const base = process.platform === 'win32' ? process.env.ProgramData ?? 'C:\\ProgramData' : await realpath(tmpdir());
 async function directory() { const path = process.platform === 'win32' ? join(base, 'DaifukuEdgeTest-' + randomUUID()) : await mkdtemp(join(base, 'DaifukuEdgeTest-')); await privateDirectory(path); return path; }
 async function cleanup(path: string) { if (dirname(resolve(path)) !== resolve(base) || !/^DaifukuEdgeTest-[a-zA-Z0-9-]+$/.test(basename(path)) || (await lstat(path)).isSymbolicLink()) throw new Error('Unsafe synthetic cleanup path'); await rm(path, { recursive: true, force: true }); }
 async function eventuallyLock(path: string): Promise<() => Promise<void>> { for (let n = 0; n < 8; n++) { try { return await acquireWriter(path, () => undefined); } catch (error) { if (!(error instanceof Error) || error.message !== 'another_agent_is_running') throw error; await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('OS did not release the terminated writer'); }

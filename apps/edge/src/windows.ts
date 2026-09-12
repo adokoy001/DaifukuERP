@@ -2,9 +2,10 @@ import { spawn } from 'node:child_process';
 import { win32 } from 'node:path';
 import { EdgeError } from './errors.ts';
 import { windowsScript, type WindowsOperation } from './windows-script.ts';
+import { windowsPowerShellEnvironment } from './windows-environment.ts';
 export function windowsHelper(operation: WindowsOperation, input: Record<string, unknown>) {
   const executable = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(windowsScript(operation), 'utf16le').toString('base64')], { stdio: ['pipe', 'pipe', 'ignore'], shell: false, windowsHide: true, env: { ...process.env, PSModulePath: win32.join(win32.dirname(executable), 'Modules') } });
+  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(windowsScript(operation), 'utf16le').toString('base64')], { stdio: ['pipe', 'pipe', 'ignore'], shell: false, windowsHide: true, env: windowsPowerShellEnvironment() });
   child.stdin.on('error', () => undefined); child.stdin.write(JSON.stringify(input) + '\n'); return child;
 }
 export async function windowsIo(operation: Exclude<WindowsOperation, 'lock'>, input: Record<string, unknown>): Promise<unknown> {

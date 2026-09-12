@@ -13,8 +13,9 @@
 
 ## 測定記録（更新中）
 
-ローカルLinuxのruntime/adapter回帰、Windows実プロセスでのACL・Unicode原子的置換・別プロセス排他・同時writer拒否、SCM境界の模擬試験を実行しました。開発者PCへ常駐サービスは登録していません。
-全gateと5種類の実OSサービス受入はこの変更のCIで確認し、最終結果を本節へ追記します。
+ローカル全gate（型・Lint/依存境界、単体693件、DB589件、配備8件、文書リンク72文書607対象）が成功しました。追加の入力秘密保護、状態/PID鮮度、CI fixture境界は個別回帰で確認し、最終CIでも全体を再実行します。
+Windows実プロセスでACL・Unicode原子的置換・別プロセス排他・同時writer拒否、SCM境界の模擬試験を実行しました。同梱Windows Node 22.23.2の起動も確認しています。開発者PCへ常駐サービスは登録していません。
+初回5 OS CIで、macOSのOS標準temp aliasとzsh競合戻り値、GitHub Linux imageの`/opt`全ユーザー書込権限、Windows PowerShell環境の差異を検出しました。製品のリンク/所有権検査は維持し、実OSで同じ受入条件を再検証します。最終結果は本節へ追記します。
 
 ## 境界と未実施
 

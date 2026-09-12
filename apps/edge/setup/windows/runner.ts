@@ -3,6 +3,7 @@ import { win32 } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { ServiceContext } from '../types.ts';
 import { windowsSetupScript, type WindowsSetupOperation } from './script.ts';
+import { windowsPowerShellEnvironment } from '../../src/windows-environment.ts';
 
 export type WindowsRunner = (operation: WindowsSetupOperation, context?: ServiceContext, xml?: string) => Promise<unknown>;
 export function encodedWindowsSetup(operation: WindowsSetupOperation): string {
@@ -19,7 +20,7 @@ export async function runWindowsPayload(operation: WindowsSetupOperation, input:
   if (encoded.length > 30000) throw new Error('windows_helper_too_large');
   const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
     stdio: ['pipe', 'pipe', 'ignore'], shell: false, windowsHide: true,
-    env: { ...process.env, PSModulePath: win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'Modules') },
+    env: windowsPowerShellEnvironment(),
   });
   child.stdin.on('error', () => undefined);
   child.stdin.end(JSON.stringify(input) + '\n');
