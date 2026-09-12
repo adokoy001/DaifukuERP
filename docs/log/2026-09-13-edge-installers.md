@@ -14,10 +14,10 @@
 
 ## 測定記録（更新中）
 
-ローカル全gate（型・Lint/依存境界、単体693件、DB589件、配備8件、文書リンク72文書607対象）が成功しました。追加の入力秘密保護、状態/PID鮮度、CI fixture境界は個別回帰で確認し、最終CIでも全体を再実行します。
+ローカル全gate（型・Lint/依存境界、単体693件、DB589件、配備8件、文書リンク72文書607対象）が成功しました。その後の入力秘密保護、状態/PID鮮度、CI fixture境界、OS固有回帰を加えた全単体747件も成功。`4b596ca`の[CI gate](https://github.com/adokoy001/DaifukuERP/actions/runs/34705252024/job/103584066094)でも全gateが成功しました。macOS実プロセス権限の最終変更は追加の回帰とCIで検証します。
 Windows実プロセスでACL・Unicode原子的置換・別プロセス排他・同時writer拒否、SCM境界の模擬試験を実行しました。同梱Windows Node 22.23.2の起動も確認しています。開発者PCへ常駐サービスは登録していません。
 初回5 OS CIで、macOSのOS標準temp aliasとzsh競合戻り値、GitHub Linux imageの`/opt`全ユーザー書込権限、Windows PowerShell環境の差異を検出しました。製品のリンク/所有権検査は維持し、実OSで同じ受入条件を再検証します。最終結果は本節へ追記します。
-第2回ではWindows SCM/LocalServiceの全lifecycleが成功。第3回ではLinux x64/arm64も成功しました。systemdの単一path字段と引数リストの引用規則を分け、実パーサーの通常/空白入りpath回帰を追加しています。macOSのnative属性名、OS計算のeveryone/localaccountsを一次資料と固定UUID/GIDで照合し、管理グループ等の追加所属は拒否します。
+第2回ではWindows SCM/LocalServiceの全lifecycleが成功。第3回ではLinux x64/arm64も成功しました。systemdの単一path字段と引数リストの引用規則を分け、実パーサーの通常/空白入りpath回帰を追加しています。macOSはnative属性名の差を解消した後、標準計算グループと端末固有のnested groupを確認しました。最終構成は`InitGroups=false`で補助所属の継承を抑え、所有/非ログイン/UID/primaryの検査に加えて実サービス自身のgroupを測定します。Windowsの日本語配布説明書はUTF-8を明示して読みます。
 
 ## 境界と未実施
 

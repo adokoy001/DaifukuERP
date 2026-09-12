@@ -112,6 +112,18 @@ async function ownMarker() {
   assert.equal(marker.installRoot, defaults.root); assert.equal(marker.statePath, defaults.state); assert.match(marker.installationId, /^[a-f0-9-]{36}$/);
   return marker;
 }
+function runtimeIdentity(value) {
+  if (!value || !['uid', 'euid', 'gid', 'egid'].every((key) => Number.isInteger(value[key]) && value[key] >= 0 && value[key] <= 4294967295) || !Array.isArray(value.groups) || value.groups.length > 1024 || !value.groups.every((group) => Number.isInteger(group) && group >= 0 && group <= 4294967295)) return null;
+  return { uid: value.uid, euid: value.euid, gid: value.gid, egid: value.egid, groups: value.groups };
+}
+function assertMacRuntimeIdentity(status) {
+  if (process.platform !== 'darwin') return;
+  const identity = runtimeIdentity(status.runtime?.identity); assert(identity, 'actual Mac process identity required');
+  assert.equal(status.runtime.groupIsolationRequired, true); assert.equal(identity.uid, status.account.uid); assert.equal(identity.euid, status.account.uid);
+  assert.equal(identity.gid, status.account.gid); assert.equal(identity.egid, status.account.gid); assert(identity.uid >= 400 && identity.uid < 500);
+  assert(identity.groups.every((group) => group === identity.gid), 'supplementary process groups forbidden');
+  process.stdout.write(JSON.stringify({ type: 'native_mac_process_identity_verified', stage, ...identity }) + '\n');
+}
 async function macAccountDiagnostics() {
   const result = await command('/usr/bin/dscl', ['.', '-read', '/Users/_daifukuedge', 'UniqueID', 'PrimaryGroupID', 'UserShell', 'NFSHomeDirectory', 'IsHidden', 'AuthenticationAuthority', 'Password'], true);
   const fields = {}; let key;
@@ -136,7 +148,7 @@ async function diagnostics(source) {
   } catch (error) { report.setupCode = /^[a-z][a-z0-9_]+$/.test(error.message) ? error.message : 'status_unavailable'; }
   try {
     const runtime = await json(join(defaults.state, 'service-status.json'));
-    report.runtime = { pid: Number.isInteger(runtime.pid) ? runtime.pid : null, phase: ['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error'].includes(runtime.phase) ? runtime.phase : 'invalid', observedAt: /^\d{4}-\d\d-\d\dT[0-9:.]+Z$/.test(runtime.observedAt) ? runtime.observedAt : null };
+    report.runtime = { identity: runtimeIdentity(runtime.identity), groupIsolationRequired: runtime.groupIsolationRequired === true, pid: Number.isInteger(runtime.pid) ? runtime.pid : null, phase: ['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error'].includes(runtime.phase) ? runtime.phase : 'invalid', observedAt: /^\d{4}-\d\d-\d\dT[0-9:.]+Z$/.test(runtime.observedAt) ? runtime.observedAt : null };
   } catch { report.runtime = null; }
   try {
     if (process.platform === 'win32') {
@@ -162,7 +174,7 @@ try {
   const marker = await ownMarker(); installationId = marker.installationId; installed = true;
   assert.equal(marker.active.manifestHash, initial.hash); assert.equal(marker.status, 'installed');
   const first = await waitStatus((status) => status.serviceOwned && status.serviceRunning && status.runtimeStatusFresh && status.runtime?.phase === 'pairing_required');
-  assert(first.account); process.stdout.write('native_install_pairing_required_passed\n');
+  assert(first.account); assertMacRuntimeIdentity(first); process.stdout.write('native_install_pairing_required_passed\n');
   stage = 'stop'; await setup(initial, 'stop', ['--execute']); await waitStatus((status) => !status.serviceRunning);
   const stateOwner = await lstat(defaults.state);
   await exclusive(join(defaults.state, 'credentials.json'), { apiBaseUrl }, stateOwner);
@@ -171,14 +183,15 @@ try {
   for (const name of ['config.json', 'credentials.json', 'journal.json']) preserved[name] = digest(await regular(join(defaults.state, name)));
   stage = 'start'; const startedAt = Date.now(); await setup(initial, 'start', ['--execute']);
   const restarted = await waitStatus((status) => status.serviceRunning && status.runtimeStatusFresh && status.runtime?.phase === 'pairing_required' && Date.parse(status.runtime.observedAt) >= startedAt);
-  assert.notEqual(restarted.runtime.pid, first.runtime.pid); process.stdout.write('native_stop_start_passed\n');
+  assertMacRuntimeIdentity(restarted); assert.notEqual(restarted.runtime.pid, first.runtime.pid); process.stdout.write('native_stop_start_passed\n');
   stage = 'update_plan';
   const beforeMarker = digest(await regular(markerPath));
   const updatePlan = await setup(update, 'update', deployArgs(update)); assert.equal(updatePlan.execute, false);
   assert.equal(digest(await regular(markerPath)), beforeMarker); assert.equal(await exists(join(defaults.root, 'releases', update.manifest.releaseId + '-' + update.hash.slice(0, 16))), false);
   stage = 'update'; const updatedAt = Date.now(); await setup(update, 'update', [...deployArgs(update), '--execute']); activeSource = update;
   const updated = await ownMarker(); assert.equal(updated.installationId, installationId); assert.equal(updated.active.manifestHash, update.hash); assert.notEqual(updated.active.context.releaseDir, marker.active.context.releaseDir);
-  await waitStatus((status) => status.serviceRunning && status.runtimeStatusFresh && status.runtime?.phase === 'pairing_required' && Date.parse(status.runtime.observedAt) >= updatedAt, update);
+  const replacement = await waitStatus((status) => status.serviceRunning && status.runtimeStatusFresh && status.runtime?.phase === 'pairing_required' && Date.parse(status.runtime.observedAt) >= updatedAt, update);
+  assertMacRuntimeIdentity(replacement); assert.notEqual(replacement.runtime.pid, restarted.runtime.pid); assert.deepEqual(replacement.account, first.account);
   for (const [name, hash] of Object.entries(preserved)) assert.equal(digest(await regular(join(defaults.state, name))), hash);
   assert.equal(await exists(marker.active.context.releaseDir), true); process.stdout.write('native_update_preserves_private_state_passed\n');
   stage = 'uninstall'; await setup(update, 'uninstall', ['--execute']);

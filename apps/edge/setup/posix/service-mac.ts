@@ -20,10 +20,28 @@ function property(text: string, name: string): string | undefined {
   const line = text.split('\n').map((part) => part.trim()).find((part) => part.startsWith(name + ' = '));
   return line?.slice(name.length + 3);
 }
+export function daemonEnvironment(text: string): Record<string, string> {
+  const lines = text.split('\n');
+  const starts = lines.map((line, index) => line.trim() === 'environment = {' ? index : -1).filter((index) => index >= 0);
+  const start = starts[0];
+  if (starts.length !== 1 || start === undefined) throw new Error('Loaded LaunchDaemon environment is missing or ambiguous.');
+  const result: Record<string, string> = {};
+  for (const line of lines.slice(start + 1).map((value) => value.trim()).filter(Boolean)) {
+    if (line === '}') return result;
+    // Modern launchctl uses => inside environment dictionaries, unlike top-level = properties.
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:=>|=) (.*)$/.exec(line);
+    if (!match?.[1] || match[2] === undefined || result[match[1]] !== undefined) throw new Error('Loaded LaunchDaemon environment is malformed or ambiguous.');
+    result[match[1]] = match[2];
+  }
+  throw new Error('Loaded LaunchDaemon environment is incomplete.');
+}
+
 export function validateLoadedDaemon(text: string, context: ServiceContext): void {
   const args = /(?:^|\n)\s*arguments = \{\n([\s\S]*?)\n\s*\}/.exec(text)?.[1]?.split('\n').map((line) => line.trim()).filter(Boolean);
   if (property(text, 'path') !== macPlistPath || property(text, 'program') !== context.nodePath || property(text, 'username') !== '_daifukuedge' || property(text, 'group') !== 'nobody' || JSON.stringify(args) !== JSON.stringify(serviceArguments(context))) throw new Error('Loaded LaunchDaemon differs from the owned service definition.');
-  const ca = property(text, 'NODE_EXTRA_CA_CERTS');
+  const environment = daemonEnvironment(text);
+  if (environment.DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS !== '1') throw new Error('Loaded LaunchDaemon group isolation differs from this installation.');
+  const ca = environment.NODE_EXTRA_CA_CERTS;
   if (ca !== context.caPath) throw new Error('Loaded LaunchDaemon CA configuration differs from this installation.');
 }
 export async function inspectMacService(host: PosixHost, context: ServiceContext): Promise<{ exists: boolean; running: boolean; owned: boolean; processId?: number }> {

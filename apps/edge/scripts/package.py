@@ -82,7 +82,7 @@ exec "$base/runtime/node" "$base/setup/setup.mjs" "$@"
 def manual(release_id):
     """Keep cross-references usable when this Markdown is read outside the repository."""
     revision = release_id[5:] if re.fullmatch(r'ci-[ab]-[0-9a-f]{40}', release_id) else 'main'
-    source = (ROOT / 'docs/manual/edge-service-setup.md').read_text()
+    source = (ROOT / 'docs/manual/edge-service-setup.md').read_text(encoding='utf-8')
     def link(match):
         value = match[1]
         if value.startswith('#') or re.match(r'[a-zA-Z]+:', value):

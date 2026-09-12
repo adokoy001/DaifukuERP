@@ -5,6 +5,7 @@ import type { Journal } from './journal.ts';
 import { EdgeAgent } from './agent.ts';
 import { EdgeError, errorCode } from './errors.ts';
 import { syncJson } from './files.ts';
+import { currentServiceIdentity, isolatedServiceIdentity } from './service-identity.ts';
 import { connectService } from './pairing-inbox.ts';
 export const SERVICE_RETRY_MS = 30000;
 type Phase = 'pairing_required' | 'connecting' | 'running' | 'credential_rejected' | 'stopped' | 'error';
@@ -13,7 +14,7 @@ class ServiceStatus {
   private queue = Promise.resolve();
   constructor(private readonly path: string) {}
   set(phase: Phase): Promise<void> { this.phase = phase; return this.refresh(); }
-  refresh(): Promise<void> { this.queue = this.queue.then(() => syncJson(this.path, { pid: process.pid, phase: this.phase, observedAt: new Date().toISOString() })); return this.queue; }
+  refresh(): Promise<void> { this.queue = this.queue.then(() => syncJson(this.path, { pid: process.pid, phase: this.phase, observedAt: new Date().toISOString(), groupIsolationRequired: process.env.DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS === '1', identity: currentServiceIdentity() })); return this.queue; }
 }
 export async function runService(credentials: Credentials, journal: Journal, directory: string, signal: AbortSignal, log: (code: string) => void): Promise<void> {
   const status = new ServiceStatus(join(directory, 'service-status.json')), local = new AbortController();
@@ -24,6 +25,7 @@ export async function runService(credentials: Credentials, journal: Journal, dir
   try {
     while (!local.signal.aborted) {
       try {
+        if (process.env.DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS === '1' && !isolatedServiceIdentity(currentServiceIdentity())) throw new EdgeError('service_group_isolation_failed');
         const phase = await connectService(credentials, directory); await status.set(phase); log(phase);
         if (phase === 'running') await new EdgeAgent(credentials, journal, log).run(local.signal);
       } catch (error) {

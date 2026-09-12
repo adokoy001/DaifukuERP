@@ -29,6 +29,7 @@ markerの保存後にLinux/macOSの専用アカウントを作成し（Windows�
 `io.ts`はexclusive作成・flush・同一ディレクトリの原子的置換、リンク/祖先検査を担当します。
 WindowsはMoveFileExのWRITE_THROUGH、POSIXはファイルとディレクトリのfsyncを使用します。
 コード側は管理者だけが書き込み、サービスアカウントは状態だけを書き込めます。WindowsはLocalServiceのSIDを使うため、同じ組込アカウントで動く別サービスとの分離は保証しません。削除操作は登録解除までで、データやアカウントを再帰削除しません。
+macOSはLaunchDaemonに`InitGroups=false`を指定し、端末固有の補助グループをサービスへ継承させません。保存定義・稼働定義の検査に加え、サービス自身がUID/GIDと実際の補助グループを状態へ記録し、想定外のグループを持つときは機器やERPへ接続しません。Directory Serviceが全ローカルユーザーへ計算する所属一覧を、サービス実プロセスの権限と混同しません。
 
 ## 常駐時の契約
 

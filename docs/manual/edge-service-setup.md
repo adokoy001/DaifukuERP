@@ -13,6 +13,7 @@
 | macOS Intel / Apple Silicon | LaunchDaemon | `_daifukuedge` | `/Library/Application Support/DaifukuEdge` / `/Library/Application Support/DaifukuEdgeData` |
 
 Linux/macOSは専用の非ログインアカウントを作ります。Windowsは組込のLocalServiceを使うため、同じLocalServiceで動く別サービスとのデータ隔離は保証しません。信頼できるサービスだけを置く管理端末で運用してください。
+macOSは端末固有の補助グループをサービスへ継承させず、稼働プロセスの実際の権限も検査します。権限エラー時にアカウントを管理者グループへ追加したり、共有フォルダーの権限を広げたりして回避しないでください。
 
 Windowsは.NET Framework 4.8とWindows PowerShell 5.1、Linuxはsystemdとutil-linuxのflock、macOSは標準zshの`zsh/system`を使用します。
 対応するNode.js 22バイナリを実行できるOSを前提とします。Node.js 22.23.2は配布物へ同梱し、端末でnpmのインストールやビルドは行いません。

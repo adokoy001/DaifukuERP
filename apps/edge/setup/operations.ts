@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { rename } from 'node:fs/promises';
 import { z } from 'zod';
 import { edgeSecret } from '@daifuku/mod-edge-integration/contract';
+import { matchesMacServiceIdentity, serviceIdentitySchema } from '../src/service-identity.ts';
 import { acquireWriter } from '../src/lock.ts';
 import { digest, exclusiveWrite, jsonFile, pathChain, readRegular, safePath, syncDirectory } from './io.ts';
 import { windowsDurablePublish } from './windows/durable.ts';
@@ -9,7 +10,7 @@ import { readPrivateSource } from './source.ts';
 import { readInstallation, saveInstallation } from './state.ts';
 import type { ServiceAdapter, SetupOperation } from './types.ts';
 const pairingSchema = z.object({ pairingToken: edgeSecret }).strict();
-const statusSchema = z.object({ pid: z.number().int().positive(), phase: z.enum(['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error']), observedAt: z.string().datetime() }).strict();
+const statusSchema = z.object({ pid: z.number().int().positive(), phase: z.enum(['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error']), observedAt: z.string().datetime(), groupIsolationRequired: z.boolean().optional(), identity: serviceIdentitySchema.optional() }).strict();
 export interface OperationRequest { operation: Exclude<SetupOperation, 'install' | 'update'>; installRoot: string; execute: boolean; pairingSource?: string }
 async function inspect(request: OperationRequest, adapter: ServiceAdapter) {
   const root = safePath(request.installRoot); await pathChain(root, true);
@@ -27,7 +28,7 @@ export async function operate(request: OperationRequest, adapter: ServiceAdapter
   if (request.operation === 'status') {
     const raw = await jsonFile(join(initial.context.statePath, 'service-status.json')); const status = statusSchema.safeParse(raw);
     const age = status.success ? Date.now() - Date.parse(status.data.observedAt) : -1;
-    return { ...output, runtime: status.success ? status.data : null, runtimeStatusFresh: status.success && initial.service.serviceOwned && initial.service.conflicts.length === 0 && initial.service.serviceRunning && initial.service.processId === status.data.pid && age >= 0 && age < 90000 };
+    return { ...output, runtime: status.success ? status.data : null, runtimeStatusFresh: status.success && matchesMacServiceIdentity(initial.context.platform, status.data, initial.service.account) && initial.service.serviceOwned && initial.service.conflicts.length === 0 && initial.service.serviceRunning && initial.service.processId === status.data.pid && age >= 0 && age < 90000 };
   }
   const pairing = request.operation === 'pair' && request.pairingSource ? pairingSchema.parse(JSON.parse((await readPrivateSource(request.pairingSource, 8192)).toString('utf8'))) : undefined;
   if (request.operation === 'pair' && !pairing) throw new Error('pairing_file_required');

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Credentials } from '../src/credentials.ts';
 import { Journal } from '../src/journal.ts';
 import { connectService } from '../src/pairing-inbox.ts';
+import { currentServiceIdentity } from '../src/service-identity.ts';
 import { runService, SERVICE_RETRY_MS } from '../src/service.ts';
 import { readPrivateJson, syncJson } from '../src/files.ts';
 import { relayFixture, secret, until } from './fixtures.ts';
@@ -17,7 +18,7 @@ describe('service pairing inbox and durable recovery', () => {
     try {
       await until(() => codes.includes('pairing_required'));
       const status = await readPrivateJson(join(relay.directory, 'service-status.json'));
-      expect(status).toEqual({ pid: process.pid, phase: 'pairing_required', observedAt: expect.any(String) });
+      expect(status).toEqual({ pid: process.pid, phase: 'pairing_required', observedAt: expect.any(String), groupIsolationRequired: false, ...(currentServiceIdentity() ? { identity: currentServiceIdentity() } : {}) });
       expect(SERVICE_RETRY_MS).toBeGreaterThanOrEqual(30000); expect(relay.state.credential).toBe('');
       expect(JSON.stringify(status)).not.toContain(relay.state.pairing); expect(codes).toEqual(['pairing_required']);
     } finally { abort.abort(); await run; }
