@@ -33,3 +33,8 @@ TLS SMTP fixture は OpenSSL で一時証明書を作り、その CA を明示�
 | pnpm/action-setup | [v6.1.0](https://github.com/pnpm/action-setup/releases/tag/v6.1.0) | `ea17c68df8912ef543352723c149a84f56e3d413` |
 
 これらの Action は Node 24 の runner runtime を使い、アプリの検証には Node 22.23.2 を指定します。[Ubuntu 24.04 Hosted Runner のツール一覧](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) で PostgreSQL 16 の同梱を確認しました。setup job はそのバイナリを明示確認し、OS の PostgreSQL サービスを変更せず別ポートに自分のクラスタを作成します。コンテナは PostgreSQL 16.15 の patch tag、runner は `ubuntu-24.04` で固定しますが、Hosted Runner の OS イメージそのものは更新されます。
+# エッジサービスの追加受入
+
+`edge-services.yml`はLinux x64/arm64、Windows x64、macOS Intel/Apple Siliconの5種類で同梱Node配布物を作り、使い捨てrunnerの実SCM/systemd/LaunchDaemonへ導入します。
+`native-service-acceptance.mjs`はGitHub runner識別と明示フラグ、既存サービス/アカウント/保存先の不存在を検査します。計画無変更、未登録待機、停止/開始、別版への更新、設定/資格情報/journal保持、登録解除後の保持を確認します。
+この試験を開発PCで実行しません。公開artifactは配布物とチェックサムのみで、runnerの私有状態・ログ・トークンはアップロードしません。

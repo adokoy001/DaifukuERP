@@ -1,8 +1,10 @@
-# 現在地（2026-09-12 店舗機器・クラウド/オンプレ共通配備）
+# 現在地（2026-09-13 エッジサービス導入）
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
 
 ## 店舗機器とクラウド/オンプレ共通配備
+
+[エッジサービス仕様](specs/edge-installers.md)により、Windows/Linux/macOSのサービス導入・更新・登録解除、Node同梱の5対象配布物、OS別の排他/秘密ファイル保護、未登録時の待機を追加しています。[操作](manual/edge-service-setup.md)と[構造](architecture/edge-services.md)を入口にしてください。実OSサービスCIの受入結果は[作業記録](log/2026-09-13-edge-installers.md)へ記録します。
 
 [統合仕様](specs/deployment-edge.md) に基づき、同じ版付きLinux配布物とCaddy/systemd参照構成、店舗LANから外向きに接続する中継agentを追加しました。WSSは仕事の存在だけを通知し、本体・結果・状態はHTTPSで取得/報告します。店舗側の受信port開放は不要ですが、ERPのHTTPS入口への到達経路は必要です。
 
