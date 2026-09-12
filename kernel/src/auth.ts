@@ -24,12 +24,14 @@ export function verifyPassword(password: string, stored: string | null): boolean
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
+const DUMMY_PASSWORD = hashPassword('not-a-real-login-password');
+
 /** Finds an active user by email across tenants (owner connection; bypasses RLS by design for login only). */
 export async function authenticate(owner: Database, email: string, password: string, tenantId?: string): Promise<Principal | null> {
   const rows = await owner.drizzle.select().from(users).where(and(eq(users.email, email.toLowerCase()), eq(users.active, 1), tenantId ? eq(users.tenantId, tenantId) : undefined)).limit(2);
   const user = rows[0];
-  if (!user || rows.length > 1) return null;
-  if (!verifyPassword(password, user.passwordHash)) return null;
+  const valid = verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD);
+  if (!user || rows.length > 1 || !valid) return null;
   return principalFrom(owner, user);
 }
 
@@ -41,7 +43,7 @@ export async function loadPrincipal(owner: Database, userId: string): Promise<Pr
 }
 
 function principalFrom(owner: Database, user: typeof users.$inferSelect): Promise<Principal> {
-  const principal: Principal = { userId: user.id, tenantId: user.tenantId, name: user.name, email: user.email, roles: [], defaultCompanyId: user.defaultCompanyId, tenantAdmin: user.tenantAdmin === 1, sessionVersion: user.sessionVersion, accessScope: 'all', storeIds: [], siteIds: [] };
+  const principal: Principal = { userId: user.id, tenantId: user.tenantId, name: user.name, email: user.email, roles: [], defaultCompanyId: user.defaultCompanyId, tenantAdmin: user.tenantAdmin === 1, sessionVersion: user.sessionVersion, mfaEnabled: user.mfaEnabled === 1, accessScope: 'all', storeIds: [], siteIds: [] };
   return resolveCompanyAccess(owner, principal, user.defaultCompanyId);
 }
 

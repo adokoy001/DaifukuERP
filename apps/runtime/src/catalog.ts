@@ -12,6 +12,9 @@ import { ContractModule } from '@daifuku/mod-contract';
 import { IndustryOperationsModule } from '@daifuku/mod-industry-operations';
 import { WorkforceModule } from '@daifuku/mod-workforce';
 import { WorkforceEvidenceModule } from '@daifuku/mod-workforce-evidence';
+import { PosIntegrationModule } from '@daifuku/mod-pos-integration';
+import { GroupAccountingModule } from '@daifuku/mod-group-accounting';
+import { FranchiseModule } from '@daifuku/mod-franchise';
 import { JapanModule } from '@daifuku/l10n-jp';
 
-export const businessModules: readonly ModuleDef[] = [PartnerModule, ProductModule, TaxModule, AccountingModule, AttachmentsModule, SalesModule, PurchaseModule, PaymentModule, InventoryModule, ContractModule, WorkforceModule, WorkforceEvidenceModule, IndustryOperationsModule, JapanModule];
+export const businessModules: readonly ModuleDef[] = [PartnerModule, ProductModule, TaxModule, AccountingModule, AttachmentsModule, SalesModule, PurchaseModule, PaymentModule, InventoryModule, ContractModule, WorkforceModule, WorkforceEvidenceModule, IndustryOperationsModule, PosIntegrationModule, GroupAccountingModule, FranchiseModule, JapanModule];

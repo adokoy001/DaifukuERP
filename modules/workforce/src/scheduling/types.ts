@@ -26,11 +26,13 @@ export interface ShiftDayRule {
   date: string; dailyLimitMinutes: number; weeklyLimitMinutes: number;
   breakAfterMinutes: number; breakMinutes: number; longBreakAfterMinutes: number; longBreakMinutes: number;
 }
+export interface ShiftWorkRule { employeeId: string; date: string; mode: 'ordinary' | 'monthly_variable' | 'flex'; dailyLimitMinutes: number; weeklyLimitMinutes: number; startMinute: number; endMinute: number; statutoryHoliday: boolean }
+export interface ShiftPeriodBudget { employeeId: string; startsOn: string; endsOn: string; remainingMinutes: number }
 export interface ShiftProblem {
   weekStart: string; employees: ShiftEmployee[]; slots: ShiftSlot[];
-  availability: ShiftAvailability[]; leave: ShiftLeave[]; existing: ShiftExisting[]; rules: ShiftDayRule[];
+  availability: ShiftAvailability[]; leave: ShiftLeave[]; existing: ShiftExisting[]; rules: ShiftDayRule[]; workRules?: ShiftWorkRule[] | undefined; periodBudgets?: ShiftPeriodBudget[] | undefined;
 }
-export type ShiftIssueCode = 'invalid_input' | 'unknown_employee' | 'unknown_slot' | 'duplicate' | 'over_capacity' | 'inactive' | 'missing_profile' | 'missing_availability' | 'unavailable' | 'leave' | 'skill' | 'overlap' | 'daily_limit' | 'weekly_limit' | 'days_limit' | 'consecutive_limit' | 'rest' | 'break';
+export type ShiftIssueCode = 'invalid_input' | 'unknown_employee' | 'unknown_slot' | 'duplicate' | 'over_capacity' | 'inactive' | 'missing_profile' | 'missing_availability' | 'unavailable' | 'leave' | 'skill' | 'overlap' | 'daily_limit' | 'weekly_limit' | 'days_limit' | 'consecutive_limit' | 'rest' | 'break' | 'work_system' | 'period_limit';
 export interface ShiftIssue { code: ShiftIssueCode; employeeId?: string; slotId?: string }
 export interface ShiftCoverage { slotId: string; required: number; assigned: number; shortage: number; exclusions: Partial<Record<ShiftIssueCode, number>> }
 export interface ShiftEmployeeMetric { employeeId: string; minutes: number; targetMinutes: number; days: number; preferred: number; assignments: number }

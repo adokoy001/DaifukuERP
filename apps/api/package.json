@@ -12,19 +12,27 @@
     "db:migrate": "tsx src/db/cli.ts migrate",
     "db:reset": "tsx src/db/cli.ts reset",
     "pack:apply": "tsx src/db/pack-cli.ts",
-    "demo:industries": "tsx src/db/industry-demo-cli.ts"
+    "demo:industries": "tsx src/db/industry-demo-cli.ts",
+    "mail:deliver": "tsx src/identity/mail-cli.ts"
   },
   "dependencies": {
     "@daifuku/kernel": "workspace:*",
     "@daifuku/l10n-jp": "workspace:*",
     "@daifuku/mod-accounting": "workspace:*",
     "@daifuku/mod-attachments": "workspace:*",
+    "@daifuku/mod-contract": "workspace:*",
+    "@daifuku/mod-inventory": "workspace:*",
     "@daifuku/mod-partner": "workspace:*",
     "@daifuku/mod-payment": "workspace:*",
     "@daifuku/mod-product": "workspace:*",
     "@daifuku/mod-purchase": "workspace:*",
     "@daifuku/mod-sales": "workspace:*",
     "@daifuku/mod-tax": "workspace:*",
+    "@daifuku/mod-workforce-evidence": "workspace:*",
+    "@daifuku/pack-example": "workspace:*",
+    "@daifuku/pack-real-estate": "workspace:*",
+    "@daifuku/pack-retail": "workspace:*",
+    "@daifuku/runtime": "workspace:*",
     "@fastify/cors": "^11.0.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/multipart": "^9.4.0",
@@ -34,21 +42,18 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.12.3",
     "fastify-type-provider-zod": "^7.0.0",
+    "jose": "^6.2.12",
+    "nodemailer": "^10.0.9",
     "postgres": "^3.4.9",
     "tsx": "^4.19.0",
     "zod": "^4.6.1",
-    "@daifuku/mod-inventory": "workspace:*",
-    "@daifuku/mod-contract": "workspace:*",
-    "@daifuku/pack-example": "workspace:*",
-    "@daifuku/pack-retail": "workspace:*",
-    "@daifuku/pack-real-estate": "workspace:*",
-    "@daifuku/runtime": "workspace:*",
-    "@daifuku/mod-workforce-evidence": "workspace:*"
+    "@daifuku/mod-pos-integration": "workspace:*"
   },
   "devDependencies": {
+    "@daifuku/mod-workforce": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.0",
-    "@daifuku/mod-workforce": "workspace:*"
+    "vitest": "^5.0.0"
   }
 }

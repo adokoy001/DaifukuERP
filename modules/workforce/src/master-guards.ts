@@ -1,6 +1,7 @@
 import { registry, repo, StateError, ValidationError, withLock, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
 import { WorkforceAttendance, WorkforceAttendanceCorrection, WorkforceEmployee, WorkforceExpense, WorkforceLeaveGrant, WorkforceLeaveRequest, WorkforcePayPolicy, WorkforcePayTerms, WorkforcePeriodLock, WorkforceSite } from './entities/index.ts';
 import { allRows, D, employeeLock } from './common.ts';
+import { assertWorkSystemEmploymentChange } from './work-system-guards.ts';
 import { assertShiftEmploymentChange, guardShiftSite } from './shift-master-guards.ts';
 import { stableJson } from './services/json.ts';
 
@@ -50,6 +51,7 @@ async function employee(ctx: Context, args: HookArgs): Promise<void> {
     const previous = args.previous as unknown as Infer<typeof WorkforceEmployee> | undefined;
     if (!previous) return;
     await assertShiftEmploymentChange(ctx, previous, row);
+    await assertWorkSystemEmploymentChange(ctx, row);
     if (previous.hiredOn !== row.hiredOn || previous.terminatedOn !== row.terminatedOn) {
       const locks = await allRows(ctx, WorkforcePeriodLock, { employeeId: row.id, active: true });
       if (locks.some((lock) => frozenCoverageChanged({ validFrom: previous.hiredOn, validTo: previous.terminatedOn ?? '9999-12-31' }, { validFrom: row.hiredOn, validTo: row.terminatedOn ?? '9999-12-31' }, lock.periodStart, lock.periodEnd))) throw new StateError('Employment dates are used by confirmed payroll', 'Preserve historical employment coverage; future termination dates may be recorded without cancelling historical payroll.');

@@ -1,3 +1,7 @@
+import { saveWorkSystemAction, confirmWorkSystemAction, cancelWorkSystemAction, workSystemBoardAction } from './actions/work-system.ts';
+import { initializePayrollRulesAction, savePayrollConditionAction, supersedePayrollConditionAction, calculateStatutoryPayrollAction, recordPayrollTaxEvidenceAction } from './actions/fiscal-payroll.ts';
+import { fiscalBoardAction, myFiscalAction } from './actions/fiscal-portals.ts';
+import { submitYearEndDeclarationAction, reviewYearEndDeclarationAction, calculateYearEndAction, confirmYearEndAction, cancelYearEndAction, settleYearEndAction } from './actions/year-end.ts';
 import { defineModule, label } from '@daifuku/kernel';
 import * as entities from './entities/index.ts';
 import { registerEmployeeAction } from './actions/employees.ts';
@@ -16,7 +20,7 @@ import { registerMasterGuards } from './master-guards.ts';
 
 export const WorkforceModule = defineModule({
   name: 'workforce', label: label('従業員・労務', 'Workforce'), depends: [], entities: Object.values(entities),
-  actions: [shiftBoardAction, myShiftsAction, saveShiftProfileAction, saveShiftAvailabilityAction, saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction, registerEmployeeAction, punchAction, submitAttendanceAction, reviewAttendanceAction, requestCorrectionAction, reviewCorrectionAction, saveExpenseAction, submitExpenseAction, reviewExpenseAction, settleExpenseAction, cancelExpenseAction, grantLeaveAction, requestLeaveAction, reviewLeaveAction, cancelLeaveAction, calculatePayrollAction, confirmPayrollAction, cancelPayrollAction, myPortalAction, managementPortalAction, initializePolicyAction],
+  actions: [saveWorkSystemAction, confirmWorkSystemAction, cancelWorkSystemAction, workSystemBoardAction, initializePayrollRulesAction, savePayrollConditionAction, supersedePayrollConditionAction, calculateStatutoryPayrollAction, recordPayrollTaxEvidenceAction, fiscalBoardAction, myFiscalAction, submitYearEndDeclarationAction, reviewYearEndDeclarationAction, calculateYearEndAction, confirmYearEndAction, cancelYearEndAction, settleYearEndAction, shiftBoardAction, myShiftsAction, saveShiftProfileAction, saveShiftAvailabilityAction, saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction, registerEmployeeAction, punchAction, submitAttendanceAction, reviewAttendanceAction, requestCorrectionAction, reviewCorrectionAction, saveExpenseAction, submitExpenseAction, reviewExpenseAction, settleExpenseAction, cancelExpenseAction, grantLeaveAction, requestLeaveAction, reviewLeaveAction, cancelLeaveAction, calculatePayrollAction, confirmPayrollAction, cancelPayrollAction, myPortalAction, managementPortalAction, initializePolicyAction],
   hooks: () => { registerWorkflowGuards(); registerMasterGuards(); }, seed: seedWorkforce,
   menus: [
     { label: label('自分の勤怠・申請', 'My work and requests'), route: '/me', order: 80 },

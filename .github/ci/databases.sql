@@ -4,3 +4,4 @@ CREATE ROLE daifuku_owner LOGIN PASSWORD 'owner' CREATEDB BYPASSRLS;
 CREATE ROLE daifuku_app LOGIN PASSWORD 'app' NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 CREATE DATABASE daifuku_ci_test OWNER daifuku_owner;
 CREATE DATABASE daifuku_ci_e2e OWNER daifuku_owner;
+CREATE DATABASE daifuku_ci_enterprise_e2e OWNER daifuku_owner;

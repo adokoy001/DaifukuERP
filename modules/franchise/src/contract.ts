@@ -1,0 +1,9 @@
+import { z } from 'zod';
+export const money = z.string().max(14).regex(/^\d+$/), date = z.iso.date();
+export const contractSnapshot = z.object({ code: z.string(), name: z.string(), partnerId: z.uuid(), direction: z.enum(['bill', 'pay']), startDate: date, endDate: date, basis: z.enum(['gross', 'net']), rate: z.string(), fixedAmount: money, rounding: z.enum(['down', 'half_up', 'up']), taxCategory: z.enum(['standard', 'reduced', 'exempt', 'non_taxable', 'out_of_scope']), expenseAccountId: z.uuid().nullable(), version: z.number().int() });
+export const generateInput = z.object({ agreementId: z.uuid(), month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), grossSales: money, netSales: money, sourceReference: z.string().trim().min(1).max(1000), date, dueDate: date, expectedAgreementVersion: z.number().int().min(1) }).strict();
+export const settleInput = z.object({ settlementId: z.uuid(), expectedVersion: z.number().int().min(1), expectedBalance: money, date, accountId: z.uuid(), method: z.enum(['cash', 'bank_transfer', 'other']) }).strict();
+export const cancelInput = z.object({ settlementId: z.uuid(), expectedVersion: z.number().int().min(1), date, reason: z.string().trim().min(1).max(1000) }).strict();
+export const command = z.object({ id: z.uuid(), version: z.number().int(), status: z.string(), invoiceId: z.uuid().nullable(), paymentId: z.uuid().nullable() });
+export const settlementBoard = command.extend({ agreementId: z.uuid(), month: z.string(), direction: z.enum(['bill', 'pay']), grossSales: money, netSales: money, sourceReference: z.string(), contract: contractSnapshot, fee: money, total: money, tax: money, date, dueDate: date, invoiceNumber: z.string().nullable(), balance: money, paidAmount: money, cancelledDate: date.nullable(), cancelReason: z.string().nullable() });
+export type FranchiseContractSnapshot = z.infer<typeof contractSnapshot>; export type FranchiseBoard = z.infer<typeof settlementBoard>;

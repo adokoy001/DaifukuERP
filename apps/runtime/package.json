@@ -31,6 +31,9 @@
     "@daifuku/mod-workforce": "workspace:*",
     "@daifuku/mod-industry-operations": "workspace:*",
     "@daifuku/pack-industry-catalog": "workspace:*",
-    "@daifuku/mod-workforce-evidence": "workspace:*"
+    "@daifuku/mod-workforce-evidence": "workspace:*",
+    "@daifuku/mod-pos-integration": "workspace:*",
+    "@daifuku/mod-group-accounting": "workspace:*",
+    "@daifuku/mod-franchise": "workspace:*"
   }
 }

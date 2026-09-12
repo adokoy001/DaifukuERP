@@ -1,4 +1,4 @@
-import type { ShiftAssignment, ShiftDayRule, ShiftEmployee, ShiftExisting, ShiftIssue, ShiftProblem, ShiftSlot } from './types.ts';
+import type { ShiftAssignment, ShiftDayRule, ShiftEmployee, ShiftExisting, ShiftIssue, ShiftProblem, ShiftSlot, ShiftWorkRule, ShiftPeriodBudget } from './types.ts';
 
 export const MAX_EMPLOYEES = 100, MAX_SLOTS = 42, MAX_ASSIGNMENTS = 840;
 export const DEFAULT_ITERATIONS = 1200, MAX_ITERATIONS = 10000;
@@ -14,7 +14,7 @@ export interface Timeline extends ShiftExisting { slotId?: string }
 export interface Prepared {
   problem: ShiftProblem; start: number; employees: Map<string, ShiftEmployee>; slots: Map<string, ShiftSlot>;
   rules: Map<string, ShiftDayRule>; existing: Map<string, Timeline[]>;
-  staticIssues: Map<string, ShiftIssue[]>; preferred: Set<string>;
+  workRules: Map<string, ShiftWorkRule>; budgets: Map<string, ShiftPeriodBudget[]>; staticIssues: Map<string, ShiftIssue[]>; preferred: Set<string>;
 }
 function validInterval(row: { startMinute: number; endMinute: number; breakMinutes?: number }): boolean {
   return integer(row.startMinute, 0, 1439) && integer(row.endMinute, 1, 1440) && row.endMinute > row.startMinute && (row.breakMinutes === undefined || integer(row.breakMinutes, 0, row.endMinute - row.startMinute - 1));
@@ -24,7 +24,7 @@ function validEmployee(e: ShiftEmployee): boolean {
   if (e.profile === null) return true;
   const p = e.profile;
   return !!p && Array.isArray(p.skills) && p.skills.length <= 30 && p.skills.every((s) => text(s, 80)) && ['full_time', 'part_time', 'contract'].includes(p.employmentType)
-    && integer(p.maxDailyMinutes, 60, 480) && integer(p.maxWeeklyMinutes, 60, 2400) && integer(p.targetMinutes, 0, p.maxWeeklyMinutes)
+    && integer(p.maxDailyMinutes, 60, 960) && integer(p.maxWeeklyMinutes, 60, 5760) && integer(p.targetMinutes, 0, p.maxWeeklyMinutes)
     && integer(p.maxDays, 1, 6) && integer(p.maxConsecutiveDays, 1, 6) && integer(p.minRestMinutes, 0, 1440);
 }
 function validProblem(p: ShiftProblem): boolean {
@@ -39,6 +39,8 @@ function validProblem(p: ShiftProblem): boolean {
   if (new Set(p.availability.map((a) => keyOf(a.employeeId, a.date))).size !== p.availability.length || !p.availability.every((a) => ids.has(a.employeeId) && inWeek(a.date) && ['preferred', 'available', 'unavailable'].includes(a.preference) && (a.preference === 'unavailable' ? integer(a.startMinute, 0, 1440) && integer(a.endMinute, a.startMinute, 1440) : validInterval(a)))) return false;
   if (!p.leave.every((l) => ids.has(l.employeeId) && inWeek(l.date) && ['full', 'morning', 'afternoon'].includes(l.portion) && ['pending', 'approved'].includes(l.status))) return false;
   if (!p.existing.every((e) => ids.has(e.employeeId) && date(e.date) && dayIndex(e.date) >= start - 6 && dayIndex(e.date) <= start + 12 && validInterval(e) && integer(e.breakMinutes, 0, 1439))) return false;
+  if (p.workRules !== undefined && (!Array.isArray(p.workRules) || p.workRules.length > 700 || new Set(p.workRules.map((r) => r && keyOf(r.employeeId, r.date))).size !== p.workRules.length || !p.workRules.every((r) => r && ids.has(r.employeeId) && inWeek(r.date) && ['ordinary', 'monthly_variable', 'flex'].includes(r.mode) && integer(r.dailyLimitMinutes, 0, 960) && integer(r.weeklyLimitMinutes, 0, 6720) && integer(r.startMinute, 0, 1440) && integer(r.endMinute, r.startMinute, 1440) && typeof r.statutoryHoliday === 'boolean'))) return false;
+  if (p.periodBudgets !== undefined && (!Array.isArray(p.periodBudgets) || p.periodBudgets.length > 400 || !p.periodBudgets.every((r) => r && ids.has(r.employeeId) && date(r.startsOn) && date(r.endsOn) && r.startsOn <= r.endsOn && dayIndex(r.startsOn) <= start + 6 && dayIndex(r.endsOn) >= start && dayIndex(r.endsOn) - dayIndex(r.startsOn) <= 92 && integer(r.remainingMinutes, -400000, 400000)))) return false;
   return p.rules.length === 7 && new Set(p.rules.map((r) => r.date)).size === 7 && p.rules.every((r) => inWeek(r.date) && integer(r.dailyLimitMinutes, 1, 480) && integer(r.weeklyLimitMinutes, 1, 2400) && integer(r.breakAfterMinutes, 0, 1440) && integer(r.breakMinutes, 0, 1440) && integer(r.longBreakAfterMinutes, r.breakAfterMinutes, 1440) && integer(r.longBreakMinutes, r.breakMinutes, 1440));
 }
 export function requiredBreak(rule: ShiftDayRule, minutes: number): number {
@@ -54,13 +56,16 @@ function staticIssues(ctx: Prepared, employee: ShiftEmployee, slot: ShiftSlot): 
   else if (availability.preference === 'preferred') ctx.preferred.add(keyOf(employee.id, slot.id));
   if (ctx.problem.leave.some((l) => l.employeeId === employee.id && l.date === slot.date)) add('leave');
   if (slot.skill && employee.profile && !employee.profile.skills.includes(slot.skill)) add('skill');
+  const workRule = ctx.workRules.get(keyOf(employee.id, slot.date));
+  if (workRule && (workRule.statutoryHoliday || (workRule.mode !== 'flex' && (slot.startMinute < workRule.startMinute || slot.endMinute > workRule.endMinute || workRule.dailyLimitMinutes === 0)))) add('work_system');
   const rule = ctx.rules.get(slot.date);
   if (rule && slot.breakMinutes < requiredBreak(rule, workMinutes(slot))) add('break');
   return issues;
 }
 export function prepare(problem: ShiftProblem): Prepared | null {
   if (!validProblem(problem)) return null;
-  const ctx: Prepared = { problem, start: dayIndex(problem.weekStart), employees: new Map(problem.employees.map((e) => [e.id, e])), slots: new Map(problem.slots.map((s) => [s.id, s])), rules: new Map(problem.rules.map((r) => [r.date, r])), existing: new Map(), staticIssues: new Map(), preferred: new Set() };
+  const ctx: Prepared = { problem, start: dayIndex(problem.weekStart), employees: new Map(problem.employees.map((e) => [e.id, e])), slots: new Map(problem.slots.map((s) => [s.id, s])), rules: new Map(problem.rules.map((r) => [r.date, r])), existing: new Map(), workRules: new Map((problem.workRules ?? []).map((row) => [keyOf(row.employeeId, row.date), row])), budgets: new Map(), staticIssues: new Map(), preferred: new Set() };
+  for (const row of problem.periodBudgets ?? []) { const rows = ctx.budgets.get(row.employeeId) ?? []; rows.push(row); ctx.budgets.set(row.employeeId, rows); }
   for (const row of problem.existing) { const rows = ctx.existing.get(row.employeeId) ?? []; rows.push({ ...row }); ctx.existing.set(row.employeeId, rows); }
   for (const employee of problem.employees) for (const slot of problem.slots) ctx.staticIssues.set(keyOf(employee.id, slot.id), staticIssues(ctx, employee, slot));
   return ctx;

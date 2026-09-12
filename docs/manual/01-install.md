@@ -26,3 +26,7 @@ READMEの `pnpm demo:industries` は3業界の専用サンプル会社を準備�
 ## マニュアルを単一HTMLにする
 
 Python 3と `markdown` パッケージを仮想環境などへ用意し、`pnpm manual:build` を実行します。Markdown本文と画像から `docs/manual/daifuku-manual.html` を生成します。元のMarkdownを編集し、HTMLだけを直接修正しないでください。
+
+## 企業機能の追加設定
+
+基本導入後、SSO/MFAとメールは [認証・メール運用](../operations/enterprise-identity.md)、Square・連結/FCは [付録H](appendix-h-enterprise-operations.md)、給与税保険/年調/勤務制度は [付録I](appendix-i-fiscal-and-work-systems.md) を使います。`.env.example` の追加項目はコメント状態です。公開HTTPS URL、暗号鍵、provider設定、メール配送を準備したうえで段階導入してください。ソース導入だけで実サービスとの接続が成立するわけではありません。

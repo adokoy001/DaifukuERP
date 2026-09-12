@@ -1,0 +1,11 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getCompanyId, getUser, isApiError, request } from './client.ts';
+import type { ListResponse } from './types.ts';
+export type { CompanySource, GroupMapping, GroupAdjustment, GroupBoard } from '@daifuku/mod-group-accounting/contract';
+export type { FranchiseBoard } from '@daifuku/mod-franchise/contract';
+export interface CommerceCommand { id: string; version: number; status: string }
+export interface AuthorizedCompany { id: string; code: string; name: string; currency: string }
+export function commerceIdentity() { const u = getUser(); return `${u?.tenantId ?? ''}:${u?.id ?? ''}:${getCompanyId() ?? ''}`; }
+export function useCommerceRead<T>(action: string, input: Record<string, unknown>, enabled = true) { return useQuery({ queryKey: ['commerce', commerceIdentity(), action, input], queryFn: ({ signal }) => request<T>('/actions/' + action, { method: 'POST', body: input, signal, cache: 'no-store' }), enabled, retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: 'always', networkMode: 'always' }); }
+export function useCommerceList(entity: string, enabled = true, offset = 0) { return useQuery({ queryKey: ['commerce', commerceIdentity(), 'list', entity, offset], queryFn: ({ signal }) => request<ListResponse>(`/api/${entity}?limit=100&offset=${offset}`, { signal, cache: 'no-store' }), enabled, retry: false, staleTime: 0, gcTime: 0, networkMode: 'always' }); }
+export function useCommerceTask<T = CommerceCommand>() { const qc = useQueryClient(), identity = commerceIdentity(); return useMutation({ mutationKey: ['commerce-task', identity], gcTime: 0, retry: false, networkMode: 'always', mutationFn: ({ action, input }: { action: string; input: Record<string, unknown> }) => { if (commerceIdentity() !== identity) throw new Error('会社または利用者が変わりました。開き直してください。'); return request<T>('/actions/' + action, { method: 'POST', body: input, cache: 'no-store' }); }, onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['commerce'] }); }, onError: async (error) => { if (isApiError(error) && [401, 403, 404].includes(error.status)) await Promise.all([qc.resetQueries({ queryKey: ['commerce'] }), qc.invalidateQueries({ queryKey: ['meta'] })]); } }); }

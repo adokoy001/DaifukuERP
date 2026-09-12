@@ -24,6 +24,6 @@ export default defineConfig({
   },
   projects: [
     { name: 'industry', testMatch: /industry-templates\.spec\.ts$/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'chromium', testIgnore: /industry-templates\.spec\.ts$/, dependencies: ['industry'], use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', testIgnore: /(?:industry-templates|enterprise-identity)\.spec\.ts$/, dependencies: ['industry'], use: { ...devices['Desktop Chrome'] } },
   ],
 });

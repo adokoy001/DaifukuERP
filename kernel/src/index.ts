@@ -69,3 +69,7 @@ export { createManagedUser, updateManagedUser } from './access-users.ts';
 export { putCompanyMembership, removeCompanyMembership } from './access-memberships.ts';
 export { accessDirectory, accessAudit } from './access-directory.ts';
 export { createUserSchema, updateUserSchema, membershipSchema, removeMembershipSchema } from './access-admin-common.ts';
+
+export * from './identity/index.ts';
+
+export { authorizedCompanies, withAuthorizedCompany, type AuthorizedCompany } from './authorized-companies.ts';

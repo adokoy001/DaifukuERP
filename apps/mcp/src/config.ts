@@ -12,6 +12,8 @@ export interface McpConfig {
   /** Overrides the user's default company when set. */
   companyId: string | undefined;
   tenantId: string | undefined;
+  mfaCode?: string | undefined;
+  identityEncryptionKey?: string | undefined;
 }
 
 export interface ConfigProblem {
@@ -36,6 +38,8 @@ export function readConfig(env: Record<string, string | undefined>): { ok: true;
       agentId: present(env.DAIFUKU_AGENT_ID) ? env.DAIFUKU_AGENT_ID : DEFAULT_AGENT_ID,
       companyId: present(env.DAIFUKU_COMPANY_ID) ? env.DAIFUKU_COMPANY_ID : undefined,
       tenantId: present(env.DAIFUKU_TENANT_ID) ? env.DAIFUKU_TENANT_ID : undefined,
+      ...(present(env.DAIFUKU_MFA_CODE) ? { mfaCode: env.DAIFUKU_MFA_CODE } : {}),
+      ...(present(env.IDENTITY_ENCRYPTION_KEY) ? { identityEncryptionKey: env.IDENTITY_ENCRYPTION_KEY } : {}),
     },
   };
 }

@@ -38,12 +38,13 @@ flowchart TD
 - [検証・移行・公開](verification-and-release.md): 安全な変更の終え方。
 - [文書の管理方法](documentation-contract.md): AIと人が同じ情報を使う仕組み。
 - [シフト推薦](shift-planning.md): 社員条件、週次希望、Worker、最新資料の再検査。
+- [企業運営拡張](enterprise-operations.md): OIDC/MFA/配送、POS、会社横断認可、連結/FC、給与税保険と勤務制度。
 - [設計判断ADR](../adr/): 採用理由と変更履歴。
 
 ## 現状と将来
 
 現状は国内JPYを中心とした実験的なERPです。単一法人内の店舗・部署業務を足場に拡張します。共通kernelがあることと、全業界の制度・業務へ適合することは別です。業界テンプレートの説明では、実行できる台本と未実装の専門業務を明示します。
 
-外部向けサービスの配信、SSO/MFA、銀行送信、行政への電子申請、変形/裁量/フレックス労働制などの適合は、個別の受入基準で扱います。現在の機能範囲は [STATUS](../STATUS.md)、今回の拡張契約は [workforce-platform](../specs/workforce-platform.md) が入口です。
+今回の [企業運営拡張](enterprise-operations.md) は認証・メール、POS、連結/FC、2026給与制度、通常/1か月変形/フレックスの明示した範囲を扱います。本番provider受入、銀行送信、行政への電子申請、裁量等の別勤務制度は含めません。現在の検証状態は [STATUS](../STATUS.md)、受入契約は [enterprise-operations](../specs/enterprise-operations.md) が入口です。
 
 従業員の申請・承認・給与・領収書の関係は [従業員基盤の設計](workforce.md)、15業界の適用範囲は [業界カタログ](../domain/industry-catalog.md) を参照してください。

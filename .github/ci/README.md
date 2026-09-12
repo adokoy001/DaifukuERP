@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | gate | 型・lint・依存境界・unit（Web含む）・DB・文書リンク、Web 型とビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
 | e2e | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与などのブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e` |
+| identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定の専用ブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
 | setup | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開 | 一時ディレクトリに新規クラスタ、ランダム資格情報 |
 
 権限は `contents: read` だけです。checkout の資格情報は保存しません。fork PR は `pull_request` で検証し、repository secrets、実環境、`pull_request_target` を使いません。依存は pnpm の固定バージョンと `--frozen-lockfile`、ブラウザは lockfile に対応する Playwright の Chromium を使います。
@@ -13,6 +14,10 @@
 `databases.sql` の既知のパスワードは、job ごとに作る使い捨ての合成データ専用です。既存 role があると失敗し、権限変更・DB 削除は行いません。一般の導入には使わないでください。
 
 E2E の準備コマンドはループバック上の許可された空 DB だけを受け入れます。`demo:industries` で事前適用せず、Playwright の `industry` project が実画面からサンプル付き導入を検証します。`chromium` project はそれに依存します。業務日付は Tokyo の実行日を一度だけ選び、準備と全テストで共用します。ローカルでのブラウザ試験の再現は [CONTRIBUTING.md](../../CONTRIBUTING.md) にあります。
+
+認証 job は `pnpm test:identity:e2e` が API・Web・OIDC・TLS SMTP を起動し、専用 Playwright config で検証して終了・SIGINT/SIGTERM中断時に所有する子process groupだけを停止し、終了を待ちます。ブラウザの宛先は `http://localhost:5189` に固定し、外部URLの環境変数を拒否します。試験出力は `apps/web/test-results/identity` に分け、通常E2Eの診断を削除しません。通常の `e2e` job から認証専用 spec を分離しており、通常の業務シナリオを省略する構成ではありません。TEST 接続先はループバック・許可 DB 名・空 DB に限定し、所有者と非特権アプリ role を検査します。既存 schema を削除して準備することはなく、使用済み DB の再利用は拒否します。
+
+TLS SMTP fixture は OpenSSL で一時証明書を作り、その CA を明示信頼して実際の暗号化通信を検証します。証明書検証は無効化しません。メール宛先・アカウント・OIDC 鍵は合成値で、外部 IdP や実 SMTP の資格情報は不要です。ローカル adapter 試験の成功は、本番 provider での受入成功を意味しません。
 
 失敗時のブラウザ診断は、合成データによる HTML レポート、スクリーンショット、trace、API/Web ログに限定して 7 日保持します。セットアップ用クラスタの env・資格情報・状態・バックアップは成果物に含めません。一般の開発環境のログや `review/` は収集しません。
 
