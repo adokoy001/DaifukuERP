@@ -7,7 +7,7 @@
 | 場所 | 責任 | 変更の入口 |
 | --- | --- | --- |
 | `kernel/` | DSL、権限、行境界、Repository、伝票、監査、採番、イベント、storage | [公開API](../../kernel/src/index.ts) |
-| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、添付、従業員/労務、業種共通の案件処理 | 各packageの `src/index.ts` と `src/module.ts` |
+| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、商流、銀行、申告準備、添付、従業員/労務、業種共通の案件処理 | 各packageの `src/index.ts` と `src/module.ts` |
 | `l10n/jp/` | 日本向けの帳票・制度・設定 | [日本module](../../l10n/jp/src/index.ts) |
 | `packs/` | 業種固有のdocument、workflow、設定、sample、UIメニュー | 各packageの公開indexとpack定義 |
 | `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
@@ -31,6 +31,9 @@
 | 新packが出ない | runtimeに登録、DAIFUKU_PACKS、選択会社で適用済みか、roleを順に確認 |
 | schemaに変更がない | schema用runtimeが全packを読んでいるか、entityがregistryに登録されたか |
 | 給与/申請が会社切替後も残る | query keyのcompany/user、abort/invalidate、権限エラー時の前データ表示 |
+| 出荷後の請求で在庫がもう一度動く | `modules/trade/src/posting.ts` とinventoryの `source-documents.ts`。既存の請求単独処理も回帰する |
+| 銀行の再取込・消込・出力で重複する | bankingの `imports.ts` / `reconcile.ts` / `transfers.ts`、同一キーと内容、原明細の不変性 |
+| 申告資料の根拠が古い・形式が違う | tax-filingの `workflow.ts` / `profile.ts`、l10n/jpの `filing/`。保存根拠と現行根拠を区別する |
 
 ## 生成物と手書きの境界
 
@@ -54,3 +57,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## 店舗機器と共通配備
 
 [機器module](../../modules/edge-integration/src/index.ts) はgateway/device/job/eventのDSLと状態遷移を持ちます。[機械認可](../../kernel/src/relay-auth.ts) は人間JWTから独立し、[HTTP/WSS](../../apps/api/src/edge/routes.ts) が通知とHTTPS取得を提供します。[店舗UI](../../apps/web/src/pages/edge-page.tsx) は同じ公開actionを使用します。[共通配備](deployment.md) には配布graph、manifest、Caddy/systemd、readinessの関係をまとめています。
+
+## 商流・銀行・申告準備
+
+[統合構造](commerce-finance.md) に依存図と変更先をまとめています。`modules/trade` が既存inventory/invoiceを原資料に結び、`modules/banking` が既存payment/accountingと照合します。`modules/tax-filing` は資料採取と確認workflow、`l10n/jp/src/filing` は日本の出力profileを担当します。Webの `/commerce/trade`、`/finance/banking`、`/finance/filing` は公開contractを読み、専用actionを共通の [finance client](../../apps/web/src/api/finance.ts) から呼びます。

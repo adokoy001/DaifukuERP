@@ -33,7 +33,7 @@ describe('台本: 賃貸管理（自主管理）サンプルハイツ 2026-11 (d
   it('0. 準備: 会計年度 2026・モジュールのシード・pack:apply real_estate --sample（設定・科目・品目・物件/部屋/入居者/契約）、2 回目は何もしない', async () => {
     expect(registry.packs().map((p) => p.name)).toContain(RealEstatePack.name);
     await s.act('2026-11-01', 'accounting.open_fiscal_year', { startDate: '2026-01-01' });
-    expect(await s.seedModules('2026-11-01')).toEqual(['partner', 'accounting', 'product', 'tax', 'l10n_jp']);
+    expect(await s.seedModules('2026-11-01')).toEqual(['partner', 'accounting', 'product', 'tax', 'workforce', 'l10n_jp']);
     await checkApply(s, st);
   });
 

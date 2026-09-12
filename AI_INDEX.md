@@ -18,6 +18,9 @@
 | 権限・会社・拠点・本人分離 | [権限境界](docs/architecture/permissions.md)、[ADR-0018](docs/adr/0018-company-and-store-access.md) | [principal](kernel/src/principal.ts)、[会社所属](kernel/src/company-access.ts)、[権限](kernel/src/permissions.ts) |
 | 外部認証・MFA・メール | [企業拡張の構造](docs/architecture/enterprise-operations.md)、[認証運用](docs/operations/enterprise-identity.md)、[認証仕様](docs/specs/enterprise-identity.md)、[ADR-0022](docs/adr/0022-identity-challenges-and-delivery.md) | [kernel identity](kernel/src/identity/index.ts)、[HTTP/adapter](apps/api/src/identity/routes.ts)、[本人UI](apps/web/src/components/identity-security.tsx) |
 | POS・連結・FC | [企業拡張の構造](docs/architecture/enterprise-operations.md)、[商業仕様](docs/specs/enterprise-commerce.md)、[一次資料](docs/domain/pos-group-accounting.md)、[操作](docs/manual/appendix-h-enterprise-operations.md) | [Square](apps/api/src/adapters/square-pos.ts)、[POS](modules/pos-integration/src/index.ts)、[会社認可port](kernel/src/authorized-companies.ts)、[連結](modules/group-accounting/src/index.ts)、[FC](modules/franchise/src/index.ts) |
+| 見積・受発注・分納・分割請求 | [統合構造](docs/architecture/commerce-finance.md)、[商流仕様](docs/specs/trade-workflow.md)、[一次資料](docs/domain/trade-workflow.md)、[操作](docs/manual/appendix-l-commerce-bank-filing.md) | [trade contract](modules/trade/src/contract.ts)、[専用action](modules/trade/src/actions.ts)、[在庫の原資料保護](modules/inventory/src/source-documents.ts)、[UI](apps/web/src/pages/trade-page.tsx) |
+| 銀行明細・照合・振込ファイル | [銀行仕様](docs/specs/bank-integration.md)、[銀行一次資料](docs/domain/japan-bank-integration.md)、[操作](docs/manual/appendix-l-commerce-bank-filing.md) | [banking contract](modules/banking/src/contract.ts)、[照合](modules/banking/src/reconcile.ts)、[出力](modules/banking/src/transfers.ts)、[UI](apps/web/src/pages/banking-page.tsx) |
+| 財務諸表・給与の申告準備 | [申告準備仕様](docs/specs/tax-filing-preparation.md)、[日本の仕様・出典](docs/domain/japan-tax-filing.md)、[統合構造](docs/architecture/commerce-finance.md) | [共通workflow](modules/tax-filing/src/workflow.ts)、[国別port](modules/tax-filing/src/profile.ts)、[国内formatter](l10n/jp/src/filing/profiles.ts)、[UI](apps/web/src/pages/tax-filing-page.tsx) |
 | 税保険・年末調整・勤務制度 | [給与仕様](docs/specs/enterprise-payroll.md)、[2026一次資料](docs/domain/japan-payroll-automation.md)、[操作](docs/manual/appendix-i-fiscal-and-work-systems.md) | [fiscal contract](modules/workforce/src/fiscal-contract.ts)、[算定](modules/workforce/src/actions/fiscal-payroll.ts)、[年調](modules/workforce/src/actions/year-end.ts)、[勤務制度](modules/workforce/src/work-system-contract.ts) |
 | 本人認証・失敗時の保護 | [本人設定](docs/operations/account-security.md)、[品質改善仕様](docs/specs/quality-foundation.md) | [API認証](apps/api/src/plugins/auth.ts)、[本人画面](apps/web/src/pages/account-page.tsx) |
 | 従業員スマホ・労務 | [従業員の構造](docs/architecture/workforce.md)、[統合受入基準](docs/specs/workforce-platform.md)、[日本の労務・給与](docs/domain/japan-workforce.md) | [Web routes](apps/web/src/router.tsx)、[module catalog](apps/runtime/src/catalog.ts) |
@@ -37,6 +40,8 @@
 業務データは `Context` と `Repository` を通す。画面を非表示にするだけで権限制御を済ませない。会社/拠点/本人の境界はロール権限と別の制限として扱う。承認や会計処理の副作用は同じトランザクションで行い、二重実行をロック・一意性・版で防ぐ。
 
 金額と数量は `Decimal`。確定済み伝票・帳簿は直接書き換えない。日本の制度は一次資料と確認日を残し、制度値と適用期間をデータに持つ。module/packからDBドライバやネットワークに直接依存しない。
+
+銀行の候補は人が確認してから消込する。振込ファイル出力を送金済みにしない。申告準備の確認・出力を電子申告の提出・受理にしない。原資料に従属する請求/入出庫は専用の取消経路を使い、結果不明時は同じ再試行キーと内容で照会・再送する。銀行出力の同一バイト再取得と、申告出力の最新資料再検査は別の契約である。
 
 ## 文書の権威と更新
 

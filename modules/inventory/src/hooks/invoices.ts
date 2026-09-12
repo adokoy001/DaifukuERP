@@ -14,6 +14,7 @@ import { StockEntry, type StockEntryType } from '../entities/stock-entry.ts';
 import { listAll } from '../ledger.ts';
 import { issueLinesFromSales, ratesFromTaxSummary, receiptLinesFromPurchase, type EntryLineDraft } from '../services/from-invoice.ts';
 import { autoIssueOnSales, autoReceiptOnPurchase, resolveDefaultWarehouse } from '../settings.ts';
+import { hasSeparateStockFulfillment } from '../source-documents.ts';
 import { asModule } from '../system-write.ts';
 import { productKinds } from './submit.ts';
 
@@ -57,6 +58,7 @@ function kindsFor(ctx: Context, lines: readonly { productId: string | null }[]) 
 }
 
 async function onPurchaseSubmitted(ctx: Context, { row }: HookArgs): Promise<void> {
+  if (await hasSeparateStockFulfillment(ctx, PurchaseInvoice.name, row)) return;
   if (!(await autoReceiptOnPurchase(ctx))) return;
   const id = row.id as string;
   const { items } = await listAll((q) => repo(ctx, PurchaseInvoiceLine).list(q), { where: { invoiceId: id }, orderBy: [{ field: 'seq', dir: 'asc' }] }, 5000);
@@ -68,6 +70,7 @@ async function onPurchaseSubmitted(ctx: Context, { row }: HookArgs): Promise<voi
 }
 
 async function onSalesSubmitted(ctx: Context, { row }: HookArgs): Promise<void> {
+  if (await hasSeparateStockFulfillment(ctx, SalesInvoice.name, row)) return;
   if (!(await autoIssueOnSales(ctx))) return;
   const id = row.id as string;
   const { items } = await listAll((q) => repo(ctx, SalesInvoiceLine).list(q), { where: { invoiceId: id }, orderBy: [{ field: 'seq', dir: 'asc' }] }, 5000);

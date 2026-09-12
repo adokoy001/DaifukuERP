@@ -99,6 +99,13 @@
       "when": 1789221190324,
       "tag": "0013_deployment_edge",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789235335071,
+      "tag": "0014_commerce_finance",
+      "breakpoints": true
     }
   ]
 }

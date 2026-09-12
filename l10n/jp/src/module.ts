@@ -3,6 +3,8 @@
 // Importing AccountingModule/TaxModule first registers them, which `depends` requires (docs/conventions/layers.md).
 import { defineModule, label, registry, type Context } from '@daifuku/kernel';
 import { AccountingModule } from '@daifuku/mod-accounting';
+import { TaxFilingModule } from '@daifuku/mod-tax-filing';
+import { registerJapanFilingProfiles } from './filing/profiles.ts';
 import { TaxModule } from '@daifuku/mod-tax';
 import { seedChartOfAccounts } from './seeds/chart-of-accounts.ts';
 import { seedDefaultSettings, seedTaxRatesIfMissing } from './seeds/settings.ts';
@@ -18,6 +20,7 @@ export async function seedJapan(ctx: Context): Promise<void> {
 }
 
 export function registerJapanOverrides(): void {
+  registerJapanFilingProfiles();
   registry.registerOverride(EXEMPT_SUPPLIER_CREDIT_RATIO_OVERRIDE, exemptSupplierCreditRatio);
   registry.registerOverride(INVOICE_HTML_OVERRIDE, renderInvoiceHtml);
 }
@@ -25,7 +28,7 @@ export function registerJapanOverrides(): void {
 export const JapanModule = defineModule({
   name: 'l10n_jp',
   label: label('日本ローカライズ', 'Japan localisation'),
-  depends: [AccountingModule.name, TaxModule.name],
+  depends: [AccountingModule.name, TaxModule.name, TaxFilingModule.name],
   entities: [],
   hooks: registerJapanOverrides,
   seed: seedJapan,

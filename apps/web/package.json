@@ -12,6 +12,9 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@daifuku/mod-trade": "workspace:*",
+    "@daifuku/mod-banking": "workspace:*",
+    "@daifuku/mod-tax-filing": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
     "@daifuku/mod-workforce-evidence": "workspace:*",
     "@tanstack/react-query": "^5.102.8",

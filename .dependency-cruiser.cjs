@@ -52,9 +52,9 @@ module.exports = {
     {
       name: 'no-cross-package-internals',
       severity: 'error',
-      comment: 'Import other packages by name (@daifuku/<pkg>), which resolves to their src/index.ts. Do not reach into another package\'s internals. If you need something that is not exported, export it from that package\'s index deliberately. workforce/contract and workforce/shift-contract are explicit public wire contracts; workforce/scheduling is the pure shared planning engine.',
+      comment: 'Import other packages by name (@daifuku/<pkg>), which resolves to their src/index.ts. Do not reach into another package\'s internals. If you need something that is not exported, export it from that package\'s index deliberately. Listed contract subpaths are explicit browser-safe wire contracts; workforce/scheduling is the pure shared planning engine.',
       from: { path: `^(${PKG}/)` },
-      to: { path: `^${PKG}/`, pathNot: ['^$1', '^node_modules/', '/src/index\\.ts$', '^kernel/src/testing\\.ts$', '^modules/workforce/src/contract\\.ts$', '^modules/workforce/src/shift-contract\\.ts$', '^modules/workforce/src/fiscal-contract\\.ts$', '^modules/workforce/src/work-system-contract\\.ts$', '^modules/(group-accounting|franchise|pos-integration|edge-integration)/src/contract\\.ts$', '^modules/workforce/src/scheduling/index\\.ts$'] },
+      to: { path: `^${PKG}/`, pathNot: ['^$1', '^node_modules/', '/src/index\\.ts$', '^kernel/src/testing\\.ts$', '^modules/workforce/src/contract\\.ts$', '^modules/workforce/src/shift-contract\\.ts$', '^modules/workforce/src/fiscal-contract\\.ts$', '^modules/workforce/src/work-system-contract\\.ts$', '^modules/(group-accounting|franchise|pos-integration|edge-integration|trade|banking|tax-filing)/src/contract\\.ts$', '^modules/workforce/src/scheduling/index\\.ts$'] },
     },
     {
       name: 'no-unresolvable',

@@ -1,6 +1,6 @@
 # WSL/Linux の安全な導入と更新
 
-更新日: 2026-09-12。対応仕様: [安全なセットアップ](../specs/safe-setup.md)。この手順は、事前作成した専用 PostgreSQL に導入するためのものです。`pnpm run setup` は既定で計画を表示し、OS・DB・role の作成や削除、既存設定の上書き、サーバーの起動を行いません。`run` を省略すると pnpm 本体の環境設定コマンドになるため、必ず付けてください。
+更新日: 2026-09-13。対応仕様: [安全なセットアップ](../specs/safe-setup.md)。この手順は、事前作成した専用 PostgreSQL に導入するためのものです。`pnpm run setup` は既定で計画を表示し、OS・DB・role の作成や削除、既存設定の上書き、サーバーの起動を行いません。`run` を省略すると pnpm 本体の環境設定コマンドになるため、必ず付けてください。
 
 ## 1. 導入先を準備する
 
@@ -87,6 +87,8 @@ node --env-file=/home/operator/daifuku-ops/runtime.env \
 
 API 等を止め、レビューした新しい配布版へ切り替えます。migration SQL の既存ファイルを書き換えず、既存の `JWT_SECRET` と同じ接続情報を持つ新しい0600入力 env を作ります。`RESTORE_CHECK_URL` は今回用に管理者が新規作成した空 DB に変更します。入力 env 自体は CLI が上書きしません。
 
+現在の移行先は `0014_commerce_finance.sql` です。商流・銀行・申告準備の19表を追加し、既存の伝票を新しい商流や銀行照合へ自動変換しません。更新後はロール、元の残高・伝票、新しい画面の初期設定を確認します。[構造と操作の入口](../architecture/commerce-finance.md)。
+
 ```bash
 pnpm run setup upgrade \
   --env /home/operator/daifuku-upgrade-20260912.env \
@@ -128,7 +130,7 @@ node scripts/setup-test-cluster.mjs \
 SETUP_TEST_ENV_FILE=/home/operator/setup-acceptance-001/test.env pnpm test:setup
 ```
 
-同じ major の `pg_dump` / `pg_restore` を PATH に置いてください。検証は初回、読取専用計画、稼働接続拒否、no-op、資格情報を変えた再開、実データあり0008から現行0011への更新、schema drift 拒否、移行失敗 rollback と再開、非空復元先拒否を含みます。既存の `TEST_DATABASE_URL` へ fallback しません。再度行う際は別の新規ディレクトリと未使用 port を使います。検証後の cluster は `pg_ctl -D <この試験のdirectory>/data -m fast -w stop` で停止できます。ファイル・DB は検査用に残り、自動消去しません。
+同じ major の `pg_dump` / `pg_restore` を PATH に置いてください。検証対象は初回、読取専用計画、稼働接続拒否、no-op、資格情報を変えた再開、実データあり0008から現行0014への更新、schema drift 拒否、移行失敗 rollback と再開、非空復元先拒否を含みます。実施済みの結果は [STATUS](../STATUS.md) を参照してください。既存の `TEST_DATABASE_URL` へ fallback しません。再度行う際は別の新規ディレクトリと未使用 port を使います。検証後の cluster は `pg_ctl -D <この試験のdirectory>/data -m fast -w stop` で停止できます。ファイル・DB は検査用に残り、自動消去しません。
 
 ## 参照した一次資料
 

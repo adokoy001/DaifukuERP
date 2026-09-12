@@ -2,6 +2,7 @@
 // Test DB: daifuku_test_l10n (TEST_DATABASE_URL*). Importing ../src registers accounting → tax → l10n_jp in dependency order.
 import { Decimal, auditTrail, getCompany, getSetting, registerCrudActions, registry, repo, setSetting, systemParams, withContext, type Context } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
+import { filingProfiles } from '@daifuku/mod-tax-filing';
 import { Account } from '@daifuku/mod-accounting';
 import { SEED_TAX_RATES, TAX_PRICE_INCLUDES_TAX_KEY, TAX_ROUNDING_KEY, TaxRate, taxPriceIncludesTaxSchema, taxRoundingSchema } from '@daifuku/mod-tax';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,15 +22,16 @@ afterAll(async () => {
 });
 
 describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
-  it('AC-6 registers module l10n_jp with no entities, depending on accounting and tax, and both overrides', () => {
+  it('AC-6 registers module l10n_jp with no entities, depending on accounting, tax and tax-filing, with country overrides', () => {
     const m = registry.module('l10n_jp');
     expect(m).toBe(JapanModule);
     expect(m.label).toEqual({ ja: '日本ローカライズ', en: 'Japan localisation' });
-    expect([...m.depends]).toEqual(['accounting', 'tax']);
+    expect([...m.depends]).toEqual(['accounting', 'tax', 'tax_filing']);
     expect(m.entities).toHaveLength(0);
     expect(registry.allEntities().filter((e) => e.module === 'l10n_jp')).toHaveLength(0);
     expect(registry.allActions().filter((a) => a.module === 'l10n_jp')).toHaveLength(0);
-    expect(registry.allModules().map((x) => x.name)).toEqual(['partner', 'accounting', 'tax', 'l10n_jp']);
+    expect(registry.allModules().map((x) => x.name).sort()).toEqual(['accounting', 'l10n_jp', 'partner', 'tax', 'tax_filing', 'workforce']);
+    expect(filingProfiles().map((p) => p.option.code)).toEqual(['jp-hot010-general-v3', 'jp-payroll-preparation-2026']);
 
     const ratioFallback: ExemptSupplierCreditRatioFn = () => Decimal.zero();
     const ratio = registry.override(EXEMPT_SUPPLIER_CREDIT_RATIO_OVERRIDE, ratioFallback);

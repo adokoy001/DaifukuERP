@@ -1,0 +1,48 @@
+import { Decimal, getCompany, StateError, type Context } from '@daifuku/kernel';
+import { WorkforceEmployee, WorkforcePayroll, WorkforcePayrollCondition, WorkforcePayrollTaxEvidence, WorkforceYearEndAdjustment, WorkforceYearEndDeclaration } from '@daifuku/mod-workforce';
+import { payrollProfileData, type FilingPayrollRow } from './contract.ts';
+import { allRows, issue, rowVersions } from './common.ts';
+import { FilingPayrollProfile } from './entities.ts';
+import type { FilingSource } from './profile.ts';
+const D = Decimal.from;
+const object = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+const money = (v: unknown): string | null => typeof v === 'string' && /^-?\d{1,15}$/.test(v) ? v : null;
+export async function payrollSource(ctx: Context, taxYear: number): Promise<FilingSource> {
+ const company = await getCompany(ctx), from = `${taxYear}-01-01`, to = `${taxYear}-12-31`;
+ const profiles = await allRows(ctx, FilingPayrollProfile, { key: String(taxYear) }), saved = profiles[0]; if (!saved) throw new StateError('給与申告準備の設定がありません', '対応年度の支払者・受給者情報を保存してください。');
+ const profile = payrollProfileData.parse(saved.data), employees = await allRows(ctx, WorkforceEmployee, { hiredOn: { $lte: to } }, 2000);
+ const payrolls = await allRows(ctx, WorkforcePayroll);
+ const allEvidence = await allRows(ctx, WorkforcePayrollTaxEvidence);
+ const evidence = allEvidence.filter((e) => e.paymentDate >= from && e.paymentDate <= to);
+ const adjustments = await allRows(ctx, WorkforceYearEndAdjustment, { taxYear }), declarations = await allRows(ctx, WorkforceYearEndDeclaration, { taxYear });
+ const conditions = await allRows(ctx, WorkforcePayrollCondition, { validFrom: { $lte: to }, validTo: { $gte: from } });
+ const selected = employees.filter((e) => !e.terminatedOn || e.terminatedOn >= from || evidence.some((r) => r.employeeId === e.id));
+ const rows: FilingPayrollRow[] = selected.map((employee) => {
+  const facts = profile.recipients.find((f) => f.employeeId === employee.id) ?? null, issues = [];
+  const pay = payrolls.filter((r) => r.employeeId === employee.id), paid = evidence.filter((e) => e.employeeId === employee.id && pay.some((p) => p.id === e.payrollId && p.docstatus === 1));
+  const confirmed = adjustments.filter((a) => a.employeeId === employee.id && a.docstatus === 1), adjustment = confirmed.length === 1 ? confirmed[0] : undefined;
+  const calculation = object(adjustment?.calculation), deduction = object(calculation.deductions);
+  const decl = declarations.find((r) => r.id === adjustment?.declarationId), declared = object(decl?.declaration);
+  const previous = Array.isArray(declared.previousEmployers) ? declared.previousEmployers : [];
+  const previousKnown = previous.every((row) => money(object(row).taxablePay) !== null);
+  const previousPay = previousKnown ? previous.reduce<Decimal>((sum, row) => sum.plus(String(object(row).taxablePay)), D(0)) : null;
+  if (!previousKnown) issues.push(issue('prior_employer_amount_missing', '確定年調の前職支払額に読取不能な情報があります。原票を再確認してください。', employee.id, 'warning'));
+  const missingEvidence = pay.some((p) => p.docstatus === 1 && p.period.startsWith(String(taxYear)) && !allEvidence.some((e) => e.payrollId === p.id));
+  if (!facts?.address || !facts.nameKana || !facts.birthDate || !facts.municipalityCode) issues.push(issue('recipient_facts_missing', '提出に必要な住所・氏名カナ・生年月日・自治体を補完してください。', employee.id, 'warning'));
+  if (!facts || facts.unpaidSalaryAmount === null || facts.uncollectedTaxAmount === null) issues.push(issue('unpaid_unconfirmed', '未払給与・未徴収税額の有無が未確認です。', employee.id, 'warning'));
+  if (missingEvidence || !paid.length) issues.push(issue('payroll_evidence_missing', '年内支払の証跡が不足しています。翌年支払を含む支払年の判定を確認してください。', employee.id, 'warning'));
+  if (pay.some((p) => p.docstatus === 0 && p.period.startsWith(String(taxYear)))) issues.push(issue('payroll_draft', '年度内の給与下書きが残っています。', employee.id, 'warning'));
+  if (!adjustment) issues.push(issue('adjustment_missing', '一意の確定年末調整がありません。税額を未算定として扱います。', employee.id, 'warning'));
+  if (declared.spouse || (Array.isArray(declared.relatives) && declared.relatives.length)) issues.push(issue('family_form_details', '親族氏名等の正式帳票記載情報は原資料で補完が必要です。', employee.id, 'warning'));
+  if (previous.length) issues.push(issue('prior_employer_details', '前職の住所・退職日等を原票から補完してください。', employee.id, 'warning'));
+  if (D(money(calculation.housingTaxCredit) ?? '0').gt(0)) issues.push(issue('housing_form_details', '住宅控除の居住開始日・区分・残高等は原資料を参照してください。', employee.id, 'warning'));
+  const total = (key: 'taxablePay' | 'socialPremium' | 'incomeTax') => paid.length && !missingEvidence ? paid.reduce((sum, r) => sum.plus(r[key]), D(0)).toString() : null;
+  const taxablePay = total('taxablePay');
+  if (adjustment && taxablePay !== null && previousPay !== null && !D(taxablePay).plus(previousPay).eq(adjustment.taxablePay)) issues.push(issue('year_end_source_mismatch', '社内給与と前職額の合計が確定年調と一致しません。再確認してください。', employee.id, 'warning'));
+  return { employeeId: employee.id, employeeCode: employee.code, employeeName: employee.name, facts, payrollCount: paid.length, taxablePay, socialPremium: total('socialPremium'), withheldTax: total('incomeTax'), adjustmentId: adjustment?.id ?? null, annualTax: adjustment?.annualTax.toString() ?? null, salaryIncome: money(calculation.salaryIncome), deductionTotal: money(deduction.total), previousEmployerPay: adjustment && previousPay ? previousPay.toString() : null, refund: adjustment?.refund.toString() ?? null, additionalTax: adjustment?.additionalTax.toString() ?? null, issues };
+ });
+ const issues = rows.flatMap((r) => r.issues);
+ if (!profile.payerAddress || !profile.payerPhone) issues.push(issue('payer_facts_missing', '支払者の所在地・連絡先を原資料で補完してください。', null, 'warning'));
+ if (!rows.length) issues.push(issue('no_employees', '対象年の社員がありません。'));
+ return { kind: 'payroll', country: company.country, currency: company.currency, from, to, profile, balances: [], payrollRows: rows, issues, totals: { taxablePay: rows.length && rows.every((r) => r.taxablePay !== null) ? rows.reduce((sum, r) => sum.plus(r.taxablePay ?? '0'), D(0)).toString() : null, annualTax: rows.length && rows.every((r) => r.annualTax !== null) ? rows.reduce((sum, r) => sum.plus(r.annualTax ?? '0'), D(0)).toString() : null }, versions: [...rowVersions(FilingPayrollProfile, [saved]), ...rowVersions(WorkforceEmployee, employees), ...rowVersions(WorkforcePayroll, payrolls), ...rowVersions(WorkforcePayrollTaxEvidence, allEvidence), ...rowVersions(WorkforceYearEndAdjustment, adjustments), ...rowVersions(WorkforceYearEndDeclaration, declarations), ...rowVersions(WorkforcePayrollCondition, conditions)], records: { company: { id: company.id, country: company.country, currency: company.currency }, profile: saved, employees, payrolls, evidence: allEvidence, adjustments, declarations, conditions } };
+}

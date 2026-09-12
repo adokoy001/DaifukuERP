@@ -2,7 +2,7 @@
 
 DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三者コード・データには、それぞれの権利者のライセンスが適用されます。本書は依存物を一括して MIT に変更するものではありません。
 
-確認日: 2026-09-12。対象は店舗機器・配備追加時点の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
+更新日: 2026-09-13。依存一覧の全量確認は店舗機器・配備追加時点（2026-09-12）の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。今回の申告準備で使う直接依存と加工した公開資料の帰属は末尾に追記しています。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
 
 ## ソースに含めたアイコン
 
@@ -317,3 +317,15 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 ### Web配布物の帰属表示
 
 共通releaseの `web/LICENSE` と `web/THIRD_PARTY_NOTICES.txt` は必ずWeb本体と一緒に配布してください。Viteのmain/worker chunkに実際に含まれたnpm入力から、固定版のLICENSE/NOTICE全文と `web-packages.json` を生成します。CSS pipelineのTailwind CSSと既存Feather 4.29.2の本文も含めます。これはsourceの一覧表とは別の、実配布物に添える通知です。収集用の相対入力一覧は最終releaseから削除し、本文が欠ける場合は配布生成を停止します。
+
+## 商流・銀行・申告準備の追加確認
+
+2026-09-13に `l10n/jp` の直接依存へ [iconv-lite 0.7.3](https://github.com/pillarjs/iconv-lite/tree/v0.7.3) を指定しました。既存lockfileと上の一覧にある同じ版で、新しい版への更新ではありません。実インストールの `package.json` と `LICENSE` でMITを確認しました。Copyright (c) 2011 Alexander Shtuchkin。HOT010ファイルのShift_JIS変換に使用し、配布時はpackageのLICENSE全文と依存 `safer-buffer` の通知を保持してください。上の全量集計を今回再実施したという意味ではありません。
+
+### 国税庁の財務諸表コード・標準フォーム
+
+出典: 国税庁「財務諸表のCSV形式データの作成方法」と、HOT010 Ver.3.0の一般商工業用 [貸借対照表](https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/1/HOT010_3.0_BS_10.xlsx) / [損益計算書](https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho3/2/HOT010_3.0_PL_10.xlsx) 標準フォーム。[仕様案内](https://www.e-tax.nta.go.jp/hojin/gimuka/csv_jyoho4.htm)。確認日: 2026-09-13。
+
+これらの資料をDaifukuERPが抽出・加工し、[国内コード定義](l10n/jp/src/filing/data.ts) と [形式回帰用の抜粋](l10n/jp/test/fixtures/hot010-v3-general.json) を作成しました。必要な科目コード・名称・行種別・階層に限定し、元のExcelプログラムや文書一式は同梱していません。加工した定義・出力は国税庁が作成・認定したものではありません。
+
+[e-Taxのコンテンツ利用条件](https://www.e-tax.nta.go.jp/chuijiko/chosakuken.htm) は [国税庁の利用規約](https://www.nta.go.jp/chuijiko/copy.htm) を参照しています。同規約は別の権利表示がない場合に公共データ利用規約（第1.0版）に準拠し、出典と編集・加工の表示を求めています。元資料の条件は本プロジェクトのMITと区別し、この出典・加工表示を保持してください。
