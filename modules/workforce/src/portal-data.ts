@@ -16,7 +16,7 @@ export async function portalData(ctx: Context, period: string, employeeId?: stri
   const expenses = await readable(E.WorkforceExpense, within('expenseDate'));
   const payrolls = await readable(E.WorkforcePayroll, { ...scope, period });
   return {
-    employees: employees.map(({ id, userId, siteId, code, name, active, version }) => ({ id, userId, siteId, code, name, active, version })),
+    employees: employees.map(({ id, userId, siteId, code, name, active, hiredOn, terminatedOn, version }) => ({ id, userId, siteId, code, name, active, hiredOn, terminatedOn, version })),
     attendances: attendance.map((row) => ({ ...row, employeeName: name(row), clockIn: row.clockIn.toISOString(), clockOut: row.clockOut?.toISOString() ?? null, breakStartedAt: row.breakStartedAt?.toISOString() ?? null, workedMinutes: minutesDisplay(row.workedMs), nightMinutes: minutesDisplay(row.nightMs) })),
     corrections: corrections.map((row) => ({ ...row, employeeName: name(row), clockIn: row.clockIn.toISOString(), clockOut: row.clockOut.toISOString() })),
     leaveRequests: leaves.map((row) => ({ ...row, employeeName: name(row), days: row.days.toString() })),

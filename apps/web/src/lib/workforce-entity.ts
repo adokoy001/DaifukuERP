@@ -1,5 +1,5 @@
 import type { EntityMeta } from '../api/types.ts';
-const managed = new Set(['workforce_employee', 'workforce_attendance', 'workforce_punch', 'workforce_attendance_correction', 'workforce_leave_grant', 'workforce_leave_request', 'workforce_leave_usage', 'workforce_expense', 'workforce_payroll', 'workforce_period_lock', 'workforce_receipt']);
+const managed = new Set(['workforce_employee', 'workforce_attendance', 'workforce_punch', 'workforce_attendance_correction', 'workforce_leave_grant', 'workforce_leave_request', 'workforce_leave_usage', 'workforce_expense', 'workforce_payroll', 'workforce_period_lock', 'workforce_receipt', 'workforce_shift_profile', 'workforce_shift_availability', 'workforce_shift_plan', 'workforce_shift_assignment']);
 export const isWorkforceManaged = (name: string) => managed.has(name);
 /** Permissions alone do not promise generic CRUD: workflow records require their business action. */
 export function workforceEntityForUi(entity: EntityMeta): EntityMeta {

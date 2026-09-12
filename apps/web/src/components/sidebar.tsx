@@ -48,7 +48,8 @@ function Navigation({ meta }: { meta: AppMeta | undefined }) {
   return <>
     <Link to="/" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="home" size={18} />{t({ ja: 'ワークスペース', en: 'Workspace' })}</Link>
     {meta?.actions.some((a) => a.name === 'workforce.my_portal') ? <Link to="/me" className={LINK} activeProps={ACTIVE}><Icon name="people" size={18} />{t({ ja: '自分の勤怠・申請', en: 'My workday' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'workforce.management_portal') ? <Link to="/workforce" className={LINK} activeProps={ACTIVE}><Icon name="calendar" size={18} />{t({ ja: '従業員・勤怠管理', en: 'Workforce management' })}</Link> : null}
+    {meta?.actions.some((a) => a.name === 'workforce.management_portal') ? <Link to="/workforce" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="calendar" size={18} />{t({ ja: '従業員・勤怠管理', en: 'Workforce management' })}</Link> : null}
+    {meta?.actions.some((a) => a.name === 'workforce.shift_board') ? <Link to="/workforce/shifts" className={LINK} activeProps={ACTIVE}><Icon name="calendar" size={18} />{t({ ja: 'シフト計画・推薦', en: 'Shift planning' })}</Link> : null}
     <Link to="/templates" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: '業界テンプレート', en: 'Industry templates' })}</Link>
     {meta?.actions.some((a) => a.name === 'restaurant_chain.operations_snapshot') ? <Link to="/operations" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: 'チェーン運営', en: 'Chain operations' })}</Link> : null}
     {reports.length ? <Link to="/reports" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: 'BI・レポート', en: 'BI and reports' })}</Link> : null}

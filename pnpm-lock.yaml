@@ -132,6 +132,9 @@ importers:
         specifier: ^4.6.1
         version: 4.6.1
     devDependencies:
+      '@daifuku/mod-workforce':
+        specifier: workspace:*
+        version: link:../../modules/workforce
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.2

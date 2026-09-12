@@ -37,6 +37,7 @@ flowchart TD
 - [module・packの拡張](extension-guide.md): 宣言からUI・移行・試験まで。
 - [検証・移行・公開](verification-and-release.md): 安全な変更の終え方。
 - [文書の管理方法](documentation-contract.md): AIと人が同じ情報を使う仕組み。
+- [シフト推薦](shift-planning.md): 社員条件、週次希望、Worker、最新資料の再検査。
 - [設計判断ADR](../adr/): 採用理由と変更履歴。
 
 ## 現状と将来

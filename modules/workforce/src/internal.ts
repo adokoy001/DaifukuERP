@@ -1,7 +1,7 @@
 // Module-private authority: exported only between workforce implementation files, never from package index.
 import { defineWriteCapability, hasWriteCapability, registry, withWriteCapability, StateError, type Context, type EntityDef } from '@daifuku/kernel';
 import * as entities from './entities/index.ts';
-const managed: EntityDef[] = [entities.WorkforceEmployee, entities.WorkforceAttendance, entities.WorkforcePunch, entities.WorkforceAttendanceCorrection, entities.WorkforceLeaveGrant, entities.WorkforceLeaveRequest, entities.WorkforceLeaveUsage, entities.WorkforceExpense, entities.WorkforcePayroll, entities.WorkforcePeriodLock];
+const managed: EntityDef[] = [entities.WorkforceEmployee, entities.WorkforceAttendance, entities.WorkforcePunch, entities.WorkforceAttendanceCorrection, entities.WorkforceLeaveGrant, entities.WorkforceLeaveRequest, entities.WorkforceLeaveUsage, entities.WorkforceExpense, entities.WorkforcePayroll, entities.WorkforcePeriodLock, entities.WorkforceShiftProfile, entities.WorkforceShiftAvailability, entities.WorkforceShiftPlan, entities.WorkforceShiftAssignment];
 const capabilities = new Map(managed.map((entity) => [entity.name, defineWriteCapability({ name: `${entity.name}.workflow`, entity: entity.name, fields: entity.fieldNames.filter((field) => entity.config.fields[field]?.opts.serverOwned), operations: ['create', 'update', 'submit', 'cancel', 'workflow'] })]));
 export function internalWrite<T>(ctx: Context, entity: EntityDef, work: (ctx: Context) => Promise<T>): Promise<T> {
   const capability = capabilities.get(entity.name);

@@ -1,0 +1,54 @@
+.shift-page { padding-bottom: 110px; }
+.shift-page > .workforce-hero { background: linear-gradient(120deg,#eee7ff,#e7fbfc); }
+.shift-notice { margin: 0; padding: 14px 18px; border: 1px solid #b9e8ee; border-radius: 14px; background: #edfcfe; color: #295b66; line-height: 1.65; font-size: .85rem; }
+.shift-muted { color: #69748e; font-size: .8rem; line-height: 1.6; }
+.shift-day { border-top: 1px solid #e7e9f3; padding-top: 14px; margin-top: 18px; }
+.shift-day > header,.shift-published,.shift-recommend-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.shift-day h3 { color: #563897; }
+.shift-slot-fields { display: grid; grid-template-columns: 1.5fr repeat(5,minmax(85px,1fr)) auto; gap: 10px; min-width: 0; border: 1px solid #ded9ee; border-radius: 14px; padding: 14px; margin-top: 12px; background: #fcfbff; align-items: end; }
+.shift-slot-fields legend { padding: 0 7px; font-size: .8rem; color: #746591; }
+.shift-slot-fields label,.shift-recommend-controls label,.shift-week-filter,.shift-assignment-card label { display: grid; gap: 5px; font-size: .8rem; min-width: 0; }
+.shift-published { border: 1px solid #b2dfd9; border-radius: 16px; background: #eefaf6; padding: 18px; }
+.shift-published > .workforce-error { flex-basis: 100%; }
+.shift-recommend-controls { border-radius: 20px; background: linear-gradient(110deg,#5c35a8,#427486); color: white; padding: 22px; }
+.shift-recommend-controls h2 { margin: 0 0 5px; font-size: 1.1rem; }
+.shift-recommend-controls p { font-size: .85rem; margin: 0; }
+.shift-recommend-controls input { color: #28334d; max-width: 150px; }
+.shift-recommend-controls > [role=status] { flex-basis: 100%; }
+.shift-recommend-controls .btn { border-color: #cfccf3; }
+.shift-results { display: grid; gap: 20px; }
+.shift-board { display: grid; gap: 0; }
+.shift-assignment-card { border-top: 1px solid #e3e6f2; padding: 17px 0; display: grid; grid-template-columns: minmax(240px,1fr) minmax(220px,1fr); gap: 10px 24px; }
+.shift-assignment-controls { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.shift-assignment-card h3 { font-size: .9rem; color: #423468; margin: 0 0 6px; }
+.shift-assignment-card p { color: #748099; font-size: .8rem; }
+.shift-assignment-card details { font-size: .8rem; }
+.shift-assigned { display: flex; gap: 10px; align-items: center; padding: 7px; border-radius: 9px; background: #f2effb; }
+.shift-assigned > span { flex: 1; min-width: 0; }
+.shift-assigned label { display: flex; align-items: center; gap: 6px; }
+.shift-assigned input { width: 18px; height: 18px; }
+.shift-shortage { color: #a6423c; font-size: .85rem; }
+.shift-complete { color: #247467; font-size: .85rem; }
+.shift-person-metrics { display: grid; grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); gap: 12px; }
+.shift-person-metrics article,.shift-my-days article { display: grid; gap: 8px; padding: 14px; border: 1px solid #e4e5f0; background: #fcfcff; border-radius: 14px; }
+.shift-person-metrics small { color: #69748e; }
+.shift-savebar { position: sticky; bottom: 14px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; border: 1px solid #dad2ed; border-radius: 18px; background: #ffffffed; backdrop-filter: blur(12px); padding: 14px; box-shadow: 0 9px 30px #4d3a7620; }
+.shift-savebar > span { flex: 1; color: #74558f; font-size: .85rem; }
+.shift-week-filter { max-width: 280px; }
+.shift-availability-day { display: grid; gap: 12px; border: 1px solid #e1ddec; border-radius: 14px; padding: 14px; }
+.shift-availability-day h3 { color: #674390; font-size: .95rem; margin: 0; }
+.shift-my-days { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 12px; }
+.shift-refresh { align-self: flex-end; }
+@media(max-width:1100px) { .shift-slot-fields { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media(max-width:600px) { .shift-slot-fields { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 10px; }.shift-slot-fields label:first-of-type,.shift-slot-fields label:last-of-type { grid-column: 1 / -1; }.shift-assignment-card { display: block; border: 1px solid #e0d9ed; border-radius: 15px; padding: 14px; margin-top: 14px; }.shift-assignment-card > * { margin-bottom: 10px; }.shift-assigned { flex-wrap: wrap; }.shift-recommend-controls { padding: 16px; }.shift-recommend-controls > div { flex-basis: 100%; }.shift-person-metrics,.shift-my-days { grid-template-columns: minmax(0,1fr); }.shift-savebar { bottom: 8px; padding: 10px; }.shift-savebar > span { flex-basis: 100%; }.shift-published { padding: 14px; }.shift-day header { align-items: flex-start; }.shift-week-filter { max-width: 100%; } }
+
+.shift-time-input { display: grid; gap: 5px; min-width: 0; }
+.shift-time-input .shift-day-end { display: flex; align-items: center; gap: 5px; font-size: .7rem; }
+.shift-day-end input { width: 16px; height: 16px; }
+.shift-person-metrics details { font-size: .75rem; line-height: 1.8; }
+.shift-person-metrics details ul { padding-left: 16px; }
+
+.shift-board-heading { display: grid; grid-template-columns: minmax(240px,1fr) minmax(220px,1fr); gap: 24px; background: #f1edf8; padding: 12px; color: #593883; font-size: .85rem; font-weight: 700; border-radius: 10px; }
+@media(max-width:600px) { .shift-board-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+
+[data-testid="my-shifts"] .workforce-panel-heading > div,.shift-page .workforce-panel-heading > div { flex-direction: column; align-items: flex-start; gap: 4px; }
