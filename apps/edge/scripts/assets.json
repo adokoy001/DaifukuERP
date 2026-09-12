@@ -1,0 +1,23 @@
+{
+  "nodeVersion": "22.23.2",
+  "verifiedOn": "2026-09-13",
+  "nodeChecksumsSource": "https://nodejs.org/dist/v22.23.2/SHASUMS256.txt",
+  "node": {
+    "linux-x64": "b294a556e639d64338823920e5866c21c02741742d2e1529ee1a225c1ec9252a",
+    "linux-arm64": "013b59cfd2819703a6f4a14ab891fc46fc2a4e3f5bcd92de3fb4929b43e35b30",
+    "darwin-x64": "58e99022c2ff89395576cc7fd4d98cea24bb68081475d5f88b801ee8729fb026",
+    "darwin-arm64": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
+    "win32-x64": "1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97"
+  },
+  "wrapper": {
+    "url": "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET461.exe",
+    "sha256": "b5066b7bbdfba1293e5d15cda3caaea88fbeab35bd5b38c41c913d492aadfc4f",
+    "licenseUrl": "https://raw.githubusercontent.com/winsw/winsw/v2.12.0/LICENSE.txt",
+    "licenseSha256": "1cdf703c10a70e5973bf3acf2a5eeabe7746237155b92db2034aeae26fdf7802",
+    "notices": [
+      { "path": "wrapper/log4net-LICENSE", "url": "https://raw.githubusercontent.com/apache/logging-log4net/rel/2.0.12/LICENSE", "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4" },
+      { "path": "wrapper/log4net-NOTICE", "url": "https://raw.githubusercontent.com/apache/logging-log4net/rel/2.0.12/NOTICE", "sha256": "14e0ac5d0b985b12b11ac530b2df91e8a8afec56036189b90ce434f0745a75be" },
+      { "path": "wrapper/YamlDotNet-LICENSE", "url": "https://raw.githubusercontent.com/aaubry/YamlDotNet/v8.1.2/LICENSE.txt", "sha256": "daea8b7f1b2bab48ea12ad50b0ce91634669d99d7dd0cb64aed8dffeeef69ed3" }
+    ]
+  }
+}

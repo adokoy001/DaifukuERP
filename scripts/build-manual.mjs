@@ -11,19 +11,20 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANUAL_DIR = join(ROOT, 'docs', 'manual');
 const OUT = join(MANUAL_DIR, 'daifuku-manual.html');
-const TITLE = '大福帳 ユーザーマニュアル（2026-09-12 店舗機器・共通配備）';
+const TITLE = '大福帳 ユーザーマニュアル（2026-09-13 エッジサービス）';
 const IMAGE_WARN_BYTES = 200 * 1024;
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif' };
 
 /** Chapter files in reading order: 00-…, 01-…, …, then appendix-a-…, appendix-b-…. */
 function chapterFiles() {
-  const names = readdirSync(MANUAL_DIR).filter((n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n));
-  const rank = (n) => (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
+  const names = readdirSync(MANUAL_DIR).filter((n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n === 'edge-service-setup.md');
+  const rank = (n) => n === 'edge-service-setup.md' ? '2edge' : (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
   return names.sort((a, b) => rank(a).localeCompare(rank(b)));
 }
 
 /** `05-daily.md` -> `05`, `appendix-a-glossary.md` -> `appendix-a`. Used for section ids and id prefixes. */
 function chapterKey(file) {
+  if (file === 'edge-service-setup.md') return 'appendix-k';
   const m = /^(\d\d|appendix-[a-z])-/.exec(file);
   if (!m) throw new Error(`unexpected chapter file name: ${file}`);
   return m[1];

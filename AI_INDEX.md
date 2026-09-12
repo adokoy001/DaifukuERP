@@ -32,6 +32,8 @@
 
 ## 変更時に保つ契約
 
+店舗端末のWindows/Linux/macOSサービス導入を変更する場合は、[セットアップ構造](docs/architecture/edge-services.md)、[仕様](docs/specs/edge-installers.md)、[操作](docs/manual/edge-service-setup.md)を読み、`apps/edge/setup`の共通engineとOS adapterの境界を確認してください。
+
 業務データは `Context` と `Repository` を通す。画面を非表示にするだけで権限制御を済ませない。会社/拠点/本人の境界はロール権限と別の制限として扱う。承認や会計処理の副作用は同じトランザクションで行い、二重実行をロック・一意性・版で防ぐ。
 
 金額と数量は `Decimal`。確定済み伝票・帳簿は直接書き換えない。日本の制度は一次資料と確認日を残し、制度値と適用期間をデータに持つ。module/packからDBドライバやネットワークに直接依存しない。

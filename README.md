@@ -26,6 +26,7 @@ Daifukuは、会計・販売・購買・入出金・在庫・契約・従業員�
 | POS・企業運営 | Square署名Webhookの決済仮勘定転記、JPYの管理用連結精算表、契約と確認売上に基づくFC請求/支払 |
 | 給与・勤務制度 | 2026年月額甲欄の税/保険自動算定、本人申告と年末調整、通常/1か月変形/1〜3か月フレックス |
 | 店舗機器連携 | 店舗から外向きWSS/HTTPS、拠点限定中継、IPPテキスト印刷、模擬釣銭、結果不明時の実機確認 |
+| エッジ端末セットアップ | Windows/Linux/macOS常駐サービス、Node同梱、専用アカウント、計画表示・更新再開・データ保持削除 |
 | クラウド・オンプレ | Linux共通配布物、同一オリジンWeb/API、Caddy/systemd構成生成、起動準備確認、設定/データ分離 |
 | 導入・更新 | 対象の事前点検、計画表示、バックアップの別DB実復元、移行、資格情報を上書きしない再開 |
 
@@ -114,6 +115,7 @@ kernel/               DSL・Repository・権限・伝票・監査
 - [操作マニュアル](docs/manual/00-index.md) / [最新の運営・権限・BIガイド](docs/manual/appendix-e-operations-control.md)
 - [企業向け認証・POS・連結・FC](docs/manual/appendix-h-enterprise-operations.md) / [給与・年調・勤務制度](docs/manual/appendix-i-fiscal-and-work-systems.md)
 - [店舗機器の操作](docs/manual/appendix-j-store-devices.md) / [中継エージェント](docs/operations/edge-agent.md) / [クラウド・オンプレ配備](docs/operations/deployment.md)
+- [Windows・Linux・macOSのエッジサービス導入](docs/manual/edge-service-setup.md) / [設計・プログラム構造](docs/architecture/edge-services.md)
 - [業界テンプレートガイド](docs/manual/appendix-d-industry-templates.md)
 - [設計判断](docs/adr/) / [仕様と受入基準](docs/specs/) / [実装規約](docs/conventions/)
 - [品質改善計画](docs/quality-roadmap.md) / [本人のアカウント管理](docs/operations/account-security.md)

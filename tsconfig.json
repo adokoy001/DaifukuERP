@@ -19,6 +19,7 @@
     "l10n/*/src",
     "packs/*/src",
     "apps/*/src",
+    "apps/edge/setup",
     "scripts"
   ],
   "exclude": [

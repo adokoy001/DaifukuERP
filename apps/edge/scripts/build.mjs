@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
-const result = await build({ entryPoints: ['src/main.ts'], outfile: 'dist/edge.mjs', bundle: true, platform: 'node', target: 'node22', format: 'esm', packages: 'bundle', sourcemap: false, metafile: true, write: false, banner: { js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" }, external: ['bufferutil', 'utf-8-validate'] });
+const result = await build({ entryPoints: { edge: 'src/main.ts', setup: 'setup/main.ts' }, outdir: 'dist', outExtension: { '.js': '.mjs' }, bundle: true, platform: 'node', target: 'node22', format: 'esm', packages: 'bundle', sourcemap: false, metafile: true, write: false, banner: { js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" }, external: ['bufferutil', 'utf-8-validate'] });
 const packages = new Map();
 for (const output of Object.values(result.metafile.outputs)) for (const [input, contribution] of Object.entries(output.inputs)) {
   if (!contribution.bytesInOutput || !input.includes('node_modules/')) continue;
