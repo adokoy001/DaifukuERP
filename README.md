@@ -17,6 +17,9 @@ Daifukuは、会計・販売・購買・入出金・在庫・契約・従業員�
 | --- | --- |
 | 共通基盤 | テナント・会社分離、会社/拠点/店舗・本人ごとの権限、監査履歴、楽観ロック、採番、添付 |
 | 会計・商取引 | 売上/仕入請求、仕訳、消込、売掛/買掛残高、期間締め、取消・改訂 |
+| 商流・受発注 | JPYの物品見積・受発注、分納・分割請求、明細残数、原資料と一体の取消 |
+| 銀行連携の準備 | UTF-8明細CSVの事前確認・取込、照合候補と確認消込、振込内容の確認と全銀120バイト/CSV出力 |
+| 申告準備 | HOT010 Ver.3.0の一般商工業BS/PL、2026年給与の独自確認資料、原資料の固定・別担当確認・再作成 |
 | 在庫・契約 | 入出庫、棚卸、移動平均の在庫評価、契約・請求予定 |
 | 店舗運営 | 営業計画/目標、日次報告、未提出管理、店長承認/差戻し、本部確定 |
 | BI・レポート | 目標・前期間比較、店舗比較、現金差異、入金残高、根拠伝票へのリンク、再認可してCSV出力 |
@@ -35,6 +38,8 @@ Daifukuは、会計・販売・購買・入出金・在庫・契約・従業員�
 従業員向けの「自分の勤怠・申請」と、本部・拠点向けの管理画面を分けています。給与は従来の外部確認控除と、2026年の国内JPY・月額甲欄を対象とする税/保険自動算定を区別します。自動算定も標準報酬決定通知、扶養申告、加入/免除、住民税通知等の確認が必要で、未確認を0円で補いません。年末調整と勤務制度の手順・対象外は [給与と勤務制度の操作](docs/manual/appendix-i-fiscal-and-work-systems.md) を参照してください。
 
 シフト推薦は拠点別の週次計画をブラウザー内で計算します。勤務希望・スキル・時間上限・休暇を確認し、欠員を減らして目標時間への偏りを調整します。外部AIサービスや追加ソルバーは不要です。[シフトの操作ガイド](docs/operations/shift-planning.md) に準備と対応範囲をまとめています。
+
+商流・銀行・申告準備は [付録L](docs/manual/appendix-l-commerce-bank-filing.md) から試せます。銀行ファイルの出力では送金・入出金伝票を作成しません。財務諸表は限定した公式取込形式、給与は公式取込できない確認資料です。実銀行API接続、送金、電子申告・納税は行いません。
 
 ## 手元で試す
 
@@ -114,6 +119,7 @@ kernel/               DSL・Repository・権限・伝票・監査
 - [従業員・労務ガイド](docs/manual/appendix-f-workforce.md) / [15業界の操作ガイド](docs/manual/appendix-g-industry-catalog.md)
 - [操作マニュアル](docs/manual/00-index.md) / [最新の運営・権限・BIガイド](docs/manual/appendix-e-operations-control.md)
 - [企業向け認証・POS・連結・FC](docs/manual/appendix-h-enterprise-operations.md) / [給与・年調・勤務制度](docs/manual/appendix-i-fiscal-and-work-systems.md)
+- [商流・銀行・申告準備の操作](docs/manual/appendix-l-commerce-bank-filing.md) / [設計とプログラム構造](docs/architecture/commerce-finance.md)
 - [店舗機器の操作](docs/manual/appendix-j-store-devices.md) / [中継エージェント](docs/operations/edge-agent.md) / [クラウド・オンプレ配備](docs/operations/deployment.md)
 - [Windows・Linux・macOSのエッジサービス導入](docs/manual/edge-service-setup.md) / [設計・プログラム構造](docs/architecture/edge-services.md)
 - [業界テンプレートガイド](docs/manual/appendix-d-industry-templates.md)
@@ -126,6 +132,8 @@ kernel/               DSL・Repository・権限・伝票・監査
 全業界・全制度を網羅するものではありません。SSOは明示紐付け、MFAは個人単位、Squareは決済/返金の仮勘定転記、連結はJPYの管理用精算表、FCは同一会社の請求/支払という範囲です。POS商品/在庫の自動連携、法定連結開示、多通貨、賞与/乙欄/非居住者給与、行政・銀行への送信、1年変形/裁量勤務、自由SQLの外部BI/定期配信は対象外です。勤務制度は開始前に確認・確定し、日跨ぎ勤務の給与自動計算は引き続き拒否します。
 
 プリンター初版はIPPのテキスト印刷、自動釣銭機はシミュレーターです。実釣銭機、USB/シリアル、ESC/POS、機器と会計の自動連動、HA/マルチリージョンは未対応です。
+
+商流は物品・税抜単価・固定在庫単位の範囲です。入荷時の未請求債務や原価差額配賦、返品専用工程は含みません。銀行CSVは指定形式への整形が必要で、自動確定消込や銀行ごとの実受入は未対応です。申告準備は法人税申告書全体や法定納付税額を作らず、BS/PL以外の財務諸表・給与の公式375/eLTAX形式も含みません。
 
 外部providerの本番受入、負荷容量、運用監視、証憑の適格性は導入先で確認します。合成IdPとTLS SMTP、署名付き合成Square通知による試験を実接続の証明とは扱いません。詳細は [現在地](docs/STATUS.md) と [制限事項](docs/manual/10-limitations.md) にまとめています。
 

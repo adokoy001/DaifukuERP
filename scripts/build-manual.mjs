@@ -11,14 +11,14 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANUAL_DIR = join(ROOT, 'docs', 'manual');
 const OUT = join(MANUAL_DIR, 'daifuku-manual.html');
-const TITLE = '大福帳 ユーザーマニュアル（2026-09-13 エッジサービス）';
+const TITLE = '大福帳 ユーザーマニュアル（2026-09-13 商流・銀行連携・申告準備）';
 const IMAGE_WARN_BYTES = 200 * 1024;
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif' };
 
 /** Chapter files in reading order: 00-…, 01-…, …, then appendix-a-…, appendix-b-…. */
 function chapterFiles() {
   const names = readdirSync(MANUAL_DIR).filter((n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n === 'edge-service-setup.md');
-  const rank = (n) => n === 'edge-service-setup.md' ? '2edge' : (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
+  const rank = (n) => n === 'edge-service-setup.md' ? '1appendix-k-edge-service-setup.md' : (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
   return names.sort((a, b) => rank(a).localeCompare(rank(b)));
 }
 

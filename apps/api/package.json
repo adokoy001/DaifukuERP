@@ -53,6 +53,9 @@
     "@daifuku/mod-edge-integration": "workspace:*"
   },
   "devDependencies": {
+    "@daifuku/mod-trade": "workspace:*",
+    "@daifuku/mod-banking": "workspace:*",
+    "@daifuku/mod-tax-filing": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",

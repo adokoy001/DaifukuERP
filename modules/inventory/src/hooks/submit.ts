@@ -16,6 +16,7 @@ import { listAll, postMovement, type PostingMeta } from '../ledger.ts';
 import { entryIssues, lineDirection, type EntryHead, type EntryLineInput, type ProductKind } from '../services/entry-rules.ts';
 import { round6 } from '../services/moving-average.ts';
 import { allowNegativeStock } from '../settings.ts';
+import { registeredStockSource } from '../source-documents.ts';
 import { asModule } from '../system-write.ts';
 import { assertEntryRole } from './entry.ts';
 
@@ -48,7 +49,7 @@ async function assertSourceLink(ctx: Context, row: Record<string, unknown>): Pro
   const entity = row.sourceEntity;
   const id = row.sourceId;
   if ((entity === null || entity === undefined) && (id === null || id === undefined)) return;
-  const known = typeof entity === 'string' && (SOURCE_ENTITIES as readonly string[]).includes(entity) && registry.hasEntity(entity);
+  const known = typeof entity === 'string' && ((SOURCE_ENTITIES as readonly string[]).includes(entity) || registeredStockSource(entity)) && registry.hasEntity(entity);
   const source = known && typeof id === 'string' ? await repo(ctx, registry.entity(entity) as EntityDef).find(id) : null;
   if (!source || source.docstatus !== DOCSTATUS.submitted) {
     throw new StateError(`stock_entry ${String(row.id)}: source ${String(entity)} ${String(id)} is not a submitted document`, SOURCE_HINT, { sourceEntity: entity, sourceId: id });

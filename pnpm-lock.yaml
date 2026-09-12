@@ -150,6 +150,15 @@ importers:
         specifier: ^4.6.1
         version: 4.6.1
     devDependencies:
+      '@daifuku/mod-banking':
+        specifier: workspace:*
+        version: link:../../modules/banking
+      '@daifuku/mod-tax-filing':
+        specifier: workspace:*
+        version: link:../../modules/tax-filing
+      '@daifuku/mod-trade':
+        specifier: workspace:*
+        version: link:../../modules/trade
       '@daifuku/mod-workforce':
         specifier: workspace:*
         version: link:../../modules/workforce
@@ -281,6 +290,9 @@ importers:
       '@daifuku/mod-attachments':
         specifier: workspace:*
         version: link:../../modules/attachments
+      '@daifuku/mod-banking':
+        specifier: workspace:*
+        version: link:../../modules/banking
       '@daifuku/mod-contract':
         specifier: workspace:*
         version: link:../../modules/contract
@@ -320,6 +332,12 @@ importers:
       '@daifuku/mod-tax':
         specifier: workspace:*
         version: link:../../modules/tax
+      '@daifuku/mod-tax-filing':
+        specifier: workspace:*
+        version: link:../../modules/tax-filing
+      '@daifuku/mod-trade':
+        specifier: workspace:*
+        version: link:../../modules/trade
       '@daifuku/mod-workforce':
         specifier: workspace:*
         version: link:../../modules/workforce
@@ -350,6 +368,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@daifuku/mod-banking':
+        specifier: workspace:*
+        version: link:../../modules/banking
       '@daifuku/mod-franchise':
         specifier: workspace:*
         version: link:../../modules/franchise
@@ -359,6 +380,12 @@ importers:
       '@daifuku/mod-pos-integration':
         specifier: workspace:*
         version: link:../../modules/pos-integration
+      '@daifuku/mod-tax-filing':
+        specifier: workspace:*
+        version: link:../../modules/tax-filing
+      '@daifuku/mod-trade':
+        specifier: workspace:*
+        version: link:../../modules/trade
       '@daifuku/mod-workforce':
         specifier: workspace:*
         version: link:../../modules/workforce
@@ -463,6 +490,12 @@ importers:
       '@daifuku/mod-tax':
         specifier: workspace:*
         version: link:../../modules/tax
+      '@daifuku/mod-tax-filing':
+        specifier: workspace:*
+        version: link:../../modules/tax-filing
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
       zod:
         specifier: ^4.6.1
         version: 4.6.1
@@ -529,6 +562,30 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  modules/banking:
+    dependencies:
+      '@daifuku/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@daifuku/mod-accounting':
+        specifier: workspace:*
+        version: link:../accounting
+      '@daifuku/mod-partner':
+        specifier: workspace:*
+        version: link:../partner
+      '@daifuku/mod-payment':
+        specifier: workspace:*
+        version: link:../payment
+      '@daifuku/mod-purchase':
+        specifier: workspace:*
+        version: link:../purchase
+      '@daifuku/mod-sales':
+        specifier: workspace:*
+        version: link:../sales
+      zod:
+        specifier: 4.6.1
+        version: 4.6.1
 
   modules/contract:
     dependencies:
@@ -908,6 +965,74 @@ importers:
       fast-check:
         specifier: ^4.9.0
         version: 4.9.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  modules/tax-filing:
+    dependencies:
+      '@daifuku/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@daifuku/mod-accounting':
+        specifier: workspace:*
+        version: link:../accounting
+      '@daifuku/mod-workforce':
+        specifier: workspace:*
+        version: link:../workforce
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  modules/trade:
+    dependencies:
+      '@daifuku/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@daifuku/mod-accounting':
+        specifier: workspace:*
+        version: link:../accounting
+      '@daifuku/mod-inventory':
+        specifier: workspace:*
+        version: link:../inventory
+      '@daifuku/mod-partner':
+        specifier: workspace:*
+        version: link:../partner
+      '@daifuku/mod-product':
+        specifier: workspace:*
+        version: link:../product
+      '@daifuku/mod-purchase':
+        specifier: workspace:*
+        version: link:../purchase
+      '@daifuku/mod-sales':
+        specifier: workspace:*
+        version: link:../sales
+      '@daifuku/mod-tax':
+        specifier: workspace:*
+        version: link:../tax
+      zod:
+        specifier: ^4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@daifuku/mod-payment':
+        specifier: workspace:*
+        version: link:../payment
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

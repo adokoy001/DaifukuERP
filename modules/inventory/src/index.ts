@@ -63,3 +63,6 @@ export type StockCountInsert = InsertInput<typeof StockCount>;
 export type StockCountLineRow = Infer<typeof StockCountLine>;
 
 export { INVENTORY_SERIES_LOCK, InventoryPeriodClose, closeInventoryThrough, assertInventoryDate } from './period-close.ts';
+
+export { registerStockDocumentSource, registerInvoiceStockOwner } from './source-documents.ts';
+export { createAndSubmitEntry as createSourceStockEntry, cancelLinkedEntries as cancelSourceStockEntries } from './hooks/invoices.ts';

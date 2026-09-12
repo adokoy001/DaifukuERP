@@ -7,9 +7,9 @@ import { WorkforceError } from './workforce-shared.tsx';
 import { ReadRefreshNotice } from './read-refresh-notice.tsx';
 
 /** Read actual controls at submit time; keep drafts through failed requests and require explicit discard. */
-export function CommerceDialog({ title, description, submitLabel, children, onSubmit, onClose, stale = false, confirmOnly = false, readOnly = false }: {
+export function CommerceDialog({ title, description, submitLabel, children, onSubmit, onClose, stale = false, confirmOnly = false, readOnly = false, submitDisabled = false }: {
   title: string; description?: string; submitLabel: string; children: ReactNode;
-  onSubmit: (data: FormData) => Promise<void>; onClose: () => void; stale?: boolean; confirmOnly?: boolean; readOnly?: boolean;
+  onSubmit: (data: FormData) => Promise<void>; onClose: () => void; stale?: boolean; confirmOnly?: boolean; readOnly?: boolean; submitDisabled?: boolean;
 }) {
   const { t } = useLocale();
   const dialog = useRef<HTMLDialogElement>(null), locked = useRef(false), exitAllowed = useRef(false);
@@ -26,7 +26,7 @@ export function CommerceDialog({ title, description, submitLabel, children, onSu
     {description ? <p className="workforce-dialog-description">{description}</p> : null}
     {discarding || blocker.status === 'blocked' ? <div className="workforce-discard" role="alert"><p>{t(busy ? { ja: '送信が終わるまで、この画面でお待ちください。', en: 'Wait here until the request completes.' } : { ja: '入力中の内容を破棄しますか？', en: 'Discard your unsaved input?' })}</p><div className="button-row"><button type="button" className="btn" onClick={cancelDiscard}>{t({ ja: '入力に戻る', en: 'Keep editing' })}</button><button type="button" className="btn btn-danger" disabled={busy} onClick={discard}>{t({ ja: '破棄して移動', en: 'Discard and leave' })}</button></div></div> : null}
     <form onInput={() => setDirty(true)} onChange={() => setDirty(true)} onClick={(event) => { if ((event.target as HTMLElement).closest('[data-draft-change]')) setDirty(true); }} onSubmit={async (event) => {
-      event.preventDefault(); if (locked.current || stale || readOnly) return;
+      event.preventDefault(); if (locked.current || stale || readOnly || submitDisabled) return;
       const data = new FormData(event.currentTarget);
       locked.current = true; setBusy(true); setError(undefined);
       try { await onSubmit(data); exitAllowed.current = true; onClose(); }
@@ -36,7 +36,7 @@ export function CommerceDialog({ title, description, submitLabel, children, onSu
       <fieldset disabled={busy} className="workforce-form-fields">{children}</fieldset>
       {stale ? <p className="workforce-notice" role="status">{t({ ja: '記録が更新されました。入力内容を確認して閉じ、最新の記録から開き直してください。', en: 'This record changed. Review your input, close this dialog and reopen the current record.' })}</p> : null}
       {error ? <WorkforceError error={error} /> : null}
-      <footer className="workforce-dialog-actions"><button type="button" className="btn" onClick={close} disabled={busy}>{t({ ja: '戻る', en: 'Back' })}</button>{readOnly ? null : <button type="submit" className="btn btn-primary" disabled={busy || stale || (!dirty && !confirmOnly)}>{busy ? t({ ja: '送信中…', en: 'Sending…' }) : submitLabel}</button>}</footer>
+      <footer className="workforce-dialog-actions"><button type="button" className="btn" onClick={close} disabled={busy}>{t({ ja: '戻る', en: 'Back' })}</button>{readOnly ? null : <button type="submit" className="btn btn-primary" disabled={busy || stale || submitDisabled || (!dirty && !confirmOnly)}>{busy ? t({ ja: '送信中…', en: 'Sending…' }) : submitLabel}</button>}</footer>
     </form>
   </dialog>;
 }

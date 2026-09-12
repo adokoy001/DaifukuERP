@@ -22,6 +22,8 @@
     "@daifuku/kernel": "workspace:*",
     "zod": "^4.6.1",
     "@daifuku/mod-accounting": "workspace:*",
-    "@daifuku/mod-tax": "workspace:*"
+    "@daifuku/mod-tax": "workspace:*",
+    "@daifuku/mod-tax-filing": "workspace:*",
+    "iconv-lite": "0.7.3"
   }
 }

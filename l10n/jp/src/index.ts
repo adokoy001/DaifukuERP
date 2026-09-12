@@ -21,3 +21,5 @@ export { ERAS, toWareki, toWarekiParts, formatDateJa, type Era, type WarekiParts
 export { formatJpy, formatNumber, formatRatePercent, toHalfwidthKana } from './services/format.ts';
 export { INVOICE_HTML_OVERRIDE, invoiceRenderDataSchema, type InvoiceRenderData, type InvoiceHtmlRenderer, type ParsedInvoiceRenderData } from './services/invoice-render-data.ts';
 export { renderInvoiceHtml, parseInvoiceRenderData, escapeHtml, REDUCED_CATEGORY, REDUCED_MARK } from './services/invoice-html.ts';
+
+export { JAPAN_FILING_PROFILES, registerJapanFilingProfiles } from './filing/profiles.ts';
