@@ -76,9 +76,9 @@ export function useRefSearch(refEntity: string | undefined, search: string, enab
   const params = buildListQuery({ search, page: 1 }, 20).toString();
   return useQuery({
     queryKey: keys.list(refEntity ?? '', `ref:${params}`),
-    queryFn: () => request<ListResponse>(`/api/${refEntity ?? ''}?${params}`),
+    queryFn: ({ signal }) => request<ListResponse>(`/api/${refEntity ?? ''}?${params}`, { signal }),
     enabled: enabled && refEntity !== undefined,
-    placeholderData: keepPreviousData,
+    retry: false,
   });
 }
 

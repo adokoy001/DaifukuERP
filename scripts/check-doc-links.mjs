@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const directory = resolve(root, 'docs/architecture');
-const documents = ['AI_INDEX.md', 'CLAUDE.md', 'README.md', 'CONTRIBUTING.md', 'PLAN.md', 'docs/STATUS.md', 'docs/HANDOFF.md', 'docs/domain/japan-workforce.md', 'docs/domain/industry-catalog.md', 'docs/specs/workforce-platform.md', 'docs/specs/workforce-backend-contract.md', 'docs/specs/industry-catalog.md', 'docs/manual/00-index.md', 'docs/manual/10-limitations.md', 'docs/manual/appendix-f-workforce.md', 'docs/manual/appendix-g-industry-catalog.md', ...readdirSync(directory).filter((name) => name.endsWith('.md')).map((name) => `docs/architecture/${name}`)];
+const documents = ['AI_INDEX.md', 'CLAUDE.md', 'README.md', 'CONTRIBUTING.md', 'PLAN.md', 'docs/STATUS.md', 'docs/HANDOFF.md', 'docs/domain/japan-workforce.md', 'docs/domain/industry-catalog.md', 'docs/specs/quality-foundation.md', 'docs/operations/account-security.md', 'docs/quality-roadmap.md', 'docs/specs/workforce-platform.md', 'docs/specs/workforce-backend-contract.md', 'docs/specs/industry-catalog.md', 'docs/manual/00-index.md', 'docs/manual/10-limitations.md', 'docs/manual/appendix-f-workforce.md', 'docs/manual/appendix-g-industry-catalog.md', ...readdirSync(directory).filter((name) => name.endsWith('.md')).map((name) => `docs/architecture/${name}`)];
 let checked = 0;
 const failures = [];
 for (const document of documents) {

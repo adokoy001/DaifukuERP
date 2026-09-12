@@ -160,7 +160,9 @@ async function send(path: string, init: RequestInit, anonymous: boolean | undefi
       json = null;
     }
   }
-  if (res.status === 401 && !anonymous) {
+  // A delayed response from an older login must not erase the new session.
+  const sentAuthorization = new Headers(init.headers).get('authorization');
+  if (res.status === 401 && !anonymous && sentAuthorization === `Bearer ${getToken()}`) {
     clearSession();
     unauthorizedHandler?.();
   }

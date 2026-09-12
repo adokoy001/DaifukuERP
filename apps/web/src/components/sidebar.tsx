@@ -80,6 +80,7 @@ export function Sidebar({ meta, userName, onLogout, open, onClose }: SidebarProp
       </div>
       <nav aria-label={t(S.menu)} className="sidebar-nav" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) onClose(); }}><Navigation meta={meta} /></nav>
       <footer className="sidebar-footer">
+        <Link to="/account" className={LINK} onClick={onClose}><Icon name="settings" size={17} />{t({ ja: '自分のアカウント', en: 'My account' })}</Link>
         <div className="user-row"><span className="user-avatar">{(userName ?? 'D').slice(0, 1).toUpperCase()}</span><span className="user-name">{userName}<small>{t({ ja: 'ログイン中', en: 'Signed in' })}</small></span><button type="button" onClick={onLogout} title={t(S.logout)} aria-label={t(S.logout)}><Icon name="logout" size={17} /></button></div>
         <div className="sidebar-meta"><span>DAIFUKU WORKSPACE</span><LocaleToggle /></div>
       </footer>

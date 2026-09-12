@@ -10,7 +10,7 @@
 | 単体 | 計算・状態・入力の境界値 | `pnpm test` |
 | DB | RLS/所属/参照/確定/並行実行の実挙動 | `pnpm test:db`、破棄可能な専用DB |
 | 統合gate | 上記を一括で再現 | `pnpm gate` |
-| Web | 型とproduction build | `pnpm --filter @daifuku/web typecheck` / `build` |
+| Web | 単体・型とproduction build | `pnpm --filter @daifuku/web test` / `typecheck` / `build` |
 | E2E | 実画面の導線・失効・スマホ操作 | CONTRIBUTINGの空DB fixture + Playwright |
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
 | 文書 | AI入口と現行ソースの整合 | 主要文書のリンクと構成/契約を照合 |

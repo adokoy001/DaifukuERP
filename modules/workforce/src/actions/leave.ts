@@ -1,10 +1,11 @@
 import { Decimal, repo, StateError, ValidationError, type Context } from '@daifuku/kernel';
 import type { z } from 'zod';
 import { leaveCancelInput, leaveGrantInput, leaveRequestInput, leaveReviewInput } from '../contract.ts';
-import { WorkforceAttendance, WorkforceLeaveGrant, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../entities/index.ts';
+import { WorkforceLeaveGrant, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../entities/index.ts';
 import { E, H, M, P } from '../entities/common.ts';
 import { activeEmployee, allRows, assertPayrollOpen, command, D, employeeLock, expectVersion, identity, replay, requireOther, requireSelf, reviewed, selfEmployee, userId } from '../common.ts';
 import { internalWrite } from '../internal.ts';
+import { assertNoAttendanceOnLeaveDate } from '../attendance-integrity.ts';
 import { availableGrants, leaveBalance, leaveDays, usedForRequest } from '../leave-balance.ts';
 import { workflowAction } from './define.ts';
 
@@ -34,7 +35,7 @@ async function approveUsage(ctx: Context, row: Awaited<ReturnType<typeof loadReq
   const approved = await allRows(ctx, WorkforceLeaveRequest, { employeeId: row.employeeId, leaveDate: row.leaveDate, status: 'approved' });
   const total = Decimal.sum(approved.map((other) => other.days)).plus(row.days);
   if (total.gt(1) || approved.some((other) => other.portion === row.portion || other.portion === 'full')) throw new StateError('Approved leave would overlap', 'Review existing approvals.');
-  if (total.eq(1) && await repo(ctx, WorkforceAttendance).count({ employeeId: row.employeeId, workDate: row.leaveDate })) throw new StateError('Full-day leave conflicts with recorded attendance', 'Resolve the recorded attendance before approving a full day off.');
+  if (total.eq(1)) await assertNoAttendanceOnLeaveDate(ctx, row.employeeId, row.leaveDate);
   const grants = await availableGrants(ctx, row.employeeId, row.leaveDate);
   if (Decimal.sum(grants.map((item) => item.available)).lt(row.days)) throw new StateError('Paid leave was consumed by another approval', 'Reload the remaining balance; no days were consumed for this request.');
   let remaining = row.days;

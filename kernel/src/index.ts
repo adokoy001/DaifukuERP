@@ -1,6 +1,6 @@
 // @daifuku/kernel public API. Modules import ONLY from here.
 export { Decimal, isDecimal, ROUNDING_MODES, type DecimalInput, type RoundingMode } from './decimal.ts';
-export { DaifukuError, ValidationError, PermissionDenied, NotFound, Conflict, StateError, DependencyError, toErrorBody, type ErrorBody, type ErrorCode } from './errors.ts';
+export { DaifukuError, ValidationError, PermissionDenied, NotFound, Conflict, StateError, DependencyError, toErrorBody, safeErrorDiagnostics, type ErrorBody, type ErrorCode } from './errors.ts';
 export { label, t, type Label, type Locale } from './i18n.ts';
 export { newId, isUuid, isLocalDate, todayLocal, type LocalDate } from './ids.ts';
 export { toHalfwidthKana, normalizeText } from './normalize.ts';
@@ -58,6 +58,7 @@ export { registerPackActions } from './actions/pack.ts';
 export { applyPack, readAppliedPacks, appliedPacksOf, ensurePackSettings, PACKS_APPLIED_KEY, appliedPacksSchema, type ApplyPackOptions, type ApplyPackResult, type AppliedPack, type AppliedPacks } from './pack.ts';
 export { runAction, checkActionPermission, checkActionExport, canExportAction, canRunAction } from './actions/run.ts';
 export { entityMeta, appMeta, fieldMeta, extFieldMetas, type EntityMeta, type FieldMeta, type AppMeta, type MetaOptions } from './meta.ts';
+export { changeOwnPassword, changeOwnPasswordSchema, revokeOwnSessions, revokeOwnSessionsSchema } from './account-security.ts';
 export { hashPassword, verifyPassword, authenticate, loadPrincipal, bootstrapTenant, type Principal, type BootstrapInput } from './auth.ts';
 export { tableResult, tableColumn, column, COLUMN_KINDS, MAX_REPORT_ROWS, type TableResult, type TableColumn, type ColumnKind } from './table-result.ts';
 export { defineWriteCapability, withWriteCapability, hasWriteCapability, type WriteCapability } from './write-capability.ts';

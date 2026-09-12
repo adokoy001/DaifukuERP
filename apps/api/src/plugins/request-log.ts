@@ -22,7 +22,7 @@ export function registerRequestLog(app: FastifyInstance): void {
   app.addHook('onResponse', async (req, reply) => {
     const line: RequestLogLine = {
       method: req.method,
-      url: req.url,
+      url: req.url.split('?')[0] ?? req.url,
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime * 1000) / 1000,
       actor: actorOf(req),

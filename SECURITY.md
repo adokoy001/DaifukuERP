@@ -4,9 +4,9 @@ Daifuku は開発中の実験的な業務システムです。セキュリティ
 
 ## 脆弱性の非公開報告
 
-2026-09-12 時点では、このリポジトリの GitHub 非公開脆弱性報告機能はまだ有効化されていません。現在は [非公開連絡先の確認 Issue](https://github.com/adokoy001/DaifukuERP/issues/new?template=security-contact.yml) に「非公開のセキュリティ連絡先を希望する」とだけ記載してください。問題の詳細は、保守者が非公開の連絡方法を案内するまで送らないでください。
+2026-09-12 に GitHub の非公開脆弱性報告を有効化し、APIで有効状態を確認しました。機密性のある問題は [非公開報告フォーム](https://github.com/adokoy001/DaifukuERP/security/advisories/new) へ送ってください。公開Issueへ事前に連絡先を問い合わせる必要はありません。
 
-機能の有効化後は [GitHub の非公開報告フォーム](https://github.com/adokoy001/DaifukuERP/security/advisories/new) を利用できます。公開 Issue、Pull Request、Discussion に攻撃手順、認証情報、個人情報、実際の業務データを投稿しないでください。非公開で受け取った内容を確認し、影響範囲・修正・公開時期を報告者と調整します。
+公開 Issue、Pull Request、Discussion に攻撃手順、認証情報、個人情報、実際の業務データを投稿しないでください。非公開で受け取った内容を確認し、影響範囲・修正・公開時期を報告者と調整します。
 
 分かる範囲で、次を非公開フォームに記載してください。
 

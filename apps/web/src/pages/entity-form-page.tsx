@@ -18,6 +18,8 @@ import { useLocale } from '../i18n.tsx';
 import { formatTimestamp, shortId } from '../lib/format.ts';
 import { S } from '../strings.ts';
 import { EntityMissing, LoadingView, MetaError } from './status-views.tsx';
+import { canRetainData } from '../lib/read-recovery.ts';
+import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -66,6 +68,7 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
   };
   return (
     <div className="flex flex-col gap-3 p-3">
+      <ReadRefreshNotice />
       <header className="flex flex-wrap items-center gap-2">
         <Link to="/e/$entity" params={{ entity: entity.name }} className="text-sky-700 hover:underline">
           ← {t(entity.label)}
@@ -111,14 +114,14 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   const id = mode === 'edit' ? params.id : undefined;
   const { meta, entity } = useEntityMeta(name);
   const record = useRecord(name, entity ? id : undefined);
-  if (meta.isError) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
+  if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
   if (mode === 'new' && isWorkforceManaged(entity.name)) return <div className="p-3"><WorkforceWorkflowLink entity={entity.name} /></div>;
   if (mode === 'edit') {
-    if (record.isError) return <MetaError error={record.error} retry={() => void record.refetch()} />;
+    if (record.isError && !canRetainData(record)) return <MetaError error={record.error} retry={() => void record.refetch()} />;
     if (record.isPending) return <LoadingView />;
-    return <RecordView entity={entity} record={record.data} />;
+    return <ReadRecoveryProvider sources={[meta, record]}><RecordView entity={entity} record={record.data} /></ReadRecoveryProvider>;
   }
-  return <RecordView entity={entity} record={undefined} />;
+  return <ReadRecoveryProvider sources={[meta]}><RecordView entity={entity} record={undefined} /></ReadRecoveryProvider>;
 }

@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: セキュリティ問題を非公開で報告
+    url: https://github.com/adokoy001/DaifukuERP/security/advisories/new
+    about: 認証・権限・データ漏えいなどの問題は、公開Issueではなく非公開フォームへ送ってください。
   - name: セキュリティ報告方針
     url: https://github.com/adokoy001/DaifukuERP/blob/main/SECURITY.md
-    about: 脆弱性の詳細を公開する前に、非公開の報告方法を確認してください。
+    about: 対象範囲と報告する内容を確認してください。

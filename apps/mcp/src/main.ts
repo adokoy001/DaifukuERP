@@ -1,6 +1,6 @@
 // stdio entrypoint (spec mcp-app AC-1). stdout is the MCP channel: all logging goes to stderr via consoleLogger.
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { configureStorage, connect, consoleLogger, LocalStorage } from '@daifuku/kernel';
+import { configureStorage, connect, consoleLogger, LocalStorage, safeErrorDiagnostics } from '@daifuku/kernel';
 import { loadDotEnv, readConfig } from './config.ts';
 import { loadModules } from './modules.ts';
 import { buildMcpServer } from './server.ts';
@@ -43,6 +43,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  log.error('fatal', { error: err instanceof Error ? (err.stack ?? err.message) : String(err) });
+  log.error('fatal', { ...safeErrorDiagnostics(err), hint: 'Check database connection, storage and account settings; sensitive details are not logged.' });
   process.exit(1);
 });
