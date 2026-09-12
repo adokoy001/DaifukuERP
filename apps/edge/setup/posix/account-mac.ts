@@ -50,6 +50,23 @@ export function validateMacAccountAttributes(fields: Record<string, string>, gid
   if (fields.IsHidden !== '1') throw new Error('mac_account_hidden_changed');
   if (fields.AuthenticationAuthority !== ';DisabledUser;') throw new Error('mac_account_authentication_changed');
 }
+// Apple DirectoryService adds these two calculated memberships for a local account.
+// https://github.com/apple-oss-distributions/DirectoryService/blob/main/Server/Mbrd_MembershipResolver.cpp#L1686-L1708
+const calculatedGroups = [
+  { name: 'everyone', gid: '12', uuid: 'ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C' },
+  { name: 'localaccounts', gid: '61', uuid: 'ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000003D' },
+] as const;
+async function inspectGroups(host: PosixHost, gid: number): Promise<void> {
+  const groups = (await command(host, '/usr/bin/id', ['-G', '_daifukuedge'])).trim().split(/\s+/);
+  const primary = new Set([String(gid), ...(gid === 4294967294 ? ['-2'] : [])]);
+  const allowed = new Set([...primary, ...calculatedGroups.map((group) => group.gid)]);
+  if (!groups.some((group) => primary.has(group)) || groups.some((group) => !allowed.has(group))) throw new Error('mac_account_supplementary_groups_changed');
+  for (const group of calculatedGroups) {
+    if (!groups.includes(group.gid)) continue;
+    const fields = dsRecord(await command(host, '/usr/bin/dscl', ['.', '-read', '/Groups/' + group.name]));
+    if (fields.PrimaryGroupID !== group.gid || fields.GeneratedUID?.toUpperCase() !== group.uuid) throw new Error('mac_account_calculated_group_changed');
+  }
+}
 export async function inspectMacAccount(host: PosixHost, context: ServiceContext, partial = false): Promise<PosixAccount | null> {
   const fields = await record(host);
   if (!fields) return null;
@@ -57,8 +74,7 @@ export async function inspectMacAccount(host: PosixHost, context: ServiceContext
   const gid = await nobodyGroup(host);
   if (partial && !fields.UniqueID) return null;
   validateMacAccountAttributes(fields, gid);
-  const groups = (await command(host, '/usr/bin/id', ['-G', '_daifukuedge'])).trim().split(/\s+/);
-  if (groups.length !== 1 || ![String(gid), '-2'].includes(groups[0] ?? '')) throw new Error('Service account has unexpected supplementary groups.');
+  await inspectGroups(host, gid);
   return { name: '_daifukuedge', group: 'nobody', uid: Number(fields.UniqueID), gid };
 }
 export function nextServiceUid(text: string): number {

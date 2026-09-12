@@ -1,5 +1,6 @@
-import { isAbsolute, join, normalize, relative } from 'node:path';
+import { posix } from 'node:path';
 import type { ServiceContext } from '../types.js';
+const { isAbsolute, join, normalize, relative } = posix;
 export const LINUX_SERVICE = 'daifuku-edge.service';
 export const MAC_SERVICE = 'jp.daifuku.edge';
 export function ownershipTag(context: ServiceContext): string {

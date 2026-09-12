@@ -122,7 +122,9 @@ async function macAccountDiagnostics() {
   }
   const number = (value) => /^-?\d{1,10}$/.test(value ?? '') ? value : null;
   const path = (value) => /^\/[a-zA-Z0-9_/-]{1,100}$/.test(value ?? '') ? value : null;
-  return { available: result.ok, uid: number(fields.UniqueID), gid: number(fields.PrimaryGroupID), shell: path(fields.UserShell), home: path(fields.NFSHomeDirectory), hidden: fields.IsHidden === '1', authenticationDisabled: fields.AuthenticationAuthority === ';DisabledUser;', passwordStar: fields.Password === '*', passwordMasked: fields.Password === '********' };
+  const membership = await command('/usr/bin/id', ['-G', '_daifukuedge'], true);
+  const groups = membership.ok && /^-?\d+(?:\s+-?\d+)*\s*$/.test(membership.stdout.trim()) ? membership.stdout.trim().split(/\s+/).map(Number) : null;
+  return { available: result.ok, groups, uid: number(fields.UniqueID), gid: number(fields.PrimaryGroupID), shell: path(fields.UserShell), home: path(fields.NFSHomeDirectory), hidden: fields.IsHidden === '1', authenticationDisabled: fields.AuthenticationAuthority === ';DisabledUser;', passwordStar: fields.Password === '*', passwordMasked: fields.Password === '********' };
 }
 async function diagnostics(source) {
   const report = { stage, platform: process.platform };

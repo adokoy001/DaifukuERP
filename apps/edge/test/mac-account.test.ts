@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { dsRecord, inspectMacAccount, prepareMacAccount, validateMacAccountAttributes } from '../setup/posix/account-mac.ts';
 import { ownershipTag } from '../setup/posix/render.ts';
 import { PosixFixture } from './posix-fixture.ts';
@@ -31,5 +31,39 @@ describe('mac directory-service attribute validation', () => {
     await expect(prepareMacAccount(f, f.context)).rejects.toThrow('not owned'); expect(f.changes).toEqual(before);
     record.RealName = ownershipTag(f.context); record.UserShell = '/bin/zsh';
     await expect(prepareMacAccount(f, f.context)).rejects.toThrow('mac_account_shell_changed'); expect(f.changes).toEqual(before);
+  });
+});
+
+describe('mac calculated membership boundaries', () => {
+  function fixture(groups?: string): PosixFixture {
+    const f = new PosixFixture('darwin'); f.groupId = 4294967294;
+    f.user = { ...valid, RealName: ownershipTag(f.context) };
+    if (groups !== undefined) {
+      const run = f.run;
+      vi.spyOn(f, 'run').mockImplementation((executable, args) => executable === '/usr/bin/id' && args[0] === '-G'
+        ? Promise.resolve({ code: 0, stdout: groups, stderr: '' }) : run(executable, args));
+    }
+    return f;
+  }
+  it.each(['-2 12 61', '4294967294 61 12\n', '4294967294'])('accepts only the primary and calculated OS groups: %s', async (groups) => {
+    const f = fixture(groups);
+    await expect(inspectMacAccount(f, f.context)).resolves.toMatchObject({ uid: 401, gid: 4294967294 });
+    expect(f.changes).toEqual([]);
+  });
+  it.each(['-2 12 61 0', '-2 12 61 80', '-2 12 61 20', '-2 12 61 62', '-2 12 61 299', '12 61', '', '-2 everyone localaccounts'])('refuses extra, missing or invalid memberships: %s', async (groups) => {
+    const f = fixture(groups);
+    await expect(prepareMacAccount(f, f.context)).rejects.toThrow('mac_account_supplementary_groups_changed');
+    expect(f.changes).toEqual([]);
+  });
+  it.each([
+    ['everyone', 'PrimaryGroupID: 0\nGeneratedUID: ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C'],
+    ['localaccounts', 'PrimaryGroupID: 61\nGeneratedUID: 11111111-2222-4333-8444-555555555555'],
+    ['everyone', 'PrimaryGroupID: 12'],
+  ])('refuses a changed calculated group record for %s', async (group, stdout) => {
+    const f = fixture(); const run = f.run;
+    vi.spyOn(f, 'run').mockImplementation((executable, args) => executable === '/usr/bin/dscl' && args[2] === '/Groups/' + group
+      ? Promise.resolve({ code: 0, stdout, stderr: '' }) : run(executable, args));
+    await expect(prepareMacAccount(f, f.context)).rejects.toThrow('mac_account_calculated_group_changed');
+    expect(f.changes).toEqual([]);
   });
 });

@@ -1,9 +1,10 @@
-import { dirname, join } from 'node:path';
+import { posix } from 'node:path';
 import type { ServiceContext } from '../setup/types.js';
 import type { CommandResult, FileInfo, PosixHost } from '../setup/posix/host.js';
 import { linuxUnitPath } from '../setup/posix/service-linux.js';
 import { macPlistPath } from '../setup/posix/service-mac.js';
 import { ownershipTag } from '../setup/posix/render.js';
+const { dirname, join } = posix;
 interface Entry extends FileInfo { text: string; acl?: boolean }
 export class PosixFixture implements PosixHost {
   files = new Map<string, Entry>();
@@ -47,7 +48,7 @@ export class PosixFixture implements PosixHost {
     if (executable === '/bin/ls') return this.ok(`drwx------${this.files.get(args[1] ?? '')?.acl ? '+' : ''} 1 root wheel 0 path`);
     if (executable === '/bin/chmod') { const entry = this.files.get(args[1] ?? ''); if (entry) entry.acl = false; this.changes.push('acl:' + args[1]); return this.ok(); }
     if (executable === '/usr/bin/getent') return this.getent(args);
-    if (executable === '/usr/bin/id') return this.user ? this.ok(args[0] === '-G' ? String(this.groupId) + (this.extraGroup ? ' 0' : '') : this.user.UniqueID ?? '') : { code: 1, stdout: '', stderr: 'no such user' };
+    if (executable === '/usr/bin/id') return this.user ? this.ok(args[0] === '-G' ? String(this.groupId) + (this.platform === 'darwin' ? ' 12 61' : '') + (this.extraGroup ? ' 0' : '') : this.user.UniqueID ?? '') : { code: 1, stdout: '', stderr: 'no such user' };
     if (executable === '/usr/sbin/useradd') { this.user = { UniqueID: '401', RealName: ownershipTag(this.context), Password: '!' }; this.changes.push('create-account'); return this.ok(); }
     if (executable === '/usr/bin/dscl') return this.dscl(args);
     if (executable === '/usr/bin/systemctl') return this.systemctl(args);
@@ -65,6 +66,8 @@ export class PosixFixture implements PosixHost {
   private dscl(args: string[]): CommandResult {
     if (args[0] === '/Search') return this.ok(`root 0\n_reserved 400\n${this.user?.UniqueID ? '_daifukuedge ' + this.user.UniqueID : ''}`);
     if (args[1] === '-list') return this.ok('root\n' + (this.user ? '_daifukuedge' : ''));
+    if (args[2] === '/Groups/everyone') return this.ok('PrimaryGroupID: 12\nGeneratedUID: ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C');
+    if (args[2] === '/Groups/localaccounts') return this.ok('PrimaryGroupID: 61\nGeneratedUID: ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000003D');
     if (args[2] === '/Groups/nobody') return this.ok('PrimaryGroupID: ' + this.groupId);
     if (args[1] === '-read') return this.ok(Object.entries(this.user ?? {}).map(([key, value]) => (key === 'IsHidden' ? 'dsAttrTypeNative:IsHidden' : key) + ': ' + value).join('\n'));
     if (args[1] === '-create') { this.user ??= {}; this.user[args[3] ?? ''] = args[4] ?? ''; this.changes.push('dscl:' + args[3]); return this.ok(); }

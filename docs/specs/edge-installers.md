@@ -9,7 +9,7 @@ Windows、systemd Linux、macOSの端末で店舗中継をログイン不要の�
 ## 受入基準（EARS）
 
 - EI1: セットアップを実行したとき、OS/architecture、配布manifestと期待hash、Node版、対象path、既存所有markerを検査する。既定のplanはファイル・service・accountを変更しない。実行は明示したexecuteによる。
-- EI2: 初回導入したとき、Windows SCM、Linux systemd、macOS LaunchDaemonへ登録し、ログイン不要の専用低権限accountで動かす。アプリ/実行ファイルはaccountが書換不能、私有stateは他の一般利用者へ公開しない。OS防御・firewall・TLS検証を無効にしない。
+- EI2: 初回導入したとき、Windows SCM、Linux systemd、macOS LaunchDaemonへ登録し、ログイン不要の低権限accountで動かす。Linux/macOSは専用account、Windowsは組込LocalServiceを使う。アプリ/実行ファイルはaccountが書換不能、私有stateは他の一般利用者へ公開しない。Windowsの同一LocalServiceで動く別サービス間の隔離は保証しない。OS防御・firewall・TLS検証を無効にしない。
 - EI3: 接続コードがまだないとき、serviceは秘密を出さず登録待ちになる。管理者がファイルで渡した単回codeをサービス本人が消費し、成功確認後にのみ入力ファイルを除去する。引数・URL・通常ログへcodeを含めない。
 - EI4: 複数processが同じstateへ入ろうとしたとき、OSが保持する排他で1つだけを許可し、死亡時はOSが解放する。mtimeやタイムアウトだけでlockを奪わない。OS別の秘密ファイル/ACL/リンク検査とjournal置換を持ち、結果不明の物理処理を再実行しない。
 - EI5: 更新時は旧serviceを確認・停止し、新しいimmutable releaseへ切り替える。資格情報・設定・未解決journalは保持し、途中失敗の状態と旧版を残す。異なるgatewayへ黙って設定を変えない。未完了の導入は明示したresumeで再開できる。

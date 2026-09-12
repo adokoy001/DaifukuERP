@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import posixpath
 import re
 import tarfile
 import urllib.request
@@ -78,6 +79,22 @@ exec "$base/runtime/node" "$base/setup/setup.mjs" "$@"
 '''}
 
 
+def manual(release_id):
+    """Keep cross-references usable when this Markdown is read outside the repository."""
+    revision = release_id[5:] if re.fullmatch(r'ci-[ab]-[0-9a-f]{40}', release_id) else 'main'
+    source = (ROOT / 'docs/manual/edge-service-setup.md').read_text()
+    def link(match):
+        value = match[1]
+        if value.startswith('#') or re.match(r'[a-zA-Z]+:', value):
+            return match[0]
+        path, separator, fragment = value.partition('#')
+        relative = posixpath.normpath('docs/manual/' + path)
+        if relative.startswith('../') or not (ROOT / relative).exists():
+            raise ValueError('invalid_manual_reference')
+        return '](https://github.com/adokoy001/DaifukuERP/blob/' + revision + '/' + relative + separator + fragment + ')'
+    return re.sub(r'\]\(([^\s)]+)\)', link, source).encode()
+
+
 def verify_archive(path, name, expected):
     """Read the deliverable back, including executable bits and exact entry topology."""
     expected = {name + '/' + relative: data for relative, data in expected.items()}
@@ -115,7 +132,7 @@ def package(target, release_id, output, cache):
         files[destination] = (dist / source).read_bytes()
     files.update(launchers(platform == 'win32'))
     files['config.example.json'] = b'{\n  "apiBaseUrl": "https://erp.example.com/api",\n  "devices": []\n}\n'
-    files['README.md'] = (ROOT / 'docs/manual/edge-service-setup.md').read_bytes()
+    files['README.md'] = manual(release_id)
     if platform == 'win32':
         wrapper = CATALOG['wrapper']
         files['wrapper/WinSW.NET461.exe'] = download(wrapper['url'], wrapper['sha256'], cache)
