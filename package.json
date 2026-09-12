@@ -27,7 +27,8 @@
     "demo:industries": "pnpm --filter @daifuku/api demo:industries",
     "setup": "tsx apps/api/src/setup/cli.ts",
     "test:setup": "tsx apps/api/test/setup.integration.ts",
-    "docs:check": "node scripts/check-doc-links.mjs"
+    "docs:check": "node scripts/check-doc-links.mjs",
+    "test:identity:e2e": "node scripts/test-identity-e2e.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

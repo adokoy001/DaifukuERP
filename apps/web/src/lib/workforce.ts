@@ -4,10 +4,11 @@ export const workforceStatuses: Record<string, Label> = {
   working: { ja: '勤務中', en: 'Working' }, break: { ja: '休憩中', en: 'On break' }, closed: { ja: '退勤済み', en: 'Clocked out' },
   submitted: { ja: '確認待ち', en: 'Submitted' }, approved: { ja: '承認済み', en: 'Approved' }, returned: { ja: '差戻し', en: 'Returned' },
   pending: { ja: '承認待ち', en: 'Pending' }, rejected: { ja: '却下', en: 'Rejected' }, cancelled: { ja: '取消済み', en: 'Cancelled' },
+  accepted: { ja: '受付済み', en: 'Accepted' },
   draft: { ja: '下書き', en: 'Draft' }, settled: { ja: '精算済み', en: 'Settled' }, confirmed: { ja: '確定済み', en: 'Confirmed' },
 };
 export function workforceTone(status: string): 'positive' | 'pending' | 'negative' | undefined {
-  if (['working', 'approved', 'settled', 'confirmed'].includes(status)) return 'positive';
+  if (['working', 'approved', 'settled', 'confirmed', 'accepted'].includes(status)) return 'positive';
   if (['break', 'pending', 'submitted'].includes(status)) return 'pending';
   if (['rejected', 'returned', 'cancelled'].includes(status)) return 'negative';
   return undefined;

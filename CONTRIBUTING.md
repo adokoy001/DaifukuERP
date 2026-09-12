@@ -79,6 +79,25 @@ pnpm --filter @daifuku/web exec playwright test e2e/workforce.spec.ts --project=
 
 スクリーンショットと失敗時 trace は `apps/web/test-results/`、HTML レポートは `apps/web/playwright-report/` に出ます。追加の入金画面スクリーンショットは `E2E_SCREENSHOTS=1` で取得できます。外部の `review/` ディレクトリは不要です。サーバと DB は検証後に自分が起動・作成した対象だけを停止してください。
 
+## 認証ブラウザ試験
+
+通常のブラウザー試験と別に、SSO/MFA・招待・再設定を検証するfixtureを用意しています。OpenSSLとlockfileに対応するPlaywright Chromiumが必要です。DB管理者が新しい空DB `daifuku_e2e_test_enterprise`（再試験は `_run2` 等のsuffix）をmigration owner所有で作成し、loopbackの `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` を設定します。ownerの所有権/BYPASSRLS、別appロールの `daifuku_app` / NOBYPASSRLSを検査し、非空DB・production・接続先overrideを拒否します。
+
+```sh
+# These variables must name the NEW empty identity fixture DB, not the normal DB-test database.
+export TEST_DATABASE_URL_OWNER='postgres://daifuku_owner:owner@127.0.0.1:5432/daifuku_e2e_test_enterprise'
+export TEST_DATABASE_URL='postgres://daifuku_app:app@127.0.0.1:5432/daifuku_e2e_test_enterprise'
+export E2E_IDENTITY_PREPARE=1
+pnpm --filter @daifuku/web exec playwright install chromium
+pnpm test:identity:e2e
+```
+
+このscriptがAPI3109、Web5189、合成IdP3110と一時証明書のTLS SMTPを起動し、`playwright.identity.config.ts` の2シナリオを実行して停止します。使用中portは拒否し、既存DBを初期化しません。合成SMTPは `example.com` / `example.test` 宛だけを受理し、外部へ配送しません。通常のPlaywright設定はこの専用fixtureを分離しており、CIの4番目の独立jobで実行します。認証業務と運用の範囲は [認証・メール運用](docs/operations/enterprise-identity.md) を参照してください。
+
+## マニュアルを更新する
+
+操作の正本は `docs/manual/*.md` です。`pnpm manual:build` は章と付録を列挙し、Python 3の `markdown` packageで単一HTMLへ変換します。Python環境に `markdown` がない場合は隔離した仮想環境へ導入してください。生成HTMLを直接編集せず、Markdown修正後に再生成し、目次と追加章のリンク・スマホ幅を確認します。スクリーンショットは合成データだけを使います。
+
 ## 導入セットアップの試験
 
 セットアップの実受入は [専用クラスタでの受入手順](docs/operations/setup.md) の `scripts/setup-test-cluster.mjs` と `pnpm test:setup` を使います。初回導入・既存版からの更新・バックアップ復元・途中失敗からの再開を扱います。生成された env、資格情報、バックアップ、状態ファイルは公開しないでください。

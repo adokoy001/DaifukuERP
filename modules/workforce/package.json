@@ -19,6 +19,14 @@
     "./scheduling": {
       "types": "./src/scheduling/index.ts",
       "import": "./src/scheduling/index.ts"
+    },
+    "./fiscal-contract": {
+      "types": "./src/fiscal-contract.ts",
+      "import": "./src/fiscal-contract.ts"
+    },
+    "./work-system-contract": {
+      "types": "./src/work-system-contract.ts",
+      "import": "./src/work-system-contract.ts"
     }
   },
   "scripts": {

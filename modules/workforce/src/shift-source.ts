@@ -3,6 +3,7 @@ import { allRows } from './common.ts';
 import { WorkforceEmployee, WorkforceLeaveRequest, WorkforcePayPolicy, WorkforceShiftAssignment, WorkforceShiftAvailability, WorkforceShiftPlan, WorkforceShiftProfile, WorkforceSite } from './entities/index.ts';
 import { shiftAvailabilitySummary, shiftPlanSummary, shiftProfileSummary } from './shift-contract.ts';
 import type { ShiftProblem } from './scheduling/types.ts';
+import { shiftWorkSystems } from './shift-work-system.ts';
 import { addDays } from './services/time.ts';
 import { stableJson } from './services/json.ts';
 export const planSummary = (row: Infer<typeof WorkforceShiftPlan>) => shiftPlanSummary.parse({ ...row, publishedAt: row.publishedAt?.toISOString() ?? null });
@@ -28,12 +29,15 @@ export async function shiftSource(ctx: Context, siteId: string, weekStart: strin
     const { dailyLimitMinutes, weeklyLimitMinutes, breakAfterMinutes, breakMinutes, longBreakAfterMinutes, longBreakMinutes } = policy;
     return { date, dailyLimitMinutes, weeklyLimitMinutes, breakAfterMinutes, breakMinutes, longBreakAfterMinutes, longBreakMinutes };
   });
+  const workSystems = await shiftWorkSystems(ctx, ids, weekStart);
   const problem: ShiftProblem = {
     weekStart, slots: [], employees: employees.map(({ id, code, name, active, hiredOn, terminatedOn }) => ({ id, code, name, active, hiredOn, terminatedOn, profile: profileDtos.find((profile) => profile.employeeId === id)?.profile ?? null })),
     availability: availabilityDtos.flatMap((row) => row.days.map((day) => ({ ...day, employeeId: row.employeeId }))),
     leave: leave.map((row) => ({ employeeId: row.employeeId, date: row.leaveDate, portion: row.portion, status: row.status as 'pending' | 'approved' })),
-    existing: assignments.filter((row) => row.date < weekStart || row.date > end).map(({ employeeId, date, startMinute, endMinute, breakMinutes }) => ({ employeeId, date, startMinute, endMinute, breakMinutes })), rules,
+    existing: assignments.filter((row) => row.date < weekStart || row.date > end).map(({ employeeId, date, startMinute, endMinute, breakMinutes }) => ({ employeeId, date, startMinute, endMinute, breakMinutes })), rules, workRules: workSystems.workRules, periodBudgets: workSystems.periodBudgets,
   };
-  const revisions = Object.entries({ site: [site], employees, profiles, availability, leave, assignments, policies, published: plans.filter((row) => row.status === 'published') }).map(([kind, rows]) => [kind, rows.map(({ id, version }) => ({ id, version })).sort((a, b) => a.id.localeCompare(b.id))]);
-  return { site: { id: site.id, code: site.code, name: site.name }, employees, profiles: profileDtos, availability: availabilityDtos, plans, problem, sourceRevision: stableJson(revisions) };
+  const revisions = Object.entries({ site: [site], employees, profiles, availability, leave, assignments, workSystems: workSystems.rows, periodAssignments: workSystems.assignments.filter((row) => !assignments.some((existing) => existing.id === row.id)), policies, published: plans.filter((row) => row.status === 'published') }).map(([kind, rows]) => [kind, rows.map(({ id, version }) => [id, version] as const).sort((a, b) => a[0].localeCompare(b[0]))]);
+  const sourceRevision = stableJson(revisions);
+  if (sourceRevision.length > 500000) throw new StateError('清算期間の公開割当がシフト推薦の照合上限を超えました', '現在の版は50万文字以内の版照合に対応しています。拠点・期間の運用規模を確認してください。');
+  return { site: { id: site.id, code: site.code, name: site.name }, employees, profiles: profileDtos, availability: availabilityDtos, plans, problem, sourceRevision };
 }

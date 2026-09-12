@@ -1,0 +1,16 @@
+import { useState } from 'react';
+import { useMyFiscal } from '../api/fiscal.ts';
+import { useLocale } from '../i18n.tsx';
+import { canRetainData } from '../lib/read-recovery.ts';
+import { ReadRecoveryProvider, ReadRefreshNotice } from './read-refresh-notice.tsx';
+import { FiscalDeclaration } from './fiscal-declaration.tsx';
+import { FiscalCalculation, FiscalDeclarationSummary } from './fiscal-summary.tsx';
+import { WorkforceEmpty, WorkforceError, WorkforceMoney, WorkforcePanel, WorkforceStatus } from './workforce-shared.tsx';
+import type { MyFiscal } from '../api/fiscal.ts';
+export function EmployeeFiscal() {
+  const { t } = useLocale(), portal = useMyFiscal(true), [editing, setEditing] = useState<{ declaration: MyFiscal['declaration'] }>();
+  if (portal.isError && !canRetainData(portal)) return <WorkforceError error={portal.error} onRetry={() => void portal.refetch()} />;
+  if (!portal.data) return <p role="status">{t({ ja: '読込中…', en: 'Loading…' })}</p>;
+  const data = portal.data, frozen = data.adjustments.some((row) => row.status === 'confirmed');
+  return <ReadRecoveryProvider sources={[portal]}><div className="workforce-stack"><ReadRefreshNotice /><WorkforcePanel title={t({ ja: '2026年の年末調整', en: '2026 year-end adjustment' })} icon="document" note={t({ ja: '申告から還付・追加徴収まで、自分の内容を確認できます。', en: 'Review your own declaration, refund and additional withholding.' })}>{!data.employeeId ? <WorkforceEmpty>{t({ ja: '先にこの会社の従業員登録が必要です。', en: 'An employee record in this company is required.' })}</WorkforceEmpty> : <>{data.declaration ? <><WorkforceStatus status={data.declaration.status} />{data.declaration.reviewReason ? <p className="workforce-notice">{data.declaration.reviewReason}</p> : null}<details><summary>{t({ ja: '提出した内容を確認', en: 'Review submitted declaration' })}</summary><FiscalDeclarationSummary declaration={data.declaration.declaration} /></details></> : <p>{t({ ja: '申告はまだ提出していません。証明書と家族の所得を確認して提出してください。', en: 'No declaration submitted yet. Review your certificates and family income to begin.' })}</p>}<button className="btn btn-primary" disabled={frozen} onClick={() => setEditing({ declaration: data.declaration })}>{t(data.declaration ? { ja: '申告を更新して再提出', en: 'Update and resubmit' } : { ja: '年末調整を申告', en: 'Start declaration' })}</button>{frozen ? <p className="account-help">{t({ ja: '確定済みです。訂正が必要な場合は給与担当へ連絡してください。', en: 'This year is confirmed. Contact payroll if a correction is needed.' })}</p> : null}</>}</WorkforcePanel>{data.adjustments.map((row) => <WorkforcePanel key={row.id} title={t({ ja: '年末調整の結果', en: 'Year-end result' })} icon="wallet"><WorkforceStatus status={row.status} /><div className="workforce-record-meta"><span>{t({ ja: '還付', en: 'Refund' })}: <WorkforceMoney value={row.refund} /></span><span>{t({ ja: '追加徴収', en: 'Additional withholding' })}: <WorkforceMoney value={row.additionalTax} /></span></div>{row.settledOn ? <p>{row.settledOn} · {row.settlementReference}</p> : <p>{t({ ja: '精算記録はまだありません。', en: 'Settlement has not been recorded yet.' })}</p>}<details><summary>{t({ ja: '計算内訳を確認', en: 'Review calculation' })}</summary><FiscalCalculation row={row} /></details></WorkforcePanel>)}{editing ? <FiscalDeclaration original={editing.declaration} current={data.declaration} onClose={() => setEditing(undefined)} /> : null}</div></ReadRecoveryProvider>;
+}

@@ -14,7 +14,7 @@
 | `apps/api/` | JWT認証、HTTP、OpenAPI、DB/導入CLI | [server](../../apps/api/src/server.ts)、[main](../../apps/api/src/main.ts) |
 | `apps/web/` | React画面、会社切替、汎用entityフォーム、専用業務画面 | [router](../../apps/web/src/router.tsx)、[API client](../../apps/web/src/api/client.ts) |
 | `apps/mcp/` | actionから生成するMCP tools、呼出ごとの所属再確認 | [tools](../../apps/mcp/src/tools.ts)、[session](../../apps/mcp/src/session.ts) |
-| 外部配信worker（未実装） | outboxを外部へ配送する将来adapter | [outbox基盤](../../kernel/src/events.ts) |
+| 認証メール配送CLI | 暗号化した認証mail outboxをTLS SMTPで配送。汎用業務event配送は別の未実装範囲 | [mail-cli](../../apps/api/src/identity/mail-cli.ts)、[業務outbox](../../kernel/src/events.ts) |
 | `scripts/` | schema生成補助、文書生成、専用試験cluster、配布 | [scripts](../../scripts/) |
 
 依存名・固定版は [workspace](../../pnpm-workspace.yaml)、[lockfile](../../pnpm-lock.yaml)、各packageの `package.json` にあります。この文書へ依存版を重複コピーしません。
@@ -45,3 +45,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 - [領収書module](../../modules/workforce-evidence/src/index.ts): 経費に従属する添付サービスと型。
 - [業種共通処理](../../modules/industry-operations/src/index.ts): 業種固有の案件documentを組み立て、開始/完了/請求/集計を共通化する。
 - [10業界の定義](../../packs/industry-catalog/src/index.ts): 選択したpackだけを読み、業種固有項目・検収条件・サンプルを載せる。
+
+## 企業運営の追加入口
+
+認証/MFAのsystem tables・API adapter、Square署名通知、会社横断認可、連結/FC、給与税保険/年調/勤務制度の責任分担は [企業運営拡張の構造](enterprise-operations.md) にまとめています。業務3moduleはruntime catalogで全adapterへ登録し、認証system tableの追加はADR-0022に基づきkernelへ登録します。具体的な画面入口は [付録H](../manual/appendix-h-enterprise-operations.md) と [付録I](../manual/appendix-i-fiscal-and-work-systems.md) を参照してください。

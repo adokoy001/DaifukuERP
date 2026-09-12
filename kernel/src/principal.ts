@@ -8,6 +8,7 @@ export interface Principal {
   defaultCompanyId: string | null;
   tenantAdmin: boolean;
   sessionVersion: number;
+  mfaEnabled?: boolean;
   accessScope: 'all' | 'stores' | 'sites';
   storeIds: string[];
   siteIds: string[];

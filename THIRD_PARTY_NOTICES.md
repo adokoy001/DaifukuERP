@@ -2,7 +2,7 @@
 
 DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三者コード・データには、それぞれの権利者のライセンスが適用されます。本書は依存物を一括して MIT に変更するものではありません。
 
-確認日: 2026-09-12。対象は `pnpm-lock.yaml` の公開準備版、pnpm 10.28.0、Linux x64 上のインストール結果です。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
+確認日: 2026-09-12。対象は企業機能追加時点の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
 
 ## ソースに含めたアイコン
 
@@ -52,22 +52,25 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 
 ## 依存ライセンスの確認方法と範囲
 
-`pnpm licenses list --json`、`pnpm licenses list --prod --json`、`pnpm licenses list --dev --json` を公開準備版に対して実行しました。以下の件数はパッケージ名と宣言ライセンスの組の数です。同一ライセンスの異なる版・依存経路は合算され、版によってライセンスが異なる場合は別に数えます。prod と dev は重複します。これはブラウザへ取り込まれるコード量や運用中の到達可能性を表すものではありません。
+`pnpm licenses list --json`、`pnpm licenses list --prod --json`、`pnpm licenses list --dev --json` を企業機能追加後の lockfile に対して再実行しました。以下の件数はパッケージ名と宣言ライセンスの組の数です。同一ライセンスの異なる版・依存経路は合算され、版によってライセンスが異なる場合は別に数えます。prod と dev は重複します。これはブラウザへ取り込まれるコード量や運用中の到達可能性を表すものではありません。
 
 | 宣言ライセンス | installed all | prod | dev |
 | --- | ---: | ---: | ---: |
-| MIT | 350 | 168 | 200 |
+| MIT | 366 | 190 | 202 |
+| MIT-0 | 1 | 1 | 0 |
 | Apache-2.0 | 22 | 4 | 19 |
 | Python-2.0 | 1 | 0 | 1 |
 | CC-BY-4.0 | 1 | 0 | 1 |
-| ISC | 24 | 14 | 13 |
+| ISC | 31 | 21 | 13 |
 | BSD-2-Clause | 8 | 1 | 6 |
 | BSD-3-Clause | 7 | 5 | 3 |
 | BlueOak-1.0.0 | 5 | 5 | 1 |
 | Unlicense | 2 | 2 | 0 |
 | MPL-2.0 | 3 | 0 | 1 |
 
-インストール一覧に出なかった lock 内のプラットフォーム別バイナリ等 139 件（名前と版の組）も、固定版の npm 公式レジストリメタデータで確認しました。宣言は MIT 100 件、Apache-2.0 21 件、MPL-2.0 18 件でした。下記一覧にはそれらも含みます。`tsc7` は `typescript@7.0.2` の npm alias です。第三者の宣言を収集したもので、全パッケージのソースを法務監査したものではありません。
+初回公開時にインストール一覧に出なかった lock 内のプラットフォーム別バイナリ等 139 件（名前と版の組）も、固定版の npm 公式レジストリメタデータで確認しました。宣言は MIT 100 件、Apache-2.0 21 件、MPL-2.0 18 件でした。その固定版は現 lockfile でも変更されておらず、下記一覧に保持しています。企業機能で追加された名前と版の組は28件で、全件が今回の installed 照会に含まれます。`tsc7` は `typescript@7.0.2` の npm alias です。今回の pnpm 照会では alias の版が省かれるため、インストール済み package.json の Apache-2.0 宣言で補完しています。第三者の宣言を収集したもので、全パッケージのソースを法務監査したものではありません。
+
+今回追加した直接依存は `nodemailer@10.0.9`（MIT-0）、`qrcode@1.5.4`（MIT）、型定義 `@types/nodemailer@8.0.1` / `@types/qrcode@1.5.6`（MIT）です。`jose@6.2.12`（MIT）は既存 lockfile と同じ版を API の直接依存にも指定しました。QR生成に用いる qrcode の通知は Copyright (c) 2012 Ryan Day、ライセンス原文はパッケージの `license` ファイルにあります。
 
 個別に注意するデータ・ツール:
 
@@ -119,14 +122,17 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 
 ### ISC
 
-- [electron-to-chromium](https://github.com/Kilian/electron-to-chromium#readme) 1.5.426 (D); [fastparallel](https://github.com/mcollina/fastparallel) 2.4.1 (P); [fastq](https://github.com/mcollina/fastq#readme) 1.20.3 (P).
-- [fastseries](https://github.com/mcollina/fastseries) 1.7.2 (P); [flatted](https://github.com/WebReflection/flatted#readme) 3.4.4 (D); [glob-parent](https://github.com/gulpjs/glob-parent#readme) 6.0.2 (D).
-- [graceful-fs](https://github.com/isaacs/node-graceful-fs#readme) 4.2.11 (D); [inherits](https://github.com/isaacs/inherits#readme) 2.0.4 (P); [ini](https://github.com/npm/ini#readme) 4.1.1 (D).
-- [isexe](https://github.com/isaacs/isexe#readme) 2.0.0 (PD); [lru-cache](https://github.com/isaacs/node-lru-cache#readme) 5.1.1 (D); [minimalistic-assert](https://github.com/calvinmetcalf/minimalistic-assert) 1.0.1 (P).
-- [minimatch](https://github.com/isaacs/minimatch#readme) 3.1.5 (D); [once](https://github.com/isaacs/once#readme) 1.4.0 (P); [picocolors](https://github.com/alexeyraspopov/picocolors#readme) 1.1.1 (D).
-- [semver](https://github.com/npm/node-semver#readme) 6.3.1, 7.8.5 (PD); [setprototypeof](https://github.com/wesleytodd/setprototypeof) 1.2.0 (P); [siginfo](https://github.com/emilbayes/siginfo#readme) 2.0.0 (D).
-- [split2](https://github.com/mcollina/split2#readme) 4.2.0 (P); [which](https://github.com/isaacs/node-which#readme) 2.0.2 (PD); [wrappy](https://github.com/npm/wrappy) 1.0.2 (P).
-- [yallist](https://github.com/isaacs/yallist#readme) 3.1.1 (D); [yaml](https://eemeli.org/yaml/) 2.9.0 (P); [zod-to-json-schema](https://github.com/StefanTerdell/zod-to-json-schema#readme) 3.25.2 (P).
+- [cliui](https://github.com/yargs/cliui#readme) 6.0.0 (P); [electron-to-chromium](https://github.com/Kilian/electron-to-chromium#readme) 1.5.426 (D); [fastparallel](https://github.com/mcollina/fastparallel) 2.4.1 (P).
+- [fastq](https://github.com/mcollina/fastq#readme) 1.20.3 (P); [fastseries](https://github.com/mcollina/fastseries) 1.7.2 (P); [flatted](https://github.com/WebReflection/flatted#readme) 3.4.4 (D).
+- [get-caller-file](https://github.com/stefanpenner/get-caller-file#readme) 2.0.5 (P); [glob-parent](https://github.com/gulpjs/glob-parent#readme) 6.0.2 (D); [graceful-fs](https://github.com/isaacs/node-graceful-fs#readme) 4.2.11 (D).
+- [inherits](https://github.com/isaacs/inherits#readme) 2.0.4 (P); [ini](https://github.com/npm/ini#readme) 4.1.1 (D); [isexe](https://github.com/isaacs/isexe#readme) 2.0.0 (PD).
+- [lru-cache](https://github.com/isaacs/node-lru-cache#readme) 5.1.1 (D); [minimalistic-assert](https://github.com/calvinmetcalf/minimalistic-assert) 1.0.1 (P); [minimatch](https://github.com/isaacs/minimatch#readme) 3.1.5 (D).
+- [once](https://github.com/isaacs/once#readme) 1.4.0 (P); [picocolors](https://github.com/alexeyraspopov/picocolors#readme) 1.1.1 (D); [require-main-filename](https://github.com/yargs/require-main-filename#readme) 2.0.0 (P).
+- [semver](https://github.com/npm/node-semver#readme) 6.3.1, 7.8.5 (PD); [set-blocking](https://github.com/yargs/set-blocking#readme) 2.0.0 (P); [setprototypeof](https://github.com/wesleytodd/setprototypeof) 1.2.0 (P).
+- [siginfo](https://github.com/emilbayes/siginfo#readme) 2.0.0 (D); [split2](https://github.com/mcollina/split2#readme) 4.2.0 (P); [which](https://github.com/isaacs/node-which#readme) 2.0.2 (PD).
+- [which-module](https://github.com/nexdrew/which-module#readme) 2.0.1 (P); [wrappy](https://github.com/npm/wrappy) 1.0.2 (P); [y18n](https://github.com/yargs/y18n) 4.0.3 (P).
+- [yallist](https://github.com/isaacs/yallist#readme) 3.1.1 (D); [yaml](https://eemeli.org/yaml/) 2.9.0 (P); [yargs-parser](https://github.com/yargs/yargs-parser#readme) 18.1.3 (P).
+- [zod-to-json-schema](https://github.com/StefanTerdell/zod-to-json-schema#readme) 3.25.2 (P).
 
 ### MIT
 
@@ -174,74 +180,78 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 - [@turbo/windows-arm64](https://turborepo.dev) 2.10.12 (L); [@types/babel__core](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__core) 7.20.5 (D); [@types/babel__generator](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__generator) 7.27.0 (D).
 - [@types/babel__template](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__template) 7.4.4 (D); [@types/babel__traverse](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__traverse) 7.28.0 (D); [@types/chai](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/chai) 5.2.3 (D).
 - [@types/deep-eql](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/deep-eql) 4.0.2 (D); [@types/estree](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree) 1.0.9 (D); [@types/json-schema](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/json-schema) 7.0.15 (D).
-- [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) 22.20.2 (D); [@types/react](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) 19.3.0 (D); [@types/react-dom](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) 19.3.0 (D).
-- [@typescript-eslint/eslint-plugin](https://typescript-eslint.io/packages/eslint-plugin) 8.70.0 (D); [@typescript-eslint/parser](https://typescript-eslint.io/packages/parser) 8.70.0 (D); [@typescript-eslint/project-service](https://typescript-eslint.io) 8.70.0 (D).
-- [@typescript-eslint/scope-manager](https://typescript-eslint.io/packages/scope-manager) 8.70.0 (D); [@typescript-eslint/tsconfig-utils](https://typescript-eslint.io) 8.70.0 (D); [@typescript-eslint/type-utils](https://typescript-eslint.io) 8.70.0 (D).
-- [@typescript-eslint/types](https://typescript-eslint.io) 8.70.0 (D); [@typescript-eslint/typescript-estree](https://typescript-eslint.io/packages/typescript-estree) 8.70.0 (D); [@typescript-eslint/utils](https://typescript-eslint.io/packages/utils) 8.70.0 (D).
-- [@typescript-eslint/visitor-keys](https://typescript-eslint.io) 8.70.0 (D); [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme) 5.2.0 (D); [@vitest/mocker](https://github.com/vitest-dev/vitest/tree/main/packages/mocker) 5.0.0 (D).
-- [@vitest/spy](https://vitest.dev/api/mock) 5.0.0 (D); [abstract-logging](https://github.com/jsumners/abstract-logging#readme) 2.0.1 (P); [accepts](https://github.com/jshttp/accepts#readme) 2.0.0 (P).
-- [acorn](https://github.com/acornjs/acorn) 8.18.0 (D); [acorn-jsx](https://github.com/acornjs/acorn-jsx) 5.3.2 (D); [acorn-jsx-walk](https://github.com/sderosiaux/acorn-jsx-walk#readme) 2.0.0 (D).
-- [acorn-loose](https://github.com/acornjs/acorn) 8.5.2 (D); [acorn-walk](https://github.com/acornjs/acorn) 8.3.5 (D); [ajv](https://ajv.js.org) 6.15.0, 8.20.0 (PD).
-- [ajv-formats](https://github.com/ajv-validator/ajv-formats#readme) 3.0.1 (P); [ansi-styles](https://github.com/chalk/ansi-styles#readme) 4.3.0 (D); [asn1.js](https://github.com/indutny/asn1.js) 5.4.1 (P).
+- [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) 22.20.2 (D); [@types/nodemailer](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/nodemailer) 8.0.1 (D); [@types/qrcode](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/qrcode) 1.5.6 (D).
+- [@types/react](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) 19.3.0 (D); [@types/react-dom](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) 19.3.0 (D); [@typescript-eslint/eslint-plugin](https://typescript-eslint.io/packages/eslint-plugin) 8.70.0 (D).
+- [@typescript-eslint/parser](https://typescript-eslint.io/packages/parser) 8.70.0 (D); [@typescript-eslint/project-service](https://typescript-eslint.io) 8.70.0 (D); [@typescript-eslint/scope-manager](https://typescript-eslint.io/packages/scope-manager) 8.70.0 (D).
+- [@typescript-eslint/tsconfig-utils](https://typescript-eslint.io) 8.70.0 (D); [@typescript-eslint/type-utils](https://typescript-eslint.io) 8.70.0 (D); [@typescript-eslint/types](https://typescript-eslint.io) 8.70.0 (D).
+- [@typescript-eslint/typescript-estree](https://typescript-eslint.io/packages/typescript-estree) 8.70.0 (D); [@typescript-eslint/utils](https://typescript-eslint.io/packages/utils) 8.70.0 (D); [@typescript-eslint/visitor-keys](https://typescript-eslint.io) 8.70.0 (D).
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme) 5.2.0 (D); [@vitest/mocker](https://github.com/vitest-dev/vitest/tree/main/packages/mocker) 5.0.0 (D); [@vitest/spy](https://vitest.dev/api/mock) 5.0.0 (D).
+- [abstract-logging](https://github.com/jsumners/abstract-logging#readme) 2.0.1 (P); [accepts](https://github.com/jshttp/accepts#readme) 2.0.0 (P); [acorn](https://github.com/acornjs/acorn) 8.18.0 (D).
+- [acorn-jsx](https://github.com/acornjs/acorn-jsx) 5.3.2 (D); [acorn-jsx-walk](https://github.com/sderosiaux/acorn-jsx-walk#readme) 2.0.0 (D); [acorn-loose](https://github.com/acornjs/acorn) 8.5.2 (D).
+- [acorn-walk](https://github.com/acornjs/acorn) 8.3.5 (D); [ajv](https://ajv.js.org) 6.15.0, 8.20.0 (PD); [ajv-formats](https://github.com/ajv-validator/ajv-formats#readme) 3.0.1 (P).
+- [ansi-regex](https://github.com/chalk/ansi-regex#readme) 5.0.1 (P); [ansi-styles](https://github.com/chalk/ansi-styles#readme) 4.3.0 (PD); [asn1.js](https://github.com/indutny/asn1.js) 5.4.1 (P).
 - [assertion-error](https://github.com/chaijs/assertion-error#readme) 2.0.1 (D); [atomic-sleep](https://github.com/davidmarkclements/atomic-sleep#readme) 1.0.0 (P); [avvio](https://github.com/fastify/avvio#readme) 9.3.0 (P).
 - [balanced-match](https://github.com/juliangruber/balanced-match#readme) 1.0.2, 4.0.4 (PD); [bn.js](https://github.com/indutny/bn.js) 4.12.5 (P); [body-parser](https://github.com/expressjs/body-parser#readme) 2.3.0 (P).
 - [brace-expansion](https://github.com/juliangruber/brace-expansion#readme) 1.1.18, 5.0.9 (PD); [braces](https://github.com/micromatch/braces) 3.0.3 (D); [browserslist](https://github.com/browserslist/browserslist#readme) 4.28.9 (D).
 - [buffer-from](https://github.com/LinusU/buffer-from#readme) 1.1.2 (PD); [bytes](https://github.com/visionmedia/bytes.js#readme) 3.1.2 (P); [call-bind-apply-helpers](https://github.com/ljharb/call-bind-apply-helpers#readme) 1.0.2 (P).
-- [call-bound](https://github.com/ljharb/call-bound#readme) 1.0.4 (P); [callsites](https://github.com/sindresorhus/callsites#readme) 3.1.0 (D); [chai](http://chaijs.com) 6.2.2 (D).
-- [chalk](https://github.com/chalk/chalk#readme) 4.1.2 (D); [color-convert](https://github.com/Qix-/color-convert#readme) 2.0.1 (D); [color-name](https://github.com/colorjs/color-name) 1.1.4 (D).
-- [commander](https://github.com/tj/commander.js#readme) 15.0.0 (D); [concat-map](https://github.com/substack/node-concat-map#readme) 0.0.1 (D); [content-disposition](https://github.com/jshttp/content-disposition#readme) 1.1.0, 2.0.1 (P).
-- [content-type](https://github.com/jshttp/content-type#readme) 1.0.5, 2.1.0 (P); [convert-source-map](https://github.com/thlorenz/convert-source-map) 2.0.0 (D); [cookie](https://github.com/jshttp/cookie#readme) 0.7.2, 1.1.1 (P).
-- [cookie-es](https://github.com/unjs/cookie-es#readme) 3.1.1 (P); [cookie-signature](https://github.com/visionmedia/node-cookie-signature#readme) 1.2.2 (P); [cors](https://github.com/expressjs/cors#readme) 2.8.6 (P).
-- [cross-spawn](https://github.com/moxystudio/node-cross-spawn) 7.0.6 (PD); [csstype](https://github.com/frenic/csstype#readme) 3.2.3 (D); [debug](https://github.com/debug-js/debug#readme) 3.2.7, 4.4.3 (PD).
-- [decimal.js](https://github.com/MikeMcl/decimal.js#readme) 10.6.0 (P); [deep-is](https://github.com/thlorenz/deep-is#readme) 0.1.4 (D); [depd](https://github.com/dougwilson/nodejs-depd#readme) 2.0.0 (P).
-- [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) 18.2.0 (D); [dequal](https://github.com/lukeed/dequal#readme) 2.0.3 (P); [drizzle-kit](https://orm.drizzle.team) 0.31.10 (PD).
-- [dunder-proto](https://github.com/es-shims/dunder-proto#readme) 1.0.1 (P); [ee-first](https://github.com/jonathanong/ee-first#readme) 1.1.1 (P); [encodeurl](https://github.com/pillarjs/encodeurl#readme) 2.0.0 (P).
-- [enhanced-resolve](https://github.com/webpack/enhanced-resolve#readme) 5.24.5 (D); [es-define-property](https://github.com/ljharb/es-define-property#readme) 1.0.1 (P); [es-errors](https://github.com/ljharb/es-errors#readme) 1.3.0 (PD).
-- [es-module-lexer](https://github.com/guybedford/es-module-lexer#readme) 2.3.2 (D); [es-object-atoms](https://github.com/ljharb/es-object-atoms#readme) 1.1.2 (P); [esbuild](https://github.com/evanw/esbuild#readme) 0.18.20, 0.25.12, 0.28.2 (PD).
-- [escalade](https://github.com/lukeed/escalade#readme) 3.2.0 (D); [escape-html](https://github.com/component/escape-html#readme) 1.0.3 (P); [escape-string-regexp](https://github.com/sindresorhus/escape-string-regexp#readme) 4.0.0 (D).
-- [eslint](https://eslint.org) 9.39.5 (D); [eslint-import-resolver-node](https://github.com/import-js/eslint-plugin-import) 0.3.9 (D); [eslint-module-utils](https://github.com/import-js/eslint-plugin-import#readme) 2.12.1 (D).
-- [eslint-plugin-boundaries](https://github.com/javierbrea/eslint-plugin-boundaries#readme) 7.2.0 (D); [estree-walker](https://github.com/Rich-Harris/estree-walker#readme) 3.0.3 (D); [etag](https://github.com/jshttp/etag#readme) 1.8.1 (P).
-- [eventsource](https://github.com/EventSource/eventsource#readme) 3.0.7 (P); [eventsource-parser](https://github.com/rexxars/eventsource-parser#readme) 3.1.1 (P); [express](https://expressjs.com/) 5.2.1 (P).
-- [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) 8.7.0 (P); [fast-check](https://fast-check.dev/) 4.9.0 (D); [fast-decode-uri-component](https://github.com/delvedor/fast-decode-uri-component#readme) 1.0.1 (P).
-- [fast-deep-equal](https://github.com/epoberezkin/fast-deep-equal#readme) 3.1.3 (PD); [fast-json-stable-stringify](https://github.com/epoberezkin/fast-json-stable-stringify) 2.1.0 (D); [fast-json-stringify](https://github.com/fastify/fast-json-stringify#readme) 7.0.1 (P).
-- [fast-levenshtein](https://github.com/hiddentao/fast-levenshtein#readme) 2.0.6 (D); [fast-querystring](https://github.com/anonrig/fast-querystring#readme) 1.1.2 (P); [fastfall](https://github.com/mcollina/fastfall#readme) 1.5.1 (P).
-- [fastify](https://fastify.dev/) 5.12.3 (P); [fastify-plugin](https://github.com/fastify/fastify-plugin#readme) 5.1.0, 6.0.0 (P); [fastify-type-provider-zod](https://github.com/turkerdev/fastify-type-provider-zod) 7.0.0 (P).
-- [fdir](https://github.com/thecodrr/fdir#readme) 6.5.0 (D); [file-entry-cache](https://github.com/jaredwray/file-entry-cache#readme) 8.0.0 (D); [fill-range](https://github.com/jonschlinkert/fill-range) 7.1.1 (D).
-- [finalhandler](https://github.com/pillarjs/finalhandler#readme) 2.1.1 (P); [find-my-way](https://github.com/delvedor/find-my-way#readme) 9.9.0 (P); [find-up](https://github.com/sindresorhus/find-up#readme) 5.0.0 (D).
-- [flat-cache](https://github.com/jaredwray/flat-cache#readme) 4.0.1 (D); [forwarded](https://github.com/jshttp/forwarded#readme) 0.2.0 (P); [fresh](https://github.com/jshttp/fresh#readme) 2.0.0 (P).
-- [fsevents](https://github.com/fsevents/fsevents) 2.3.3 (L); [function-bind](https://github.com/Raynos/function-bind) 1.1.2 (PD); [gensync](https://github.com/loganfsmyth/gensync) 1.0.0-beta.2 (D).
-- [get-intrinsic](https://github.com/ljharb/get-intrinsic#readme) 1.3.0 (P); [get-proto](https://github.com/ljharb/get-proto#readme) 1.0.1 (P); [get-tsconfig](https://github.com/privatenumber/get-tsconfig#readme) 4.14.3 (PD).
-- [global-directory](https://github.com/sindresorhus/global-directory#readme) 4.0.1 (D); [globals](https://github.com/sindresorhus/globals#readme) 14.0.0 (D); [gopd](https://github.com/ljharb/gopd#readme) 1.2.0 (P).
-- [handlebars](https://handlebarsjs.com/) 4.7.9 (D); [has-flag](https://github.com/sindresorhus/has-flag#readme) 4.0.0 (D); [has-symbols](https://github.com/ljharb/has-symbols#readme) 1.1.0 (P).
-- [hasown](https://github.com/inspect-js/hasOwn#readme) 2.0.4 (PD); [hono](https://hono.dev) 4.13.7 (P); [http-errors](https://github.com/jshttp/http-errors#readme) 2.0.1 (P).
-- [iconv-lite](https://github.com/pillarjs/iconv-lite) 0.7.3 (P); [ignore](https://github.com/kaelzhang/node-ignore#readme) 5.3.2, 7.0.6, 7.0.9 (D); [import-fresh](https://github.com/sindresorhus/import-fresh#readme) 3.3.1 (D).
-- [imurmurhash](https://github.com/jensyt/imurmurhash-js) 0.1.4 (D); [interpret](https://github.com/gulpjs/interpret#readme) 3.1.1 (D); [ip-address](https://github.com/beaugunderson/ip-address#readme) 10.7.0 (P).
-- [ipaddr.js](https://github.com/whitequark/ipaddr.js#readme) 1.9.1, 2.5.0 (P); [is-core-module](https://github.com/inspect-js/is-core-module) 2.16.1, 2.16.2 (D); [is-extglob](https://github.com/jonschlinkert/is-extglob) 2.1.1 (D).
-- [is-glob](https://github.com/micromatch/is-glob) 4.0.3 (D); [is-installed-globally](https://github.com/sindresorhus/is-installed-globally#readme) 1.0.0 (D); [is-number](https://github.com/jonschlinkert/is-number) 7.0.0 (D).
-- [is-path-inside](https://github.com/sindresorhus/is-path-inside#readme) 4.0.0 (D); [is-promise](https://github.com/then/is-promise#readme) 4.0.0 (P); [jiti](https://github.com/unjs/jiti#readme) 2.7.0 (D).
-- [jose](https://github.com/panva/jose) 6.2.12 (P); [js-tokens](https://github.com/lydell/js-tokens#readme) 4.0.0 (D); [js-yaml](https://github.com/nodeca/js-yaml#readme) 4.3.2 (D).
-- [jsesc](https://mths.be/jsesc) 3.1.0 (D); [json-buffer](https://github.com/dominictarr/json-buffer) 3.0.1 (D); [json-schema-ref-resolver](https://github.com/fastify/json-schema-ref-resolver#readme) 3.0.0 (P).
-- [json-schema-resolver](https://github.com/Eomm/json-schema-resolver#readme) 3.0.0 (P); [json-schema-traverse](https://github.com/epoberezkin/json-schema-traverse#readme) 0.4.1, 1.0.0 (PD); [json-stable-stringify-without-jsonify](https://github.com/samn/json-stable-stringify) 1.0.1 (D).
-- [json5](http://json5.org/) 2.2.3 (D); [keyv](https://github.com/jaredwray/keyv) 4.5.4 (D); [kleur](https://github.com/lukeed/kleur#readme) 3.0.3 (D).
-- [levn](https://github.com/gkz/levn) 0.4.1 (D); [locate-path](https://github.com/sindresorhus/locate-path#readme) 6.0.0 (D); [lodash.merge](https://lodash.com/) 4.6.2 (D).
-- [magic-string](https://github.com/Rich-Harris/magic-string#readme) 0.30.21, 1.3.1 (D); [math-intrinsics](https://github.com/es-shims/math-intrinsics#readme) 1.1.0 (P); [media-typer](https://github.com/jshttp/media-typer#readme) 1.1.1 (P).
-- [merge-descriptors](https://github.com/sindresorhus/merge-descriptors#readme) 2.0.0 (P); [micromatch](https://github.com/micromatch/micromatch) 4.0.8 (D); [mime](https://github.com/broofa/mime#readme) 3.0.0 (P).
-- [mime-db](https://github.com/jshttp/mime-db#readme) 1.54.0 (P); [mime-types](https://github.com/jshttp/mime-types#readme) 3.0.2 (P); [minimist](https://github.com/minimistjs/minimist) 1.2.8 (D).
-- [mnemonist](https://github.com/yomguithereal/mnemonist#readme) 0.40.4 (P); [ms](https://github.com/vercel/ms#readme) 2.1.3 (PD); [nanoid](https://github.com/ai/nanoid#readme) 3.3.18 (D).
-- [natural-compare](https://github.com/litejs/natural-compare-lite#readme) 1.4.0 (D); [negotiator](https://github.com/jshttp/negotiator#readme) 1.1.0 (P); [neo-async](https://github.com/suguru03/neo-async) 2.6.2 (D).
-- [node-releases](https://github.com/chicoxyzzy/node-releases#readme) 2.0.55 (D); [object-assign](https://github.com/sindresorhus/object-assign#readme) 4.1.1 (P); [object-inspect](https://github.com/inspect-js/object-inspect) 1.13.4 (P).
-- [obliterator](https://github.com/yomguithereal/obliterator#readme) 2.0.5 (P); [obug](https://github.com/sxzz/obug#readme) 2.2.1 (D); [on-exit-leak-free](https://github.com/mcollina/on-exit-or-gc#readme) 2.1.2 (P).
-- [on-finished](https://github.com/jshttp/on-finished#readme) 2.4.1 (P); [openapi-types](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) 12.1.3 (P); [optionator](https://github.com/gkz/optionator) 0.9.4 (D).
-- [p-limit](https://github.com/sindresorhus/p-limit#readme) 3.1.0 (D); [p-locate](https://github.com/sindresorhus/p-locate#readme) 5.0.0 (D); [parent-module](https://github.com/sindresorhus/parent-module#readme) 1.0.1 (D).
-- [parseurl](https://github.com/pillarjs/parseurl#readme) 1.3.3 (P); [path-exists](https://github.com/sindresorhus/path-exists#readme) 4.0.0 (D); [path-key](https://github.com/sindresorhus/path-key#readme) 3.1.1 (PD).
+- [call-bound](https://github.com/ljharb/call-bound#readme) 1.0.4 (P); [callsites](https://github.com/sindresorhus/callsites#readme) 3.1.0 (D); [camelcase](https://github.com/sindresorhus/camelcase#readme) 5.3.1 (P).
+- [chai](http://chaijs.com) 6.2.2 (D); [chalk](https://github.com/chalk/chalk#readme) 4.1.2 (D); [color-convert](https://github.com/Qix-/color-convert#readme) 2.0.1 (PD).
+- [color-name](https://github.com/colorjs/color-name) 1.1.4 (PD); [commander](https://github.com/tj/commander.js#readme) 15.0.0 (D); [concat-map](https://github.com/substack/node-concat-map#readme) 0.0.1 (D).
+- [content-disposition](https://github.com/jshttp/content-disposition#readme) 1.1.0, 2.0.1 (P); [content-type](https://github.com/jshttp/content-type#readme) 1.0.5, 2.1.0 (P); [convert-source-map](https://github.com/thlorenz/convert-source-map) 2.0.0 (D).
+- [cookie](https://github.com/jshttp/cookie#readme) 0.7.2, 1.1.1 (P); [cookie-es](https://github.com/unjs/cookie-es#readme) 3.1.1 (P); [cookie-signature](https://github.com/visionmedia/node-cookie-signature#readme) 1.2.2 (P).
+- [cors](https://github.com/expressjs/cors#readme) 2.8.6 (P); [cross-spawn](https://github.com/moxystudio/node-cross-spawn) 7.0.6 (PD); [csstype](https://github.com/frenic/csstype#readme) 3.2.3 (D).
+- [debug](https://github.com/debug-js/debug#readme) 3.2.7, 4.4.3 (PD); [decamelize](https://github.com/sindresorhus/decamelize#readme) 1.2.0 (P); [decimal.js](https://github.com/MikeMcl/decimal.js#readme) 10.6.0 (P).
+- [deep-is](https://github.com/thlorenz/deep-is#readme) 0.1.4 (D); [depd](https://github.com/dougwilson/nodejs-depd#readme) 2.0.0 (P); [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) 18.2.0 (D).
+- [dequal](https://github.com/lukeed/dequal#readme) 2.0.3 (P); [dijkstrajs](https://github.com/tcort/dijkstrajs) 1.0.3 (P); [drizzle-kit](https://orm.drizzle.team) 0.31.10 (PD).
+- [dunder-proto](https://github.com/es-shims/dunder-proto#readme) 1.0.1 (P); [ee-first](https://github.com/jonathanong/ee-first#readme) 1.1.1 (P); [emoji-regex](https://mths.be/emoji-regex) 8.0.0 (P).
+- [encodeurl](https://github.com/pillarjs/encodeurl#readme) 2.0.0 (P); [enhanced-resolve](https://github.com/webpack/enhanced-resolve#readme) 5.24.5 (D); [es-define-property](https://github.com/ljharb/es-define-property#readme) 1.0.1 (P).
+- [es-errors](https://github.com/ljharb/es-errors#readme) 1.3.0 (PD); [es-module-lexer](https://github.com/guybedford/es-module-lexer#readme) 2.3.2 (D); [es-object-atoms](https://github.com/ljharb/es-object-atoms#readme) 1.1.2 (P).
+- [esbuild](https://github.com/evanw/esbuild#readme) 0.18.20, 0.25.12, 0.28.2 (PD); [escalade](https://github.com/lukeed/escalade#readme) 3.2.0 (D); [escape-html](https://github.com/component/escape-html#readme) 1.0.3 (P).
+- [escape-string-regexp](https://github.com/sindresorhus/escape-string-regexp#readme) 4.0.0 (D); [eslint](https://eslint.org) 9.39.5 (D); [eslint-import-resolver-node](https://github.com/import-js/eslint-plugin-import) 0.3.9 (D).
+- [eslint-module-utils](https://github.com/import-js/eslint-plugin-import#readme) 2.12.1 (D); [eslint-plugin-boundaries](https://github.com/javierbrea/eslint-plugin-boundaries#readme) 7.2.0 (D); [estree-walker](https://github.com/Rich-Harris/estree-walker#readme) 3.0.3 (D).
+- [etag](https://github.com/jshttp/etag#readme) 1.8.1 (P); [eventsource](https://github.com/EventSource/eventsource#readme) 3.0.7 (P); [eventsource-parser](https://github.com/rexxars/eventsource-parser#readme) 3.1.1 (P).
+- [express](https://expressjs.com/) 5.2.1 (P); [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) 8.7.0 (P); [fast-check](https://fast-check.dev/) 4.9.0 (D).
+- [fast-decode-uri-component](https://github.com/delvedor/fast-decode-uri-component#readme) 1.0.1 (P); [fast-deep-equal](https://github.com/epoberezkin/fast-deep-equal#readme) 3.1.3 (PD); [fast-json-stable-stringify](https://github.com/epoberezkin/fast-json-stable-stringify) 2.1.0 (D).
+- [fast-json-stringify](https://github.com/fastify/fast-json-stringify#readme) 7.0.1 (P); [fast-levenshtein](https://github.com/hiddentao/fast-levenshtein#readme) 2.0.6 (D); [fast-querystring](https://github.com/anonrig/fast-querystring#readme) 1.1.2 (P).
+- [fastfall](https://github.com/mcollina/fastfall#readme) 1.5.1 (P); [fastify](https://fastify.dev/) 5.12.3 (P); [fastify-plugin](https://github.com/fastify/fastify-plugin#readme) 5.1.0, 6.0.0 (P).
+- [fastify-type-provider-zod](https://github.com/turkerdev/fastify-type-provider-zod) 7.0.0 (P); [fdir](https://github.com/thecodrr/fdir#readme) 6.5.0 (D); [file-entry-cache](https://github.com/jaredwray/file-entry-cache#readme) 8.0.0 (D).
+- [fill-range](https://github.com/jonschlinkert/fill-range) 7.1.1 (D); [finalhandler](https://github.com/pillarjs/finalhandler#readme) 2.1.1 (P); [find-my-way](https://github.com/delvedor/find-my-way#readme) 9.9.0 (P).
+- [find-up](https://github.com/sindresorhus/find-up#readme) 4.1.0, 5.0.0 (PD); [flat-cache](https://github.com/jaredwray/flat-cache#readme) 4.0.1 (D); [forwarded](https://github.com/jshttp/forwarded#readme) 0.2.0 (P).
+- [fresh](https://github.com/jshttp/fresh#readme) 2.0.0 (P); [fsevents](https://github.com/fsevents/fsevents) 2.3.3 (L); [function-bind](https://github.com/Raynos/function-bind) 1.1.2 (PD).
+- [gensync](https://github.com/loganfsmyth/gensync) 1.0.0-beta.2 (D); [get-intrinsic](https://github.com/ljharb/get-intrinsic#readme) 1.3.0 (P); [get-proto](https://github.com/ljharb/get-proto#readme) 1.0.1 (P).
+- [get-tsconfig](https://github.com/privatenumber/get-tsconfig#readme) 4.14.3 (PD); [global-directory](https://github.com/sindresorhus/global-directory#readme) 4.0.1 (D); [globals](https://github.com/sindresorhus/globals#readme) 14.0.0 (D).
+- [gopd](https://github.com/ljharb/gopd#readme) 1.2.0 (P); [handlebars](https://handlebarsjs.com/) 4.7.9 (D); [has-flag](https://github.com/sindresorhus/has-flag#readme) 4.0.0 (D).
+- [has-symbols](https://github.com/ljharb/has-symbols#readme) 1.1.0 (P); [hasown](https://github.com/inspect-js/hasOwn#readme) 2.0.4 (PD); [hono](https://hono.dev) 4.13.7 (P).
+- [http-errors](https://github.com/jshttp/http-errors#readme) 2.0.1 (P); [iconv-lite](https://github.com/pillarjs/iconv-lite) 0.7.3 (P); [ignore](https://github.com/kaelzhang/node-ignore#readme) 5.3.2, 7.0.6, 7.0.9 (D).
+- [import-fresh](https://github.com/sindresorhus/import-fresh#readme) 3.3.1 (D); [imurmurhash](https://github.com/jensyt/imurmurhash-js) 0.1.4 (D); [interpret](https://github.com/gulpjs/interpret#readme) 3.1.1 (D).
+- [ip-address](https://github.com/beaugunderson/ip-address#readme) 10.7.0 (P); [ipaddr.js](https://github.com/whitequark/ipaddr.js#readme) 1.9.1, 2.5.0 (P); [is-core-module](https://github.com/inspect-js/is-core-module) 2.16.1, 2.16.2 (D).
+- [is-extglob](https://github.com/jonschlinkert/is-extglob) 2.1.1 (D); [is-fullwidth-code-point](https://github.com/sindresorhus/is-fullwidth-code-point#readme) 3.0.0 (P); [is-glob](https://github.com/micromatch/is-glob) 4.0.3 (D).
+- [is-installed-globally](https://github.com/sindresorhus/is-installed-globally#readme) 1.0.0 (D); [is-number](https://github.com/jonschlinkert/is-number) 7.0.0 (D); [is-path-inside](https://github.com/sindresorhus/is-path-inside#readme) 4.0.0 (D).
+- [is-promise](https://github.com/then/is-promise#readme) 4.0.0 (P); [jiti](https://github.com/unjs/jiti#readme) 2.7.0 (D); [jose](https://github.com/panva/jose) 6.2.12 (P).
+- [js-tokens](https://github.com/lydell/js-tokens#readme) 4.0.0 (D); [js-yaml](https://github.com/nodeca/js-yaml#readme) 4.3.2 (D); [jsesc](https://mths.be/jsesc) 3.1.0 (D).
+- [json-buffer](https://github.com/dominictarr/json-buffer) 3.0.1 (D); [json-schema-ref-resolver](https://github.com/fastify/json-schema-ref-resolver#readme) 3.0.0 (P); [json-schema-resolver](https://github.com/Eomm/json-schema-resolver#readme) 3.0.0 (P).
+- [json-schema-traverse](https://github.com/epoberezkin/json-schema-traverse#readme) 0.4.1, 1.0.0 (PD); [json-stable-stringify-without-jsonify](https://github.com/samn/json-stable-stringify) 1.0.1 (D); [json5](http://json5.org/) 2.2.3 (D).
+- [keyv](https://github.com/jaredwray/keyv) 4.5.4 (D); [kleur](https://github.com/lukeed/kleur#readme) 3.0.3 (D); [levn](https://github.com/gkz/levn) 0.4.1 (D).
+- [locate-path](https://github.com/sindresorhus/locate-path#readme) 5.0.0, 6.0.0 (PD); [lodash.merge](https://lodash.com/) 4.6.2 (D); [magic-string](https://github.com/Rich-Harris/magic-string#readme) 0.30.21, 1.3.1 (D).
+- [math-intrinsics](https://github.com/es-shims/math-intrinsics#readme) 1.1.0 (P); [media-typer](https://github.com/jshttp/media-typer#readme) 1.1.1 (P); [merge-descriptors](https://github.com/sindresorhus/merge-descriptors#readme) 2.0.0 (P).
+- [micromatch](https://github.com/micromatch/micromatch) 4.0.8 (D); [mime](https://github.com/broofa/mime#readme) 3.0.0 (P); [mime-db](https://github.com/jshttp/mime-db#readme) 1.54.0 (P).
+- [mime-types](https://github.com/jshttp/mime-types#readme) 3.0.2 (P); [minimist](https://github.com/minimistjs/minimist) 1.2.8 (D); [mnemonist](https://github.com/yomguithereal/mnemonist#readme) 0.40.4 (P).
+- [ms](https://github.com/vercel/ms#readme) 2.1.3 (PD); [nanoid](https://github.com/ai/nanoid#readme) 3.3.18 (D); [natural-compare](https://github.com/litejs/natural-compare-lite#readme) 1.4.0 (D).
+- [negotiator](https://github.com/jshttp/negotiator#readme) 1.1.0 (P); [neo-async](https://github.com/suguru03/neo-async) 2.6.2 (D); [node-releases](https://github.com/chicoxyzzy/node-releases#readme) 2.0.55 (D).
+- [object-assign](https://github.com/sindresorhus/object-assign#readme) 4.1.1 (P); [object-inspect](https://github.com/inspect-js/object-inspect) 1.13.4 (P); [obliterator](https://github.com/yomguithereal/obliterator#readme) 2.0.5 (P).
+- [obug](https://github.com/sxzz/obug#readme) 2.2.1 (D); [on-exit-leak-free](https://github.com/mcollina/on-exit-or-gc#readme) 2.1.2 (P); [on-finished](https://github.com/jshttp/on-finished#readme) 2.4.1 (P).
+- [openapi-types](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) 12.1.3 (P); [optionator](https://github.com/gkz/optionator) 0.9.4 (D); [p-limit](https://github.com/sindresorhus/p-limit#readme) 2.3.0, 3.1.0 (PD).
+- [p-locate](https://github.com/sindresorhus/p-locate#readme) 4.1.0, 5.0.0 (PD); [p-try](https://github.com/sindresorhus/p-try#readme) 2.2.0 (P); [parent-module](https://github.com/sindresorhus/parent-module#readme) 1.0.1 (D).
+- [parseurl](https://github.com/pillarjs/parseurl#readme) 1.3.3 (P); [path-exists](https://github.com/sindresorhus/path-exists#readme) 4.0.0 (PD); [path-key](https://github.com/sindresorhus/path-key#readme) 3.1.1 (PD).
 - [path-parse](https://github.com/jbgutierrez/path-parse#readme) 1.0.7 (D); [path-to-regexp](https://github.com/pillarjs/path-to-regexp#readme) 8.4.2 (P); [picomatch](https://github.com/micromatch/picomatch) 2.3.2, 4.0.5, 4.0.7 (D).
 - [pino](https://getpino.io) 10.3.1 (P); [pino-abstract-transport](https://github.com/pinojs/pino-abstract-transport#readme) 3.0.0 (P); [pino-std-serializers](https://github.com/pinojs/pino-std-serializers#readme) 7.1.0 (P).
-- [pkce-challenge](https://github.com/crouchcd/pkce-challenge#readme) 5.0.1 (P); [postcss](https://postcss.org/) 8.5.28 (D); [prelude-ls](http://preludels.com) 1.2.1 (D).
-- [process-warning](https://github.com/fastify/fastify-warning#readme) 4.0.1, 5.1.0 (P); [prompts](https://github.com/terkelg/prompts#readme) 2.4.2 (D); [proxy-addr](https://github.com/jshttp/proxy-addr#readme) 2.0.7 (P).
-- [punycode](https://mths.be/punycode) 2.3.1 (D); [pure-rand](https://github.com/dubzzz/pure-rand#readme) 8.4.2 (D); [quick-format-unescaped](https://github.com/davidmarkclements/quick-format#readme) 4.0.4 (P).
-- [range-parser](https://github.com/jshttp/range-parser#readme) 1.3.0 (P); [raw-body](https://github.com/stream-utils/raw-body#readme) 3.0.2 (P); [react](https://react.dev/) 19.3.0 (P).
-- [react-dom](https://react.dev/) 19.3.0 (P); [react-refresh](https://react.dev/) 0.18.0 (D); [real-require](https://github.com/pinojs/real-require) 0.2.0, 1.0.0 (P).
-- [rechoir](https://github.com/gulpjs/rechoir#readme) 0.8.0 (D); [regexp-tree](https://github.com/DmitrySoshnikov/regexp-tree) 0.1.27 (D); [require-from-string](https://github.com/floatdrop/require-from-string#readme) 2.0.2 (P).
+- [pkce-challenge](https://github.com/crouchcd/pkce-challenge#readme) 5.0.1 (P); [pngjs](https://github.com/lukeapage/pngjs) 5.0.0 (P); [postcss](https://postcss.org/) 8.5.28 (D).
+- [prelude-ls](http://preludels.com) 1.2.1 (D); [process-warning](https://github.com/fastify/fastify-warning#readme) 4.0.1, 5.1.0 (P); [prompts](https://github.com/terkelg/prompts#readme) 2.4.2 (D).
+- [proxy-addr](https://github.com/jshttp/proxy-addr#readme) 2.0.7 (P); [punycode](https://mths.be/punycode) 2.3.1 (D); [pure-rand](https://github.com/dubzzz/pure-rand#readme) 8.4.2 (D).
+- [qrcode](http://github.com/soldair/node-qrcode) 1.5.4 (P); [quick-format-unescaped](https://github.com/davidmarkclements/quick-format#readme) 4.0.4 (P); [range-parser](https://github.com/jshttp/range-parser#readme) 1.3.0 (P).
+- [raw-body](https://github.com/stream-utils/raw-body#readme) 3.0.2 (P); [react](https://react.dev/) 19.3.0 (P); [react-dom](https://react.dev/) 19.3.0 (P).
+- [react-refresh](https://react.dev/) 0.18.0 (D); [real-require](https://github.com/pinojs/real-require) 0.2.0, 1.0.0 (P); [rechoir](https://github.com/gulpjs/rechoir#readme) 0.8.0 (D).
+- [regexp-tree](https://github.com/DmitrySoshnikov/regexp-tree) 0.1.27 (D); [require-directory](https://github.com/troygoode/node-require-directory/) 2.1.1 (P); [require-from-string](https://github.com/floatdrop/require-from-string#readme) 2.0.2 (P).
 - [resolve](https://github.com/browserify/resolve#readme) 1.22.12 (D); [resolve-from](https://github.com/sindresorhus/resolve-from#readme) 4.0.0 (D); [resolve-pkg-maps](https://github.com/privatenumber/resolve-pkg-maps#readme) 1.0.0 (PD).
 - [ret](https://github.com/fent/ret.js#readme) 0.5.0 (P); [reusify](https://github.com/mcollina/reusify#readme) 1.1.0 (P); [rfdc](https://github.com/davidmarkclements/rfdc#readme) 1.4.1 (P).
 - [rolldown](https://rolldown.rs/) 1.2.8 (D); [router](https://github.com/pillarjs/router#readme) 2.2.0 (P); [safe-buffer](https://github.com/feross/safe-buffer) 5.2.1 (P).
@@ -252,19 +262,24 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 - [side-channel](https://github.com/ljharb/side-channel#readme) 1.1.1 (P); [side-channel-list](https://github.com/ljharb/side-channel-list#readme) 1.0.1 (P); [side-channel-map](https://github.com/ljharb/side-channel-map#readme) 1.0.1 (P).
 - [side-channel-weakmap](https://github.com/ljharb/side-channel-weakmap#readme) 1.0.2 (P); [sisteransi](https://github.com/terkelg/sisteransi#readme) 1.0.5 (D); [sonic-boom](https://github.com/pinojs/sonic-boom#readme) 4.2.1 (P).
 - [source-map-support](https://github.com/evanw/node-source-map-support#readme) 0.5.21 (PD); [stackback](https://github.com/shtylman/node-stackback#readme) 0.0.2 (D); [statuses](https://github.com/jshttp/statuses#readme) 2.0.2 (P).
-- [std-env](https://github.com/unjs/std-env#readme) 4.2.0 (D); [steed](https://github.com/mcollina/steed#readme) 1.1.3 (P); [strip-bom](https://github.com/sindresorhus/strip-bom#readme) 3.0.0 (D).
-- [strip-json-comments](https://github.com/sindresorhus/strip-json-comments#readme) 3.1.1 (D); [supports-color](https://github.com/chalk/supports-color#readme) 7.2.0 (D); [supports-preserve-symlinks-flag](https://github.com/inspect-js/node-supports-preserve-symlinks-flag#readme) 1.0.0 (D).
-- [tailwindcss](https://tailwindcss.com) 4.3.3 (D); [tapable](https://github.com/webpack/tapable) 2.3.3 (D); [thread-stream](https://github.com/mcollina/thread-stream#readme) 4.2.0 (P).
-- [tinybench](https://github.com/tinylibs/tinybench#readme) 6.1.4 (D); [tinyexec](https://github.com/tinylibs/tinyexec#readme) 1.3.0 (D); [tinyglobby](https://superchupu.dev/tinyglobby) 0.2.17 (D).
-- [to-regex-range](https://github.com/micromatch/to-regex-range) 5.0.1 (D); [toad-cache](https://github.com/kibertoad/toad-cache) 3.7.4 (P); [toidentifier](https://github.com/component/toidentifier#readme) 1.0.1 (P).
-- [ts-api-utils](https://github.com/JoshuaKGoldberg/ts-api-utils#readme) 2.5.0 (D); [tsconfig-paths](https://github.com/dividab/tsconfig-paths#readme) 4.2.0 (D); [tsconfig-paths-webpack-plugin](https://github.com/dividab/tsconfig-paths-webpack-plugin#readme) 4.2.0 (D).
-- [tsx](https://tsx.hirok.io) 4.23.13 (PD); [turbo](https://turborepo.dev) 2.10.12 (D); [type-check](https://github.com/gkz/type-check) 0.4.0 (D).
-- [type-is](https://github.com/jshttp/type-is#readme) 2.1.0 (P); [typescript-eslint](https://typescript-eslint.io/packages/typescript-eslint) 8.70.0 (D); [undici-types](https://undici.nodejs.org) 6.21.0 (D).
-- [unpipe](https://github.com/stream-utils/unpipe#readme) 1.0.0 (P); [update-browserslist-db](https://github.com/browserslist/update-db#readme) 1.3.2 (D); [use-sync-external-store](https://github.com/react/react#readme) 1.7.0 (P).
-- [uuid](https://github.com/uuidjs/uuid#readme) 14.0.2 (P); [vary](https://github.com/jshttp/vary#readme) 1.1.2 (P); [vite](https://vite.dev) 8.3.0 (D).
-- [vitest](https://vitest.dev) 5.0.0 (D); [watskeburt](https://github.com/sverweij/watskeburt) 6.0.0 (D); [why-is-node-running](https://github.com/mafintosh/why-is-node-running) 2.3.0 (D).
-- [word-wrap](https://github.com/jonschlinkert/word-wrap) 1.2.5 (D); [wordwrap](https://github.com/substack/node-wordwrap#readme) 1.0.0 (D); [xtend](https://github.com/Raynos/xtend) 4.0.2 (P).
-- [yocto-queue](https://github.com/sindresorhus/yocto-queue#readme) 0.1.0 (D); [zod](https://zod.dev) 4.6.1 (P).
+- [std-env](https://github.com/unjs/std-env#readme) 4.2.0 (D); [steed](https://github.com/mcollina/steed#readme) 1.1.3 (P); [string-width](https://github.com/sindresorhus/string-width#readme) 4.2.3 (P).
+- [strip-ansi](https://github.com/chalk/strip-ansi#readme) 6.0.1 (P); [strip-bom](https://github.com/sindresorhus/strip-bom#readme) 3.0.0 (D); [strip-json-comments](https://github.com/sindresorhus/strip-json-comments#readme) 3.1.1 (D).
+- [supports-color](https://github.com/chalk/supports-color#readme) 7.2.0 (D); [supports-preserve-symlinks-flag](https://github.com/inspect-js/node-supports-preserve-symlinks-flag#readme) 1.0.0 (D); [tailwindcss](https://tailwindcss.com) 4.3.3 (D).
+- [tapable](https://github.com/webpack/tapable) 2.3.3 (D); [thread-stream](https://github.com/mcollina/thread-stream#readme) 4.2.0 (P); [tinybench](https://github.com/tinylibs/tinybench#readme) 6.1.4 (D).
+- [tinyexec](https://github.com/tinylibs/tinyexec#readme) 1.3.0 (D); [tinyglobby](https://superchupu.dev/tinyglobby) 0.2.17 (D); [to-regex-range](https://github.com/micromatch/to-regex-range) 5.0.1 (D).
+- [toad-cache](https://github.com/kibertoad/toad-cache) 3.7.4 (P); [toidentifier](https://github.com/component/toidentifier#readme) 1.0.1 (P); [ts-api-utils](https://github.com/JoshuaKGoldberg/ts-api-utils#readme) 2.5.0 (D).
+- [tsconfig-paths](https://github.com/dividab/tsconfig-paths#readme) 4.2.0 (D); [tsconfig-paths-webpack-plugin](https://github.com/dividab/tsconfig-paths-webpack-plugin#readme) 4.2.0 (D); [tsx](https://tsx.hirok.io) 4.23.13 (PD).
+- [turbo](https://turborepo.dev) 2.10.12 (D); [type-check](https://github.com/gkz/type-check) 0.4.0 (D); [type-is](https://github.com/jshttp/type-is#readme) 2.1.0 (P).
+- [typescript-eslint](https://typescript-eslint.io/packages/typescript-eslint) 8.70.0 (D); [undici-types](https://undici.nodejs.org) 6.21.0 (D); [unpipe](https://github.com/stream-utils/unpipe#readme) 1.0.0 (P).
+- [update-browserslist-db](https://github.com/browserslist/update-db#readme) 1.3.2 (D); [use-sync-external-store](https://github.com/react/react#readme) 1.7.0 (P); [uuid](https://github.com/uuidjs/uuid#readme) 14.0.2 (P).
+- [vary](https://github.com/jshttp/vary#readme) 1.1.2 (P); [vite](https://vite.dev) 8.3.0 (D); [vitest](https://vitest.dev) 5.0.0 (D).
+- [watskeburt](https://github.com/sverweij/watskeburt) 6.0.0 (D); [why-is-node-running](https://github.com/mafintosh/why-is-node-running) 2.3.0 (D); [word-wrap](https://github.com/jonschlinkert/word-wrap) 1.2.5 (D).
+- [wordwrap](https://github.com/substack/node-wordwrap#readme) 1.0.0 (D); [wrap-ansi](https://github.com/chalk/wrap-ansi#readme) 6.2.0 (P); [xtend](https://github.com/Raynos/xtend) 4.0.2 (P).
+- [yargs](https://yargs.js.org/) 15.4.1 (P); [yocto-queue](https://github.com/sindresorhus/yocto-queue#readme) 0.1.0 (D); [zod](https://zod.dev) 4.6.1 (P).
+
+### MIT-0
+
+- [nodemailer](https://nodemailer.com/) 10.0.9 (P).
 
 ### MPL-2.0
 

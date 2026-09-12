@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { changeOwnPassword, logoutAllSessions } from '../api/account.ts';
 import { clearSession, getToken, getUser, isApiError } from '../api/client.ts';
 import { ControlDialog } from '../components/control-dialog.tsx';
+import { IdentitySecurity } from '../components/identity-security.tsx';
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
 import '../account.css';
@@ -85,7 +86,7 @@ export function AccountPage() {
       <div className="account-intro"><div><span className="eyebrow">ACCOUNT &amp; SECURITY</span><h1>{t({ ja: '自分のアカウント', en: 'My account' })}</h1><p>{t({ ja: '毎日の仕事を、安心して始めるために。', en: 'Start each workday with confidence.' })}</p></div><Link className="btn" to="/">{t({ ja: 'ワークスペースへ戻る', en: 'Back to workspace' })}</Link></div>
       <section className="account-identity" aria-label={t({ ja: 'ログイン中の利用者', en: 'Signed-in user' })}><span className="user-avatar">{(user?.name ?? 'D').slice(0, 1)}</span><div><strong>{user?.name}</strong><span>{user?.email}</span></div><span className="account-identity-label">{t({ ja: '本人用の設定', en: 'Personal settings' })}</span></section>
       {security.error ? <p role="alert" className="account-error">{security.error}</p> : null}
-      <div className="account-grid"><PasswordCard security={security} /><SessionCard security={security} /></div>
+      <div className="account-grid"><PasswordCard security={security} /><SessionCard security={security} /></div><IdentitySecurity />
       {security.confirmLogout ? <ControlDialog title={t({ ja: '全端末のログインを終了しますか？', en: 'End every signed-in session?' })} busy={security.busy} onClose={() => security.setConfirmLogout(false)}><p>{t({ ja: 'この画面を含むすべての端末で、再ログインが必要になります。入力中のパスワードも破棄されます。', en: 'Every device, including this one, will need to sign in again. Any password you are entering will be discarded.' })}</p>{security.error ? <p className="account-error" role="alert">{security.error}</p> : null}<div className="dialog-actions"><button type="button" className="btn" disabled={security.busy} onClick={() => security.setConfirmLogout(false)} autoFocus>{t({ ja: '戻る', en: 'Go back' })}</button><button type="button" className="btn btn-primary" disabled={security.busy} onClick={security.logout}>{t(security.busy ? { ja: '処理中…', en: 'Working…' } : { ja: '全端末のログインを終了', en: 'End all sessions' })}</button></div></ControlDialog> : null}
     </div>
   </main>;

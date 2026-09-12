@@ -48,6 +48,8 @@ export async function withContext<T>(database: Database, params: ContextParams, 
 export function makeContext(db: Db, params: ContextParams): Context {
   const now = params.now ?? (() => new Date());
   const ctx: Context = {
+    ...(params.sessionVersion === undefined ? {} : { sessionVersion: params.sessionVersion }),
+    ...(params.mfaVerified === undefined ? {} : { mfaVerified: params.mfaVerified }),
     accessScope: params.accessScope ?? 'all',
     storeIds: params.storeIds ?? [],
     siteIds: params.siteIds ?? [],

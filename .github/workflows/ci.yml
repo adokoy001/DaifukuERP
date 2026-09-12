@@ -127,6 +127,57 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: false
 
+  identity:
+    name: identity browser workflows (synthetic OIDC and TLS SMTP)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.15-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL_OWNER: postgres://daifuku_owner:owner@127.0.0.1:5432/daifuku_ci_enterprise_e2e
+      TEST_DATABASE_URL: postgres://daifuku_app:app@127.0.0.1:5432/daifuku_ci_enterprise_e2e
+      E2E_IDENTITY_PREPARE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install the lockfile's matching Chromium
+        run: pnpm --filter @daifuku/web exec playwright install --with-deps chromium
+      - name: Create fixture roles and databases in this job's new service
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: psql -v ON_ERROR_STOP=1 -d postgres -f .github/ci/databases.sql
+      - name: Start and stop synthetic API, browser, OIDC and TLS SMTP with an empty database
+        run: pnpm test:identity:e2e
+      - name: Upload synthetic browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: identity-browser-diagnostics
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: false
+
   setup:
     name: safe setup acceptance (isolated cluster)
     runs-on: ubuntu-24.04

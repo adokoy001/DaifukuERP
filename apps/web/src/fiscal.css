@@ -1,0 +1,13 @@
+.fiscal-form-section { padding: 18px; border: 1px solid #e4e0f3; border-radius: 16px; background: linear-gradient(135deg, #faf9ff, #fff); }
+.fiscal-form-section h3 { margin: 0 0 14px; font-size: 16px; color: #44346e; }
+.fiscal-rows { display: grid; gap: 16px; }
+.fiscal-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 18px 0; }
+.fiscal-toolbar label { min-width: 160px; display: grid; gap: 6px; }
+.fiscal-evidence { overflow-wrap: anywhere; }
+.fiscal-evidence dl { display: grid; grid-template-columns: minmax(150px, 1fr) 2fr; gap: 10px; margin: 12px 0; }
+.fiscal-evidence dt { color: #64748b; }
+.fiscal-evidence dd { margin: 0; }
+.work-system-calendar .input { min-width: 82px; }
+.work-system-calendar input[type=time] { min-width: 110px; }
+.fiscal-choice-card { display: grid; gap: 10px; padding: 16px; border-radius: 14px; background: #f1f8fb; }
+@media(max-width: 640px) { .fiscal-evidence dl { grid-template-columns: 1fr; } .fiscal-form-section { padding: 14px; } }

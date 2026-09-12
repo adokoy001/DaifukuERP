@@ -95,7 +95,21 @@ const shiftRoute = createRoute({ getParentRoute: () => appRoute, path: '/workfor
 
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', beforeLoad: () => { if (!getToken()) throw redirect({ to: '/login' }); }, component: lazyRouteComponent(() => import('./pages/account-page.tsx'), 'AccountPage') });
 
-const routeTree = rootRoute.addChildren([loginRoute, accountRoute, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute])]);
+const fiscalRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/payroll', component: lazyRouteComponent(() => import('./pages/fiscal-page.tsx'), 'FiscalPage') });
+const workSystemRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/systems', component: lazyRouteComponent(() => import('./pages/work-system-page.tsx'), 'WorkSystemPage') });
+const commercePosRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/pos', component: lazyRouteComponent(() => import('./pages/commerce-pos-page.tsx'), 'CommercePosPage') });
+const commerceGroupRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/group', component: lazyRouteComponent(() => import('./pages/commerce-group-page.tsx'), 'CommerceGroupPage') });
+const commerceFranchiseRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/franchise', component: lazyRouteComponent(() => import('./pages/commerce-franchise-page.tsx'), 'CommerceFranchisePage') });
+
+const publicIdentityRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: '/forgot-password', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'ForgotPasswordPage') }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/reset-password', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'MailPasswordPage') }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accept-invitation', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'InvitationPage') }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/auth/oidc/callback', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'SsoCallbackPage') }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/auth/recovery-codes', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'RecoveryCodesPage') }),
+];
+
+const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute])]);
 
 export const router = createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
 

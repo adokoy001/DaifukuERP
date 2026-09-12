@@ -45,6 +45,7 @@ export const users = pgTable(
     tenantAdmin: integer('tenant_admin').notNull().default(0),
     version: integer('version').notNull().default(1),
     sessionVersion: integer('session_version').notNull().default(1),
+    mfaEnabled: integer('mfa_enabled').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (t) => [unique('users_tenant_id_uq').on(t.tenantId, t.id), uniqueIndex('users_email_uq').on(t.tenantId, t.email), foreignKey({ name: 'users_default_company_scope_fk', columns: [t.tenantId, t.defaultCompanyId], foreignColumns: [companies.tenantId, companies.id] }), tenantPolicy('users')],
@@ -146,4 +147,4 @@ registry.registerSystemTable('outbox', outbox);
 registry.registerSystemTable('ext_field_definitions', extFieldDefinitions);
 
 /** Tables that must not be RLS-forced (no tenant column). */
-export const NON_TENANT_TABLES: readonly string[] = ['tenants'];
+export const NON_TENANT_TABLES: readonly string[] = ['tenants', 'identity_rate_limits'];

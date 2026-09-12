@@ -5,11 +5,17 @@ import fastifyJwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { parse } from '../request-context.ts';
+import { registerIdentityRoutes } from '../identity/routes.ts';
+import { identityLoginReply } from '../identity/session.ts';
+import type { IdentityOptions } from '../identity/config.ts';
+import { verifyAttempt } from '../identity/attempt.ts';
+import { publicUser } from '../identity/public-user.ts';
 
 export interface JwtClaims {
   sub: string;
   tenantId: string;
   sessionVersion: number;
+  mfa?: boolean;
 }
 
 declare module '@fastify/jwt' {
@@ -32,6 +38,7 @@ declare module 'fastify' {
 
 /** Paths that do not require a token. */
 const PUBLIC_PREFIXES = ['/auth/login', '/openapi.json', '/docs', '/health'];
+const PUBLIC_IDENTITY = new Set(['/auth/mfa/verify', '/auth/oidc/providers', '/auth/oidc/start', '/auth/oidc/complete', '/auth/password-reset/request', '/auth/password-reset/complete', '/auth/invitations/accept']);
 
 export const TOKEN_TTL = '12h';
 
@@ -44,13 +51,10 @@ export class Unauthorized extends DaifukuError {
 
 const loginBody = z.object({ email: z.string().min(1).max(200), password: z.string().min(1).max(200), tenantId: z.uuid().optional() });
 
-export function publicUser(p: Principal) {
-  return { id: p.userId, name: p.name, email: p.email, roles: p.roles, tenantId: p.tenantId, defaultCompanyId: p.defaultCompanyId, tenantAdmin: p.tenantAdmin, accessScope: p.accessScope, storeIds: p.storeIds, siteIds: p.siteIds };
-}
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
-  return PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+  return PUBLIC_IDENTITY.has(path) || /^\/webhooks\/square\/[a-zA-Z0-9_-]+$/.test(path) || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
 function localeOf(header: string | undefined): Locale {
@@ -87,6 +91,8 @@ export function buildContextParams(req: FastifyRequest): ContextParams {
   const agentId = headerString(req, 'x-agent-id');
   return {
     tenantId: p.tenantId,
+    sessionVersion: p.sessionVersion,
+    mfaVerified: req.user.mfa === true,
     companyId: req.companyId,
     actor: agentId ? { type: 'agent', id: agentId, onBehalfOf: p.userId } : { type: 'user', id: p.userId },
     roles: p.roles,
@@ -109,7 +115,7 @@ async function verifyRequest(req: FastifyRequest, owner: Database): Promise<Prin
   }
   if (typeof claims.sub !== 'string' || typeof claims.tenantId !== 'string') throw new Unauthorized('malformed token payload');
   const principal = await loadPrincipal(owner, claims.sub);
-  if (!principal || principal.tenantId !== claims.tenantId || principal.sessionVersion !== claims.sessionVersion) throw new Unauthorized('user is inactive, unknown, or the session was revoked');
+  if (!principal || principal.tenantId !== claims.tenantId || principal.sessionVersion !== claims.sessionVersion || (principal.mfaEnabled && claims.mfa !== true)) throw new Unauthorized('user is inactive, unknown, or the session was revoked');
   return principal;
 }
 
@@ -120,7 +126,7 @@ export interface PublicCompany {
   currency: string;
 }
 
-export async function registerAuth(app: FastifyInstance, opts: { owner: Database; db: Database; jwtSecret: string }): Promise<void> {
+export async function registerAuth(app: FastifyInstance, opts: { owner: Database; db: Database; jwtSecret: string; identity?: IdentityOptions }): Promise<void> {
   await app.register(fastifyJwt, { secret: opts.jwtSecret, sign: { expiresIn: TOKEN_TTL } });
   app.addHook('onSend', async (req, reply, payload) => {
     if (req.headers.authorization || req.url.startsWith('/auth/')) reply.header('cache-control', 'private, no-store');
@@ -136,7 +142,7 @@ export async function registerAuth(app: FastifyInstance, opts: { owner: Database
     if (isPublic(req.url)) return;
     req.principal = await verifyRequest(req, opts.owner);
     // Account security belongs to the authenticated tenant identity, even with no company or a stale selection.
-    if (['/auth/password', '/auth/logout-all'].includes(req.url.split('?')[0] ?? req.url)) return;
+    if (req.url.startsWith('/auth/') && !['/auth/me', '/auth/companies'].includes(req.url.split('?')[0] ?? req.url)) return;
     req.companyId = resolveCompany(req, req.principal);
     try { req.principal = await resolveCompanyAccess(opts.owner, req.principal, req.companyId); }
     catch (error) {
@@ -152,16 +158,19 @@ export async function registerAuth(app: FastifyInstance, opts: { owner: Database
 
   app.post('/auth/login', { schema: { tags: ['auth'], summary: 'Log in and receive a JWT (12h)', body: loginBody } }, async (req) => {
     const { email, password, tenantId } = parse(loginBody, req.body, 'body');
-    const principal = await authenticate(opts.owner, email, password, tenantId);
-    if (!principal) throw new Unauthorized('invalid email or password');
-    const token = app.jwt.sign({ sub: principal.userId, tenantId: principal.tenantId, sessionVersion: principal.sessionVersion });
-    return { token, user: publicUser(principal) };
+    return verifyAttempt(opts.owner, req, 'login', async () => {
+      const principal = await authenticate(opts.owner, email, password, tenantId);
+      if (!principal) throw new Unauthorized('invalid email or password');
+      return identityLoginReply(app, opts, { userId: principal.userId, tenantId: principal.tenantId, sessionVersion: principal.sessionVersion });
+    }, `${tenantId ?? ''}:${email.toLowerCase()}`);
   });
+
+  registerIdentityRoutes(app, opts);
 
   app.post('/auth/password', { schema: { tags: ['auth'], summary: 'Change own password and revoke all sessions', body: changeOwnPasswordSchema } }, async (req) => {
     if (!req.principal) throw new Unauthorized('authentication required');
     const sessionVersion = req.principal.sessionVersion;
-    return withContext(opts.db, req.contextParams(), (ctx) => changeOwnPassword(ctx, sessionVersion, req.body));
+    return verifyAttempt(opts.owner, req, 'password', () => withContext(opts.db, req.contextParams(), (ctx) => changeOwnPassword(ctx, sessionVersion, req.body)), req.principal.userId);
   });
 
   app.post('/auth/logout-all', { schema: { tags: ['auth'], summary: 'Revoke all sessions for the current user', body: revokeOwnSessionsSchema } }, async (req) => {

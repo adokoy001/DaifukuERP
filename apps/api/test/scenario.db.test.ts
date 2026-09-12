@@ -106,7 +106,7 @@ afterAll(async () => {
 describe('台本: 個人事業（デザイン事務所）の 2026年10月 (docs/domain/scenario-kojin.md)', () => {
   it('1. 会計年度 2026（accounting.open_fiscal_year）・モジュール登録・全シード（system context, モジュール順）・会社設定（tax.rounding は l10n/jp 既定, sales.issuer）', async () => {
     // Common business modules are loaded for every deployment (packs/modules are process-wide, ADR-0015).
-    expect(modules.map((m) => m.name)).toEqual(['partner', 'product', 'tax', 'accounting', 'attachment', 'sales', 'purchase', 'payment', 'inventory', 'contract', 'workforce', 'workforce_evidence', 'industry_operations', 'l10n_jp']);
+    expect(modules.map((m) => m.name)).toEqual(['partner', 'product', 'tax', 'accounting', 'attachment', 'sales', 'purchase', 'payment', 'inventory', 'contract', 'workforce', 'workforce_evidence', 'industry_operations', 'pos_integration', 'group_accounting', 'franchise', 'l10n_jp']);
     // 会計年度 2026-01-01〜12-31 through the action, before the seeds: the accounting seed only opens a year when none exists
     const opened = await act<{ fiscalYear: Row; periods: Row[] }>('accounting.open_fiscal_year', { startDate: '2026-01-01' });
     expect(opened.fiscalYear).toMatchObject({ code: 'FY2026', startDate: '2026-01-01', endDate: '2026-12-31', isClosed: false });

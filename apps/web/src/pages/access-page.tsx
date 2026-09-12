@@ -3,6 +3,7 @@ import { useBlocker } from '@tanstack/react-router';
 import { useAccessAudit, useAccessCatalog, type AccessCatalog, type AccessEditorStatus } from '../api/access.ts';
 import { useMe } from '../api/company.tsx';
 import { getUser } from '../api/client.ts';
+import { AccessInviteUser } from '../components/access-invite-user.tsx';
 import { AccessCreateUser } from '../components/access-create-user.tsx';
 import { AccessMemberships } from '../components/access-memberships.tsx';
 import { AccessUserProfile } from '../components/access-user-profile.tsx';
@@ -14,7 +15,7 @@ export function AccessPage() {
   const { t } = useLocale();
   const me = useMe();
   const catalog = useAccessCatalog(me.data?.user.tenantAdmin === true);
-  const [query, setQuery] = useState(''), [selected, setSelected] = useState(() => getUser()?.id ?? ''), [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState(''), [selected, setSelected] = useState(() => getUser()?.id ?? ''), [creating, setCreating] = useState(false), [inviting, setInviting] = useState(false);
   const [profile, setProfile] = useState<AccessEditorStatus>({ dirty: false, busy: false }), [membership, setMembership] = useState<AccessEditorStatus>({ dirty: false, busy: false }), [creation, setCreation] = useState<AccessEditorStatus>({ dirty: false, busy: false });
   const profileStatus = useCallback((status: AccessEditorStatus) => setProfile(status), []);
   const membershipStatus = useCallback((status: AccessEditorStatus) => setMembership(status), []);
@@ -36,7 +37,8 @@ export function AccessPage() {
   return <div className="workspace-page access-page">
     {catalog.isError || me.isError ? <div className="notice-strip" role="alert">{t({ ja: '最新情報を取得できませんでした。入力内容は保持しています。', en: 'Could not refresh current information. Your edits are preserved.' })}<button className="btn" onClick={() => { void me.refetch(); void catalog.refetch(); }}>{t({ ja: '再読込', en: 'Retry' })}</button></div> : null}
     <header className="control-heading"><div><span className="eyebrow">PEOPLE & ACCESS</span><h1>{t({ ja: '人と仕事を、適切につなぐ。', en: 'The right access for every person.' })}</h1><p>{t({ ja: '利用者の状態、会社での役割、担当店舗をひとつの画面で管理します。', en: 'Manage users, company roles and store assignments in one place.' })}</p></div><span className="control-heading-icon"><Icon name="people" size={36} /></span></header>
-    <div className="control-summary"><span><b>{data.users.filter((u) => u.active).length}</b>{t({ ja: '有効な利用者', en: 'Active users' })}</span><span><b>{data.companies.length}</b>{t({ ja: '会社', en: 'Companies' })}</span><span><b>{data.memberships.filter((m) => m.accessScope === 'stores').length}</b>{t({ ja: '店舗限定の所属', en: 'Store-scoped memberships' })}</span><button className="btn btn-primary" disabled={busy || creating} onClick={() => setCreating(true)}>{t({ ja: '利用者を追加', en: 'Add user' })}</button></div>
+    <div className="control-summary"><span><b>{data.users.filter((u) => u.active).length}</b>{t({ ja: '有効な利用者', en: 'Active users' })}</span><span><b>{data.companies.length}</b>{t({ ja: '会社', en: 'Companies' })}</span><span><b>{data.memberships.filter((m) => m.accessScope === 'stores').length}</b>{t({ ja: '店舗限定の所属', en: 'Store-scoped memberships' })}</span><button className="btn btn-primary" disabled={busy || creating || inviting} onClick={() => setCreating(true)}>{t({ ja: '利用者を追加', en: 'Add user' })}</button><button className="btn" disabled={busy || creating || inviting} onClick={() => setInviting(true)}>{t({ ja: 'メールで招待', en: 'Invite by email' })}</button></div>
+    {inviting ? <AccessInviteUser onClose={() => setInviting(false)} onStatus={creationStatus} /> : null}
     {creating ? <AccessCreateUser onClose={() => setCreating(false)} onStatus={creationStatus} /> : null}
     <div className="access-workspace"><section className="access-panel access-directory"><h2>{t({ ja: '利用者一覧', en: 'User directory' })}</h2><input className="input" type="search" aria-label={t({ ja: '利用者を検索', en: 'Search users' })} placeholder={t({ ja: '氏名・メールアドレス', en: 'Name or email' })} value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="access-user-list">{users.map((item) => <button key={item.id} disabled={busy} className={'access-user ' + (user?.id === item.id ? 'is-selected' : '')} onClick={() => { if (user?.id !== item.id) choose(item.id); }} aria-pressed={user?.id === item.id}><span className="user-avatar">{item.name.slice(0, 1)}</span><span><strong>{item.name}</strong><small>{item.email}</small><span className={'status-pill ' + (item.active ? 'is-good' : 'is-muted')}>{t(item.active ? { ja: '有効', en: 'Active' } : { ja: '無効', en: 'Inactive' })}</span>{item.tenantAdmin ? <span className="status-pill">{t({ ja: 'テナント管理者', en: 'Tenant admin' })}</span> : null}</span></button>)}</div>{users.length === 0 ? <p>{t({ ja: '一致する利用者はいません。', en: 'No matching users.' })}</p> : null}

@@ -2,14 +2,20 @@
 import { configureStorage, connect, LocalStorage } from '@daifuku/kernel';
 import { apiConfig, startupErrorMessage } from './config.ts';
 import { packs, packWarnings } from './packs.ts';
+import { readIdentityConfig, readSmtpConfig } from './identity/config.ts';
+import { smtpTransport } from './identity/smtp.ts';
+import { parseSquareConnections } from './adapters/square-pos.ts';
 import { buildServer } from './server.ts';
 
 async function main(): Promise<void> {
   const cfg = apiConfig();
+  const squarePosConnections = parseSquareConnections(process.env.SQUARE_POS_CONNECTIONS_JSON);
+  const identityConfig = readIdentityConfig(process.env), smtp = readSmtpConfig(process.env);
+  const identity = identityConfig ? { ...identityConfig, ...(smtp ? { mailTransport: smtpTransport(smtp) } : {}) } : undefined;
   configureStorage(new LocalStorage(process.env.DAIFUKU_STORAGE_DIR ?? '.data/storage'));
   const owner = connect(cfg.databaseUrlOwner, { max: 2 });
   const app = connect(cfg.databaseUrl, { max: 10 });
-  const server = await buildServer({ owner, app, jwtSecret: cfg.jwtSecret, corsOrigins: cfg.corsOrigins, logger: true });
+  const server = await buildServer({ owner, app, jwtSecret: cfg.jwtSecret, corsOrigins: cfg.corsOrigins, squarePosConnections, ...(identity ? { identity } : {}), logger: true });
   const shutdown = async () => {
     await server.close();
     await app.close();

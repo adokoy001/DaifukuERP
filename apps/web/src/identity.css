@@ -1,0 +1,19 @@
+.auth-content { position: relative; max-width: 470px; }
+.auth-content h1 { margin: 0 0 14px; padding-right: 42px; }
+.auth-content form { display: grid; gap: 12px; }
+.auth-content input { min-height: 44px; }
+.auth-language { position: absolute; top: -25px; right: 0; color: #64748b; font-size: 12px; }
+.auth-back { display: inline-flex; margin-top: 16px; color: #5742be; font-weight: 600; }
+.identity-sso { margin-top: 22px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: grid; gap: 10px; }
+.identity-code { font-family: ui-monospace, monospace; letter-spacing: .12em; }
+.identity-status { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+.identity-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.identity-setup { display: grid; gap: 12px; }
+.identity-setup code { display: block; overflow-wrap: anywhere; padding: 16px; border-radius: 12px; background: #f1effc; font-size: 18px; letter-spacing: .09em; }
+.identity-recovery { list-style: none; padding: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; border: 1px solid #dcd5f7; background: #f8f7fe; border-radius: 16px; font-family: ui-monospace, monospace; }
+.identity-provider { border-top: 1px solid #e2e8f0; padding: 14px 0; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.identity-provider small { display: block; color: #64748b; overflow-wrap: anywhere; }
+.identity-step-up { display: grid; gap: 12px; }
+.identity-step-up label { display: grid; gap: 6px; }
+.identity-card { margin-top: 22px; }
+@media (max-width: 600px) { .identity-recovery { grid-template-columns: 1fr; } .auth-content h1 { font-size: 25px; } }

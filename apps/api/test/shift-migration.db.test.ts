@@ -33,7 +33,7 @@ const facts = () => scoped(owner, tenant, async tx => ({
   employees: await tx`select * from workforce_employee order by id`,
   attendance: await tx`select * from workforce_attendance order by id`,
   leave: await tx`select * from workforce_leave_grant order by id`,
-  users: await tx`select * from users order by id`,
+  users: await tx`select id,tenant_id,email,name,password_hash,roles,default_company_id,active,tenant_admin,version,session_version,created_at from users order by id`,
 }));
 it('preserves populated 0010 employee, approved attendance and leave facts; adds empty protected shift tables idempotently', async () => {
   const before = await facts(); await runMigrations(owner, MIGRATIONS_DIR);

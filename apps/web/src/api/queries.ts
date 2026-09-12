@@ -5,7 +5,8 @@ import { fieldValue } from '../lib/ext.ts';
 import { workforceEntityForUi } from '../lib/workforce-entity.ts';
 import { buildListQuery, type ListState } from '../lib/query.ts';
 import { isApiError, request } from './client.ts';
-import type { AppMeta, AuditEntry, EntityMeta, FieldMeta, ListResponse, LoginResponse, RecordJson } from './types.ts';
+import type { LoginResult } from './identity.ts';
+import type { AppMeta, AuditEntry, EntityMeta, FieldMeta, ListResponse, RecordJson } from './types.ts';
 
 /** Client errors (4xx) are final; only network/5xx failures are retried. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
@@ -20,8 +21,8 @@ export const keys = {
   audit: (entity: string, id: string) => ['audit', entity, id] as const,
 };
 
-export function login(email: string, password: string, tenantId?: string): Promise<LoginResponse> {
-  return request<LoginResponse>('/auth/login', { method: 'POST', body: { email, password, ...(tenantId ? { tenantId } : {}) }, anonymous: true });
+export function login(email: string, password: string, tenantId?: string): Promise<LoginResult> {
+  return request<LoginResult>('/auth/login', { method: 'POST', body: { email, password, ...(tenantId ? { tenantId } : {}) }, anonymous: true });
 }
 
 export function useMeta(): UseQueryResult<AppMeta> {

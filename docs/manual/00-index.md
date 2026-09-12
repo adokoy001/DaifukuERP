@@ -1,6 +1,8 @@
-# 大福帳 ユーザーマニュアル（2026-09-12 公開準備版）
+# 大福帳 ユーザーマニュアル（2026-09-12 企業運営拡張版）
 
-**現行の導入は [README](../../README.md)、会社・店舗の権限と本部運営・BIは [付録 E](appendix-e-operations-control.md) を参照してください。** 画面全体の変更は [付録 C](appendix-c-ui-refresh.md)、3業界の操作は [付録 D](appendix-d-industry-templates.md) にあります。付録C/D/E/F/G以外のスクリーンショットは旧版のデモ画面です。配置・配色・一部の入力欄は現在と異なります。
+**現行の導入は [README](../../README.md)、会社・店舗の権限と本部運営・BIは [付録 E](appendix-e-operations-control.md) を参照してください。** 画面全体の変更は [付録 C](appendix-c-ui-refresh.md)、3業界の操作は [付録 D](appendix-d-industry-templates.md) にあります。付録C/D/E/F/G以外の既存スクリーンショットは旧版のデモ画面です。配置・配色・一部の入力欄は現在と異なります。
+
+企業向けの認証・POS・連結・FCは [付録H](appendix-h-enterprise-operations.md)、給与税保険・年調・勤務制度は [付録I](appendix-i-fiscal-and-work-systems.md) を参照してください。
 
 新しい従業員・スマホ機能は [付録F](appendix-f-workforce.md)、15業界の業務操作は [付録G](appendix-g-industry-catalog.md)、開発者向けの構造は [AI_INDEX](../../AI_INDEX.md) を参照してください。
 
@@ -18,7 +20,7 @@
 
 - **税務申告の正しさは保証しません。** 消費税の集計表や試算表は、申告の下ごしらえの参考資料です。申告書の作成は会計ソフトや税理士に依頼してください。
 - 法令への適合（インボイス制度、電子帳簿保存法など）は、開発資料に出典を付けて実装していますが、第三者の確認や認証は受けていません。
-- 利用者管理と導入時のバックアップ・実復元手順は追加済みです。SSO/MFA、監視、導入先の業務審査などは別途必要です。[現在の範囲](10-limitations.md) を確認してください。
+- 利用者管理と導入時のバックアップ・実復元手順は追加済みです。SSO/MFAと確認メールは設定後に利用できます。外部provider実接続、監視、導入先の業務審査は別途必要です。[現在の範囲](10-limitations.md) を確認してください。
 
 ### 対象読者
 
@@ -62,6 +64,8 @@
 | [付録 E 運営・権限・BI](appendix-e-operations-control.md) | 本部と店舗の分担、運営指標、権限管理 |
 | [付録 F 従業員・労務](appendix-f-workforce.md) | スマホ勤怠、有給、経費、給与明細 |
 | [付録 G 15業界カタログ](appendix-g-industry-catalog.md) | 業種ごとの案件・完了・請求・取消 |
+| [付録 H 認証・POS・連結・FC](appendix-h-enterprise-operations.md) | 本人確認とメール、Square、管理用連結精算表、フランチャイズ |
+| [付録 I 給与税保険・年調・勤務制度](appendix-i-fiscal-and-work-systems.md) | 2026年自動算定、本人申告、事前所定と変形/フレックス |
 
 ---
 

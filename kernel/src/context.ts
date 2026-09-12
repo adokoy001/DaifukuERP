@@ -21,6 +21,9 @@ export interface Logger {
 }
 
 export interface Context {
+  /** Session generation carried through authenticated, cross-company work. */
+  readonly sessionVersion?: number;
+  readonly mfaVerified?: boolean;
   readonly accessScope?: 'all' | 'stores' | 'sites';
   readonly storeIds?: readonly string[];
   readonly siteIds?: readonly string[];
@@ -46,6 +49,7 @@ export interface Context {
 export interface ContextParams {
   /** Authenticated session generation for long-lived adapters such as MCP. */
   sessionVersion?: number;
+  mfaVerified?: boolean;
   accessScope?: 'all' | 'stores' | 'sites';
   storeIds?: readonly string[];
   siteIds?: readonly string[];

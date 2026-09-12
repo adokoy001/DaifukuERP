@@ -6,11 +6,15 @@ import { P } from '../entities/common.ts';
 import { allRows, command, D, employeeLock, expectVersion, identity, requireOther, reviewed } from '../common.ts';
 import { internalWrite } from '../internal.ts';
 import { payrollSource } from '../payroll-source.ts';
+import { assertYearOpen, statutoryEnvelope, statutorySource } from '../fiscal-source.ts';
+import { createTaxEvidence } from '../fiscal-evidence.ts';
+import { stableJson } from '../services/json.ts';
 import { jstDate } from '../services/time.ts';
 import { workflowAction } from './define.ts';
 
-async function calculate(ctx: Context, input: z.infer<typeof payrollCalculateInput>) {
+export async function calculatePayroll(ctx: Context, input: z.infer<typeof payrollCalculateInput>) {
   return withLock(ctx, 'workforce:policies', () => employeeLock(ctx, input.employeeId, async () => {
+    for (const year of [Number(input.period.slice(0, 4)), Number(input.period.slice(0, 4)) + 1]) await assertYearOpen(ctx, input.employeeId, year);
     const existing = await allRows(ctx, WorkforcePayroll, { employeeId: input.employeeId, period: input.period, docstatus: { $in: [0, 1] } });
     if (existing.length > 1 || existing.some((row) => row.docstatus === 1)) throw new StateError('Payroll is already finalized for this month', 'Cancel the confirmed payroll with its reason before recalculating.');
     const prior = existing[0]; expectVersion(prior?.version ?? 0, input.expectedVersion);
@@ -35,6 +39,15 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
     if (row.docstatus !== 0) throw new StateError('Only draft payroll can be confirmed', 'Reload the current payroll.');
     if (new Set(input.deductions.map((item) => item.kind)).size !== deductionKinds.length) throw new ValidationError('Every deduction must be confirmed exactly once', [{ path: 'deductions', message: 'Confirm all eight named deductions, including zero amounts with their basis.' }]);
     for (const item of [...input.deductions, ...input.allowances]) wholeYen(item.amount);
+    for (const year of [Number(row.period.slice(0, 4)), Number(row.period.slice(0, 4)) + 1]) await assertYearOpen(ctx, row.employeeId, year);
+    const envelope = statutoryEnvelope(row.calculation);
+    if (envelope) {
+      await assertYearOpen(ctx, row.employeeId, Number(envelope.input.paymentDate.slice(0, 4)));
+      const statutory = await statutorySource(ctx, envelope.input, row);
+      if (stableJson(statutory.evidence) !== stableJson(envelope.evidence) || stableJson(input.deductions) !== stableJson(statutory.deductions) || stableJson(input.allowances) !== stableJson(statutory.allowances)) throw new StateError('自動計算の条件・税保険料・手当が変更されています', '自動給与を再計算し、表示された算定額と根拠で確定してください。');
+      const published = await allRows(ctx, WorkforcePayroll, { employeeId: row.employeeId, docstatus: 1 });
+      if (published.some((item) => statutoryEnvelope(item.calculation)?.input.insurancePeriod === envelope.input.insurancePeriod)) throw new StateError('この保険対象月は他の自動給与で控除済みです', '二重控除を避けるため、既存給与と保険対象月を確認してください。');
+    }
     const source = await payrollSource(ctx, row.employeeId, row.period);
     if (source.fingerprint !== row.sourceFingerprint) throw new StateError('Payroll source changed after calculation', 'Recalculate the draft and confirm the updated attendance, terms, and deductions.');
     if (await repo(ctx, WorkforcePayroll).count({ employeeId: row.employeeId, period: row.period, docstatus: 1 })) throw new StateError('Payroll month is already closed', 'Review the existing confirmed payroll.');
@@ -46,6 +59,10 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
       return submitDocument(write, WorkforcePayroll, row.id, { expectedVersion: updated.version });
     });
     await internalWrite(ctx, WorkforcePeriodLock, (write) => repo(write, WorkforcePeriodLock).create({ employeeId: row.employeeId, userId: row.userId, siteId: row.siteId, payrollId: row.id, periodStart: source.boundary, periodEnd: row.periodEnd }));
+    if (envelope) {
+      const statutory = await statutorySource(ctx, envelope.input, row);
+      await createTaxEvidence(ctx, { ...row, deductions: input.deductions }, { payrollId: row.id, paymentDate: envelope.input.paymentDate, taxablePay: statutory.evidence.taxablePay.toString(), basis: '2026年の版管理された税・保険料自動計算。給与確定時の原資料を参照。', verified: true });
+    }
     return command(confirmed);
   }));
 }
@@ -54,6 +71,7 @@ async function cancel(ctx: Context, input: z.infer<typeof payrollCancelInput>) {
   return employeeLock(ctx, initial.employeeId, async () => {
     const row = await repo(ctx, WorkforcePayroll).lock(initial.id); requireOther(ctx, row); expectVersion(row.version, input.expectedVersion);
     if (row.docstatus !== 1) throw new StateError('Only confirmed payroll can be cancelled', 'Reload the confirmed payroll.');
+    for (const year of [Number(row.period.slice(0, 4)), Number(row.period.slice(0, 4)) + 1]) await assertYearOpen(ctx, row.employeeId, year);
     const cancelled = await internalWrite(ctx, WorkforcePayroll, async (write) => {
       const updated = await repo(write, WorkforcePayroll).update(row.id, reviewed(ctx, input.reason), { expectedVersion: row.version });
       return cancelDocument(write, WorkforcePayroll, row.id, { expectedVersion: updated.version });
@@ -63,6 +81,6 @@ async function cancel(ctx: Context, input: z.infer<typeof payrollCancelInput>) {
     return command(cancelled);
   });
 }
-export const calculatePayrollAction = workflowAction('calculate_payroll', '承認勤怠と確認済み賃金条件から給与を計算', payrollCalculateInput, [P], calculate, false);
+export const calculatePayrollAction = workflowAction('calculate_payroll', '承認勤怠と確認済み賃金条件から給与を計算', payrollCalculateInput, [P], calculatePayroll, false);
 export const confirmPayrollAction = workflowAction('confirm_payroll', '全控除・手当の根拠を確認して給与を確定', payrollConfirmInput, [P], confirm, false);
 export const cancelPayrollAction = workflowAction('cancel_payroll', '理由を記録して確定給与を取り消す', payrollCancelInput, [P], cancel, false);

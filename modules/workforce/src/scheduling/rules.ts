@@ -45,11 +45,17 @@ function calendarIssues(ctx: Prepared, rows: Timeline[], employee: ShiftEmployee
     if (consecutive > profile.maxConsecutiveDays && runAssigned) add('consecutive_limit');
     if (index < ctx.start || index >= ctx.start + 7) continue;
     minutes += value.minutes; days++;
-    const rule = ctx.rules.get(date);
-    if (rule && value.minutes > Math.min(profile.maxDailyMinutes, rule.dailyLimitMinutes)) add('daily_limit');
+    const rule = ctx.rules.get(date), workRule = ctx.workRules.get(keyOf(employee.id, date));
+    if (rule && value.minutes > Math.min(profile.maxDailyMinutes, rule.dailyLimitMinutes < 480 ? Math.min(rule.dailyLimitMinutes, workRule?.dailyLimitMinutes ?? rule.dailyLimitMinutes) : workRule?.dailyLimitMinutes ?? rule.dailyLimitMinutes)) add('daily_limit');
     if (rule && value.breaks < requiredBreak(rule, value.minutes)) add('break');
   }
-  const weekly = Math.min(profile.maxWeeklyMinutes, ...ctx.problem.rules.map((rule) => rule.weeklyLimitMinutes));
+  const declared = ctx.problem.rules.flatMap((rule) => { const work = ctx.workRules.get(keyOf(employee.id, rule.date)); return work ? [work.weeklyLimitMinutes] : []; });
+  const ordinary = Math.min(...ctx.problem.rules.map((rule) => rule.weeklyLimitMinutes));
+  const weekly = Math.min(profile.maxWeeklyMinutes, ordinary < 2400 ? ordinary : Math.max(ordinary, ...declared));
+  for (const budget of ctx.budgets.get(employee.id) ?? []) {
+    const planned = rows.filter((row) => row.date >= ctx.problem.weekStart && dayIndex(row.date) < ctx.start + 7 && row.date >= budget.startsOn && row.date <= budget.endsOn).reduce((sum, row) => sum + workMinutes(row), 0);
+    if (planned > budget.remainingMinutes) add('period_limit');
+  }
   if (minutes > weekly) add('weekly_limit');
   if (days > profile.maxDays) add('days_limit');
   return issues;

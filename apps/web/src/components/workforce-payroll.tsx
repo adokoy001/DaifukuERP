@@ -4,6 +4,7 @@ import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { formatDecimal } from '../lib/format.ts';
 import { deductionLabels, minutesLabel } from '../lib/workforce.ts';
+import { StatutoryPayrollConfirm } from './fiscal-payroll.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceCalculation } from './workforce-calculation.tsx';
 import { WorkforceEmpty, WorkforceMoney, WorkforcePanel, WorkforceStatus } from './workforce-shared.tsx';
@@ -22,6 +23,7 @@ export function PayrollBreakdown({ row }: { row: PayrollSummary }) {
 function PayrollConfirm({ row, current, onClose }: { row: PayrollSummary; current: PayrollSummary | undefined; onClose: () => void }) {
   const { t } = useLocale(), task = useWorkforceTask();
   const [allowances, setAllowances] = useState(0);
+  if (row.calculation.statutory) return <StatutoryPayrollConfirm row={row} current={current} onClose={onClose}><PayrollBreakdown row={row} /></StatutoryPayrollConfirm>;
   return <WorkforceDialog title={t({ ja: '給与明細を確認・確定', en: 'Review and confirm payroll' })} description={row.employeeName + ' · ' + row.period + ' / ' + t({ ja: '各控除を資料に基づいて確認します。対象外の項目も「0」と対象外の根拠を明示してください。', en: 'Verify every deduction against evidence. For non-applicable items, enter 0 and explain why.' })} submitLabel={t({ ja: '確認して給与を確定', en: 'Confirm payroll' })} stale={current?.version !== row.version} onClose={onClose} onSubmit={async (data) => {
     await task.mutateAsync({ action: 'workforce.confirm_payroll', input: { payrollId: row.id, expectedVersion: row.version, deductions: Object.keys(deductionLabels).map((kind) => ({ kind, amount: formText(data, kind + '.amount'), basis: formText(data, kind + '.basis'), confirmed: data.get(kind + '.confirmed') === 'on' })), allowances: Array.from({ length: allowances }, (_, i) => ({ name: formText(data, `allowance${i}.name`), amount: formText(data, `allowance${i}.amount`), basis: formText(data, `allowance${i}.basis`) })), calculationConfirmed: data.get('calculationConfirmed') === 'on', reason: formText(data, 'reason') } });
   }}><PayrollBreakdown row={row} />
