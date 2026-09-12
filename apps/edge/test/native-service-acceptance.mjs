@@ -112,9 +112,22 @@ async function ownMarker() {
   assert.equal(marker.installRoot, defaults.root); assert.equal(marker.statePath, defaults.state); assert.match(marker.installationId, /^[a-f0-9-]{36}$/);
   return marker;
 }
+async function macAccountDiagnostics() {
+  const result = await command('/usr/bin/dscl', ['.', '-read', '/Users/_daifukuedge', 'UniqueID', 'PrimaryGroupID', 'UserShell', 'NFSHomeDirectory', 'IsHidden', 'AuthenticationAuthority', 'Password'], true);
+  const fields = {}; let key;
+  for (const line of result.stdout.split('\n')) {
+    const match = /^((?:dsAttrType(?:Native|Standard):)?[A-Za-z][A-Za-z0-9_]*):(?: (.*))?$/.exec(line);
+    if (match) { key = match[1].replace(/^dsAttrType(?:Native|Standard):/, ''); fields[key] = match[2] ?? ''; }
+    else if (key && /^ /.test(line)) fields[key] = [fields[key], line.trim()].filter(Boolean).join(' ');
+  }
+  const number = (value) => /^-?\d{1,10}$/.test(value ?? '') ? value : null;
+  const path = (value) => /^\/[a-zA-Z0-9_/-]{1,100}$/.test(value ?? '') ? value : null;
+  return { available: result.ok, uid: number(fields.UniqueID), gid: number(fields.PrimaryGroupID), shell: path(fields.UserShell), home: path(fields.NFSHomeDirectory), hidden: fields.IsHidden === '1', authenticationDisabled: fields.AuthenticationAuthority === ';DisabledUser;', passwordStar: fields.Password === '*', passwordMasked: fields.Password === '********' };
+}
 async function diagnostics(source) {
   const report = { stage, platform: process.platform };
   if (process.platform === 'linux') report.paths = await linuxPathDiagnostics(source);
+  if (process.platform === 'darwin') report.account = await macAccountDiagnostics().catch(() => ({ code: 'mac_account_diagnostics_unavailable' }));
   try {
     const status = await setup(source, 'status');
     report.setup = { serviceExists: status.serviceExists, serviceOwned: status.serviceOwned, serviceRunning: status.serviceRunning, runtimeStatusFresh: status.runtimeStatusFresh, conflicts: status.conflicts };
@@ -128,8 +141,10 @@ async function diagnostics(source) {
       const native = await ps("$s=Get-CimInstance Win32_Service -Filter \"Name='DaifukuEdge'\"; if($s){[Console]::Out.WriteLine(($s|Select-Object Name,State,ProcessId,ExitCode,StartMode,StartName|ConvertTo-Json -Compress))}else{[Console]::Out.WriteLine('{}')}");
       report.native = JSON.parse(native.stdout);
     } else if (process.platform === 'linux') {
-      const native = await command('/usr/bin/systemctl', ['show', 'daifuku-edge.service', '--property=LoadState,ActiveState,SubState,Result,ExecMainPID,ExecMainStatus,User,Group']);
+      const native = await command('/usr/bin/systemctl', ['show', 'daifuku-edge.service', '--property=LoadState,LoadError,ActiveState,SubState,Result,ExecMainPID,ExecMainStatus,User,Group']);
       report.native = Object.fromEntries(native.stdout.trim().split('\n').filter((line) => /^[A-Za-z]+=[a-zA-Z0-9_.-]*$/.test(line)).map((line) => line.split('=')));
+      const loadError = native.stdout.split('\n').find((line) => line.startsWith('LoadError='))?.slice('LoadError='.length);
+      if (typeof loadError === 'string' && /^[ -~]{0,500}$/.test(loadError)) report.native.LoadError = loadError;
     } else {
       const native = await command('/bin/launchctl', ['print', 'system/jp.daifuku.edge'], true);
       report.native = { loaded: native.ok, fields: native.stdout.split('\n').map((line) => line.trim()).filter((line) => /^(state|pid|last exit code|username|group) = [a-zA-Z0-9_. -]+$/.test(line)) };

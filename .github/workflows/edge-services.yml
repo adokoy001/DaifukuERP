@@ -56,7 +56,7 @@ jobs:
           python apps/edge/scripts/package.py --target $env:EDGE_TARGET --release-id "ci-b-$env:GITHUB_SHA" --output "$env:RUNNER_TEMP/edge-packages" --cache "$env:RUNNER_TEMP/edge-assets"
           exit $LASTEXITCODE
       - name: Native lock and private file acceptance
-        run: pnpm exec vitest run --project unit apps/edge/test/platform.test.ts
+        run: pnpm exec vitest run --project unit apps/edge/test/platform.test.ts apps/edge/test/systemd-render.test.ts
       - name: Real systemd or LaunchDaemon lifecycle on this disposable runner
         if: runner.os != 'Windows'
         shell: bash

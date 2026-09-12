@@ -66,7 +66,7 @@ export class PosixFixture implements PosixHost {
     if (args[0] === '/Search') return this.ok(`root 0\n_reserved 400\n${this.user?.UniqueID ? '_daifukuedge ' + this.user.UniqueID : ''}`);
     if (args[1] === '-list') return this.ok('root\n' + (this.user ? '_daifukuedge' : ''));
     if (args[2] === '/Groups/nobody') return this.ok('PrimaryGroupID: ' + this.groupId);
-    if (args[1] === '-read') return this.ok(Object.entries(this.user ?? {}).map(([key, value]) => key + ': ' + value).join('\n'));
+    if (args[1] === '-read') return this.ok(Object.entries(this.user ?? {}).map(([key, value]) => (key === 'IsHidden' ? 'dsAttrTypeNative:IsHidden' : key) + ': ' + value).join('\n'));
     if (args[1] === '-create') { this.user ??= {}; this.user[args[3] ?? ''] = args[4] ?? ''; this.changes.push('dscl:' + args[3]); return this.ok(); }
     throw new Error('Unexpected dscl fixture call');
   }

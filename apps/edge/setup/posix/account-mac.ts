@@ -8,8 +8,13 @@ export function dsRecord(text: string): Record<string, string> {
   const result: Record<string, string> = {};
   let key = '';
   for (const line of text.split('\n')) {
-    const match = /^([A-Za-z][A-Za-z0-9]*):(?: (.*))?$/.exec(line);
-    if (match?.[1]) { key = match[1]; result[key] = match[2] ?? ''; }
+    const match = /^((?:dsAttrType(?:Standard|Native):)?[A-Za-z][A-Za-z0-9_]*):(?: (.*))?$/.exec(line);
+    if (match?.[1]) {
+      // dscl shortens standard names but retains the namespace of native IsHidden.
+      key = match[1] === 'dsAttrTypeNative:IsHidden' ? 'IsHidden' : match[1].replace(/^dsAttrTypeStandard:/, '');
+      if (result[key] !== undefined) throw new Error('mac_account_duplicate_attribute');
+      result[key] = match[2] ?? '';
+    }
     else if (key && /^ /.test(line)) result[key] = [result[key], line.trim()].filter(Boolean).join(' ');
   }
   return result;
@@ -35,13 +40,23 @@ async function nobodyGroup(host: PosixHost): Promise<number> {
 function owned(record: Record<string, string>, context: ServiceContext): void {
   if (record.RealName !== ownershipTag(context)) throw new Error('Existing service account is not owned by this installation.');
 }
+/** Attribute errors are fixed codes; never include directory-service password/authentication values. */
+export function validateMacAccountAttributes(fields: Record<string, string>, gid: number): void {
+  if (!/^\d+$/.test(fields.UniqueID ?? '') || Number(fields.UniqueID) < 400 || Number(fields.UniqueID) >= 500) throw new Error('mac_account_uid_invalid');
+  if (![String(gid), ...(gid === 4294967294 ? ['-2'] : [])].includes(fields.PrimaryGroupID ?? '')) throw new Error('mac_account_primary_group_changed');
+  if (fields.UserShell !== '/usr/bin/false') throw new Error('mac_account_shell_changed');
+  if (fields.NFSHomeDirectory !== '/var/empty') throw new Error('mac_account_home_changed');
+  if (fields.Password !== '*') throw new Error('mac_account_password_changed');
+  if (fields.IsHidden !== '1') throw new Error('mac_account_hidden_changed');
+  if (fields.AuthenticationAuthority !== ';DisabledUser;') throw new Error('mac_account_authentication_changed');
+}
 export async function inspectMacAccount(host: PosixHost, context: ServiceContext, partial = false): Promise<PosixAccount | null> {
   const fields = await record(host);
   if (!fields) return null;
   owned(fields, context);
   const gid = await nobodyGroup(host);
   if (partial && !fields.UniqueID) return null;
-  if (!/^\d+$/.test(fields.UniqueID ?? '') || Number(fields.UniqueID) < 1 || Number(fields.UniqueID) > 4294967294 || ![String(gid), '-2'].includes(fields.PrimaryGroupID ?? '') || fields.UserShell !== '/usr/bin/false' || fields.NFSHomeDirectory !== '/var/empty' || fields.Password !== '*' || fields.IsHidden !== '1' || fields.AuthenticationAuthority !== ';DisabledUser;') throw new Error('Service account attributes are incomplete or changed.');
+  validateMacAccountAttributes(fields, gid);
   const groups = (await command(host, '/usr/bin/id', ['-G', '_daifukuedge'])).trim().split(/\s+/);
   if (groups.length !== 1 || ![String(gid), '-2'].includes(groups[0] ?? '')) throw new Error('Service account has unexpected supplementary groups.');
   return { name: '_daifukuedge', group: 'nobody', uid: Number(fields.UniqueID), gid };
