@@ -1,0 +1,81 @@
+[
+  {
+    "id": "EDGE-TRACE-LOST-START",
+    "steps": [
+      {"event":"Init","states":["queued","queued"],"attempts":[0,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"Claim:1:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"PersistStarting:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"SendStart:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"CommitStart:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"DropStart:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"Recover:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"SendComplete:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"CommitComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"DropComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"SendComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"CommitComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"DeliverComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"BlockedClaim:2:2","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"Resolve:1","states":["failed","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"SendComplete:1","states":["failed","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"CommitComplete:1","states":["failed","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"DeliverComplete:1","states":["failed","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[0,0]}
+    ]
+  },
+  {
+    "id": "EDGE-TRACE-OBSOLETE",
+    "steps": [
+      {"event":"Init","states":["queued","queued"],"attempts":[0,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"Claim:1:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"PersistStarting:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"SendStart:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"ExpireClaim:1","states":["queued","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"Claim:2:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"CommitStart:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"DeliverStart:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"Recover:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"SendComplete:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"CommitComplete:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["result","none"],"sends":[0,0]},
+      {"event":"DeliverComplete:1","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["reported","none"],"sends":[0,0]},
+      {"event":"PersistStarting:2","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["reported","starting"],"sends":[0,0]},
+      {"event":"SendStart:2","states":["claimed","queued"],"attempts":[2,0],"grants":[0,0],"journals":["reported","starting"],"sends":[0,0]},
+      {"event":"CommitStart:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","starting"],"sends":[0,0]},
+      {"event":"ReplayStart:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","starting"],"sends":[0,0]},
+      {"event":"DeliverStart:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","starting"],"sends":[0,0]},
+      {"event":"PersistExecuting:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","executing"],"sends":[0,0]},
+      {"event":"PhysicalSend:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","executing"],"sends":[0,1]},
+      {"event":"RecordResult:2:succeeded","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"SendComplete:2","states":["executing","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"CommitComplete:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"DropComplete:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"Crash:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"Recover:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"SendComplete:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"CommitComplete:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","result"],"sends":[0,1]},
+      {"event":"DeliverComplete:2","states":["succeeded","queued"],"attempts":[2,0],"grants":[1,0],"journals":["reported","reported"],"sends":[0,1]}
+    ]
+  },
+  {
+    "id": "EDGE-TRACE-PHYSICAL-UNKNOWN",
+    "steps": [
+      {"event":"Init","states":["queued","queued"],"attempts":[0,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"Claim:1:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["none","none"],"sends":[0,0]},
+      {"event":"PersistStarting:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"SendStart:1","states":["claimed","queued"],"attempts":[1,0],"grants":[0,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"CommitStart:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"DeliverStart:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["starting","none"],"sends":[0,0]},
+      {"event":"PersistExecuting:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["executing","none"],"sends":[0,0]},
+      {"event":"PhysicalSend:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["executing","none"],"sends":[1,0]},
+      {"event":"RecordResult:1:uncertain","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"SendComplete:1","states":["executing","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"CommitComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"DropComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"Crash:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"Recover:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"SendComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"CommitComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["result","none"],"sends":[1,0]},
+      {"event":"DeliverComplete:1","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[1,0]},
+      {"event":"BlockedClaim:2:2","states":["uncertain","queued"],"attempts":[1,0],"grants":[1,0],"journals":["reported","none"],"sends":[1,0]}
+    ]
+  }
+]

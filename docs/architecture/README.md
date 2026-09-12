@@ -36,6 +36,7 @@ flowchart TD
 - [権限境界](permissions.md): テナント/会社/拠点/本人、落とし穴。
 - [module・packの拡張](extension-guide.md): 宣言からUI・移行・試験まで。
 - [検証・移行・公開](verification-and-release.md): 安全な変更の終え方。
+- [不変条件と独立した検証](practical-verification.md): 生成操作列、整数参照、シフト全探索、mutation、エッジ有限モデル。
 - [文書の管理方法](documentation-contract.md): AIと人が同じ情報を使う仕組み。
 - [シフト推薦](shift-planning.md): 社員条件、週次希望、Worker、最新資料の再検査。
 - [企業運営拡張](enterprise-operations.md): OIDC/MFA/配送、POS、会社横断認可、連結/FC、給与税保険と勤務制度。

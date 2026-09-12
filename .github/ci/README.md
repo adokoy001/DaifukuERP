@@ -9,6 +9,10 @@
 | identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定・中継pairing/失効の専用ブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
 | setup | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開 | 一時ディレクトリに新規クラスタ、ランダム資格情報 |
 
+`verification.yml`も同じイベントで実行し、Decimal/貸借検査の全147変異と、エッジの有限安全性・ガード破壊・到達性・共有トレースを別jobにする。通常gateは生成unit/DBと台帳検査を含む。権限や秘密の扱いは通常CIと同じ。mutationは全件Killedのみ成功とし、TLCは公式固定jarのbyte数/SHA-256を起動前に検査する。[検証設計](../../docs/architecture/practical-verification.md)を参照。
+
+モデルjobは[公式Ubuntu 24.04一覧](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)の`JAVA_HOME_21_X64`を明示使用する。OSイメージのpatch更新はあり得るため、Java版をログへ残す。公開artifactは合成mutationレポートとTLCのresult/log/config/modelだけを7日保持し、jar・DB・env・TLC内部states・個人の作業ディレクトリを含めない。
+
 権限は `contents: read` だけです。checkout の資格情報は保存しません。fork PR は `pull_request` で検証し、repository secrets、実環境、`pull_request_target` を使いません。依存は pnpm の固定バージョンと `--frozen-lockfile`、ブラウザは lockfile に対応する Playwright の Chromium を使います。
 
 `databases.sql` の既知のパスワードは、job ごとに作る使い捨ての合成データ専用です。既存 role があると失敗し、権限変更・DB 削除は行いません。一般の導入には使わないでください。

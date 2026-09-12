@@ -32,3 +32,8 @@ runtime.env
 
 # Generated manual: Markdown and screenshots are the public sources
 /docs/manual/daifuku-manual.html
+
+# Isolated verification artifacts and downloaded model checker cache
+.stryker-tmp/
+verification/edge/.cache/
+/.cache/tla/

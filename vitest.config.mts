@@ -7,14 +7,14 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['**/test/**/*.test.ts', '**/src/**/*.test.ts'],
-          exclude: ['**/*.db.test.ts', '**/node_modules/**', '**/dist/**', '**/e2e/**'],
+          exclude: ['**/*.db.test.ts', '**/node_modules/**', '**/dist/**', '**/e2e/**', '**/.stryker-tmp/**'],
         },
       },
       {
         test: {
           name: 'db',
           include: ['**/*.db.test.ts'],
-          exclude: ['**/node_modules/**', '**/dist/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**'],
           fileParallelism: false,
           testTimeout: 30000,
           // Each DB suite builds the full schema; allow for migration work on slower local disks.

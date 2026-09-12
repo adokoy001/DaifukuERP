@@ -15,8 +15,13 @@
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
 | 配布・機器 | 固定graph・改変検知・agent journal/実通信 | `pnpm test:deploy`、`pnpm --filter @daifuku/edge build`、専用DBで実API/TLS試験 |
 | 文書 | AI入口と現行ソースの整合 | 主要文書のリンクと構成/契約を照合 |
+| 不変条件の台帳 | 前提・参照先・変更時の再確認 | `pnpm verify:assurance`（gateに含む） |
+| 対象限定mutation | 計算処理を壊した際の検出 | `pnpm verify:mutation`（別CI） |
+| 有限モデル | エッジ状態遷移の安全性・到達性 | `pnpm verify:edge:model`（Java 17/21、別CI） |
 
 DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。
+
+生成DB操作列、会社/拠点の比較、独立したシフト全探索は通常のunit/DBへ組み込みます。[検証設計](practical-verification.md)と[台帳](../verification/invariants.md)で前提と限界を確認し、変更時は `pnpm verify:assurance --changed main` から直接参照する項目を見直します。
 
 ## スキーマ変更
 

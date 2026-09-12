@@ -14,7 +14,7 @@
     "lint:boundaries": "depcruise --config .dependency-cruiser.cjs kernel modules l10n packs apps",
     "test": "vitest run --project unit",
     "test:db": "vitest run --project db",
-    "gate": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:db && pnpm test:deploy && pnpm docs:check",
+    "gate": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:db && pnpm test:deploy && pnpm docs:check && pnpm verify:assurance",
     "db:schema": "pnpm --filter @daifuku/api run db:schema",
     "db:generate": "pnpm --filter @daifuku/api run db:generate",
     "db:migrate": "pnpm --filter @daifuku/api run db:migrate",
@@ -32,20 +32,24 @@
     "test:deploy": "node --test deploy/test/release.test.mjs",
     "build:release": "node scripts/build-release.mjs",
     "verify:release": "node scripts/verify-release.mjs",
-    "deploy:plan": "node scripts/deploy-plan.mjs"
+    "deploy:plan": "node scripts/deploy-plan.mjs",
+    "verify:assurance": "node scripts/check-assurance.mjs",
+    "verify:mutation": "stryker run && node verification/mutation/check.mjs",
+    "verify:edge:model": "node verification/edge/check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@stryker-mutator/core": "10.0.0",
     "@types/node": "^22.0.0",
     "dependency-cruiser": "^18.2.0",
     "eslint": "^9.0.0",
     "eslint-plugin-boundaries": "^7.2.0",
+    "tsc7": "npm:typescript@7.0.2",
+    "tsx": "^4.19.0",
     "turbo": "^2.10.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.0.0",
-    "vitest": "^5.0.0",
-    "tsc7": "npm:typescript@7.0.2",
-    "tsx": "^4.19.0"
+    "vitest": "^5.0.0"
   },
   "type": "module",
   "license": "MIT",
