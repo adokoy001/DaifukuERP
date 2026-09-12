@@ -1,6 +1,6 @@
 # 店舗LAN agentの導入・運用
 
-対象は [共通配備仕様](../specs/deployment-edge.md) のLinux agentです。ERPと同じOSで動かす必要はありません。店舗LANからERPのHTTPS/WSSへ到達できることが必要です。agentは受信port、TCPトンネル、任意shell実行の入口を持ちません。
+対象は [共通配備仕様](../specs/deployment-edge.md) の店舗agentです。Windows/Linux/macOSの常駐導入・更新・削除には [OS別セットアップ](../manual/edge-service-setup.md)を使用できます。以下のLinux手動導入例は、セットアップが管理する同名サービス/保存先と混在させないでください。ERPと同じOSで動かす必要はありません。店舗LANからERPのHTTPS/WSSへ到達できることが必要です。agentは受信port、TCPトンネル、任意shell実行の入口を持ちません。
 
 ## 配布物と準備
 

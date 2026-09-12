@@ -13,7 +13,7 @@
 | `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
 | `apps/api/` | JWT認証、HTTP、OpenAPI、DB/導入CLI | [server](../../apps/api/src/server.ts)、[main](../../apps/api/src/main.ts) |
 | `apps/web/` | React画面、会社切替、汎用entityフォーム、専用業務画面 | [router](../../apps/web/src/router.tsx)、[API client](../../apps/web/src/api/client.ts) |
-| `apps/edge/` | 店舗からの外向きHTTPS/WSS、耐久journal、IPP/模擬driver。業務DBへ接続しない | [CLI](../../apps/edge/src/main.ts)、[契約](../../modules/edge-integration/src/contract.ts) |
+| `apps/edge/` | 店舗からの外向きHTTPS/WSS、耐久journal、IPP/模擬driver、OS別サービス導入。業務DBへ接続しない | [CLI](../../apps/edge/src/main.ts)、[setup](../../apps/edge/setup/main.ts)、[構造](edge-services.md)、[契約](../../modules/edge-integration/src/contract.ts) |
 | `apps/mcp/` | actionから生成するMCP tools、呼出ごとの所属再確認 | [tools](../../apps/mcp/src/tools.ts)、[session](../../apps/mcp/src/session.ts) |
 | 認証メール配送CLI | 暗号化した認証mail outboxをTLS SMTPで配送。汎用業務event配送は別の未実装範囲 | [mail-cli](../../apps/api/src/identity/mail-cli.ts)、[業務outbox](../../kernel/src/events.ts) |
 | `scripts/` | schema生成補助、文書生成、専用試験cluster、配布 | [scripts](../../scripts/) |

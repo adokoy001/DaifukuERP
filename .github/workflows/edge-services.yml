@@ -1,0 +1,80 @@
+name: edge services
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: edge-services-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: native service (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: windows-2025
+            target: win32-x64
+          - runner: macos-15-intel
+            target: darwin-x64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      EDGE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.2'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @daifuku/edge build
+      - name: Build two immutable versions (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python3 apps/edge/scripts/package.py --target "$EDGE_TARGET" --release-id "ci-a-$GITHUB_SHA" --output "$RUNNER_TEMP/edge-packages" --cache "$RUNNER_TEMP/edge-assets"
+          python3 apps/edge/scripts/package.py --target "$EDGE_TARGET" --release-id "ci-b-$GITHUB_SHA" --output "$RUNNER_TEMP/edge-packages" --cache "$RUNNER_TEMP/edge-assets"
+      - name: Build two immutable versions (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python apps/edge/scripts/package.py --target $env:EDGE_TARGET --release-id "ci-a-$env:GITHUB_SHA" --output "$env:RUNNER_TEMP/edge-packages" --cache "$env:RUNNER_TEMP/edge-assets"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python apps/edge/scripts/package.py --target $env:EDGE_TARGET --release-id "ci-b-$env:GITHUB_SHA" --output "$env:RUNNER_TEMP/edge-packages" --cache "$env:RUNNER_TEMP/edge-assets"
+          exit $LASTEXITCODE
+      - name: Native lock and private file acceptance
+        run: pnpm exec vitest run --project unit apps/edge/test/platform.test.ts apps/edge/test/systemd-render.test.ts
+      - name: Real systemd or LaunchDaemon lifecycle on this disposable runner
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          sudo env GITHUB_ACTIONS=true "$(command -v node)" apps/edge/test/native-service-acceptance.mjs --bundle "$RUNNER_TEMP/edge-packages/DaifukuEdge-ci-a-$GITHUB_SHA-$EDGE_TARGET" --update-bundle "$RUNNER_TEMP/edge-packages/DaifukuEdge-ci-b-$GITHUB_SHA-$EDGE_TARGET" --allow-disposable-service
+      - name: Real SCM lifecycle on this disposable runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node apps/edge/test/native-service-acceptance.mjs --bundle "$env:RUNNER_TEMP/edge-packages/DaifukuEdge-ci-a-$env:GITHUB_SHA-$env:EDGE_TARGET" --update-bundle "$env:RUNNER_TEMP/edge-packages/DaifukuEdge-ci-b-$env:GITHUB_SHA-$env:EDGE_TARGET" --allow-disposable-service
+          exit $LASTEXITCODE
+      - name: Retain tested installers and checksums (no credentials or service state)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: DaifukuEdge-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/edge-packages/*.tar.gz
+            ${{ runner.temp }}/edge-packages/*.zip
+            ${{ runner.temp }}/edge-packages/*.sha256
+          if-no-files-found: error
+          retention-days: 14
