@@ -2,7 +2,7 @@ import type { ServiceContext } from '../types.js';
 import type { PosixHost } from './host.js';
 import { command } from './host.js';
 import { ownershipTag } from './render.js';
-export interface PosixAccount { name: string; group: string; uid: number; gid: number }
+export interface PosixAccount { name: string; group: string; uid: number; gid: number; groups?: number[] }
 export async function linuxGroup(host: PosixHost): Promise<{ name: string; gid: number }> {
   for (const name of ['nogroup', 'nobody']) {
     const result = await host.run('/usr/bin/getent', ['group', name]);

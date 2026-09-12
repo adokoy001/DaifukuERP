@@ -20,7 +20,7 @@ export interface ServiceInspection {
   serviceOwned: boolean;
   conflicts: string[];
   processId?: number;
-  account?: { name: string; group?: string; uid?: number; gid?: number; sid?: string };
+  account?: { name: string; group?: string; uid?: number; gid?: number; sid?: string; groups?: number[] };
 }
 export interface ServiceAdapter {
   platform: EdgePlatform;

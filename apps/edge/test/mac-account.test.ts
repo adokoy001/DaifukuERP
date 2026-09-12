@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { dsRecord, inspectMacAccount, prepareMacAccount, validateMacAccountAttributes } from '../setup/posix/account-mac.ts';
 import { ownershipTag } from '../setup/posix/render.ts';
 import { PosixFixture } from './posix-fixture.ts';
-const valid = { UniqueID: '401', PrimaryGroupID: '-2', UserShell: '/usr/bin/false', NFSHomeDirectory: '/var/empty', Password: '*', IsHidden: '1', AuthenticationAuthority: ';DisabledUser;' };
+const valid = { GeneratedUID: '11111111-2222-4333-8444-555555555555', UniqueID: '401', PrimaryGroupID: '-2', UserShell: '/usr/bin/false', NFSHomeDirectory: '/var/empty', Password: '*', IsHidden: '1', AuthenticationAuthority: ';DisabledUser;' };
 describe('mac directory-service attribute validation', () => {
   it('parses native IsHidden and multiline standard names without treating other native values as ownership', () => {
     const parsed = dsRecord('dsAttrTypeNative:IsHidden: 1\ndsAttrTypeNative:RealName: foreign\nRealName:\n Daifuku edge installer synthetic\nPassword: *\nAuthenticationAuthority: ;DisabledUser;\n');
@@ -25,7 +25,7 @@ describe('mac directory-service attribute validation', () => {
   });
   it('creates and verifies its tagged account with the native hidden field serialization', async () => {
     const f = new PosixFixture('darwin'); f.groupId = 4294967294;
-    expect(await prepareMacAccount(f, f.context)).toEqual({ name: '_daifukuedge', group: 'nobody', uid: 401, gid: 4294967294 });
+    expect(await prepareMacAccount(f, f.context)).toEqual({ name: '_daifukuedge', group: 'nobody', uid: 401, gid: 4294967294, groups: [12, 61, 4294967294] });
     expect(await inspectMacAccount(f, f.context)).toMatchObject({ uid: 401 });
     const before = [...f.changes]; const record = f.user; if (!record) throw new Error('Missing synthetic account'); record.RealName = 'foreign';
     await expect(prepareMacAccount(f, f.context)).rejects.toThrow('not owned'); expect(f.changes).toEqual(before);
@@ -41,6 +41,6 @@ it('verifies the owned non-login account without mistaking directory nested grou
   vi.spyOn(f, 'run').mockImplementation((executable, args) => executable === '/usr/bin/id' && args[0] === '-G'
     ? Promise.resolve({ code: 0, stdout: '4294967294 12 61 701 100', stderr: '' }) : run(executable, args));
   await expect(inspectMacAccount(f, f.context)).resolves.toMatchObject({ uid: 401, gid: 4294967294 });
-  expect(f.commands.some((args) => args[0] === '/usr/bin/id' && args[1] === '-G')).toBe(false);
+  expect(f.commands.some((args) => args[0] === '/usr/bin/dscl' && args[2] === '-search')).toBe(true);
   expect(f.changes).toEqual([]);
 });

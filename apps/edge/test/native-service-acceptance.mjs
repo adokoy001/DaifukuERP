@@ -119,9 +119,10 @@ function runtimeIdentity(value) {
 function assertMacRuntimeIdentity(status) {
   if (process.platform !== 'darwin') return;
   const identity = runtimeIdentity(status.runtime?.identity); assert(identity, 'actual Mac process identity required');
-  assert.equal(status.runtime.groupIsolationRequired, true); assert.equal(identity.uid, status.account.uid); assert.equal(identity.euid, status.account.uid);
+  assert.equal(status.runtime.unprivilegedIdentityRequired, true); assert.equal(status.runtime.unprivilegedIdentityVerified, true); assert.equal(identity.uid, status.account.uid); assert.equal(identity.euid, status.account.uid);
   assert.equal(identity.gid, status.account.gid); assert.equal(identity.egid, status.account.gid); assert(identity.uid >= 400 && identity.uid < 500);
-  assert(identity.groups.every((group) => group === identity.gid), 'supplementary process groups forbidden');
+  assert(identity.groups.includes(identity.gid)); assert(identity.groups.every((group) => ![0, 80, 98, 204].includes(group)), 'administrative process groups forbidden');
+  assert.deepEqual([...new Set(identity.groups)].sort((a, b) => a - b), status.account.groups, 'actual groups must match the verified account');
   process.stdout.write(JSON.stringify({ type: 'native_mac_process_identity_verified', stage, ...identity }) + '\n');
 }
 async function macAccountDiagnostics() {
@@ -148,7 +149,7 @@ async function diagnostics(source) {
   } catch (error) { report.setupCode = /^[a-z][a-z0-9_]+$/.test(error.message) ? error.message : 'status_unavailable'; }
   try {
     const runtime = await json(join(defaults.state, 'service-status.json'));
-    report.runtime = { identity: runtimeIdentity(runtime.identity), groupIsolationRequired: runtime.groupIsolationRequired === true, pid: Number.isInteger(runtime.pid) ? runtime.pid : null, phase: ['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error'].includes(runtime.phase) ? runtime.phase : 'invalid', observedAt: /^\d{4}-\d\d-\d\dT[0-9:.]+Z$/.test(runtime.observedAt) ? runtime.observedAt : null };
+    report.runtime = { identity: runtimeIdentity(runtime.identity), unprivilegedIdentityRequired: runtime.unprivilegedIdentityRequired === true, unprivilegedIdentityVerified: runtime.unprivilegedIdentityVerified === true, pid: Number.isInteger(runtime.pid) ? runtime.pid : null, phase: ['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error'].includes(runtime.phase) ? runtime.phase : 'invalid', observedAt: /^\d{4}-\d\d-\d\dT[0-9:.]+Z$/.test(runtime.observedAt) ? runtime.observedAt : null };
   } catch { report.runtime = null; }
   try {
     if (process.platform === 'win32') {

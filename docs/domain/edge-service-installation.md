@@ -5,8 +5,9 @@
 | 資料 | 採用した内容と境界 |
 |---|---|
 | [Apple launchd jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html) / [daemon設計](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/DesigningDaemons.html) | ログインセッションに依存しないLaunchDaemon、配列のProgramArguments、専用UserName/GroupName。GUI利用を前提にしない。 |
-| [Apple launchd.plist manual](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5) | systemドメイン、固定ラベル、KeepAlive、標準入出力とファイル所有。UserNameと`InitGroups=false`で補助グループの初期化を抑え、起動後のUID/GID/実補助グループも検査する。 |
+| [Apple launchd.plist manual](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5) | systemドメイン、固定ラベル、KeepAlive、標準入出力とファイル所有。UserName/GroupNameで非root起動し、起動後のUID/GID/実補助グループも検査する。`InitGroups=false`だけで現行macOSの計算上の所属が消えるとは保証しない。 |
 | [Apple DirectoryService membership](https://github.com/apple-oss-distributions/DirectoryService/blob/main/Server/Mbrd_MembershipResolver.cpp#L1686-L1708) | everyone/localaccountsなどの計算上の所属と、実プロセスへ渡す補助グループを区別する。OS/端末固有のnested groupを製品の許可表へ追加し続ける方式は採らない。 |
+| [Apple dscl record search](https://github.com/apple-oss-distributions/DSTools/blob/main/dscl/PathRecordType.m#L430-L494) | 名前・GeneratedUIDによる明示所属検索は成功かつ結果が空の場合だけ許可する。検索エラーを「所属なし」に置き換えない。新規の所有確認済みユーザーにGeneratedUIDがなければ作成し、再読取検証する。 |
 | [systemd.exec](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml) | 専用User/Groupと実行環境の制限。状態以外を読み取り専用にする構成。 |
 | [WinSW v2.12.0](https://github.com/winsw/winsw/releases/tag/v2.12.0) / [XML設定](https://github.com/winsw/winsw/blob/v2.12.0/doc/xmlConfigFile.md) | 固定wrapperとXMLでSCMへ登録し、LocalServiceで実行する。パス・アカウント・登録元を照合。 |
 | [WinSW build project](https://github.com/winsw/winsw/blob/v2.12.0/src/WinSW/WinSW.csproj) / [Core project](https://github.com/winsw/winsw/blob/v2.12.0/src/WinSW.Core/WinSW.Core.csproj) | NET461配布とOS側.NET Framework 4.8を選ぶ。自己完結.NET runtimeは同梱しない。埋込log4net 2.0.12、YamlDotNet 8.1.2のLICENSE/NOTICEも保持する。 |

@@ -18,7 +18,7 @@ describe('service pairing inbox and durable recovery', () => {
     try {
       await until(() => codes.includes('pairing_required'));
       const status = await readPrivateJson(join(relay.directory, 'service-status.json'));
-      expect(status).toEqual({ pid: process.pid, phase: 'pairing_required', observedAt: expect.any(String), groupIsolationRequired: false, ...(currentServiceIdentity() ? { identity: currentServiceIdentity() } : {}) });
+      expect(status).toEqual({ pid: process.pid, phase: 'pairing_required', observedAt: expect.any(String), unprivilegedIdentityRequired: false, unprivilegedIdentityVerified: false, ...(currentServiceIdentity() ? { identity: currentServiceIdentity() } : {}) });
       expect(SERVICE_RETRY_MS).toBeGreaterThanOrEqual(30000); expect(relay.state.credential).toBe('');
       expect(JSON.stringify(status)).not.toContain(relay.state.pairing); expect(codes).toEqual(['pairing_required']);
     } finally { abort.abort(); await run; }

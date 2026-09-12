@@ -40,7 +40,7 @@ export function validateLoadedDaemon(text: string, context: ServiceContext): voi
   const args = /(?:^|\n)\s*arguments = \{\n([\s\S]*?)\n\s*\}/.exec(text)?.[1]?.split('\n').map((line) => line.trim()).filter(Boolean);
   if (property(text, 'path') !== macPlistPath || property(text, 'program') !== context.nodePath || property(text, 'username') !== '_daifukuedge' || property(text, 'group') !== 'nobody' || JSON.stringify(args) !== JSON.stringify(serviceArguments(context))) throw new Error('Loaded LaunchDaemon differs from the owned service definition.');
   const environment = daemonEnvironment(text);
-  if (environment.DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS !== '1') throw new Error('Loaded LaunchDaemon group isolation differs from this installation.');
+  if (environment.DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY !== '1') throw new Error('Loaded LaunchDaemon unprivileged identity differs from this installation.');
   const ca = environment.NODE_EXTRA_CA_CERTS;
   if (ca !== context.caPath) throw new Error('Loaded LaunchDaemon CA configuration differs from this installation.');
 }

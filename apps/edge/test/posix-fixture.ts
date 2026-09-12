@@ -64,6 +64,7 @@ export class PosixFixture implements PosixHost {
     return this.ok(`daifuku-edge:x:${this.user.UniqueID}:${this.groupId}:${this.user.RealName}:/nonexistent:/usr/sbin/nologin`);
   }
   private dscl(args: string[]): CommandResult {
+    if (args[0] === '/Search' && args[1] === '-search') return this.ok();
     if (args[0] === '/Search') return this.ok(`root 0\n_reserved 400\n${this.user?.UniqueID ? '_daifukuedge ' + this.user.UniqueID : ''}`);
     if (args[1] === '-list') return this.ok('root\n' + (this.user ? '_daifukuedge' : ''));
     if (args[2] === '/Groups/everyone') return this.ok('PrimaryGroupID: 12\nGeneratedUID: ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C');
@@ -89,7 +90,7 @@ export class PosixFixture implements PosixHost {
       if (!this.loaded) return { code: 113, stdout: '', stderr: 'Could not find service "jp.daifuku.edge" in domain for system' };
       const values = (this.loaded.match(/<key>ProgramArguments<\/key><array>(.*?)<\/array>/)?.[1]?.match(/<string>(.*?)<\/string>/g) ?? []).map((value) => value.slice(8, -9));
       const ca = this.loaded.match(/<key>NODE_EXTRA_CA_CERTS<\/key><string>(.*?)<\/string>/)?.[1];
-      return this.ok(`system/jp.daifuku.edge = {\n path = ${macPlistPath}\n program = ${values[0]}\n username = _daifukuedge\n group = nobody\n arguments = {\n${values.join('\n')}\n }\n${this.running ? ' pid = 12345\n' : ''} environment = {\n${this.loaded.includes('<key>DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS</key><string>1</string>') ? ' DAIFUKU_EDGE_REQUIRE_ISOLATED_GROUPS => 1\n' : ''}${ca ? ' NODE_EXTRA_CA_CERTS => ' + ca + '\n' : ''} }\n}`);
+      return this.ok(`system/jp.daifuku.edge = {\n path = ${macPlistPath}\n program = ${values[0]}\n username = _daifukuedge\n group = nobody\n arguments = {\n${values.join('\n')}\n }\n${this.running ? ' pid = 12345\n' : ''} environment = {\n${this.loaded.includes('<key>DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY</key><string>1</string>') ? ' DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY => 1\n' : ''}${ca ? ' NODE_EXTRA_CA_CERTS => ' + ca + '\n' : ''} }\n}`);
     }
     this.changes.push('launchctl:' + args[0]);
     if (args[0] === 'bootstrap') { this.loaded = this.files.get(macPlistPath)?.text ?? null; this.running = true; }

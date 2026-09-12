@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { macAccountGroups } from '../../src/macos-membership.ts';
 import type { ServiceContext } from '../types.js';
 import type { PosixHost } from './host.js';
 import type { PosixAccount } from './account-linux.js';
@@ -57,9 +59,9 @@ export async function inspectMacAccount(host: PosixHost, context: ServiceContext
   const gid = await nobodyGroup(host);
   if (partial && !fields.UniqueID) return null;
   validateMacAccountAttributes(fields, gid);
-  // id -G includes nested system memberships (printer/sharepoint groups can inherit everyone).
-  // The owned LaunchDaemon disables InitGroups and verifies its actual process groups instead.
-  return { name: '_daifukuedge', group: 'nobody', uid: Number(fields.UniqueID), gid };
+  const groups = await macAccountGroups(host.run);
+  if (!groups.includes(gid)) throw new Error('mac_account_primary_group_missing');
+  return { name: '_daifukuedge', group: 'nobody', uid: Number(fields.UniqueID), gid, groups };
 }
 export function nextServiceUid(text: string): number {
   const used = new Set(text.split('\n').map((line) => line.trim().split(/\s+/).at(-1)));
@@ -77,14 +79,15 @@ export async function prepareMacAccount(host: PosixHost, context: ServiceContext
   if (!fields) {
     // The creation request itself includes our owner tag, allowing interrupted provisioning to resume.
     await command(host, '/usr/bin/dscl', ['.', '-create', userPath, 'RealName', ownershipTag(context)]);
-    fields = { RealName: ownershipTag(context) };
+    fields = await record(host);
+    if (!fields) throw new Error('Created service account could not be read.');
   }
   const users = await command(host, '/usr/bin/dscl', ['/Search', '-list', '/Users', 'UniqueID']);
   const uid = fields.UniqueID ? Number(fields.UniqueID) : nextServiceUid(users);
   if (!Number.isSafeInteger(uid) || uid < 400 || uid >= 500) throw new Error('Invalid managed service UID.');
   const collisions = users.split('\n').filter((line) => line.trim().split(/\s+/).at(-1) === String(uid) && line.trim().split(/\s+/)[0] !== '_daifukuedge');
   if (collisions.length) throw new Error('Service UID is already used by another account.');
-  const attributes = { Password: '*', AuthenticationAuthority: ';DisabledUser;', UserShell: '/usr/bin/false', NFSHomeDirectory: '/var/empty', IsHidden: '1', PrimaryGroupID: gid === 4294967294 ? '-2' : String(gid), UniqueID: String(uid) };
+  const attributes = { GeneratedUID: fields.GeneratedUID ?? randomUUID().toUpperCase(), Password: '*', AuthenticationAuthority: ';DisabledUser;', UserShell: '/usr/bin/false', NFSHomeDirectory: '/var/empty', IsHidden: '1', PrimaryGroupID: gid === 4294967294 ? '-2' : String(gid), UniqueID: String(uid) };
   for (const [key, value] of Object.entries(attributes)) {
     if (fields[key] !== undefined && fields[key] !== value) throw new Error('Partially created service account attributes changed.');
     await command(host, '/usr/bin/dscl', ['.', '-create', userPath, key, value]);

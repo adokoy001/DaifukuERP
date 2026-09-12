@@ -10,7 +10,7 @@ import { readPrivateSource } from './source.ts';
 import { readInstallation, saveInstallation } from './state.ts';
 import type { ServiceAdapter, SetupOperation } from './types.ts';
 const pairingSchema = z.object({ pairingToken: edgeSecret }).strict();
-const statusSchema = z.object({ pid: z.number().int().positive(), phase: z.enum(['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error']), observedAt: z.string().datetime(), groupIsolationRequired: z.boolean().optional(), identity: serviceIdentitySchema.optional() }).strict();
+const statusSchema = z.object({ pid: z.number().int().positive(), phase: z.enum(['pairing_required', 'connecting', 'running', 'credential_rejected', 'stopped', 'error']), observedAt: z.string().datetime(), unprivilegedIdentityRequired: z.boolean().optional(), unprivilegedIdentityVerified: z.boolean().optional(), identity: serviceIdentitySchema.optional() }).strict();
 export interface OperationRequest { operation: Exclude<SetupOperation, 'install' | 'update'>; installRoot: string; execute: boolean; pairingSource?: string }
 async function inspect(request: OperationRequest, adapter: ServiceAdapter) {
   const root = safePath(request.installRoot); await pathChain(root, true);
