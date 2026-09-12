@@ -6,6 +6,7 @@ import type { EntityDef } from './dsl/entity.ts';
 import type { Domain, DomainCondition, DomainScalar, Op } from './dsl/types.ts';
 import { PermissionDenied, ValidationError } from './errors.ts';
 import { compileExtCondition, isExtPath } from './repository/ext-query.ts';
+import { conditionEntries, isTimestampColumn, queryScalar, type QueryScalar } from './repository/query-values.ts';
 import { registry } from './registry.ts';
 import { storeAllows, effectiveSitePolicy } from './store-access.ts';
 import { outputHiddenFields } from './public-output.ts';
@@ -51,31 +52,44 @@ function substitute(ctx: Context, v: DomainScalar): DomainScalar {
  * `$in` with SQL's meaning (phase15-cleanup AC-3): an empty list matches no row (`false`), and a null element (literal or a
  * `$ctx.*` token resolving to null) adds `col IS NULL` — `col IN (NULL)` alone never matches.
  */
-function compileIn(ctx: Context, col: PgColumn, list: readonly DomainScalar[]): SQL {
-  const vals = list.map((v) => substitute(ctx, v));
-  const nonNull = vals.filter((v): v is string | number | boolean => v !== null);
+function compileIn(ctx: Context, col: PgColumn, field: string, list: readonly DomainScalar[]): SQL {
+  if (!Array.isArray(list)) throw new ValidationError('Invalid search membership', [{ path: `where.${field}.$in`, message: 'array required' }]);
+  const vals = list.map((v, index) => queryScalar(col, substitute(ctx, v), `where.${field}.$in.${index}`));
+  const nonNull = vals.filter((v): v is Exclude<QueryScalar, null> => v !== null);
   const withNull = nonNull.length < vals.length;
   if (nonNull.length === 0) return withNull ? isNull(col) : sql`false`;
   const matched = inArray(col, nonNull);
   return withNull ? (or(matched, isNull(col)) ?? matched) : matched;
 }
 
-function compileCondition(ctx: Context, entity: EntityDef, field: string, cond: DomainCondition): SQL {
+function compileSingleCondition(ctx: Context, entity: EntityDef, field: string, cond: DomainCondition): SQL {
   if (isExtPath(field)) return compileExtCondition(entity, field, cond, (v) => substitute(ctx, v));
   const col = entity.col(field);
+  const value = (operand: DomainScalar, op?: string) => queryScalar(col, substitute(ctx, operand), `where.${field}${op ? `.${op}` : ''}`);
   if (cond === null) return isNull(col);
-  if (typeof cond !== 'object') return eq(col, substitute(ctx, cond));
-  if ('$in' in cond) return compileIn(ctx, col, cond.$in);
+  if (typeof cond !== 'object') return eq(col, value(cond));
+  if ('$in' in cond) return compileIn(ctx, col, field, cond.$in);
   if ('$ne' in cond) {
-    const v = substitute(ctx, cond.$ne);
+    const v = value(cond.$ne, '$ne');
     return v === null ? isNotNull(col) : ne(col, v);
   }
-  if ('$gt' in cond) return gt(col, substitute(ctx, cond.$gt));
-  if ('$gte' in cond) return gte(col, substitute(ctx, cond.$gte));
-  if ('$lt' in cond) return lt(col, substitute(ctx, cond.$lt));
-  if ('$lte' in cond) return lte(col, substitute(ctx, cond.$lte));
-  if ('$like' in cond) return like(col, cond.$like);
+  if ('$gt' in cond) return gt(col, value(cond.$gt, '$gt'));
+  if ('$gte' in cond) return gte(col, value(cond.$gte, '$gte'));
+  if ('$lt' in cond) return lt(col, value(cond.$lt, '$lt'));
+  if ('$lte' in cond) return lte(col, value(cond.$lte, '$lte'));
+  if ('$like' in cond) {
+    if (isTimestampColumn(col)) throw new ValidationError('Pattern searches do not support timestamps', [{ path: `where.${field}.$like`, message: 'Use equality or a timestamp range.' }]);
+    return like(col, cond.$like);
+  }
   throw new ValidationError(`unsupported condition on ${field}`, [{ path: field, message: 'unsupported operator' }]);
+}
+
+function compileCondition(ctx: Context, entity: EntityDef, field: string, condition: DomainCondition): SQL {
+  if (condition === null || typeof condition !== 'object') return compileSingleCondition(ctx, entity, field, condition);
+  const entries = conditionEntries(field, condition);
+  const parts = entries.map(([op, operand]) => compileSingleCondition(ctx, entity, field, { [op]: operand } as DomainCondition));
+  // conditionEntries rejects empty objects; single-operator SQL remains byte-for-byte unchanged.
+  return parts.length === 1 ? parts[0] as SQL : and(...parts) as SQL;
 }
 
 /** Compiles a domain expression into a Drizzle SQL condition. */

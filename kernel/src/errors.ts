@@ -98,8 +98,19 @@ export class DependencyError extends DaifukuError {
   }
 }
 
+/** Only SQLSTATE is retained for diagnosis; messages, causes, SQL, values and stacks are never logged. */
+export function safeErrorDiagnostics(err: unknown): { category: 'database' | 'unexpected'; sqlState?: string } {
+  let current = err;
+  for (let depth = 0; depth < 4 && current !== null && typeof current === 'object'; depth++) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (typeof candidate.code === 'string' && /^[0-9][A-Z0-9]{4}$/.test(candidate.code)) return { category: 'database', sqlState: candidate.code };
+    current = candidate.cause;
+  }
+  return { category: 'unexpected' };
+}
+
 export function toErrorBody(err: unknown): { status: number; body: ErrorBody } {
   if (err instanceof DaifukuError) return { status: err.httpStatus, body: err.toBody() };
-  const message = err instanceof Error ? err.message : String(err);
-  return { status: 500, body: { code: 'INTERNAL', message, hint: 'This is a bug. Check server logs with the request id.' } };
+  if (safeErrorDiagnostics(err).sqlState === '23505') return { status: 409, body: { code: 'CONFLICT', message: 'A record with the same unique value already exists.', hint: 'Choose a different value or reload the existing record.' } };
+  return { status: 500, body: { code: 'INTERNAL', message: 'An unexpected server error occurred.', hint: 'Report the request id to the operator so they can investigate.' } };
 }

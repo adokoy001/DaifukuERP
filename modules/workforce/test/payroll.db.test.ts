@@ -1,4 +1,4 @@
-import { newId, PermissionDenied, repo, runAction, StateError, ValidationError } from '@daifuku/kernel';
+import { newId, PermissionDenied, repo, runAction, StateError, ValidationError, type InsertInput } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deductionKinds } from '../src/contract.ts';
 import { WorkforceAttendance, WorkforceEmployee, WorkforcePayPolicy, WorkforcePayTerms, WorkforcePayroll, WorkforcePeriodLock } from '../src/index.ts';
@@ -76,7 +76,8 @@ describe('workforce payroll source, finalization and privacy', () => {
     const policy = await f.db.run({}, async (ctx) => (await repo(ctx, WorkforcePayPolicy).list()).items[0]);
     if (!policy) throw new Error('Missing fixture policy');
     await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforcePayPolicy).update(policy.id, { validTo: '2026-09-30' }));
-    const future = await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforcePayPolicy).create({ ...Object.fromEntries(WorkforcePayPolicy.fieldNames.map((field) => [field, policy[field]])), code: 'NEXT', validFrom: '2026-10-01', validTo: '2026-12-31' }));
+    const copiedFields = Object.fromEntries(WorkforcePayPolicy.fieldNames.map((field) => [field, policy[field as keyof typeof policy]])) as InsertInput<typeof WorkforcePayPolicy>;
+    const future = await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforcePayPolicy).create({ ...copiedFields, code: 'NEXT', validFrom: '2026-10-01', validTo: '2026-12-31' }));
     await f.db.run(f.payroll.params, (ctx) => repo(ctx, WorkforcePayTerms).create({ employeeId: f.employee.id, policyId: future.id, validFrom: '2026-10-01', validTo: '2026-12-31', payType: 'hourly', hourlyRate: '1500', monthlySalary: '0', monthlyBaseMinutes: 9600, paidLeaveDayMinutes: 480, confirmed: true, basis: '10月からの昇給合意' }));
     await expect(f.db.run(f.payroll.params, (ctx) => repo(ctx, WorkforcePayTerms).update(termsId, { validTo: '2026-09-15' }))).rejects.toBeInstanceOf(StateError);
     const saved = await f.db.run(f.payroll.params, (ctx) => repo(ctx, WorkforcePayroll).get(august.id));

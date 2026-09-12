@@ -1,5 +1,5 @@
 import { registry, repo, StateError, ValidationError, withLock, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
-import { WorkforceAttendance, WorkforceAttendanceCorrection, WorkforceEmployee, WorkforceExpense, WorkforceLeaveRequest, WorkforcePayPolicy, WorkforcePayTerms, WorkforcePeriodLock, WorkforceSite } from './entities/index.ts';
+import { WorkforceAttendance, WorkforceAttendanceCorrection, WorkforceEmployee, WorkforceExpense, WorkforceLeaveGrant, WorkforceLeaveRequest, WorkforcePayPolicy, WorkforcePayTerms, WorkforcePeriodLock, WorkforceSite } from './entities/index.ts';
 import { allRows, D, employeeLock } from './common.ts';
 import { stableJson } from './services/json.ts';
 
@@ -56,8 +56,17 @@ async function employee(ctx: Context, args: HookArgs): Promise<void> {
       const leave = await allRows(ctx, WorkforceLeaveRequest, { employeeId: row.id, status: { $in: ['pending', 'approved'] } });
       if (leave.some((day) => day.leaveDate < row.hiredOn || (row.terminatedOn && day.leaveDate > row.terminatedOn))) invalid('hiredOn', 'Employment dates cannot exclude pending or approved paid leave.');
     }
+    if (previous.siteId !== row.siteId) await assertTransferPreservesHistory(ctx, row.id, row.siteId);
     if (previous.siteId !== row.siteId || (previous.active && !row.active)) await assertNoPending(ctx, row.id);
   });
+}
+/** Historical rows keep their original site. Reject a move until those balances and payslips can retain access. */
+async function assertTransferPreservesHistory(ctx: Context, employeeId: string, siteId: string): Promise<void> {
+  const scope = { employeeId, siteId: { $ne: siteId } };
+  const grants = await repo(ctx, WorkforceLeaveGrant).count(scope);
+  // HR may inspect this minimal projection without gaining access to any payroll amount.
+  const published = await repo(ctx, WorkforcePeriodLock).count({ ...scope, active: true });
+  if (grants || published) throw new StateError('有給台帳・確定給与明細を保全するため、この拠点変更はできません', '別拠点へ移すと本人や新拠点から既存履歴を参照できなくなります。履歴を維持する異動機能に対応するまでは現在の所属を保持してください。');
 }
 async function assertNoPending(ctx: Context, employeeId: string): Promise<void> {
   const pending = await repo(ctx, WorkforceAttendance).count({ employeeId, status: { $ne: 'approved' } })

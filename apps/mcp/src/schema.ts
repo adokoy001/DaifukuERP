@@ -1,6 +1,6 @@
 // Zod (input side) -> JSON Schema for MCP tool inputSchema, with a safe fallback (ADR-0009).
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { Logger } from '@daifuku/kernel';
+import { safeErrorDiagnostics, type Logger } from '@daifuku/kernel';
 import { z } from 'zod';
 
 export type ToolInputSchema = Tool['inputSchema'];
@@ -50,7 +50,7 @@ export function toolInputSchema(actionName: string, input: z.ZodType, log: Logge
     const { $schema: _omitted, ...rest } = json;
     return rest as ToolInputSchema;
   } catch (e) {
-    log.warn('cannot convert action input to JSON Schema; exposing a permissive tool schema', { action: actionName, error: e instanceof Error ? e.message : String(e) });
+    log.warn('cannot convert action input to JSON Schema; exposing a permissive tool schema', { action: actionName, ...safeErrorDiagnostics(e) });
     return FALLBACK_INPUT_SCHEMA;
   }
 }

@@ -49,6 +49,7 @@ export function LoginPage() {
           </button>
         </div>
         <p>{t({ ja: 'アカウントでログインして、仕事を始めましょう。', en: 'Sign in to your account to get started.' })}</p>
+        {search.reason === 'password-changed' || search.reason === 'signed-out-all' ? <p role="status" className="notice mb-3">{t(search.reason === 'password-changed' ? { ja: 'パスワードを変更し、全端末からログアウトしました。新しいパスワードでログインしてください。', en: 'Your password was changed and all devices were signed out. Sign in with your new password.' } : { ja: '全端末からログアウトしました。利用を続ける場合はログインしてください。', en: 'All devices were signed out. Sign in to continue.' })}</p> : null}
         {search.reason === 'expired' ? (
           <p role="status" className="mb-3 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
             {t(S.sessionExpired)}

@@ -1,6 +1,6 @@
 // One MCP tool per registered action (ADR-0009): listing and invocation.
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { canRunAction, DaifukuError, newId, registry, runAction, toolNameOf, withContext, type ActionDef, type Context, type ContextParams, type Database, type ErrorBody, type Logger } from '@daifuku/kernel';
+import { canRunAction, DaifukuError, newId, registry, runAction, safeErrorDiagnostics, toErrorBody, toolNameOf, withContext, type ActionDef, type Context, type ContextParams, type Database, type ErrorBody, type Logger } from '@daifuku/kernel';
 import { toolInputSchema } from './schema.ts';
 import { refreshAgentContext } from './session.ts';
 
@@ -54,12 +54,8 @@ export async function callTool(rt: ToolRuntime, toolName: string, args: Record<s
     return textResult(result);
   } catch (err) {
     if (err instanceof DaifukuError) return errorResult(err.toBody());
-    rt.log.error('tool call failed', { tool: toolName, action: action.name, requestId, error: err instanceof Error ? (err.stack ?? err.message) : String(err) });
-    return errorResult({
-      code: 'INTERNAL',
-      message: `tool "${toolName}" failed with an internal error`,
-      hint: 'This is a server-side bug, not an input problem. Report the requestId in details to the operator; do not retry with the same input.',
-      details: { requestId },
-    });
+    const { status, body } = toErrorBody(err);
+    if (status >= 500) rt.log.error('tool call failed', { action: action.name, requestId, ...safeErrorDiagnostics(err) });
+    return errorResult({ ...body, details: { ...body.details, requestId } });
   }
 }

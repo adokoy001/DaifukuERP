@@ -71,6 +71,16 @@ describe('AC-1 stdio entrypoint', () => {
     expect(stderr.join('')).toContain('authentication failed');
   }, 60000);
 
+  it('quality-foundation AC-1 reports startup failures without echoing connection secrets', async () => {
+    const secret = 'private-startup-password';
+    const { stderr, exited } = spawnRaw({ DATABASE_URL_OWNER: `postgres://${secret}@[`, DAIFUKU_EMAIL: 'admin@example.com', DAIFUKU_PASSWORD: secret });
+    expect(await exited).toBe(1);
+    expect(stderr.join('')).toContain('fatal');
+    expect(stderr.join('')).toContain('Check database connection');
+    expect(stderr.join('')).not.toContain(secret);
+    expect(stderr.join('')).not.toContain('postgres://');
+  }, 60000);
+
   it('AC-1 exits cleanly when the client closes stdin (no zombie server processes)', async () => {
     const { child, stderr, exited } = spawnRaw({ DAIFUKU_EMAIL: 'admin@example.com', DAIFUKU_PASSWORD: 'password' });
     await new Promise<void>((ready) => {

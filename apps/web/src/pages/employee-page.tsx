@@ -12,6 +12,8 @@ import { useLocale } from '../i18n.tsx';
 import { formatDecimal } from '../lib/format.ts';
 import { businessToday } from '../lib/operations.ts';
 import { LoadingView } from './status-views.tsx';
+import { canRetainData } from '../lib/read-recovery.ts';
+import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
 
 const tabs: WorkforceTab[] = [
   { id: 'today', label: { ja: '今日', en: 'Today' }, icon: 'home' },
@@ -29,14 +31,15 @@ export function EmployeePage() {
   const allowed = actions.includes('workforce.my_portal');
   const portal = useMyPortal(period, allowed);
   if (!meta.data && !meta.isError) return <LoadingView />;
-  if (meta.isError || portal.isError) return <div className="workspace-page workforce-page"><WorkforceError error={meta.error ?? portal.error} onRetry={() => { void meta.refetch(); void portal.refetch(); }} /></div>;
+  if ((meta.isError && !canRetainData(meta)) || (portal.isError && !canRetainData(portal))) return <div className="workspace-page workforce-page"><WorkforceError error={meta.isError && !canRetainData(meta) ? meta.error : portal.error} onRetry={() => { void meta.refetch(); void portal.refetch(); }} /></div>;
   if (!allowed) return <div className="workspace-page workforce-page"><p className="workforce-notice">{t({ ja: 'この会社で従業員ポータルを利用する権限がありません。管理者に会社所属と役割をご確認ください。', en: 'Employee portal access is unavailable in this company. Ask your administrator to review your membership and role.' })}</p></div>;
   if (!portal.data) return <LoadingView />;
   const data = portal.data;
   const pending = data.leaveRequests.filter((r) => r.status === 'pending').length + data.expenses.filter((r) => r.status === 'submitted').length + data.corrections.filter((r) => r.status === 'pending').length;
   const registered = Boolean(data.employee?.active);
   const attendance = <WorkforceAttendance rows={data.attendances} corrections={data.corrections} actions={actions} />;
-  return <div className="workspace-page workforce-page" data-testid="employee-portal">
+  return <ReadRecoveryProvider sources={[meta, portal]}><div className="workspace-page workforce-page" data-testid="employee-portal">
+    <ReadRefreshNotice />
     <WorkforceHero title={t({ ja: '今日も、おつかれさまです。', en: 'Your workday, made clearer.' })} description={t({ ja: '出退勤も、申請も、明細の確認も。自分の仕事の記録をひとつに。', en: 'Clock in, send requests and check payslips. Your work records, together.' })} {...(data.employee ? { name: data.employee.name, site: data.employee.code } : {})} side={<><strong>{data.today.replaceAll('-', '.')}</strong><span>{t({ ja: 'あなたのワークスペース', en: 'Your personal workspace' })}</span></>} />
     {!registered ? <p className="workforce-notice" role="status">{t({ ja: 'この会社の従業員登録が必要です。管理者へ、利用者アカウントと所属拠点の登録をご依頼ください。', en: 'An active employee record is required for this company. Ask your administrator to link your account and work site.' })}</p> : null}
     <WorkforceTabs tabs={tabs} selected={tab} onSelect={setTab} />
@@ -47,5 +50,5 @@ export function EmployeePage() {
     {tab === 'expenses' ? <WorkforceExpenses rows={data.expenses} today={data.today} actions={actions} registered={registered} onPeriod={setPeriod} /> : null}
     {tab === 'payroll' ? <WorkforcePayroll rows={data.payrolls} actions={actions} self /> : null}
     <p className="workforce-footer-note">{t({ ja: '給与や申請内容を端末のオフライン用データとして保存しません。打刻と申請には通信が必要です。', en: 'Payslips and requests are not stored as offline app data. Clocking and requests need a connection.' })}{actions.includes('workforce.management_portal') ? <> <Link to="/workforce">{t({ ja: '従業員の管理画面へ', en: 'Open workforce management' })}</Link></> : null}</p>
-  </div>;
+  </div></ReadRecoveryProvider>;
 }

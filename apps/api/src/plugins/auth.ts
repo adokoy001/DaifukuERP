@@ -1,6 +1,6 @@
 // Authentication (spec AC-1, AC-2, AC-7): JWT login, per-request principal reload, ContextParams builder.
 // The principal is re-read from the users table on every request so role changes take effect immediately.
-import { authenticate, companyBelongsToTenant, DaifukuError, findCompany, isUuid, loadPrincipal, PermissionDenied, resolveCompanyAccess, selectableCompanies, ValidationError, withContext, type ContextParams, type Database, type Locale, type Logger, type Principal } from '@daifuku/kernel';
+import { authenticate, changeOwnPassword, changeOwnPasswordSchema, companyBelongsToTenant, DaifukuError, findCompany, isUuid, loadPrincipal, PermissionDenied, resolveCompanyAccess, revokeOwnSessions, revokeOwnSessionsSchema, selectableCompanies, ValidationError, withContext, type ContextParams, type Database, type Locale, type Logger, type Principal } from '@daifuku/kernel';
 import fastifyJwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -135,6 +135,8 @@ export async function registerAuth(app: FastifyInstance, opts: { owner: Database
   app.addHook('onRequest', async (req) => {
     if (isPublic(req.url)) return;
     req.principal = await verifyRequest(req, opts.owner);
+    // Account security belongs to the authenticated tenant identity, even with no company or a stale selection.
+    if (['/auth/password', '/auth/logout-all'].includes(req.url.split('?')[0] ?? req.url)) return;
     req.companyId = resolveCompany(req, req.principal);
     try { req.principal = await resolveCompanyAccess(opts.owner, req.principal, req.companyId); }
     catch (error) {
@@ -154,6 +156,18 @@ export async function registerAuth(app: FastifyInstance, opts: { owner: Database
     if (!principal) throw new Unauthorized('invalid email or password');
     const token = app.jwt.sign({ sub: principal.userId, tenantId: principal.tenantId, sessionVersion: principal.sessionVersion });
     return { token, user: publicUser(principal) };
+  });
+
+  app.post('/auth/password', { schema: { tags: ['auth'], summary: 'Change own password and revoke all sessions', body: changeOwnPasswordSchema } }, async (req) => {
+    if (!req.principal) throw new Unauthorized('authentication required');
+    const sessionVersion = req.principal.sessionVersion;
+    return withContext(opts.db, req.contextParams(), (ctx) => changeOwnPassword(ctx, sessionVersion, req.body));
+  });
+
+  app.post('/auth/logout-all', { schema: { tags: ['auth'], summary: 'Revoke all sessions for the current user', body: revokeOwnSessionsSchema } }, async (req) => {
+    if (!req.principal) throw new Unauthorized('authentication required');
+    const sessionVersion = req.principal.sessionVersion;
+    return withContext(opts.db, req.contextParams(), (ctx) => revokeOwnSessions(ctx, sessionVersion, req.body));
   });
 
   app.get('/auth/me', { schema: { tags: ['auth'], summary: 'Current user, roles, effective context and company (id, name, currency; null without one)' } }, async (req) => {

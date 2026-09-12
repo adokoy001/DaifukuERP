@@ -72,10 +72,13 @@ pnpm run setup --help
 
 Web配布、TLS、常駐化、ログ保全、監視、バックアップ運用は導入先で構成します。ソースをGitHubへ公開しても、アプリや業務DBが自動で公開されることはありません。
 
+ログイン後はメニューの「自分のアカウント」から、本人のパスワード変更と全端末ログアウトを行えます。会社未所属でも利用できます。[アカウントの操作と復旧範囲](docs/operations/account-security.md) を参照してください。
+
 ## 開発と検証
 
 ```bash
 pnpm gate                          # 型、lint、依存境界、単体、DB試験、文書リンク
+pnpm --filter @daifuku/web test
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build
 ```
@@ -103,11 +106,12 @@ kernel/               DSL・Repository・権限・伝票・監査
 - [操作マニュアル](docs/manual/00-index.md) / [最新の運営・権限・BIガイド](docs/manual/appendix-e-operations-control.md)
 - [業界テンプレートガイド](docs/manual/appendix-d-industry-templates.md)
 - [設計判断](docs/adr/) / [仕様と受入基準](docs/specs/) / [実装規約](docs/conventions/)
+- [品質改善計画](docs/quality-roadmap.md) / [本人のアカウント管理](docs/operations/account-security.md)
 - [貢献方法](CONTRIBUTING.md) / [セキュリティ報告](SECURITY.md)
 
 ## 現在の境界
 
-全業界・全制度への対応、SSO/MFA、招待メール/本人パスワード再設定、POS自動連携、連結会計・FC精算、給与の税保険料自動算定・年末調整、変形/フレックス等の勤務制度、多通貨、外部BIへの自由SQLや定期配信は含みません。材料消費/廃棄の評価額は会計上の利益ではありません。過去の資料から復元できない事実を、現在値で埋めない方針です。
+全業界・全制度への対応、SSO/MFA、招待メール/メールによるパスワード再設定、POS自動連携、連結会計・FC精算、給与の税保険料自動算定・年末調整、変形/フレックス等の勤務制度、多通貨、外部BIへの自由SQLや定期配信は含みません。材料消費/廃棄の評価額は会計上の利益ではありません。過去の資料から復元できない事実を、現在値で埋めない方針です。
 
 公開初回は点検済みのソース一式から履歴を開始しています。元のローカル開発履歴に含まれた私的なセッション参照は公開していません。
 

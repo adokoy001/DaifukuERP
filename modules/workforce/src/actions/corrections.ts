@@ -38,7 +38,7 @@ async function review(ctx: Context, input: z.infer<typeof correctionReviewInput>
       const measured = measureWork(correction.clockIn, correction.clockOut, correction.breaks as BreakInterval[], policy.nightStartsMinute, policy.nightEndsMinute);
       assertBreaks(measured, policy);
       await assertNoWorkOverlap(ctx, row.employeeId, row.id, correction.clockIn, correction.clockOut);
-      if (row.status === 'approved') await assertNoFullLeave(ctx, row.employeeId, row.workDate);
+      if (row.status === 'approved') await assertNoFullLeave(ctx, row.employeeId, correction.clockIn, correction.clockOut, correction.breaks as BreakInterval[]);
       await internalWrite(ctx, WorkforceAttendance, (write) => repo(write, WorkforceAttendance).update(row.id, { clockIn: correction.clockIn, clockOut: correction.clockOut, breakStartedAt: null, breaks: correction.breaks, workedMs: measured.workedMs, nightMs: measured.nightMs, status: row.status === 'approved' ? 'approved' : 'closed', ...reviewed(ctx, input.reason) }, { expectedVersion: row.version }));
     }
     return command(await internalWrite(ctx, WorkforceAttendanceCorrection, (write) => repo(write, WorkforceAttendanceCorrection).update(correction.id, { status: input.decision === 'approve' ? 'approved' : 'rejected', ...reviewed(ctx, input.reason) }, { expectedVersion: correction.version })));

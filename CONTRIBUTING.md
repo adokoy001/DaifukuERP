@@ -18,11 +18,12 @@ Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用しま
 
 ```sh
 pnpm gate
+pnpm --filter @daifuku/web test
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build
 ```
 
-`gate` は型・lint・依存境界・単体・DB テストです。Web 固有の型チェックとビルド、ブラウザ試験は別途実行します。
+`gate` は型・lint・依存境界・単体（Webを含む）・DBテスト・文書リンクです。Web単体だけを素早く確認する場合は `pnpm --filter @daifuku/web test` を使います。Web固有の型チェックとビルド、ブラウザ試験は別途実行します。
 
 ## ブラウザ試験を新規環境で再現する
 

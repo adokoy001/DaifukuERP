@@ -60,3 +60,11 @@ stateDiagram-v2
 Repositoryの変更は [audit](../../kernel/src/audit.ts) に記録されます。外部配信予定はtransactional outboxを通し、未実装の外部workerを「配信済み」と扱いません。ストレージは [storage port](../../kernel/src/storage.ts) を使い、moduleからファイルシステムへ直接アクセスしません。
 
 監査や添付の参照も元行の権限を確認する必要があります。給与などの新しい機微データを追加するときは、通常一覧だけでなくexport、audit、関連ref、MCP、エラーログも確認します。
+
+## 検索条件の日時と範囲
+
+RepositoryのDomainはJSONで表現します。同じ項目の複数演算子はすべてANDで評価します。例えば `{ "createdAt": { "$gte": "2026-09-01T00:00:00+09:00", "$lt": "2026-10-01T00:00:00+09:00" } }` はJSTの9月だけを対象にし、上限を無視しません。`$and` で分けた条件も同じ意味です。
+
+timestamp項目（createdAt/updatedAtを含む）は、タイムゾーン付きISO日時を受け取り、DBドライバへ渡す前に日時型へ変換します。Zまたはoffset、秒と任意のミリ秒を指定します。タイムゾーンなし、存在しない暦日、対応する精度を超える値は `VALIDATION` です。日付だけのdate項目やtext項目を勝手に日時へ変換しません。未知の演算子や空の演算子オブジェクトも黙って無視せず拒否します。
+
+この変換はRepositoryの共通コンパイラで行うため、REST/MCP・件数・集計・行権限も同じ条件を使います。詳細は [品質改善のAC8](../specs/quality-foundation.md) と [日時検索のDB回帰](../../kernel/test/timestamp-query.db.test.ts) を参照してください。

@@ -73,7 +73,7 @@ async function review(ctx: Context, input: z.infer<typeof attendanceReviewInput>
     if (row.status !== 'submitted' || !row.clockOut) throw new StateError('Only submitted attendance can be reviewed', 'Ask the employee to submit the completed day.');
     if (input.decision === 'approve') {
       if (await repo(ctx, WorkforceAttendanceCorrection).count({ attendanceId: row.id, status: 'pending' })) throw new StateError('A correction is pending', 'Review the correction before approving attendance.');
-      await assertNoFullLeave(ctx, row.employeeId, row.workDate);
+      await assertNoFullLeave(ctx, row.employeeId, row.clockIn, row.clockOut, row.breaks as BreakInterval[]);
       await assertNoWorkOverlap(ctx, row.employeeId, row.id, row.clockIn, row.clockOut);
       const policy = await policyOn(ctx, row.workDate);
       assertBreaks(measureWork(row.clockIn, row.clockOut, row.breaks as BreakInterval[], policy.nightStartsMinute, policy.nightEndsMinute), policy);

@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | 業務項目・伝票・計算 | [データと処理](docs/architecture/runtime-and-data.md)、[拡張手順](docs/architecture/extension-guide.md) | [DSL](kernel/src/dsl/entity.ts)、[Repository](kernel/src/repository/repository.ts)、対象 `modules/*/src` |
 | 権限・会社・拠点・本人分離 | [権限境界](docs/architecture/permissions.md)、[ADR-0018](docs/adr/0018-company-and-store-access.md) | [principal](kernel/src/principal.ts)、[会社所属](kernel/src/company-access.ts)、[権限](kernel/src/permissions.ts) |
+| 本人認証・失敗時の保護 | [本人設定](docs/operations/account-security.md)、[品質改善仕様](docs/specs/quality-foundation.md) | [API認証](apps/api/src/plugins/auth.ts)、[本人画面](apps/web/src/pages/account-page.tsx) |
 | 従業員スマホ・労務 | [従業員の構造](docs/architecture/workforce.md)、[統合受入基準](docs/specs/workforce-platform.md)、[日本の労務・給与](docs/domain/japan-workforce.md) | [Web routes](apps/web/src/router.tsx)、[module catalog](apps/runtime/src/catalog.ts) |
 | 業界テンプレート | [15業界の範囲](docs/domain/industry-catalog.md)、[pack規約](docs/conventions/packs.md)、[拡張手順](docs/architecture/extension-guide.md) | [pack catalog](apps/runtime/src/packs.ts)、[pack適用](kernel/src/pack.ts) |
 | REST/MCP・外部呼出 | [処理経路](docs/architecture/runtime-and-data.md) | [REST](apps/api/src/routes/rest.ts)、[actions](apps/api/src/routes/actions.ts)、[MCP](apps/mcp/src/tools.ts) |

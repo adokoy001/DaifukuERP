@@ -5,6 +5,7 @@ import { consoleLogger, withContext, type ContextParams, type Database, type Log
 import { listResources, listResourceTemplates, readResource, META_URI } from './resources.ts';
 import { callTool, listTools } from './tools.ts';
 import { refreshAgentContext } from './session.ts';
+import { withProtocolErrors } from './errors.ts';
 
 export const SERVER_INFO = { name: 'daifuku', version: '0.0.1' } as const;
 
@@ -29,19 +30,19 @@ export function buildMcpServer(opts: McpServerOptions): Server {
   const rt = { app: opts.app, owner: opts.owner, params: opts.params, log };
   const server = new Server(SERVER_INFO, { capabilities: { tools: {}, resources: {} }, instructions: INSTRUCTIONS });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  server.setRequestHandler(ListToolsRequestSchema, async () => withProtocolErrors(log, 'tools/list', async () => {
     const params = await refreshAgentContext(opts.owner, opts.params);
     return withContext(opts.app, params, async (ctx) => ({ tools: listTools(log, ctx) }));
-  });
+  }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => callTool(rt, req.params.name, req.params.arguments));
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  server.setRequestHandler(ListResourcesRequestSchema, async () => withProtocolErrors(log, 'resources/list', async () => {
     const params = await refreshAgentContext(opts.owner, opts.params);
     return withContext(opts.app, params, async (ctx) => ({ resources: listResources(ctx) }));
-  });
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  }));
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => withProtocolErrors(log, 'resources/templates/list', async () => {
     await refreshAgentContext(opts.owner, opts.params);
     return { resourceTemplates: listResourceTemplates() };
-  });
-  server.setRequestHandler(ReadResourceRequestSchema, async (req) => readResource(rt, req.params.uri));
+  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) => withProtocolErrors(log, 'resources/read', () => readResource(rt, req.params.uri)));
   return server;
 }

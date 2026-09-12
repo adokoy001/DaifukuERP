@@ -4,7 +4,7 @@
 
 | Job | 検証 | データ |
 | --- | --- | --- |
-| gate | 型・lint・依存境界・unit・DB・文書リンク、Web 型とビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
+| gate | 型・lint・依存境界・unit（Web含む）・DB・文書リンク、Web 型とビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
 | e2e | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与などのブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e` |
 | setup | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開 | 一時ディレクトリに新規クラスタ、ランダム資格情報 |
 

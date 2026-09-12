@@ -7,6 +7,7 @@ export type Op = (typeof OPS)[number];
 
 /** Scalar in a domain expression. `$ctx.*` tokens are substituted from the request context at query time. */
 export type DomainScalar = string | number | boolean | null;
+/** Multiple operators on one field are conjunctive; empty/unknown/malformed operators are rejected. */
 export type DomainCondition =
   | DomainScalar
   | { $in: DomainScalar[] }
@@ -19,6 +20,8 @@ export type DomainCondition =
 /**
  * Domain expression (ADR-0007): `{ field: cond, ... }` is AND of conditions; `$or` / `$and` nest.
  * Example: `{ isCustomer: true, $or: [{ ownerId: '$ctx.userId' }, { ownerId: null }] }`
+ * A bounded field range can use `{ amount: { $gte: '100', $lt: '200' } }`, equivalent to explicit `$and`.
+ * Timestamp operands are zoned ISO strings with second precision and up to three fractional digits.
  */
 export type Domain = { [field: string]: DomainCondition | Domain[] | undefined; $or?: Domain[]; $and?: Domain[] };
 
