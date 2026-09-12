@@ -1,6 +1,6 @@
 // Creates only two named synthetic companies inside an explicitly selected prepared E2E database. Never resets.
 import { connect, newId } from '@daifuku/kernel';
-const fail = () => { throw new Error('Commerce E2E requires an explicitly prepared loopback fixture database and matching synthetic administrator.'); };
+function fail(): never { throw new Error('Commerce E2E requires an explicitly prepared loopback fixture database and matching synthetic administrator.'); }
 async function main() {
  const [tenantId, userId, runId] = process.argv.slice(2); if (process.env.NODE_ENV === 'production' || process.env.E2E_PREPARE !== '1' || !tenantId || !userId || !/^[a-f0-9]{12}$/.test(runId ?? '')) fail();
  const ownerUrl = new URL(process.env.DATABASE_URL_OWNER ?? 'invalid'), appUrl = new URL(process.env.DATABASE_URL ?? 'invalid');

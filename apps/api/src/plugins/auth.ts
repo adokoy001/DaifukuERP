@@ -38,6 +38,7 @@ declare module 'fastify' {
 
 /** Paths that do not require a token. */
 const PUBLIC_PREFIXES = ['/auth/login', '/openapi.json', '/docs', '/health'];
+const RELAY_PATHS = new Set(['/relay/pair', '/relay/session', '/relay/credentials/rotate', '/relay/jobs/claim', '/relay/jobs/start', '/relay/jobs/heartbeat', '/relay/jobs/complete', '/relay/events', '/relay/notifications', '/ready']);
 const PUBLIC_IDENTITY = new Set(['/auth/mfa/verify', '/auth/oidc/providers', '/auth/oidc/start', '/auth/oidc/complete', '/auth/password-reset/request', '/auth/password-reset/complete', '/auth/invitations/accept']);
 
 export const TOKEN_TTL = '12h';
@@ -54,7 +55,7 @@ const loginBody = z.object({ email: z.string().min(1).max(200), password: z.stri
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
-  return PUBLIC_IDENTITY.has(path) || /^\/webhooks\/square\/[a-zA-Z0-9_-]+$/.test(path) || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+  return RELAY_PATHS.has(path) || PUBLIC_IDENTITY.has(path) || /^\/webhooks\/square\/[a-zA-Z0-9_-]+$/.test(path) || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
 function localeOf(header: string | undefined): Locale {

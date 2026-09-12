@@ -1,6 +1,6 @@
 # 品質改善の計画
 
-更新: 2026-09-12。現在の実装は [STATUS](STATUS.md)、共通品質改善の受入基準は [quality-foundation](specs/quality-foundation.md)、企業機能の統合範囲は [enterprise-operations](specs/enterprise-operations.md) を参照します。業界数を増やす前に、すべての業界が共有する日常業務の正確さと復旧しやすさを優先します。
+更新: 2026-09-12。現在の実装は [STATUS](STATUS.md)、共通品質改善の受入基準は [quality-foundation](specs/quality-foundation.md)、企業機能の統合範囲は [enterprise-operations](specs/enterprise-operations.md) 、店舗機器・共通配備は [deployment-edge](specs/deployment-edge.md) を参照します。業界数を増やす前に、すべての業界が共有する日常業務の正確さと復旧しやすさを優先します。
 
 ## 今回の優先順位
 
@@ -25,6 +25,8 @@
 | 15業界の業務シナリオ | 各業界で通常完了・取消・月締めまで一貫して検証 | 業界固有の責任分担と制度請求の対象外境界 |
 | BIの読みやすさ | 指標の定義と更新時点が分かり、異常値から根拠へ移動 | 指標ごとの対象伝票・取消/締め/期間の定義 |
 | 認証の次段階 | 必須 MFA の段階的導入、全第二要素を失った利用者の安全な復旧 | 管理者の自己閉め出し防止、復旧時の本人確認・監査。本番 IdP/SMTP 接続の導入受入。初回招待・メール再設定・OIDC/TOTP は [現行仕様](specs/enterprise-identity.md) |
+| 店舗機器の実機受入 | IPPの機種互換を実測し、釣銭機の型番別driverと確認手順を追加 | メーカー/型番/firmware、接続方式、実行ID/状態照会、金額と不明結果の扱い。初版は [IPPと模擬機器](operations/edge-agent.md) |
+| 共通配備の本番受入 | 組織のTLS/backup/監視とサービス起動を導入先で確認 | Linux/CPU、DNS/CA、WAN経路、復旧目標。HAやコンテナは別仕様。現行は [共通配布](operations/deployment.md) |
 | 運用容量 | 代表的な同時利用・大量明細・日次集計の性能を測定 | 想定件数、同時接続数、導入環境、許容応答時間 |
 
 「今回の優先順位」は共通品質改善時の計画です。その後の機能と検証状況は STATUS を正本にします。「次の反復」の未実装項目を現在の対応機能とは扱いません。新規の制度計算や外部連携は独立した仕様と受入環境を用意します。

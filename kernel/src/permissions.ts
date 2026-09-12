@@ -17,19 +17,20 @@ export function grantedRoles(ctx: Pick<Context, 'roles'>, entity: EntityDef, op:
   return ctx.roles.filter((r) => roles[r]?.includes(op));
 }
 
-export function can(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'>, entity: EntityDef, op: Op): boolean {
+export function can(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'> & Partial<Pick<Context, 'actor'>>, entity: EntityDef, op: Op): boolean {
+  if (ctx.actor?.type === 'relay' && (!entity.config.relayAccess?.operations.includes(op) || !grantedRoles(ctx, entity, op).includes('relay'))) return false;
   if (entity.module && registry.hasPack(entity.module) && !(ctx.appliedPacks ?? []).includes(entity.module)) return false;
   if (!storeAllows(ctx, entity, op)) return false;
   if (ctx.accessScope && ctx.accessScope !== 'all' && effectiveSitePolicy(ctx, entity)?.kind === 'sharedRead' && op === 'read') return true;
   return isAdmin(ctx) || grantedRoles(ctx, entity, op).length > 0;
 }
 
-export function assertOp(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'>, entity: EntityDef, op: Op): void {
+export function assertOp(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'> & Partial<Pick<Context, 'actor'>>, entity: EntityDef, op: Op): void {
   if (!can(ctx, entity, op)) throw new PermissionDenied(entity.name, op, ctx.roles);
 }
 
 /** Operations the context may perform on the entity (for UI/meta). */
-export function allowedOps(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'>, entity: EntityDef): Op[] {
+export function allowedOps(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'accessScope'> & Partial<Pick<Context, 'actor'>>, entity: EntityDef): Op[] {
   const all: Op[] = ['read', 'create', 'update', 'delete', 'submit', 'cancel', 'amend', 'export'];
   return all.filter((op) => can(ctx, entity, op));
 }
@@ -37,6 +38,8 @@ export function allowedOps(ctx: Pick<Context, 'roles' | 'appliedPacks' | 'access
 function substitute(ctx: Context, v: DomainScalar): DomainScalar {
   if (typeof v !== 'string' || !v.startsWith('$ctx.')) return v;
   switch (v) {
+    case '$ctx.actorId':
+      return ctx.actor.id;
     case '$ctx.userId':
       return ctx.actor.type === 'agent' ? (ctx.actor.onBehalfOf ?? ctx.actor.id) : ctx.actor.id;
     case '$ctx.companyId':
@@ -117,7 +120,7 @@ export function compileDomain(ctx: Context, entity: EntityDef, domain: Domain): 
  * granted role is restricted; the filter is the OR of those roles' rules.
  */
 export function rowFilter(ctx: Context, entity: EntityDef, op: Op): SQL | undefined {
-  if (isAdmin(ctx)) return undefined;
+  if (isAdmin(ctx) && ctx.actor.type !== 'relay') return undefined;
   const granted = grantedRoles(ctx, entity, op);
   const rules = entity.config.permissions.rowRules ?? [];
   const restrictedRoles = new Set(rules.flatMap((r) => [...r.roles]));

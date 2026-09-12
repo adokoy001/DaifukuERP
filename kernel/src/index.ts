@@ -73,3 +73,5 @@ export { createUserSchema, updateUserSchema, membershipSchema, removeMembershipS
 export * from './identity/index.ts';
 
 export { authorizedCompanies, withAuthorizedCompany, type AuthorizedCompany } from './authorized-companies.ts';
+
+export * from './relay-auth.ts';

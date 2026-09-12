@@ -39,6 +39,7 @@ flowchart TD
 - [文書の管理方法](documentation-contract.md): AIと人が同じ情報を使う仕組み。
 - [シフト推薦](shift-planning.md): 社員条件、週次希望、Worker、最新資料の再検査。
 - [企業運営拡張](enterprise-operations.md): OIDC/MFA/配送、POS、会社横断認可、連結/FC、給与税保険と勤務制度。
+- [共通配備と店舗中継](deployment.md): クラウド/オンプレ同一配布物と外向きLAN連携。
 - [設計判断ADR](../adr/): 採用理由と変更履歴。
 
 ## 現状と将来

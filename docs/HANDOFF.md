@@ -28,3 +28,5 @@
 ## 続く検証課題
 
 多通貨、国別制度パック、受発注・分納と請求の分離、在庫評価の遡及再計算、認証以外の業務通知配信、必須 MFA と全第二要素紛失時の復旧、本番 IdP/SMTP/Square 接続、法定連結・行政送信、実製品比較は独立した仕様と受入を用意する。円・国内向け試験業務で得た不変条件を、15業界と従業員業務の台本を足場に広げる。
+
+店舗機器・共通配備の再開は [仕様](specs/deployment-edge.md)、[ADR-0023](adr/0023-outbound-relay-principal-and-fencing.md)、[共通配備](operations/deployment.md)、[agent](operations/edge-agent.md) を読む。`apps/edge` は人間JWT/DBを使わない。開始済み物理jobは不明時に再送せず、手動確認・根拠記録へ進める。

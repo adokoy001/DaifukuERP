@@ -1,0 +1,21 @@
+{
+  "name": "@daifuku/edge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@daifuku/mod-edge-integration": "workspace:*",
+    "ws": "^8.21.3",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.0",
+    "vitest": "^5.0.0"
+  }
+}

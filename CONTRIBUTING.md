@@ -19,11 +19,13 @@ Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用しま
 ```sh
 pnpm gate
 pnpm --filter @daifuku/web test
+pnpm --filter @daifuku/api typecheck
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build
+pnpm --filter @daifuku/edge build
 ```
 
-`gate` は型・lint・依存境界・単体（Webを含む）・DBテスト・文書リンクです。Web単体だけを素早く確認する場合は `pnpm --filter @daifuku/web test` を使います。Web固有の型チェックとビルド、ブラウザ試験は別途実行します。
+`gate` は型・lint・依存境界・単体（Webを含む）・DBテスト・配布補助テスト・文書リンクです。Web単体だけを素早く確認する場合は `pnpm --filter @daifuku/web test` を使います。Web固有の型チェックとビルド、ブラウザ試験は別途実行します。
 
 ## ブラウザ試験を新規環境で再現する
 
@@ -92,7 +94,7 @@ pnpm --filter @daifuku/web exec playwright install chromium
 pnpm test:identity:e2e
 ```
 
-このscriptがAPI3109、Web5189、合成IdP3110と一時証明書のTLS SMTPを起動し、`playwright.identity.config.ts` の2シナリオを実行して停止します。使用中portは拒否し、既存DBを初期化しません。合成SMTPは `example.com` / `example.test` 宛だけを受理し、外部へ配送しません。通常のPlaywright設定はこの専用fixtureを分離しており、CIの4番目の独立jobで実行します。認証業務と運用の範囲は [認証・メール運用](docs/operations/enterprise-identity.md) を参照してください。
+このscriptがAPI3109、Web5189、合成IdP3110と一時証明書のTLS SMTPを起動し、`playwright.identity.config.ts` の3シナリオを実行して停止します。使用中portは拒否し、既存DBを初期化しません。合成SMTPは `example.com` / `example.test` 宛だけを受理し、外部へ配送しません。通常のPlaywright設定はこの専用fixtureを分離しており、CIの4番目の独立jobで実行します。認証業務と運用の範囲は [認証・メール運用](docs/operations/enterprise-identity.md) を参照してください。
 
 ## マニュアルを更新する
 
@@ -105,3 +107,11 @@ pnpm test:identity:e2e
 通常の導入コマンドは必ず `pnpm run setup` と記載します。`pnpm setup` は pnpm 自身の別コマンドです。
 
 CI のジョブ、固定した Action の確認元、成果物の範囲は [.github/ci/README.md](.github/ci/README.md) を参照してください。コードと文書への contribution はリポジトリの [MIT License](LICENSE) の条件で提供してください。他者のコードや画像を含める場合は出典と必要なライセンス表示を添えてください。
+
+## 店舗機器と共通配布の検証
+
+`apps/edge/test` の単体試験はローカルjournal、資格情報、IPPの受付と完了、不明結果の回復、通信再送を扱います。実API・TLS/WSS・DBを使う中継試験も `pnpm gate` のDB projectに含まれます。Linuxではutil-linuxの `/usr/bin/flock` が必要です。模擬機器の成功は実プリンター・釣銭機での受入成功を示しません。
+
+`apps/web/e2e/edge.spec.ts` は店舗単位の登録・依頼・取消、失われた応答の同一依頼再送、15秒ごとの権限再取得、390pxと日英表示を確認します。認証専用試験にはMFAによるpairing発行と機器資格情報の失効を含めています。
+
+`pnpm test:deploy` はmanifest改変、設定境界、クラウド/オンプレの計画、配置権限を検査します。配布物の作成・検証・実TLS proxy受入は [共通配備](docs/operations/deployment.md)、中継の設置は [中継agent](docs/operations/edge-agent.md) を参照してください。正式配布物は検証済みのclean commitから作成します。

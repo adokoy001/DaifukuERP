@@ -58,6 +58,7 @@ export function makeContext(db: Db, params: ContextParams): Context {
     tenantId: params.tenantId,
     companyId: params.companyId,
     actor: params.actor,
+    ...(params.relay ? { relay: params.relay } : {}),
     roles: params.roles,
     requestId: params.requestId ?? newId(),
     locale: params.locale ?? 'ja',

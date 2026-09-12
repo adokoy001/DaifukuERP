@@ -26,6 +26,7 @@ function MenuLink({ item }: { item: MenuItem }) {
   if (report?.[1]) return <Link to="/r/$action" params={{ action: report[1] }} className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
   const action = /^\/a\/([^/?#]+)$/.exec(item.route ?? '');
   if (action?.[1]) return <Link to="/a/$action" params={{ action: action[1] }} className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
+  if (item.route === '/operations/devices') return <Link to="/operations/devices" className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
   if (item.route === '/settings') return <Link to="/settings" className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
   return null;
 }
@@ -55,8 +56,9 @@ function Navigation({ meta }: { meta: AppMeta | undefined }) {
     {meta?.actions.some((a) => a.name === 'pos_integration.inbox') ? <Link to="/commerce/pos" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: 'POS自動連携', en: 'POS integration' })}</Link> : null}
     {meta?.actions.some((a) => a.name === 'group_accounting.companies') ? <Link to="/commerce/group" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: '連結会計', en: 'Consolidation' })}</Link> : null}
     {meta?.actions.some((a) => a.name === 'franchise.board') ? <Link to="/commerce/franchise" className={LINK} activeProps={ACTIVE}><Icon name="document" size={18} />{t({ ja: 'FC精算', en: 'Franchise settlement' })}</Link> : null}
+    {meta?.actions.some((a) => a.name === 'edge.board') ? <Link to="/operations/devices" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: '店舗・機器連携', en: 'Store and device links' })}</Link> : null}
     <Link to="/templates" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: '業界テンプレート', en: 'Industry templates' })}</Link>
-    {meta?.actions.some((a) => a.name === 'restaurant_chain.operations_snapshot') ? <Link to="/operations" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: 'チェーン運営', en: 'Chain operations' })}</Link> : null}
+    {meta?.actions.some((a) => a.name === 'restaurant_chain.operations_snapshot') ? <Link to="/operations" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="building" size={18} />{t({ ja: 'チェーン運営', en: 'Chain operations' })}</Link> : null}
     {reports.length ? <Link to="/reports" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: 'BI・レポート', en: 'BI and reports' })}</Link> : null}
     {me.data?.user.tenantAdmin ? <Link to="/admin/users" className={LINK} activeProps={ACTIVE}><Icon name="people" size={18} />{t({ ja: '利用者と権限', en: 'Users and access' })}</Link> : null}
     <div className="nav-caption">{t({ ja: '業務メニュー', en: 'Your business' })}</div>

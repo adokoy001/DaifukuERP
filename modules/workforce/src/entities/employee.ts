@@ -4,7 +4,7 @@ export const WorkforceSite = defineEntity({
   name: 'workforce_site', label: label('拠点・部署', 'Work sites'), ext: false,
   siteAccess: { kind: 'store', field: 'id' },
   fields: { code: f.text({ required: true, unique: true, maxLength: 40, label: label('拠点コード', 'Code') }), name: f.text({ required: true, maxLength: 100, label: label('拠点名', 'Name') }), active: f.bool({ required: true, default: true, label: label('有効', 'Active') }) },
-  permissions: { roles: { [E]: read, [M]: read, [H]: edit, [P]: read } }, views: { list: ['code', 'name', 'active'], search: ['code', 'name'] },
+  permissions: { roles: { [E]: read, [M]: read, [H]: edit, [P]: read, edge_manager: ['read'], edge_operator: ['read'] } }, views: { list: ['code', 'name', 'active'], search: ['code', 'name'] },
 });
 export const WorkforceEmployee = defineEntity({
   name: 'workforce_employee', label: label('従業員', 'Employees'), ext: false,

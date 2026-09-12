@@ -2,14 +2,14 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { identityMail, opaqueToken, totp, unseal, users } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { JWTPayload } from 'jose';
 import { buildServer } from '../src/server.ts';
 import { oidcFixture } from './identity-oidc-helper.ts';
 let db: TestDb, app: FastifyInstance, oidc: Awaited<ReturnType<typeof oidcFixture>>, token = '';
 let codes: string[] = [];
 const key = Buffer.alloc(32, 7).toString('base64');
-const post = (path: string, body: unknown, auth = '') => app.inject({ method: 'POST', url: `/auth/${path}`, payload: body, ...(auth ? { headers: { authorization: `Bearer ${auth}`, 'x-company-id': 'stale-company-value' } } : {}) });
+const post = (path: string, body: NonNullable<InjectOptions['payload']>, auth = '') => app.inject({ method: 'POST', url: `/auth/${path}`, payload: body, ...(auth ? { headers: { authorization: `Bearer ${auth}`, 'x-company-id': 'stale-company-value' } } : {}) });
 const login = () => post('login', { email: 'admin@example.com', password: 'password' });
 const security = (auth: string) => app.inject({ method: 'GET', url: '/auth/security', headers: { authorization: `Bearer ${auth}` } });
 async function stepup() { const result = await post('step-up', { currentPassword: 'password' }, token); expect(result.statusCode, result.body).toBe(200); return { stepUpToken: result.json<{ stepUpToken: string }>().stepUpToken }; }

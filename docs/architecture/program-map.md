@@ -13,6 +13,7 @@
 | `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
 | `apps/api/` | JWT認証、HTTP、OpenAPI、DB/導入CLI | [server](../../apps/api/src/server.ts)、[main](../../apps/api/src/main.ts) |
 | `apps/web/` | React画面、会社切替、汎用entityフォーム、専用業務画面 | [router](../../apps/web/src/router.tsx)、[API client](../../apps/web/src/api/client.ts) |
+| `apps/edge/` | 店舗からの外向きHTTPS/WSS、耐久journal、IPP/模擬driver。業務DBへ接続しない | [CLI](../../apps/edge/src/main.ts)、[契約](../../modules/edge-integration/src/contract.ts) |
 | `apps/mcp/` | actionから生成するMCP tools、呼出ごとの所属再確認 | [tools](../../apps/mcp/src/tools.ts)、[session](../../apps/mcp/src/session.ts) |
 | 認証メール配送CLI | 暗号化した認証mail outboxをTLS SMTPで配送。汎用業務event配送は別の未実装範囲 | [mail-cli](../../apps/api/src/identity/mail-cli.ts)、[業務outbox](../../kernel/src/events.ts) |
 | `scripts/` | schema生成補助、文書生成、専用試験cluster、配布 | [scripts](../../scripts/) |
@@ -49,3 +50,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## 企業運営の追加入口
 
 認証/MFAのsystem tables・API adapter、Square署名通知、会社横断認可、連結/FC、給与税保険/年調/勤務制度の責任分担は [企業運営拡張の構造](enterprise-operations.md) にまとめています。業務3moduleはruntime catalogで全adapterへ登録し、認証system tableの追加はADR-0022に基づきkernelへ登録します。具体的な画面入口は [付録H](../manual/appendix-h-enterprise-operations.md) と [付録I](../manual/appendix-i-fiscal-and-work-systems.md) を参照してください。
+
+## 店舗機器と共通配備
+
+[機器module](../../modules/edge-integration/src/index.ts) はgateway/device/job/eventのDSLと状態遷移を持ちます。[機械認可](../../kernel/src/relay-auth.ts) は人間JWTから独立し、[HTTP/WSS](../../apps/api/src/edge/routes.ts) が通知とHTTPS取得を提供します。[店舗UI](../../apps/web/src/pages/edge-page.tsx) は同じ公開actionを使用します。[共通配備](deployment.md) には配布graph、manifest、Caddy/systemd、readinessの関係をまとめています。

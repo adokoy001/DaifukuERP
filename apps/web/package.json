@@ -34,6 +34,7 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "@daifuku/mod-edge-integration": "workspace:*"
   }
 }

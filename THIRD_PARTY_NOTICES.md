@@ -2,7 +2,7 @@
 
 DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三者コード・データには、それぞれの権利者のライセンスが適用されます。本書は依存物を一括して MIT に変更するものではありません。
 
-確認日: 2026-09-12。対象は企業機能追加時点の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
+確認日: 2026-09-12。対象は店舗機器・配備追加時点の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
 
 ## ソースに含めたアイコン
 
@@ -52,13 +52,13 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 
 ## 依存ライセンスの確認方法と範囲
 
-`pnpm licenses list --json`、`pnpm licenses list --prod --json`、`pnpm licenses list --dev --json` を企業機能追加後の lockfile に対して再実行しました。以下の件数はパッケージ名と宣言ライセンスの組の数です。同一ライセンスの異なる版・依存経路は合算され、版によってライセンスが異なる場合は別に数えます。prod と dev は重複します。これはブラウザへ取り込まれるコード量や運用中の到達可能性を表すものではありません。
+`pnpm licenses list --json`、`pnpm licenses list --prod --json`、`pnpm licenses list --dev --json` を店舗機器・配備追加後の lockfile に対して再実行しました。以下の件数はパッケージ名と宣言ライセンスの組の数です。同一ライセンスの異なる版・依存経路は合算され、版によってライセンスが異なる場合は別に数えます。prod と dev は重複します。これはブラウザへ取り込まれるコード量や運用中の到達可能性を表すものではありません。
 
 | 宣言ライセンス | installed all | prod | dev |
 | --- | ---: | ---: | ---: |
-| MIT | 366 | 190 | 202 |
+| MIT | 375 | 198 | 196 |
 | MIT-0 | 1 | 1 | 0 |
-| Apache-2.0 | 22 | 4 | 19 |
+| Apache-2.0 | 22 | 4 | 18 |
 | Python-2.0 | 1 | 0 | 1 |
 | CC-BY-4.0 | 1 | 0 | 1 |
 | ISC | 31 | 21 | 13 |
@@ -295,3 +295,25 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 ### Unlicense
 
 - [isbot](https://isbot.js.org) 5.2.2 (P); [postgres](https://github.com/porsager/postgres) 3.4.9 (P).
+
+## 店舗機器・配布基盤の追加依存
+
+2026-09-12の追加固定依存は次のとおりです。実インストール済みpackageのMIT宣言を確認しました。既存固定版は更新していません。kernelが実行時に参照する既存drizzle-kitはdevからdependenciesへ移し、配布物でも解決できるようにしました。
+
+| package | version | license |
+| --- | --- | --- |
+| `@fastify/websocket` | 11.3.0 | MIT |
+| `@types/ws` | 8.18.1 | MIT |
+| `duplexify` | 4.1.3 | MIT |
+| `end-of-stream` | 1.4.5 | MIT |
+| `readable-stream` | 3.6.2 | MIT |
+| `stream-shift` | 1.0.3 | MIT |
+| `string_decoder` | 1.3.0 | MIT |
+| `util-deprecate` | 1.0.2 | MIT |
+| `ws` | 8.21.3 | MIT |
+
+単独店舗エージェントのbuildは、実同梱のws/zodのLICENSE全文を `dist/THIRD_PARTY_NOTICES.txt` へ生成し、プロジェクトの `dist/LICENSE` とともに `edge.mjs` へ同送します。共通配布物は元sourceの本書/vendor通知と、固定runtime各packageのLICENSE/NOTICEを保持します。OSのNode.js/Caddy/PostgreSQL/util-linuxは配布物に含みません。詳細は [agent運用](docs/operations/edge-agent.md) と [共通配備](docs/operations/deployment.md)。
+
+### Web配布物の帰属表示
+
+共通releaseの `web/LICENSE` と `web/THIRD_PARTY_NOTICES.txt` は必ずWeb本体と一緒に配布してください。Viteのmain/worker chunkに実際に含まれたnpm入力から、固定版のLICENSE/NOTICE全文と `web-packages.json` を生成します。CSS pipelineのTailwind CSSと既存Feather 4.29.2の本文も含めます。これはsourceの一覧表とは別の、実配布物に添える通知です。収集用の相対入力一覧は最終releaseから削除し、本文が欠ける場合は配布生成を停止します。

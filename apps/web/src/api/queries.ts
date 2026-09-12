@@ -2,6 +2,7 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { fieldValue } from '../lib/ext.ts';
+import { edgeEntityForUi } from '../lib/edge.ts';
 import { workforceEntityForUi } from '../lib/workforce-entity.ts';
 import { buildListQuery, type ListState } from '../lib/query.ts';
 import { isApiError, request } from './client.ts';
@@ -33,7 +34,7 @@ export function useEntityMeta(name: string): { meta: UseQueryResult<AppMeta>; en
   const meta = useMeta();
   const entity = useMemo(() => {
     const found = meta.data?.entities.find((e) => e.name === name);
-    return found ? workforceEntityForUi(found) : undefined;
+    return found ? edgeEntityForUi(workforceEntityForUi(found)) : undefined;
   }, [meta.data, name]);
   return { meta, entity };
 }

@@ -47,13 +47,17 @@
     "postgres": "^3.4.9",
     "tsx": "^4.19.0",
     "zod": "^4.6.1",
-    "@daifuku/mod-pos-integration": "workspace:*"
+    "@daifuku/mod-pos-integration": "workspace:*",
+    "@fastify/websocket": "^11.3.0",
+    "ws": "^8.21.3",
+    "@daifuku/mod-edge-integration": "workspace:*"
   },
   "devDependencies": {
     "@daifuku/mod-workforce": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "@types/ws": "^8.18.1"
   }
 }
