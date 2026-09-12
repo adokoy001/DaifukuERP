@@ -23,6 +23,8 @@ NAS・ネットワーク共有・FAT等への状態保存は対象外です。�
 
 ## 配布物の用意と確認
 
+ビルド済みの[初版プレビュー](https://github.com/adokoy001/DaifukuERP/releases/tag/edge-v0.1.0-preview.1)から、OS/CPUに対応するアーカイブ、その`.sha256`、同名の`.manifest.sha256`を取得できます。端末にNode.jsや開発環境を別途入れる必要はありません。ファイル名の長い版IDは、実際に試験したソースへ対応します。
+
 ソースから作る場合はリポジトリのルートで実行します（Node.js、pnpm、Python 3が必要です）。
 
 ```sh

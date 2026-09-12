@@ -4,7 +4,7 @@
 
 ## 店舗機器とクラウド/オンプレ共通配備
 
-[エッジサービス仕様](specs/edge-installers.md)により、Windows/Linux/macOSのサービス導入・更新・登録解除、Node同梱の5対象配布物、OS別の排他/秘密ファイル保護、未登録時の待機を追加しています。[操作](manual/edge-service-setup.md)と[構造](architecture/edge-services.md)を入口にしてください。実OSサービスCIの受入結果は[作業記録](log/2026-09-13-edge-installers.md)へ記録します。
+[エッジサービス仕様](specs/edge-installers.md)により、Windows/Linux/macOSのサービス導入・更新・登録解除、Node同梱の5対象配布物、OS別の排他/秘密ファイル保護、未登録時の待機を追加しました。Windows x64、Linux x64/arm64、macOS Intel/Apple Siliconの5環境で実サービスの導入・停止/開始・更新・登録解除が成功しています。[操作](manual/edge-service-setup.md)と[構造](architecture/edge-services.md)を入口にしてください。測定範囲とCIの証拠は[作業記録](log/2026-09-13-edge-installers.md)に記録しています。
 
 [統合仕様](specs/deployment-edge.md) に基づき、同じ版付きLinux配布物とCaddy/systemd参照構成、店舗LANから外向きに接続する中継agentを追加しました。WSSは仕事の存在だけを通知し、本体・結果・状態はHTTPSで取得/報告します。店舗側の受信port開放は不要ですが、ERPのHTTPS入口への到達経路は必要です。
 

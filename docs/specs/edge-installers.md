@@ -1,6 +1,6 @@
 # エッジ端末のOS別サービスセットアップ
 
-状態: 設計・実装中。2026-09-13。基点: main `4b6cfdb`。branch: `feat/edge-installers`。
+状態: 初版CLIの実装・5対象の実OSサービス受入完了。2026-09-13。基点: main `4b6cfdb`。branch: `feat/edge-installers`。測定範囲は[作業記録](../log/2026-09-13-edge-installers.md)を参照。
 
 ## 目的と対応範囲
 
