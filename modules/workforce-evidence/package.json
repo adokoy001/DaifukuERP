@@ -1,0 +1,17 @@
+{
+  "name": "@daifuku/mod-workforce-evidence",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@daifuku/kernel": "workspace:*",
+    "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-attachments": "workspace:*"
+  }
+}

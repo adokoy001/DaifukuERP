@@ -1,0 +1,53 @@
+{
+  "name": "@daifuku/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:schema": "tsx src/db/cli.ts snapshot",
+    "db:generate": "tsx src/db/cli.ts generate",
+    "db:migrate": "tsx src/db/cli.ts migrate",
+    "db:reset": "tsx src/db/cli.ts reset",
+    "pack:apply": "tsx src/db/pack-cli.ts",
+    "demo:industries": "tsx src/db/industry-demo-cli.ts"
+  },
+  "dependencies": {
+    "@daifuku/kernel": "workspace:*",
+    "@daifuku/l10n-jp": "workspace:*",
+    "@daifuku/mod-accounting": "workspace:*",
+    "@daifuku/mod-attachments": "workspace:*",
+    "@daifuku/mod-partner": "workspace:*",
+    "@daifuku/mod-payment": "workspace:*",
+    "@daifuku/mod-product": "workspace:*",
+    "@daifuku/mod-purchase": "workspace:*",
+    "@daifuku/mod-sales": "workspace:*",
+    "@daifuku/mod-tax": "workspace:*",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/multipart": "^9.4.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.1",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.3",
+    "fastify-type-provider-zod": "^7.0.0",
+    "postgres": "^3.4.9",
+    "tsx": "^4.19.0",
+    "zod": "^4.6.1",
+    "@daifuku/mod-inventory": "workspace:*",
+    "@daifuku/mod-contract": "workspace:*",
+    "@daifuku/pack-example": "workspace:*",
+    "@daifuku/pack-retail": "workspace:*",
+    "@daifuku/pack-real-estate": "workspace:*",
+    "@daifuku/runtime": "workspace:*",
+    "@daifuku/mod-workforce-evidence": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

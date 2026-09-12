@@ -1,0 +1,14 @@
+# Spec: phase15-cleanup（台本の丸め誤差ケース・消費税集計ステップ・permissions の演算子バグ・payment の after_lines_saved・CI 定義）
+
+- 状態: approved ／ 対象: apps/api/test/scenario.db.test.ts, docs/domain/scenario-kojin.md, kernel/src/permissions.ts, modules/payment, .github/workflows ／ 作成: 2026-09-11 ／ 作成者: orchestrator
+
+## 受入基準（EARS）
+- AC-1 台本 `docs/domain/scenario-kojin.md` に **INV4** を追加: 2026-10-30、相手 C1、明細 3 行すべて軽減税率 8%（税区分 reduced）: 「デザイン素材集（書籍）」ではなく新品目 **P4「食品サンプル撮影用の菓子」**（goods, reduced, 売価 1,111）×1 を 3 行（説明を変えて 3 行にする: 例「菓子A」「菓子B」「菓子C」）。税抜 3,333、消費税 = 3,333 × 0.08 = 266.64 → **切捨て 266**（税率ごとに 1 回丸める。行ごとに丸めると 88.88→88 ×3 = 264 になる — この差が「ひっかけ 6」）、税込 3,599、支払期日 2026-11-30。**期待値をすべて手計算で更新**: 売上計 239,000+3,333 = 242,333、仮受消費税 23,900+266 = 24,166、売掛 229,900+3,599 = 233,499、試算表合計 860,300 + 3,599 = **863,899**（借方: 売掛 +3,599 ／ 貸方: 売上 +3,333、仮受 +266 — 借方合計と貸方合計はそれぞれ 3,599 増える）、消費税集計: 売上 standard 239,000/23,900 に加えて **reduced 3,333/266** の行、差引 18,266、損益 85,833、年齢表 C1 168,599。導出を台本に書く。
+- AC-2 `apps/api/test/scenario.db.test.ts` を更新: P4 と INV4 を追加し、既存ステップの期待値を AC-1 の数値に更新。**行ごと丸めなら 264 になる**ことを示す否定アサーション（`expect(tax).not.toBe('264')` にコメント）。さらにステップ 11 として `accounting.tax_period_summary` の検証を追加（tax-period-summary エージェントの報告にあるコードを AC-1 の数値に合わせて修正して使う: 売上 standard 行 ['売上','standard','0.10','239000','23900',8]、売上 reduced 行 ['売上','reduced','0.08','3333','266', 4]（3 明細 + 税 1 行。count の数え方は実装を読んで確認）、仕入 3 行は変更なし、totals output 24166 / input 5900 / net 18266）。
+- AC-3 kernel/src/permissions.ts の行ルール SQL: `$in: []` が `col = col`（全行一致）に、`$ne: null` が `col <> col`（不一致）にコンパイルされるバグ（kernel-phase15 エージェントの発見）を修正: `$in: []` → `FALSE`、`$ne: null` → `col IS NOT NULL`、`$in` with null 要素は `col IN (...) OR col IS NULL`。unit テストを追加（SQL 文字列の期待値）。既存テストは弱めない。
+- AC-4 modules/payment の明細フック（`touchPayment` 相当、行ごとにヘッダ再計算）を `after_lines_saved` に切り替える（sales/purchase と同じ方式: `isSavingLines` 中は行フックが no-op）。payment の db テストが通ること。
+- AC-5 `.github/workflows/ci.yml`: Node 22 + pnpm 10、Postgres 16 サービス、`scripts/db-setup.sql` の適用、`.env.example` → `.env`、`pnpm install --frozen-lockfile`、`pnpm gate`、Playwright は別ジョブ（`pnpm db:reset` → API/web をバックグラウンド起動 → `npx playwright test`、失敗時に `playwright-report` をアーティファクト保存）。**本環境では実行できない（GitHub 未設定）ので、「未検証」と log に明記**。yaml の構文は `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'))"` で確認。
+- AC-6 `docs/metrics/features.jsonl` に本セッションの 4 件（kernel-phase15 38 分、tax-period-summary 20 分、web-phase15 40 分、phase15-cleanup 自分の分）を `pnpm metrics:add` で追記（tokens は kernel 427826 / tax 255260 / web 393555、自分は概算）。
+
+## 関係するファイル
+上記。docs/log/2026-09-11-phase15-cleanup.md。テスト DB: scenario は `daifuku_test_scenario`（`TEST_DATABASE_URL_OWNER=postgres://daifuku_owner:owner@localhost:5432/daifuku_test_scenario TEST_DATABASE_URL=postgres://daifuku_app:app@localhost:5432/daifuku_test_scenario npx vitest run --project db apps/api/test/scenario.db.test.ts`）、payment は `daifuku_test_payment`、kernel unit は DB 不要。

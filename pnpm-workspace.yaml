@@ -1,0 +1,6 @@
+packages:
+  - kernel
+  - modules/*
+  - l10n/*
+  - packs/*
+  - apps/*

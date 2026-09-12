@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>請求書 INV-2026-0001</title><style>@page { size: A4; margin: 15mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", "Meiryo", sans-serif; font-size: 10.5pt; line-height: 1.5; color: #000; background: #fff; }
+.invoice { width: 180mm; margin: 0 auto; padding: 10mm 0; }
+h1 { font-size: 20pt; letter-spacing: 0.5em; text-indent: 0.5em; text-align: center; margin: 0 0 8mm; }
+h2 { font-size: 11pt; margin: 6mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid #000; }
+p { margin: 0; }
+.head { display: flex; justify-content: space-between; gap: 10mm; margin-bottom: 6mm; }
+.head > div { flex: 1 1 0; }
+.recipient .name { font-size: 14pt; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 2mm; }
+.issuer { text-align: left; }
+.issuer .name { font-size: 12pt; font-weight: bold; }
+.issuer .regno { font-weight: bold; }
+table { border-collapse: collapse; width: 100%; }
+table.meta { width: auto; min-width: 70mm; margin-bottom: 4mm; }
+table.meta th, table.meta td { text-align: left; padding: 0.5mm 3mm 0.5mm 0; border: 0; }
+.amount-due { display: flex; align-items: baseline; gap: 6mm; margin: 4mm 0 6mm; padding: 2mm 3mm; border: 2px solid #000; }
+.amount-due .label { font-weight: bold; }
+.amount-due .value { font-size: 16pt; font-weight: bold; margin-left: auto; }
+table.lines th, table.lines td, table.tax-summary th, table.tax-summary td { border: 1px solid #000; padding: 1.2mm 2mm; }
+table.lines th, table.tax-summary th { background: #eee; font-weight: bold; text-align: center; }
+table.tax-summary { width: auto; min-width: 110mm; margin-left: auto; margin-top: 4mm; }
+table.tax-summary caption { text-align: left; font-weight: bold; margin-bottom: 1mm; }
+table.tax-summary tfoot th, table.tax-summary tfoot td { font-weight: bold; }
+.num { text-align: right; white-space: nowrap; }
+.center { text-align: center; }
+.legend { font-size: 9pt; margin-top: 1mm; }
+.bank p, .remarks p { white-space: pre-wrap; }
+@media print { .invoice { width: auto; padding: 0; } }</style></head>
+<body>
+<article class="invoice">
+<h1>請求書</h1>
+<section class="head"><div class="recipient"><p class="postal">〒 100-0001</p><p class="address">東京都千代田区千代田1-1</p><p class="name">株式会社テスト 御中</p></div><div class="issuer"><p class="name">大福商店</p><p class="regno">登録番号 T1234567890123</p><p class="postal">〒 900-0001</p><p class="address">沖縄県那覇市港町1-2-3</p><p class="phone">TEL 098-000-0000</p><p class="email">E-mail billing@example.com</p></div></section>
+<table class="meta"><tr><th scope="row">請求書番号</th><td>INV-2026-0001</td></tr><tr><th scope="row">発行日</th><td>2026年9月11日（令和8年9月11日）</td></tr><tr><th scope="row">支払期限</th><td>2026年10月31日（令和8年10月31日）</td></tr></table><div class="amount-due"><span class="label">ご請求金額（税込）</span><span class="value">¥3,420</span></div>
+<table class="lines"><thead><tr><th>No.</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>税区分</th></tr></thead><tbody><tr><td class="center">1</td><td>商品A</td><td class="num">1</td><td class="num">¥1,234</td><td class="num">¥1,234</td><td class="center">10%</td></tr><tr><td class="center">2</td><td>サービスB &lt;保守&gt; &amp; &quot;特急&quot;</td><td class="num">3</td><td class="num">¥189</td><td class="num">¥567</td><td class="center">10%</td></tr><tr><td class="center">3</td><td>食品C※</td><td class="num">1</td><td class="num">¥1,333</td><td class="num">¥1,333</td><td class="center">8%（軽減税率対象）</td></tr></tbody></table><p class="legend">※印は軽減税率対象品目</p>
+<table class="tax-summary"><caption>税率ごとの合計</caption><thead><tr><th>税率</th><th>税抜金額</th><th>消費税額</th><th>税込金額</th></tr></thead><tbody><tr><th scope="row">10%対象</th><td class="num">¥1,801</td><td class="num">¥180</td><td class="num">¥1,981</td></tr><tr><th scope="row">8%対象（軽減税率対象）</th><td class="num">¥1,333</td><td class="num">¥106</td><td class="num">¥1,439</td></tr></tbody><tfoot><tr><th scope="row">合計</th><td class="num">¥3,134</td><td class="num">¥286</td><td class="num">¥3,420</td></tr></tfoot></table>
+<section class="bank"><h2>振込先</h2><p>琉球銀行 本店 普通 1234567 ダイフクショウテン</p></section><section class="remarks"><h2>備考</h2><p>お振込手数料は貴社にてご負担ください。</p></section>
+</article>
+</body>
+</html>

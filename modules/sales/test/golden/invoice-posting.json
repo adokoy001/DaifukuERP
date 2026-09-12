@@ -1,0 +1,37 @@
+{
+  "description": "docs/specs/sales.md AC-9: one 税抜 invoice with 3 lines (10%: 1,234 + 567; 8%: 1,333), JPY (scale 0), tax rounded once per rate (国税庁 Q&A 問57). Derivation in docs/log/2026-09-11-sales.md.",
+  "input": {
+    "date": "2026-04-10",
+    "priceIncludesTax": false,
+    "scale": 0,
+    "partnerId": "0199a000-0000-7000-8000-00000000aaaa",
+    "rates": { "standard": "0.10", "reduced": "0.08" },
+    "accounts": { "receivable": "acc-1300", "revenue": "acc-4000", "taxPayable": "acc-2200" },
+    "lines": [
+      { "seq": 1, "description": "商品A", "quantity": "1", "unitPrice": "1234", "taxCategory": "standard" },
+      { "seq": 2, "description": "商品B", "quantity": "1", "unitPrice": "567", "taxCategory": "standard" },
+      { "seq": 3, "description": "食品C", "quantity": "1", "unitPrice": "1333", "taxCategory": "reduced" }
+    ]
+  },
+  "expected": {
+    "down": {
+      "subtotal": "3134",
+      "taxTotal": "286",
+      "total": "3420",
+      "taxSummary": [
+        { "category": "standard", "code": "", "label": "", "rate": "0.1", "taxable": "1801", "tax": "180", "gross": "1981", "lineCount": 2 },
+        { "category": "reduced", "code": "", "label": "", "rate": "0.08", "taxable": "1333", "tax": "106", "gross": "1439", "lineCount": 1 }
+      ],
+      "journalLines": [
+        { "accountId": "acc-1300", "debit": "3420", "credit": null, "partnerId": "0199a000-0000-7000-8000-00000000aaaa", "taxCategory": null, "taxRate": null, "memo": "売掛金" },
+        { "accountId": "acc-4000", "debit": null, "credit": "1234", "partnerId": null, "taxCategory": "standard", "taxRate": "0.1", "memo": "商品A" },
+        { "accountId": "acc-4000", "debit": null, "credit": "567", "partnerId": null, "taxCategory": "standard", "taxRate": "0.1", "memo": "商品B" },
+        { "accountId": "acc-4000", "debit": null, "credit": "1333", "partnerId": null, "taxCategory": "reduced", "taxRate": "0.08", "memo": "食品C" },
+        { "accountId": "acc-2200", "debit": null, "credit": "180", "partnerId": null, "taxCategory": "standard", "taxRate": "0.1", "memo": "仮受消費税 10%" },
+        { "accountId": "acc-2200", "debit": null, "credit": "106", "partnerId": null, "taxCategory": "reduced", "taxRate": "0.08", "memo": "仮受消費税 8%" }
+      ]
+    },
+    "half_up": { "subtotal": "3134", "taxTotal": "287", "total": "3421", "taxes": ["180", "107"] },
+    "up": { "subtotal": "3134", "taxTotal": "288", "total": "3422", "taxes": ["181", "107"] }
+  }
+}

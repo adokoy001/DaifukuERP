@@ -1,0 +1,89 @@
+{
+  "description": "docs/specs/purchase.md AC-7: a 税込 11,000 (10%) bill from an exempt supplier under the 経過措置 credit ratios. Derivation in docs/log/2026-09-11-purchase.md. Rounding: once per rate, 切捨て (tax.rounding default), JPY scale 0.",
+  "bill": {
+    "priceIncludesTax": true,
+    "rate": "0.1",
+    "rounding": { "mode": "down", "scale": 0 },
+    "lines": [{ "amount": "11000", "category": "standard" }]
+  },
+  "cases": [
+    {
+      "name": "exempt supplier, 2026-10-15, ratio 0.7 (経過措置 70%)",
+      "date": "2026-10-15",
+      "supplierTaxStatus": "exempt",
+      "creditRatio": "0.7",
+      "expected": {
+        "subtotal": "10000",
+        "taxTotal": "1000",
+        "deductibleTax": "700",
+        "nonDeductibleTax": "300",
+        "total": "11000",
+        "journal": [
+          { "account": "5000", "debit": "10000", "credit": "0", "memo": null },
+          { "account": "1500", "debit": "700", "credit": "0", "memo": "仮払消費税 標準10%" },
+          { "account": "5000", "debit": "300", "credit": "0", "memo": "控除対象外消費税" },
+          { "account": "2100", "debit": "0", "credit": "11000", "memo": null }
+        ],
+        "byAccount": { "5000": "10300", "1500": "700", "2100": "-11000" }
+      }
+    },
+    {
+      "name": "exempt supplier, 2026-09-15, ratio 0.8 (経過措置 80%)",
+      "date": "2026-09-15",
+      "supplierTaxStatus": "exempt",
+      "creditRatio": "0.8",
+      "expected": {
+        "subtotal": "10000",
+        "taxTotal": "1000",
+        "deductibleTax": "800",
+        "nonDeductibleTax": "200",
+        "total": "11000",
+        "journal": [
+          { "account": "5000", "debit": "10000", "credit": "0", "memo": null },
+          { "account": "1500", "debit": "800", "credit": "0", "memo": "仮払消費税 標準10%" },
+          { "account": "5000", "debit": "200", "credit": "0", "memo": "控除対象外消費税" },
+          { "account": "2100", "debit": "0", "credit": "11000", "memo": null }
+        ],
+        "byAccount": { "5000": "10200", "1500": "800", "2100": "-11000" }
+      }
+    },
+    {
+      "name": "exempt supplier without a country pack: default ratio 0 (no credit)",
+      "date": "2026-10-15",
+      "supplierTaxStatus": "exempt",
+      "creditRatio": "0",
+      "expected": {
+        "subtotal": "10000",
+        "taxTotal": "1000",
+        "deductibleTax": "0",
+        "nonDeductibleTax": "1000",
+        "total": "11000",
+        "journal": [
+          { "account": "5000", "debit": "10000", "credit": "0", "memo": null },
+          { "account": "5000", "debit": "1000", "credit": "0", "memo": "控除対象外消費税" },
+          { "account": "2100", "debit": "0", "credit": "11000", "memo": null }
+        ],
+        "byAccount": { "5000": "11000", "2100": "-11000" }
+      }
+    },
+    {
+      "name": "registered supplier: ratio 1 (full credit)",
+      "date": "2026-10-15",
+      "supplierTaxStatus": "registered",
+      "creditRatio": "1",
+      "expected": {
+        "subtotal": "10000",
+        "taxTotal": "1000",
+        "deductibleTax": "1000",
+        "nonDeductibleTax": "0",
+        "total": "11000",
+        "journal": [
+          { "account": "5000", "debit": "10000", "credit": "0", "memo": null },
+          { "account": "1500", "debit": "1000", "credit": "0", "memo": "仮払消費税 標準10%" },
+          { "account": "2100", "debit": "0", "credit": "11000", "memo": null }
+        ],
+        "byAccount": { "5000": "10000", "1500": "1000", "2100": "-11000" }
+      }
+    }
+  ]
+}

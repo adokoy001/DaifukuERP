@@ -1,0 +1,8 @@
+import type { EntityMeta } from '../api/types.ts';
+const managed = new Set(['workforce_employee', 'workforce_attendance', 'workforce_punch', 'workforce_attendance_correction', 'workforce_leave_grant', 'workforce_leave_request', 'workforce_leave_usage', 'workforce_expense', 'workforce_payroll', 'workforce_period_lock', 'workforce_receipt']);
+export const isWorkforceManaged = (name: string) => managed.has(name);
+/** Permissions alone do not promise generic CRUD: workflow records require their business action. */
+export function workforceEntityForUi(entity: EntityMeta): EntityMeta {
+  if (!isWorkforceManaged(entity.name)) return entity;
+  return { ...entity, ops: entity.ops.filter((op) => op === 'read' || op === 'export' || (entity.name === 'workforce_employee' && op === 'update')) };
+}

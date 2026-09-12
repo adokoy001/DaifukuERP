@@ -1,0 +1,16 @@
+# ADR-0019: 汎用拠点と本人権限を既存店舗境界へ合成する
+
+- 日付: 2026-09-12
+- 状態: accepted
+
+会社所属の`all`と`stores`は保持し、新しい`sites`と`siteIds`を追加する。既存所属のsiteIdsは空で移行し、移行だけで権限を広げない。新sites所属は同じ会社のstoreIdsも明示指定でき、店長が旧チェーンと従業員業務を併用できる。
+
+DSLの`siteAccess`はstoreAccessと同じrequired参照/parent/sharedRead構造を使う。sites contextではsiteAccessを優先してsiteIdsを適用し、siteAccessのない既存storeAccessにはstoreIdsを適用する。stores contextではsiteAccessを使用しない。宣言がなければdeny、各id集合が空なら0行。Repositoryのread/create/update/aggregate/reference/auditすべてでtenant・company・拠点・rowRulesをANDする。write capabilityは拠点や本人の権限を広げない。
+
+ActionにはsiteAccess宣言を追加する。sitesで旧storeAccess actionを呼ぶには明示storeIdsも必要とする。generic actionは各entityの共通権限で判断する。設定/利用者管理はall所属だけに限定する。
+
+従業員のuserIdは会社内一意で、会社所属をkernelのidentity確認portで検証する。本人用entityにはuserIdのrowRulesを置く。給与は本人roleで確定済行だけを読み、管理者roleの別拠点制限も保持する。HR/payroll本部roleはsites所属には付与しない。自己承認はroleと独立した業務条件として全actionで拒否する。
+
+汎用拠点そのものはworkforceのDSL entityであり、kernelは特定業界のtableをimportしない。利用者管理directoryはid境界宣言を持つregistry entityから会社内候補だけを提示する。全scopeへの暗黙fallbackや、拠点権限を一時解除するcontextは導入しない。
+
+検証は旧stores回帰、新sitesの本人/管理者/会社外/空集合/チェーン併用、metadataとaction公開、aggregate/export/ref/auditとgeneric write、権限失効の実DB試験で行う。

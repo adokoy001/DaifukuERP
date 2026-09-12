@@ -1,0 +1,55 @@
+{
+  "name": "daifuku",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Daifuku (大福帳) — multi-industry ERP kernel and modules. An experiment in AI-driven large-scale development.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "node node_modules/tsc7/bin/tsc -p tsconfig.json --noEmit",
+    "typecheck:js": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . && pnpm run lint:boundaries",
+    "lint:boundaries": "depcruise --config .dependency-cruiser.cjs kernel modules l10n packs apps",
+    "test": "vitest run --project unit",
+    "test:db": "vitest run --project db",
+    "gate": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:db && pnpm docs:check",
+    "db:schema": "pnpm --filter @daifuku/api run db:schema",
+    "db:generate": "pnpm --filter @daifuku/api run db:generate",
+    "db:migrate": "pnpm --filter @daifuku/api run db:migrate",
+    "db:reset": "pnpm --filter @daifuku/api run db:reset",
+    "pack:apply": "pnpm --filter @daifuku/api run pack:apply",
+    "dev:api": "pnpm --filter @daifuku/api run dev",
+    "dev:web": "pnpm --filter @daifuku/web run dev",
+    "metrics:add": "node scripts/metrics-add.mjs",
+    "manual:build": "node scripts/build-manual.mjs",
+    "demo:industries": "pnpm --filter @daifuku/api demo:industries",
+    "setup": "tsx apps/api/src/setup/cli.ts",
+    "test:setup": "tsx apps/api/test/setup.integration.ts",
+    "docs:check": "node scripts/check-doc-links.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "dependency-cruiser": "^18.2.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-boundaries": "^7.2.0",
+    "turbo": "^2.10.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^5.0.0",
+    "tsc7": "npm:typescript@7.0.2",
+    "tsx": "^4.19.0"
+  },
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adokoy001/DaifukuERP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adokoy001/DaifukuERP/issues"
+  },
+  "homepage": "https://github.com/adokoy001/DaifukuERP#readme"
+}

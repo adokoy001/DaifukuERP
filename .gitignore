@@ -1,0 +1,34 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+.data/
+
+# Local operations, credentials and release scratch files
+.ci-logs/
+.runtime/
+.local/
+backups/
+setup-state.json
+initial-admin-password.txt
+runtime.env
+*.dump
+*.pgdump
+*.pem
+*.key
+*.p12
+*.pfx
+*.bak
+*.tar
+*.tar.gz
+*.zip
+
+# Generated manual: Markdown and screenshots are the public sources
+/docs/manual/daifuku-manual.html

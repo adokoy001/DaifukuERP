@@ -1,0 +1,47 @@
+# プログラム地図
+
+[全体像](README.md) / [AI向け入口](../../AI_INDEX.md)
+
+## packageと役割
+
+| 場所 | 責任 | 変更の入口 |
+| --- | --- | --- |
+| `kernel/` | DSL、権限、行境界、Repository、伝票、監査、採番、イベント、storage | [公開API](../../kernel/src/index.ts) |
+| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、添付、従業員/労務、業種共通の案件処理 | 各packageの `src/index.ts` と `src/module.ts` |
+| `l10n/jp/` | 日本向けの帳票・制度・設定 | [日本module](../../l10n/jp/src/index.ts) |
+| `packs/` | 業種固有のdocument、workflow、設定、sample、UIメニュー | 各packageの公開indexとpack定義 |
+| `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
+| `apps/api/` | JWT認証、HTTP、OpenAPI、DB/導入CLI | [server](../../apps/api/src/server.ts)、[main](../../apps/api/src/main.ts) |
+| `apps/web/` | React画面、会社切替、汎用entityフォーム、専用業務画面 | [router](../../apps/web/src/router.tsx)、[API client](../../apps/web/src/api/client.ts) |
+| `apps/mcp/` | actionから生成するMCP tools、呼出ごとの所属再確認 | [tools](../../apps/mcp/src/tools.ts)、[session](../../apps/mcp/src/session.ts) |
+| 外部配信worker（未実装） | outboxを外部へ配送する将来adapter | [outbox基盤](../../kernel/src/events.ts) |
+| `scripts/` | schema生成補助、文書生成、専用試験cluster、配布 | [scripts](../../scripts/) |
+
+依存名・固定版は [workspace](../../pnpm-workspace.yaml)、[lockfile](../../pnpm-lock.yaml)、各packageの `package.json` にあります。この文書へ依存版を重複コピーしません。
+
+## 調査から実装までの近道
+
+| 症状/変更 | 最初に確認するもの |
+| --- | --- |
+| 一覧に他社/他拠点の行が出る | `repository/scope.ts`、entityの行policy、Contextに渡る実所属 |
+| 画面で項目が編集できない | entity fieldのreadOnly/serverOwned、allowedOps、metadata、document状態 |
+| APIとMCPで動作が違う | adapterのContext生成とaction名。業務actionの複製を作らない |
+| 二重処理で請求/有給/給与が重複する | business keyのwithLock、unique、expectedVersion、再実行の状態確認 |
+| 新packが出ない | runtimeに登録、DAIFUKU_PACKS、選択会社で適用済みか、roleを順に確認 |
+| schemaに変更がない | schema用runtimeが全packを読んでいるか、entityがregistryに登録されたか |
+| 給与/申請が会社切替後も残る | query keyのcompany/user、abort/invalidate、権限エラー時の前データ表示 |
+
+## 生成物と手書きの境界
+
+DSL定義と業務actionが手書きの正本です。table/Zod/汎用CRUD/REST/MCPのschemaはそこから導出します。DBのgenerated schemaを独立に編集して業務定義を増やしません。
+
+DB migrationは、生成結果を確認したうえで追加し、すでに適用した履歴を改変しません。Webの汎用フォームはmetadataを解釈し、スマホ打刻や本部承認など操作のまとまりが必要な業務は専用画面から同じactionを呼びます。
+
+バイナリ添付はstorage portの先、DB dumpと実envは管理対象の非公開領域です。ソース管理と混ぜません。文書用画像は合成データだけを使います。
+
+## 新しい共通業務の入口
+
+- [従業員module](../../modules/workforce/src/index.ts): 公開entity・wire contract・制度seed。勤怠/休暇/経費/給与は各actionから開始する。
+- [領収書module](../../modules/workforce-evidence/src/index.ts): 経費に従属する添付サービスと型。
+- [業種共通処理](../../modules/industry-operations/src/index.ts): 業種固有の案件documentを組み立て、開始/完了/請求/集計を共通化する。
+- [10業界の定義](../../packs/industry-catalog/src/index.ts): 選択したpackだけを読み、業種固有項目・検収条件・サンプルを載せる。

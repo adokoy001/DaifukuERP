@@ -1,0 +1,37 @@
+{
+  "name": "@daifuku/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@daifuku/kernel": "workspace:*",
+    "@daifuku/l10n-jp": "workspace:*",
+    "@daifuku/mod-accounting": "workspace:*",
+    "@daifuku/mod-attachments": "workspace:*",
+    "@daifuku/mod-partner": "workspace:*",
+    "@daifuku/mod-payment": "workspace:*",
+    "@daifuku/mod-product": "workspace:*",
+    "@daifuku/mod-purchase": "workspace:*",
+    "@daifuku/mod-sales": "workspace:*",
+    "@daifuku/mod-tax": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "tsx": "^4.19.0",
+    "zod": "^4.6.1",
+    "@daifuku/mod-inventory": "workspace:*",
+    "@daifuku/mod-contract": "workspace:*",
+    "@daifuku/pack-example": "workspace:*",
+    "@daifuku/pack-retail": "workspace:*",
+    "@daifuku/pack-real-estate": "workspace:*",
+    "@daifuku/runtime": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

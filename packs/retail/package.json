@@ -1,0 +1,22 @@
+{
+  "name": "@daifuku/pack-retail",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./src/index.ts", "import": "./src/index.ts" } },
+  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "devDependencies": { "@types/node": "^22.0.0", "fast-check": "^4.9.0", "typescript": "^6.0.3", "vitest": "^5.0.0" },
+  "dependencies": {
+    "@daifuku/kernel": "workspace:*",
+    "zod": "^4.6.1",
+    "@daifuku/mod-partner": "workspace:*",
+    "@daifuku/mod-product": "workspace:*",
+    "@daifuku/mod-tax": "workspace:*",
+    "@daifuku/mod-accounting": "workspace:*",
+    "@daifuku/mod-sales": "workspace:*",
+    "@daifuku/mod-purchase": "workspace:*",
+    "@daifuku/mod-payment": "workspace:*",
+    "@daifuku/mod-inventory": "workspace:*",
+    "@daifuku/l10n-jp": "workspace:*"
+  }
+}

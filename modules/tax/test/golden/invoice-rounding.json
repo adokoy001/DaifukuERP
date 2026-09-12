@@ -1,0 +1,59 @@
+{
+  "$source": "国税庁 インボイス Q&A 問57「1適格請求書につき税率ごとに1回」の端数処理 (docs/domain/japan-tax.md#rounding)。期待値は手計算。導出は docs/log/2026-09-10-tax.md。",
+  "date": "2026-09-10",
+  "rates": [
+    { "code": "STD10", "category": "standard", "rate": "0.10", "validFrom": "2019-10-01", "validTo": null, "label": "標準10%" },
+    { "code": "RED8", "category": "reduced", "rate": "0.08", "validFrom": "2019-10-01", "validTo": null, "label": "軽減8%" },
+    { "code": "EXEMPT", "category": "exempt", "rate": "0", "validFrom": "2019-10-01", "validTo": null, "label": "免税" }
+  ],
+  "invoices": [
+    {
+      "name": "invoice 1: 税抜。10% 1,234+567+89=1,890 → 189。8% 1,000+333=1,333 → 106.64（明細ごとに丸めると 10% は 123+56+8=187 になり不可）",
+      "priceIncludesTax": false,
+      "lines": [
+        { "amount": "1234", "category": "standard" },
+        { "amount": "567", "category": "standard" },
+        { "amount": "89", "category": "standard" },
+        { "amount": "1000", "category": "reduced" },
+        { "amount": "333", "category": "reduced" }
+      ],
+      "expected": {
+        "down": { "standard": { "taxable": "1890", "tax": "189" }, "reduced": { "taxable": "1333", "tax": "106" }, "totals": { "taxable": "3223", "tax": "295", "gross": "3518" } },
+        "half_up": { "standard": { "taxable": "1890", "tax": "189" }, "reduced": { "taxable": "1333", "tax": "107" }, "totals": { "taxable": "3223", "tax": "296", "gross": "3519" } },
+        "up": { "standard": { "taxable": "1890", "tax": "189" }, "reduced": { "taxable": "1333", "tax": "107" }, "totals": { "taxable": "3223", "tax": "296", "gross": "3519" } }
+      }
+    },
+    {
+      "name": "invoice 2: 税抜。10% 1,000+235=1,235 → 123.5（四捨五入の境界）。8% 700+550=1,250 → 100.00。免税 500 → 0",
+      "priceIncludesTax": false,
+      "lines": [
+        { "amount": "1000", "category": "standard" },
+        { "amount": "235", "category": "standard" },
+        { "amount": "700", "category": "reduced" },
+        { "amount": "550", "category": "reduced" },
+        { "amount": "500", "category": "exempt" }
+      ],
+      "expected": {
+        "down": { "standard": { "taxable": "1235", "tax": "123" }, "reduced": { "taxable": "1250", "tax": "100" }, "exempt": { "taxable": "500", "tax": "0" }, "totals": { "taxable": "2985", "tax": "223", "gross": "3208" } },
+        "half_up": { "standard": { "taxable": "1235", "tax": "124" }, "reduced": { "taxable": "1250", "tax": "100" }, "exempt": { "taxable": "500", "tax": "0" }, "totals": { "taxable": "2985", "tax": "224", "gross": "3209" } },
+        "up": { "standard": { "taxable": "1235", "tax": "124" }, "reduced": { "taxable": "1250", "tax": "100" }, "exempt": { "taxable": "500", "tax": "0" }, "totals": { "taxable": "2985", "tax": "224", "gross": "3209" } }
+      }
+    },
+    {
+      "name": "invoice 3: 税込（割戻し）。10% 1,100+1,650+534=3,284 → 3,284×10/110=298.5454…。8% 540+1,000=1,540 → 1,540×8/108=114.0740…。税抜 = 税込 − 税",
+      "priceIncludesTax": true,
+      "lines": [
+        { "amount": "1100", "category": "standard" },
+        { "amount": "1650", "category": "standard" },
+        { "amount": "534", "category": "standard" },
+        { "amount": "540", "category": "reduced" },
+        { "amount": "1000", "category": "reduced" }
+      ],
+      "expected": {
+        "down": { "standard": { "taxable": "2986", "tax": "298" }, "reduced": { "taxable": "1426", "tax": "114" }, "totals": { "taxable": "4412", "tax": "412", "gross": "4824" } },
+        "half_up": { "standard": { "taxable": "2985", "tax": "299" }, "reduced": { "taxable": "1426", "tax": "114" }, "totals": { "taxable": "4411", "tax": "413", "gross": "4824" } },
+        "up": { "standard": { "taxable": "2985", "tax": "299" }, "reduced": { "taxable": "1425", "tax": "115" }, "totals": { "taxable": "4410", "tax": "414", "gross": "4824" } }
+      }
+    }
+  ]
+}

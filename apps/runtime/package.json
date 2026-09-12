@@ -1,0 +1,36 @@
+{
+  "name": "@daifuku/runtime",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@daifuku/kernel": "workspace:*",
+    "@daifuku/mod-partner": "workspace:*",
+    "@daifuku/mod-product": "workspace:*",
+    "@daifuku/mod-tax": "workspace:*",
+    "@daifuku/mod-accounting": "workspace:*",
+    "@daifuku/mod-attachments": "workspace:*",
+    "@daifuku/mod-sales": "workspace:*",
+    "@daifuku/mod-purchase": "workspace:*",
+    "@daifuku/mod-payment": "workspace:*",
+    "@daifuku/mod-inventory": "workspace:*",
+    "@daifuku/mod-contract": "workspace:*",
+    "@daifuku/l10n-jp": "workspace:*",
+    "@daifuku/pack-example": "workspace:*",
+    "@daifuku/pack-retail": "workspace:*",
+    "@daifuku/pack-real-estate": "workspace:*",
+    "@daifuku/pack-appliance-store": "workspace:*",
+    "@daifuku/pack-farm": "workspace:*",
+    "@daifuku/pack-restaurant-chain": "workspace:*",
+    "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-industry-operations": "workspace:*",
+    "@daifuku/pack-industry-catalog": "workspace:*",
+    "@daifuku/mod-workforce-evidence": "workspace:*"
+  }
+}

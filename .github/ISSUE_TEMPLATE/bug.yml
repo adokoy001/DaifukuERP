@@ -1,0 +1,38 @@
+name: 不具合報告
+description: 合成データで再現する通常の不具合を報告します。
+body:
+  - type: markdown
+    attributes:
+      value: 認証情報・業務データ・脆弱性の詳細を記載しないでください。セキュリティの問題は SECURITY.md を確認してください。
+  - type: input
+    id: version
+    attributes:
+      label: コミットまたはバージョン
+      placeholder: git rev-parse HEAD の結果など
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順
+      description: 新しい検証会社と合成データで再現する入力・操作を記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 期待する結果と実際の結果
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 実行環境
+      description: OS、Node.js、PostgreSQL、ブラウザのバージョン。接続 URL や秘密値は不要です。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 公開内容の確認
+      options:
+        - label: 秘密値、実際の業務データ、脆弱性の攻撃手順を含めていません。
+          required: true

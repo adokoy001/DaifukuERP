@@ -1,0 +1,16 @@
+name: 非公開のセキュリティ連絡先を確認
+description: 連絡方法だけを確認します。問題の詳細は一切記載しないでください。
+title: '[Security contact] 非公開の連絡方法を希望します'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        この Issue は公開されます。脆弱性の内容、再現手順、影響範囲、URL、ログ、認証情報は投稿しないでください。
+        以下のチェックだけで連絡方法を依頼できます。保守者の案内を待ち、詳細は非公開で共有してください。
+  - type: checkboxes
+    id: contact
+    attributes:
+      label: 連絡方法の依頼
+      options:
+        - label: 非公開のセキュリティ連絡先を希望します。問題の詳細はここに含めません。
+          required: true

@@ -1,0 +1,22 @@
+name: 改善・業務シナリオの提案
+description: 解決したい業務上の問題と期待する動作を共有します。
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: どの利用者が、どの業務で困っていますか
+      description: 実在する顧客や取引の個人情報を含めず、一般化した例を使ってください。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 実現したい結果
+      description: 入力と結果の例、既存機能で不足している点を記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: 関連する仕様や一次資料
+      description: 任意。税制・制度に関する提案は一次資料の URL と確認日を添えてください。

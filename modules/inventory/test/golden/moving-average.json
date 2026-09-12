@@ -1,0 +1,48 @@
+{
+  "description": "移動平均法の決定論的出力（docs/specs/inventory.md AC-11、導出は docs/log/2026-09-11-inventory.md）。各 step の expect は台帳行（qtyDelta / costDelta / unitCost = 移動平均後の単価 / balanceQty / balanceCost）。金額・単価は小数 6 桁で四捨五入。",
+  "scenarios": [
+    {
+      "name": "AC-11 spec: 10@100, 10@120, issue 5, 5@130, issue all",
+      "allowNegative": false,
+      "steps": [
+        { "op": "receipt", "qty": "10", "unitCost": "100", "expect": { "qtyDelta": "10", "costDelta": "1000", "unitCost": "100", "balanceQty": "10", "balanceCost": "1000" } },
+        { "op": "receipt", "qty": "10", "unitCost": "120", "expect": { "qtyDelta": "10", "costDelta": "1200", "unitCost": "110", "balanceQty": "20", "balanceCost": "2200" } },
+        { "op": "issue", "qty": "5", "expect": { "qtyDelta": "-5", "costDelta": "-550", "unitCost": "110", "balanceQty": "15", "balanceCost": "1650" } },
+        { "op": "receipt", "qty": "5", "unitCost": "130", "expect": { "qtyDelta": "5", "costDelta": "650", "unitCost": "115", "balanceQty": "20", "balanceCost": "2300" } },
+        { "op": "issue", "qty": "20", "expect": { "qtyDelta": "-20", "costDelta": "-2300", "unitCost": "115", "balanceQty": "0", "balanceCost": "0" } }
+      ]
+    },
+    {
+      "name": "rounding: the average keeps 6 decimals, the last unit takes the remaining value",
+      "allowNegative": false,
+      "steps": [
+        { "op": "receipt", "qty": "1", "unitCost": "100", "expect": { "qtyDelta": "1", "costDelta": "100", "unitCost": "100", "balanceQty": "1", "balanceCost": "100" } },
+        { "op": "receipt", "qty": "2", "unitCost": "100.01", "expect": { "qtyDelta": "2", "costDelta": "200.02", "unitCost": "100.006667", "balanceQty": "3", "balanceCost": "300.02" } },
+        { "op": "issue", "qty": "1", "expect": { "qtyDelta": "-1", "costDelta": "-100.006667", "unitCost": "100.006667", "balanceQty": "2", "balanceCost": "200.013333" } },
+        { "op": "issue", "qty": "2", "expect": { "qtyDelta": "-2", "costDelta": "-200.013333", "unitCost": "100.006667", "balanceQty": "0", "balanceCost": "0" } }
+      ]
+    },
+    {
+      "name": "AC-4 cancel in reverse order: each reversal takes back the original cost; the average is recomputed",
+      "allowNegative": false,
+      "steps": [
+        { "op": "receipt", "qty": "10", "unitCost": "100", "expect": { "qtyDelta": "10", "costDelta": "1000", "unitCost": "100", "balanceQty": "10", "balanceCost": "1000" } },
+        { "op": "receipt", "qty": "10", "unitCost": "120", "expect": { "qtyDelta": "10", "costDelta": "1200", "unitCost": "110", "balanceQty": "20", "balanceCost": "2200" } },
+        { "op": "issue", "qty": "5", "expect": { "qtyDelta": "-5", "costDelta": "-550", "unitCost": "110", "balanceQty": "15", "balanceCost": "1650" } },
+        { "op": "reverse_receipt", "qty": "10", "totalCost": "1200", "expect": { "qtyDelta": "-10", "costDelta": "-1200", "unitCost": "90", "balanceQty": "5", "balanceCost": "450" } },
+        { "op": "reverse_issue", "qty": "5", "totalCost": "550", "expect": { "qtyDelta": "5", "costDelta": "550", "unitCost": "100", "balanceQty": "10", "balanceCost": "1000" } },
+        { "op": "reverse_receipt", "qty": "10", "totalCost": "1000", "expect": { "qtyDelta": "-10", "costDelta": "-1000", "unitCost": "100", "balanceQty": "0", "balanceCost": "0" } }
+      ]
+    },
+    {
+      "name": "negative stock (inventory.allow_negative_stock = true): the shortage is valued at the frozen average, the receipt that closes it re-bases at its unit cost",
+      "allowNegative": true,
+      "steps": [
+        { "op": "receipt", "qty": "5", "unitCost": "100", "expect": { "qtyDelta": "5", "costDelta": "500", "unitCost": "100", "balanceQty": "5", "balanceCost": "500" } },
+        { "op": "issue", "qty": "8", "expect": { "qtyDelta": "-8", "costDelta": "-800", "unitCost": "100", "balanceQty": "-3", "balanceCost": "-300" } },
+        { "op": "receipt", "qty": "10", "unitCost": "120", "expect": { "qtyDelta": "10", "costDelta": "1140", "unitCost": "120", "balanceQty": "7", "balanceCost": "840" } },
+        { "op": "issue", "qty": "7", "expect": { "qtyDelta": "-7", "costDelta": "-840", "unitCost": "120", "balanceQty": "0", "balanceCost": "0" } }
+      ]
+    }
+  ]
+}

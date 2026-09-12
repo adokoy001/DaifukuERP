@@ -1,0 +1,62 @@
+.template-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:32px; border:1px solid #e5dff9; border-radius:24px; background:linear-gradient(120deg,#eee8ff,#edf8fb 68%,#fff2ea); }
+.template-hero h1 { margin:10px 0 12px; font-size:clamp(24px,2.8vw,35px); line-height:1.5; color:#25324d; }
+.template-hero p { max-width:700px; font-size:12px; color:#697894; line-height:1.9; }
+.template-hero-symbol { display:grid; place-items:center; width:110px; height:110px; flex:none; background:#ffffff94; border:1px solid #fff; border-radius:30px; color:#8c64db; transform:rotate(-8deg); }
+.template-toolbar { display:flex; align-items:center; justify-content:space-between; gap:22px; margin:24px 0; }
+.template-toolbar p { font-size:11px; color:#74819b; max-width:350px; }
+.company-picker { display:flex; align-items:center; gap:12px; min-width:240px; color:#8d66d3; }
+.company-picker > div { min-width:0; flex:1; }
+.company-picker label { display:block; font-size:10px; font-weight:700; margin-bottom:5px; color:#74819b; }
+.company-picker select { background:#fff; border:1px solid #dce1ed; border-radius:10px; padding:10px 28px 10px 12px; color:#293854; font-weight:600; max-width:100%; width:100%; }
+.template-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; align-items:start; }
+.template-card { padding:24px; border:1px solid #e1e4ef; background:#fff; border-radius:22px; box-shadow:0 5px 25px #35417205; overflow:hidden; min-width:0; }
+.template-card-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.template-symbol { display:grid; place-items:center; width:62px; height:62px; border-radius:19px; background:#eee7fe; color:#8656da; }
+.tone-green .template-symbol { background:#e1f4e9; color:#3c9369; }
+.tone-coral .template-symbol { background:#feebe4; color:#da7956; }
+.tone-cyan .template-symbol { background:#e2f6f5; color:#43a1a0; }
+.template-badge { border:1px solid #e2e5f0; color:#8390a7; border-radius:20px; padding:5px 9px; font-size:10px; white-space:nowrap; }
+.template-badge.is-applied { color:#38846a; background:#edf8f1; border-color:#dcefe2; }
+.template-card h2 { margin:21px 0 9px; font-size:24px; font-weight:750; color:#293854; }
+.template-card h3 { font-size:12px; font-weight:650; line-height:1.8; margin:0 0 10px; color:#53627d; }
+.template-card > p { font-size:11px; line-height:1.9; color:#7b879c; min-height:64px; }
+.template-steps { display:flex; flex-wrap:wrap; gap:7px 12px; border-top:1px solid #f0f1f6; margin-top:17px; padding-top:16px; }
+.template-steps li { display:flex; align-items:center; gap:5px; font-size:10px; color:#74819a; }
+.template-steps b { width:17px; height:17px; border-radius:50%; display:grid; place-items:center; background:#f1eefb; color:#8b65cc; font-size:9px; }
+.template-card footer { margin-top:22px; display:flex; flex-direction:column; gap:13px; }
+.template-card footer .btn { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; width:100%; border-radius:11px; }
+.template-sample { display:flex; align-items:center; gap:7px; font-size:11px; color:#687792; }
+.template-sample input { accent-color:#8251db; }
+.template-card footer small,.template-card footer > span { color:#7b879c; font-size:10px; }
+.template-workflows { display:flex; flex-direction:column; gap:5px; margin-top:20px; }
+.template-workflow { display:flex; align-items:center; justify-content:space-between; gap:9px; padding:9px 10px; background:#f8f9fd; border-radius:8px; font-size:11px; color:#576984; }
+.template-workflow:hover { color:#7146be; background:#f1ebfc; }
+.template-note { font-size:11px; line-height:1.8; color:#8390a7; margin-top:22px; }
+.template-home-entry { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 0 25px; padding:15px 20px; border:1px solid #e0e5ee; border-radius:14px; background:linear-gradient(100deg,#fff,#eff6f6); color:#697895; font-size:12px; }
+.template-home-entry a { display:flex; align-items:center; gap:8px; font-weight:650; color:#7955be; white-space:nowrap; }
+.business-action-page { max-width:1100px; }
+.business-action-heading { display:flex; align-items:flex-start; gap:16px; margin:25px 0; }
+.business-action-heading h1 { font-size:24px; font-weight:700; margin-bottom:9px; }
+.business-action-heading p { font-size:12px; color:#79869d; line-height:1.8; }
+.business-action-form { display:flex; flex-direction:column; gap:22px; padding:24px; border:1px solid #e2e6ef; background:white; border-radius:19px; }
+.business-action-form > .btn { align-self:flex-start; min-width:110px; }
+.business-action-form details,.business-action-result details { font-size:11px; color:#75829c; }
+.business-action-result { border:1px solid #d9ecdf; background:#f2faf4; padding:24px; border-radius:19px; margin-top:24px; }
+.business-action-result h2 { display:flex; align-items:center; gap:8px; color:#408867; font-weight:700; margin-bottom:14px; }
+.business-action-result > div { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:17px; }
+.business-action-result pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:350px; overflow:auto; }
+.company-name { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:1250px) { .template-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.template-card h2 { font-size:22px; } }
+@media (max-width:760px) {
+  .template-hero { padding:24px 21px; border-radius:19px; }.template-hero h1 { font-size:25px; }.template-hero-symbol { display:none; }
+  .template-grid { grid-template-columns:1fr; gap:17px; }.template-card { padding:23px; }.template-card > p { min-height:0; }
+  .template-toolbar { align-items:stretch; flex-direction:column; gap:13px; }.template-toolbar p { max-width:none; }.company-picker { min-width:0; }
+  .template-home-entry { align-items:flex-start; flex-direction:column; gap:8px; }.company-name { max-width:185px; }
+}
+
+.template-card > .template-boundary { min-height:0; padding:10px 12px; margin-top:10px; border-radius:9px; background:#f6f7fb; color:#62718b; font-size:10px; }
+.template-filters { display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin:0 0 22px; }
+.template-filters label { display:flex; flex-direction:column; gap:6px; font-size:11px; color:#61718a; }
+.template-filters input,.template-filters select { padding:10px 12px; border:1px solid #dce1ed; border-radius:10px; background:#fff; color:#293854; min-height:40px; }
+.template-filters input { width:min(330px,80vw); }
+.template-filters > span { font-size:11px; color:#61718a; margin:0 0 12px auto; }

@@ -1,0 +1,27 @@
+# Spec: pack-retail（導入テンプレート「小売」）
+
+- 状態: approved ／ 層: packs/retail（`@daifuku/pack-retail`、pack name `retail`）／ 依存: partner, product, tax, accounting, sales, purchase, payment, inventory, l10n_jp
+- ADR: 0013, 0014, 0015 ／ 作成: 2026-09-11 ／ 作成者: orchestrator ／ 手本: `packs/example`、`docs/conventions/packs.md`
+- 判断基準（packs.md）: 他業種でも要るものは module（在庫・請求・入出金は既にある）。**この pack は「小売店の 1 日の締め」と「月次の商品棚卸高」だけを足す**。
+
+## 目的
+食品を扱う小さな小売店（軽減税率と標準税率が混在、税込価格、レジ締めで 1 日分をまとめて計上、三分法で月末に商品棚卸高を仕訳）が、コアを改変せずに使える導入テンプレート。Phase 2 の比較・H3 計測の第 2 データ点。
+
+## 受入基準（EARS）
+- AC-1 ext: `product` に `jan`（text, searchable, maxLength 13）, `supplierCode`（text）, `shelf`（text 棚番）; `partner` に `retailKind`（enum walk_in/card_company/wholesaler; label 小売区分）。
+- AC-2 Entities（pack 内）: document `register_closing`（レジ締め、naming `REG-`, period year）: `date`（required, default today）, `warehouseId`（ref warehouse, required, default = inventory.default_warehouse を validate で解決）, `cashAmount` money default 0（現金売上）, `cardAmount` money default 0（カード売上）, `subtotal/taxTotal/total` computed, `salesInvoiceId` ref sales_invoice nullable allowOnSubmit, `paymentId` ref payment nullable allowOnSubmit, `note`; lines `register_closing_line`: `productId` ref product required, `quantity` quantity required (>0; **返品はマイナス数量で同じ明細に入れる**: quantity < 0 を許す。ただし inventory は qty ≤ 0 の行を出庫しないので、返品分の在庫戻しは棚卸で吸収する — 制限として台本に書く), `unitPrice` money（税込単価; product.salePrice から既定）, `taxCategory` enum（product から既定）, `amount` computed = quantity × unitPrice.
+- AC-3 WHEN a register_closing is validated THE SYSTEM SHALL compute totals with the tax module（`priceIncludesTax = true` 固定; 税率ごとに 1 回丸め、会社設定 `tax.rounding`）and require `cashAmount + cardAmount = total`（差額があれば ValidationError, hint に差額）.
+- AC-4 WHEN submitted THE SYSTEM SHALL (1) create and submit a `sales_invoice`（partner = seeded 「店頭客」walk_in, `priceIncludesTax: true`, date = closing date, lines = closing lines, note 「レジ締め REG-…」）through the generic actions（inventory の自動出庫はそのまま効く）, (2) if `cashAmount > 0` create and submit a `payment`（receive, account = 現金 1000 via `payment.accounts.cash`, allocation to the invoice for cashAmount）, (3) leave `cardAmount` as the invoice balance（カード会社からの入金で後日消込）, (4) store both ids on the closing. Cancel → cancel payment then invoice（sales refuses cancel when paid — so cancel the payment first）.
+- AC-5 Settings applied by the pack: `tax.price_includes_tax = true`, `inventory.allow_negative_stock = false`, `inventory.auto_issue_on_sales = true`, `inventory.auto_receipt_on_purchase = true`, `sales.issuer.name`（既存の構造化設定なら触らない）, and pack's own `retail.closing_accounts = { inventory: '1400', closingStock: '5100', openingStock: '5050' }`（registerSetting）.
+- AC-6 seed（冪等）: accounts `5050 期首商品棚卸高`（expense）, `5100 期末商品棚卸高`（expense; 貸方で売上原価を減らす）, `6990 棚卸減耗損`（expense）; partner `WALKIN 店頭客`（customer, retailKind walk_in）; uom は product の既定でよい。sample: 品目 4 件（下の台本）と仕入先 `S1 卸売商事`（wholesaler）。
+- AC-7 Actions: `retail.daily_sales { from, to }` → TableResult per date: 税抜, 税額（8%/10% 別列）, 税込, 現金, カード, 締め件数; totals. `retail.close_month { period: 'YYYY-MM' }`（permission accounting; mutates）: reads `inventory.valuation { asOf: period end }` and creates+submits a journal_entry（期末商品棚卸高: Dr 1400 商品 / Cr 5100 期末商品棚卸高 for the valuation total; if a previous month's closing entry exists for this company, also Dr 5050 期首商品棚卸高 / Cr 1400 商品 for the previous closing amount — 三分法の振替）; idempotent per period（entity `retail_month_close` に記録）. `retail.card_settlement` は **スコープ外**（比較のひっかけとして台本に書くだけ）。
+- AC-8 Labels: `sales_invoice` entity label → 「売上（店頭/掛）」, `partner` → 「取引先（店頭客・仕入先）」. Menus: 小売（レジ締め、日次売上、月次締め）.
+- AC-9 台本 `docs/domain/scenario-retail.md`（2026-11、架空の食品雑貨店「まめや」）: 品目 P1 弁当（reduced, 税込 540）, P2 お茶（reduced, 税込 162）, P3 雑貨（standard, 税込 1,100）, P4 文具（standard, 税込 330）; 期首 11-01 元入金 200,000; BILL1 11-01 S1 から税抜入力 P1×50@300, P2×100@80, P3×20@600, P4×40@150（税抜 41,000; reduced 23,000→税 1,840、standard 18,000→税 1,800、税込 44,640; 自動入庫）; レジ締め REG1 11-05: P1×20, P2×30, P3×5, P4×10, 現金 20,000 カード 4,460; REG2 11-15: P1×25, P2×40, P3×8, P4×15, 全額現金; REG3 11-25: P1×3, P2×5, P3×2, **P4×−1（返品 1 個）**, 全額カード; 11-20 BILL1 を全額支払（普通預金）; 11-30 棚卸 CNT1: P1 実地 1（帳簿 2 → 減耗 1）, P2/P3/P4 は帳簿どおり（P4 は返品分が戻らないので帳簿 14、実地 15 → +1 の差異が出る — これが「返品の制限」の可視化）; `retail.close_month 2026-11`。**期待値はエージェントが手計算で導出して台本に書く**（税額は税率ごと・レジ締めごとに切捨て、税込→税抜は 1.08/1.10 で割る: 価格を割り切れるように選んである）。最低限書くもの: 各 REG の税抜/税額/税込/現金/カード、月次売上（税抜・税額）、仕入、在庫評価（移動平均: 単価は仕入単価そのまま）、棚卸差異、期末商品棚卸高の仕訳、試算表、売掛残（カード分）、消費税集計（売上 8%/10%、仕入 8%/10%）。
+- AC-10 `packs/retail/test/scenario-retail.db.test.ts`（DB `daifuku_test_retail`）: 台本を API 無しで（`runAction`/`repo`）通し、期待値を全項目アサート。手本: `apps/api/test/scenario.db.test.ts`。pack の apply（settings/seed/sample）から始める。加えて unit テスト（締めの税計算・現金＋カード検算）。
+- AC-11 比較用ひっかけ（台本に節を作る）: 1) 税込価格の税率ごと丸め, 2) レジ締め 1 本で売上＋在庫＋現金入金, 3) 返品の在庫戻し（Daifuku は未対応）, 4) 棚卸減耗, 5) 三分法の月次振替, 6) カード売上の後日入金と手数料（未対応）.
+
+## 関係するファイル
+packs/retail/src/{index.ts, pack.ts, settings.ts, entities/{register-closing,register-closing-line,retail-month-close}.ts, services/{closing-totals.ts (pure), month-close.ts (pure)}, hooks/{recalc,submit,cancel}.ts, actions/{daily-sales,close-month}.ts, seed.ts, sample.ts}, test/{closing-totals.test.ts, scenario-retail.db.test.ts}; docs/domain/scenario-retail.md; docs/log/2026-09-11-pack-retail.md。**Migration は本体が統合時に生成（`db:generate` 禁止）。** apps への配線（packs.ts）も本体。
+
+## スコープ外
+POS 連携、バーコード読取、複数店舗、カード会社入金と手数料、返品の在庫戻し、ポイント。

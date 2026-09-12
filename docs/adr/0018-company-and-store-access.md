@@ -1,0 +1,13 @@
+# ADR-0018 会社所属と店舗担当、認証管理の境界
+
+状態: 採用（2026-09-12）。
+
+会社単位の業務ロールを `user_company_memberships` に保存し、`users.tenantAdmin` は認証管理の権限として独立させる。従来の `users.roles` は移行入力だけとし、通常実行で代用しない。テナント管理者は全会社を管理できる。通常利用者は明示的な所属会社だけを選べる。
+
+ContextへaccessScopeとstoreIdsを渡す。店舗限定では未宣言台帳・操作を拒否する。DSLのstoreAccessに直参照・親参照・読取共有を宣言し、Repositoryのscope条件へ合成する。制約はadminロールや書込capabilityでも解除しない。店舗操作は下書きと提出、本部が確定する。共通金融台帳への店舗タグや権限昇格Contextを追加しない。
+
+利用者と会社所属は業務entityとは別のkernel認証control planeである。既存users/companies同様にkernelがシステムテーブルを管理し、専用の型付き管理portが境界検証・直列化・監査を行う。HTTPはこのportの薄いadapterだけとし、業務entityの個別手書きCRUDを認める例外ではない。パスワードのハッシュ/セッション世代は公開metaや監査へ出さない。
+
+レポートは参照するexportEntitiesを宣言し、CSV要求時に通常の実行権限に加えて全台帳のexport権限を再検証する。取得済みデータの再利用だけでは現在権限の確認にならない。
+
+旧データはmigrationで旧ロールを全既存会社の所属へ移し、旧adminをtenantAdminへ昇格する。移行後の新会社は通常利用者に自動付与しない。最後の有効なtenantAdminを守る管理操作はテナント単位のトランザクションロックで直列化する。

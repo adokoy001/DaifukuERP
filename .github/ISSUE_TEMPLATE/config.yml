@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: セキュリティ報告方針
+    url: https://github.com/adokoy001/DaifukuERP/blob/main/SECURITY.md
+    about: 脆弱性の詳細を公開する前に、非公開の報告方法を確認してください。
