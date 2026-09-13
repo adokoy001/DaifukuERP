@@ -1,3 +1,4 @@
+import { openScreen } from './navigation-helpers.ts';
 // web-phase1 AC-6: create a document with 2 lines through the UI, submit it, verify the grids are read-only, then run a
 // report page and find the rows. Data-driven from /meta: the first document entity with `lines` (journal_entry when the
 // accounting module is installed) and a table-result action (accounting.trial_balance preferred, else the first one).
@@ -187,10 +188,8 @@ test('AC-6: document with 2 lines -> submit -> grid read-only -> report page sho
   await expect(frozen.getByRole('button', { name: '行を追加' })).toHaveCount(0);
   for (const input of await frozen.locator('input, select, textarea').all()) await expect(input).toBeDisabled();
 
-  // AC-3: the report page is reachable from the "レポート" menu group and renders the table with the posted accounts.
-  const reportLink = page.getByRole('navigation', { name: 'メニュー' }).locator(`a[href="/r/${report.name}"]`).first();
-  if (!(await reportLink.isVisible())) await page.locator('.nav-details summary').filter({ hasText: 'レポート' }).click();
-  await reportLink.click();
+  // AC-3: the complete screen directory reaches the report and its posted accounts.
+  await openScreen(page, `/r/${report.name}`);
   await expect(page).toHaveURL(new RegExp(`/r/${report.name.replace(/\./g, '\\.')}$`));
   await page.getByTestId('report-form').getByRole('button', { name: '実行' }).click();
   const table = page.getByTestId('report-table');

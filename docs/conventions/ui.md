@@ -8,7 +8,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 
 | 規約 | meta / 出力の形 | UI がすること | 実装 |
 |---|---|---|---|
-| レポート | アクションの `resultKind: 'table'`（出力が TableResult、docs/conventions/reports.md） | サイドバー「レポート」と `/r/<action>`。入力フォームは `inputSchema` から | `api/reports.ts`, `pages/report-page.tsx` |
+| レポート | アクションの `resultKind: 'table'`（出力が TableResult、docs/conventions/reports.md） | 「分析・レポート」の入口と `/r/<action>`。入力フォームは `inputSchema` から | `api/reports.ts`, `pages/report-page.tsx` |
 | レポートの入力 | `inputSchema` のプロパティ名 | `from`/`to`/`date`/`…Date` は日付入力、`<entity>Id`（snake_case にしたエンティティが /meta にある）は ref 検索。レポート画面は明示default/titleを保持し、認識できる日付・年月・年を補完する | `lib/schema.ts`、`lib/report.ts` |
 | レポートの題名 | `description` の最初の文 | `試算表を返します。…` → 「試算表」 | `lib/report.ts reportTitle` |
 | レポートの合計 | `totals` のキー | 列 key と一致 → 表の合計行。一致しない（`output_tax_total` など）→ 表の下に「合計」のキー・値リスト（キーはそのまま、値は小数の表示規則）。CSV も同じ順で末尾に `key,value` 行 | `lib/report.ts columnTotals / extraTotals`, `lib/csv.ts`（web-phase15 AC-7） |
@@ -22,6 +22,14 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 印刷ビュー | `<entity.module>.render_invoice_html` アクションで、`inputSchema.properties.id` がある | 確定済み document のヘッダに「請求書を表示」 | `lib/print.ts` |
 | 消込（入出金の配分） | 下記「消込」 | 明細グリッドの上に 配分合計／未配分 と「未消込の請求書から選ぶ」 | `lib/allocation.ts`, `components/allocation-picker.tsx`（web-phase15 AC-1/AC-2） |
 | 金額の桁 | `FieldMeta.money` / `scale`、`/auth/me` の `company.currency` | 下記「小数の表示」 | `lib/format.ts`, `lib/currency.ts`, `api/company.tsx`（web-phase15 AC-4/AC-8） |
+
+## 業務分野と画面検索
+
+ホーム・サイドバー・全画面検索・業務分野入口・パンくずは共通の `lib/navigation.ts` のカタログを使う。metadataに存在する画面と専用画面の利用条件から構築し、hrefで重複を除く。従属明細は親伝票から操作し、空の分野は表示しない。未知moduleの安全な入口は「その他」に残す。
+
+サイドバーに全entity・全report・全moduleメニューを展開しない。`/workspaces` の画面検索と種類・ページングで探し、`/workspaces/<workspace>` では目的別の専用画面とマスター・記録を選ぶ。table帳票は分析・レポートへ集約する。既存のURLとAPI認可を保持し、module menuの外部・曖昧・未対応URLを転送しない。
+
+画面検索はNFKC、大小文字、カタカナ/ひらがなを正規化し、複数語をANDで照合する。記録データの横断検索ではない。ホームの伝票件数は詳細を開いて選択したmoduleだけ取得する。パンくずとメニューは既存routerを使って未保存保護を通す。drawerのEscapeとフォーカス復帰を共通shellで扱う。詳細は [ナビゲーションの構造](../architecture/navigation-workspaces.md)、操作は [付録N](../manual/appendix-n-navigation.md) を参照。
 
 ## 2026-09-12 UI更新の規約
 

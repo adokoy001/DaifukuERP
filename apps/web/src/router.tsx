@@ -1,7 +1,7 @@
 // Code-based routes: /login, and the authenticated shell with /, /e/$entity, /e/$entity/new, /e/$entity/$id,
 // /r/$action (reports, web-phase1 AC-3) and /settings (AC-5).
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect, useNavigate } from '@tanstack/react-router';
+import { Link, Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
 import { clearSession, getToken, getUser, isApiError } from './api/client.ts';
 import { CompanyProvider } from './api/company.tsx';
 import { useMeta } from './api/queries.ts';
@@ -9,7 +9,7 @@ import { Sidebar } from './components/sidebar.tsx';
 import { Icon } from './components/icon.tsx';
 import { CompanyName } from './components/company-name.tsx';
 import { CompanyPicker } from './components/company-picker.tsx';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from './i18n.tsx';
 import { parseListSearch } from './lib/query.ts';
 import { EntityFormPage } from './pages/entity-form-page.tsx';
@@ -23,6 +23,8 @@ import { ActionPage } from './pages/action-page.tsx';
 import { ReadRefreshNotice } from './components/read-refresh-notice.tsx';
 import { canRetainData } from './lib/read-recovery.ts';
 import { MetaError, NotFoundView } from './pages/status-views.tsx';
+import { ScreenTrail } from './components/screen-trail.tsx';
+import { parseDirectorySearch } from './lib/menu-search.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
 
@@ -39,6 +41,15 @@ function AppLayout() {
   const navigate = useNavigate();
   const { t } = useLocale();
   const [navOpen, setNavOpen] = useState(false);
+  const closeNavigation = useCallback(() => setNavOpen(false), []);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const previousPath = useRef(pathname);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (previousPath.current === pathname) return;
+    previousPath.current = pathname;
+    content.current?.focus({ preventScroll: true });
+  }, [pathname]);
   const logout = () => {
     void navigate({ to: '/login' }).then(() => {
       if (router.state.location.pathname !== '/login') return;
@@ -49,10 +60,11 @@ function AppLayout() {
   return (
     <CompanyProvider>
       <div className="app-layout">
-        <Sidebar meta={meta.data} userName={getUser()?.name ?? getUser()?.email} onLogout={logout} open={navOpen} onClose={() => setNavOpen(false)} />
-        <main className="app-main">
-          <div className="app-topbar"><div className="topbar-title"><button type="button" className="mobile-toggle" aria-label={t({ ja: 'メニューを開く', en: 'Open menu' })} aria-expanded={navOpen} aria-controls="app-navigation" onClick={() => setNavOpen(true)}><Icon name="menu" /></button><Icon name="building" size={17} /><CompanyName /></div><Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}><span>{getUser()?.name ?? getUser()?.email}</span><span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span></Link></div>
-          <div className="page-content">{meta.isError && !canRetainData(meta) ? isApiError(meta.error) && meta.error.status === 403 ? <div className="workspace-page"><p className="notice-strip" role="alert">{t({ ja: 'この会社へのアクセス権がありません。利用できる会社を選び直してください。会社がない場合は管理者へ所属の設定を依頼してください。', en: 'Access to this company is unavailable. Select a permitted company, or ask your administrator to assign a membership.' })}</p><CompanyPicker disabled={false} /></div> : <MetaError error={meta.error} retry={() => void meta.refetch()} /> : <><ReadRefreshNotice sources={[meta]} /><Outlet /></>}</div>
+        <Sidebar userName={getUser()?.name ?? getUser()?.email} onLogout={logout} open={navOpen} onClose={closeNavigation} />
+        <main className="app-main" inert={navOpen}>
+          <a className="skip-navigation" href="#screen-content">{t({ ja: '本文へ移動', en: 'Skip to content' })}</a>
+          <div className="app-topbar"><div className="topbar-title"><button type="button" className="mobile-toggle" aria-label={t({ ja: 'メニューを開く', en: 'Open menu' })} aria-expanded={navOpen} aria-controls="app-navigation" onClick={() => setNavOpen(true)}><Icon name="menu" /></button><Link to="/templates" className="topbar-company" aria-label={t({ ja: '会社を切り替え', en: 'Switch company' })}><Icon name="building" size={17} /><CompanyName /><small>{t({ ja: '会社を切り替え', en: 'Switch company' })}</small></Link></div><Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}><span>{getUser()?.name ?? getUser()?.email}</span><span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span></Link></div>
+          <div className="page-content" id="screen-content" ref={content} tabIndex={-1}>{meta.isError && !canRetainData(meta) ? isApiError(meta.error) && meta.error.status === 403 ? <div className="workspace-page"><p className="notice-strip" role="alert">{t({ ja: 'この会社へのアクセス権がありません。利用できる会社を選び直してください。会社がない場合は管理者へ所属の設定を依頼してください。', en: 'Access to this company is unavailable. Select a permitted company, or ask your administrator to assign a membership.' })}</p><CompanyPicker disabled={false} /></div> : <MetaError error={meta.error} retry={() => void meta.refetch()} /> : <><ScreenTrail /><ReadRefreshNotice sources={[meta]} /><Outlet /></>}</div>
         </main>
       </div>
     </CompanyProvider>
@@ -70,6 +82,8 @@ const appRoute = createRoute({
 });
 
 const indexRoute = createRoute({ getParentRoute: () => appRoute, path: '/', component: HomePage });
+const workspaceDirectoryRoute = createRoute({ getParentRoute: () => appRoute, path: '/workspaces', validateSearch: parseDirectorySearch, component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage') });
+const workspaceRoute = createRoute({ getParentRoute: () => appRoute, path: '/workspaces/$workspace', validateSearch: parseDirectorySearch, component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage') });
 const analyticsRoute = createRoute({ getParentRoute: () => appRoute, path: '/analytics', component: lazyRouteComponent(() => import('./pages/analytics-page.tsx'), 'AnalyticsPage') });
 
 const listRoute = createRoute({
@@ -114,7 +128,7 @@ const publicIdentityRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/auth/recovery-codes', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'RecoveryCodesPage') }),
 ];
 
-const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, analyticsRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, edgeRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute, tradeRoute, bankingRoute, taxFilingRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, workspaceDirectoryRoute, workspaceRoute, analyticsRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, edgeRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute, tradeRoute, bankingRoute, taxFilingRoute])]);
 
 export const router = createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
 

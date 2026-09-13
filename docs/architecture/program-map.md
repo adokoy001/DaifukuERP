@@ -36,6 +36,8 @@
 | 申告資料の根拠が古い・形式が違う | tax-filingの `workflow.ts` / `profile.ts`、l10n/jpの `filing/`。保存根拠と現行根拠を区別する |
 | ピボットの総計・小計・平均が合わない | `apps/web/src/lib/pivot.ts`、対象の1行の粒度・状態・日付、`apps/api/src/analytics/catalog.ts`。帳票の残高と期間増減を区別する |
 | 分析設定や取得行が会社・権限変更後も残る | `analyticsScopeKey`、カタログquery keyと再確認、Worker取消、`analytics-storage.ts` の利用者・tenant・会社キー |
+| メニューに重複・分類違い・未許可画面が出る | `apps/web/src/lib/navigation.ts` の共通カタログ、既存metadataと専用画面の利用条件。画面側へ分類と権限条件を複製しない |
+| 画面の戻り先・パンくずが一致しない | 現在のpathname、カタログのURL解決、共通router。entityの新規・詳細を一覧へ対応させる |
 
 ## 生成物と手書きの境界
 
@@ -67,3 +69,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## レポートとブラウザ・ピボット
 
 [分析の構造](reporting-pivot.md) と [付録M](../manual/appendix-m-analytics.md) に対象・数字の意味・操作をまとめています。`/reports` は既存 `TableResult` 帳票への入口、`/analytics` は最大9対象・18テンプレートから始めるブラウザ集計です。[API許可リスト](../../apps/api/src/analytics/catalog.ts) と [完全取得](../../apps/api/src/analytics/snapshot.ts) が権限内の最大5万行を同じ読取専用スナップショットから返し、[pivot.ts](../../apps/web/src/lib/pivot.ts) がWeb Worker内で十進集計します。[保存設定](../../apps/web/src/lib/analytics-storage.ts) はブラウザ内で利用者・tenant・会社ごとに分離し、業務行を保存しません。API取得上限・集計状態上限・表示ページ数は別の制限です。
+
+## 業務分野と現在位置
+
+[ナビゲーションの構造](navigation-workspaces.md) と [付録N](../manual/appendix-n-navigation.md) がホーム・左メニュー・全画面検索・分野別入口・パンくずの入口です。`/workspaces` から画面を検索し、`/workspaces/<workspace>` から業務目的を選びます。共通カタログを使って同じURLの重複を除き、既存の `/e/`・`/a/`・`/r/` と専用画面へ遷移します。表示の分類はAPIの認可や業務moduleの所有関係を変更しません。

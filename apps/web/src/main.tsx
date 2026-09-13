@@ -11,6 +11,7 @@ import './styles.css';
 import './templates.css';
 import './operations.css';
 import './workforce.css';
+import './navigation.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

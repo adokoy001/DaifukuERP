@@ -1,3 +1,4 @@
+import { findScreen } from './navigation-helpers.ts';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { BUSINESS_DATE } from './environment.ts';
 export const API = (process.env.E2E_API_URL ?? process.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
@@ -19,8 +20,10 @@ export async function login(page: Page, email = process.env.E2E_EMAIL ?? 'admin@
 export async function restaurant(page: Page) {
   await page.goto('/templates');
   await page.getByLabel('対象の会社', { exact: true }).selectOption({ label: '飲食チェーンサンプル｜こもれび食堂' });
-  await expect(page.getByRole('link', { name: 'チェーン運営', exact: true })).toBeVisible();
-  return page.getByLabel('対象の会社', { exact: true }).inputValue();
+  const companyId = await page.getByLabel('対象の会社', { exact: true }).inputValue();
+  await findScreen(page, '/operations');
+  await expect(page.locator('main a[href="/operations"]')).toBeVisible();
+  return companyId;
 }
 export async function adminHeaders(request: APIRequestContext, companyId: string) {
   const session = await api<{ token: string }>(request, {}, '/auth/login', { email: process.env.E2E_EMAIL ?? 'admin@example.com', password: process.env.E2E_PASSWORD ?? 'password' });

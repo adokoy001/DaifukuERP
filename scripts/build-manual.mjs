@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANUAL_DIR = join(ROOT, 'docs', 'manual');
 const OUT = join(MANUAL_DIR, 'daifuku-manual.html');
-const TITLE = '大福帳 ユーザーマニュアル（2026-09-13 商流・銀行連携・申告準備）';
+const TITLE = 'DaifukuERP 操作マニュアル';
 const IMAGE_WARN_BYTES = 200 * 1024;
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif' };
 

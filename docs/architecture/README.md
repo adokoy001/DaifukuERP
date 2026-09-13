@@ -32,6 +32,7 @@ flowchart TD
 ## 次に読む
 
 - [プログラム地図](program-map.md): ディレクトリ、adapter、変更先。
+- [業務分野と画面ナビゲーション](navigation-workspaces.md): 短いメニュー、画面検索、現在位置、権限内の共通カタログ。
 - [データと処理経路](runtime-and-data.md): 1リクエスト、伝票、Decimal、イベント。
 - [権限境界](permissions.md): テナント/会社/拠点/本人、落とし穴。
 - [module・packの拡張](extension-guide.md): 宣言からUI・移行・試験まで。

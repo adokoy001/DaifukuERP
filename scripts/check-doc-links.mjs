@@ -9,6 +9,7 @@ const documents = [...new Set(['AI_INDEX.md', 'CLAUDE.md', 'README.md', 'CONTRIB
 documents.push('docs/specs/edge-installers.md', 'docs/domain/edge-service-installation.md', 'docs/domain/edge-service-security.md', 'docs/log/2026-09-13-edge-installers.md');
 documents.push('docs/specs/commerce-finance.md', 'docs/specs/trade-workflow.md', 'docs/specs/bank-integration.md', 'docs/specs/tax-filing-preparation.md', 'docs/domain/trade-workflow.md', 'docs/domain/japan-bank-integration.md', 'docs/domain/japan-tax-filing.md', 'docs/log/2026-09-13-commerce-finance.md');
 documents.push('docs/specs/practical-verification.md', 'docs/verification/invariants.md', 'docs/log/2026-09-13-practical-verification.md', 'docs/conventions/testing.md', 'verification/mutation/README.md', 'verification/edge/README.md', 'verification/edge/RESULTS.md');
+documents.push('docs/specs/navigation-workspaces.md', 'docs/log/2026-09-13-navigation-workspaces.md');
 let checked = 0;
 const failures = [];
 for (const document of documents) {

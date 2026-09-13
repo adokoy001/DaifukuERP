@@ -1,3 +1,4 @@
+import { findScreen, openScreen } from './navigation-helpers.ts';
 import { expect, test } from '@playwright/test';
 import { PASSWORD, api, login, openOperations, type Row } from './operations-helpers.ts';
 
@@ -20,12 +21,13 @@ test('access recovery: a revoked selected company can be replaced by a remaining
   await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + demo.id, { expectedVersion: 0, roles: ['viewer'], accessScope: 'all', storeIds: [] }, 'PUT');
   await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + restaurant.id, { expectedVersion: 0, roles: ['chain_staff'], accessScope: 'stores', storeIds: [store.id] }, 'PUT');
   await login(page, email, PASSWORD);
-  await page.getByRole('link', { name: '業界テンプレート', exact: true }).click();
+  await openScreen(page, '/templates');
   const picker = page.getByLabel('対象の会社', { exact: true });
   await expect(picker).toHaveValue(demo.id);
   const selectedMeta = page.waitForResponse((r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === restaurant.id);
   await picker.selectOption(restaurant.id); expect((await selectedMeta).status()).toBe(200);
-  await expect(page.getByRole('link', { name: 'チェーン運営', exact: true })).toBeVisible();
+  await findScreen(page, '/operations');
+  await expect(page.locator('main a[href="/operations"]')).toBeVisible();
   await openOperations(page);
   await expect(page.getByLabel('対象店舗', { exact: true }).locator('option')).toHaveCount(2);
   await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + restaurant.id, { expectedVersion: 1 }, 'DELETE');
@@ -44,8 +46,9 @@ test('access recovery: a revoked selected company can be replaced by a remaining
   await expect(page).toHaveURL(/\/templates$/);
   await expect(page.getByRole('heading', { name: 'あなたの仕事に、ぴったりの入口を。', exact: true })).toBeVisible();
   await expect(picker).toHaveValue(demo.id);
-  await expect(page.getByRole('link', { name: 'チェーン運営', exact: true })).toHaveCount(0);
-  await page.getByRole('link', { name: 'ワークスペース', exact: true }).click();
+  await findScreen(page, '/operations');
+  await expect(page.locator('main a[href="/operations"]')).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'メニュー' }).getByRole('link', { name: 'ホーム', exact: true }).click();
   await expect(page.getByRole('heading', { name: '今日の仕事を、ここから。', exact: true })).toBeVisible();
   await expect(page.locator('.app-topbar')).toContainText(demo.name);
   await expect(page.getByRole('alert').filter({ hasText: '利用できる会社を選び直してください' })).toHaveCount(0);
