@@ -79,6 +79,12 @@ documents.push(
   'verification/edge/RESULTS.md',
 );
 documents.push('docs/specs/navigation-workspaces.md', 'docs/log/2026-09-13-navigation-workspaces.md');
+documents.push(
+  'docs/specs/readable-source.md',
+  'docs/log/2026-09-13-readable-source.md',
+  'docs/conventions/lint.md',
+  'docs/conventions/code-style.md',
+);
 let checked = 0;
 const failures = [];
 for (const document of documents) {

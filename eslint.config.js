@@ -2,8 +2,8 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
-const MAX_FILE_LINES = 400; // docs/conventions/code-style.md — split files beyond this
-const MAX_FN_LINES = 80;
+const MAX_FILE_LINES = 1000; // Review signals, not mandatory splitting thresholds.
+const MAX_FN_LINES = 300;
 
 export default tseslint.config(
   {
@@ -27,8 +27,8 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // --- size limits (agents drift into huge files; keep units reviewable) ---
-      'max-lines': ['error', { max: MAX_FILE_LINES, skipBlankLines: true, skipComments: true }],
+      // --- size review signals; split only when responsibilities/readability improve ---
+      'max-lines': ['warn', { max: MAX_FILE_LINES, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': ['warn', { max: MAX_FN_LINES, skipBlankLines: true, skipComments: true }],
       'max-depth': ['error', 4],
       // --- money: never use JS number for amounts (ADR-0010). Use Decimal from @daifuku/kernel ---

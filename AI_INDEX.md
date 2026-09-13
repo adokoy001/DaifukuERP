@@ -4,7 +4,7 @@
 
 ## 最初の5分
 
-1. `git status --short` と現在のbranchを確認し、既存の編集を保持する。
+1. `git status --short` と現在のbranchを確認し、既存の編集を保持する。[整形・lint規約](docs/conventions/lint.md) を読み、整形後の構造を基準に変更単位を決める。
 2. [構成の全体像](docs/architecture/README.md) と [プログラム地図](docs/architecture/program-map.md) で変更する層を選ぶ。
 3. 変更に対応する `docs/specs/` の受入基準と `docs/adr/` の判断を読む。新しい業務契約は先にspecへ書く。
 4. 下表から必要な文書とソースだけを読む。過去ログの全読込を前提にしない。
