@@ -1,3 +1,4 @@
+import { openScreen } from './navigation-helpers.ts';
 // AC-9 smoke: login -> create partner -> find in list -> edit -> audit shows 2 entries.
 // Requires `pnpm dev:api` (http://localhost:3000, dev DB seeded by `pnpm db:reset`) and `pnpm dev:web` (http://localhost:5173).
 import { expect, test, type Page } from '@playwright/test';
@@ -21,7 +22,7 @@ test('AC-9 smoke: login, create partner, list, edit, audit', async ({ page }) =>
   await login(page);
 
   // AC-2: entity reachable from the menu; AC-3: list page with New button
-  await page.getByRole('navigation', { name: 'メニュー' }).locator('a[href="/e/partner"]').first().click();
+  await openScreen(page, '/e/partner');
   await expect(page).toHaveURL(/\/e\/partner$/);
   await page.getByRole('link', { name: /新規/ }).click();
   await expect(page).toHaveURL(/\/e\/partner\/new$/);

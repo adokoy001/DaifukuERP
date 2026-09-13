@@ -1,3 +1,4 @@
+import { findScreen } from './navigation-helpers.ts';
 // Real UI workflows in the three prepared demo companies. Core documents/actions are entered through the browser;
 // API writes only prepare supporting restaurant stock/masters. Every run uses new operational records.
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
@@ -104,9 +105,12 @@ async function action(page: Page, name: string, title: string, extra: Record<str
   return completed.json() as Promise<Row>;
 }
 async function isolatedMenu(page: Page, pack: Pack) {
-  const nav = page.getByRole('navigation', { name: 'メニュー' });
-  await expect(nav.getByRole('link', { name: menuNames[pack], exact: true })).toBeVisible();
-  for (const other of Object.keys(companies) as Pack[]) if (other !== pack) await expect(nav.getByRole('link', { name: menuNames[other], exact: true })).toHaveCount(0);
+  for (const candidate of Object.keys(companies) as Pack[]) {
+    await findScreen(page, menuNames[candidate]);
+    const link = page.locator('main .screen-card').filter({ has: page.getByText(menuNames[candidate], { exact: true }) });
+    if (candidate === pack) await expect(link).toBeVisible();
+    else await expect(link).toHaveCount(0);
+  }
 }
 
 test('電器店: 画面導入・受付作成・開始・作業完了・請求を汎用業務フォームで通す', async ({ page, request }) => {

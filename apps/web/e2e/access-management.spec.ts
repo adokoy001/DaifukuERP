@@ -1,3 +1,4 @@
+import { openScreen } from './navigation-helpers.ts';
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { PASSWORD, adminHeaders, api, login, newStore, restaurant, type Headers, type Row } from './operations-helpers.ts';
 
@@ -74,7 +75,7 @@ async function cancelSwitches(page: Page, profile: Locator, pendingName: string,
   page.once('dialog', (dialog) => dialog.dismiss()); await page.locator('.access-user').first().click();
   await expect(profile.getByLabel('表示名', { exact: true })).toHaveValue(pendingName);
   await page.getByRole('searchbox', { name: '利用者を検索' }).fill(email);
-  page.once('dialog', (dialog) => dialog.dismiss()); await page.getByRole('link', { name: 'BI・レポート', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.dismiss()); await page.getByRole('navigation', { name: 'メニュー' }).getByRole('link', { name: '分析・レポート', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/users$/);
   await expect(profile.getByLabel('表示名', { exact: true })).toHaveValue(pendingName);
   const membership = page.getByRole('form', { name: '会社へのアクセス設定', exact: true });
@@ -97,7 +98,7 @@ test('access: store membership, preserved drafts, conflict reload, cancelled nav
   await login(page); const companyId = await restaurant(page); const headers = await adminHeaders(request, companyId);
   const suffix = String(Date.now()); const email = 'access-ui.' + suffix + '@example.com';
   const store = await newStore(request, headers, '権限UI店舗 ' + suffix);
-  await page.getByRole('link', { name: '利用者と権限', exact: true }).click();
+  await openScreen(page, '/admin/users');
   const user = await createUser(page, '権限UI利用者 ' + suffix, email);
   await assignStore(page, companyId, store, user.id);
   const { profile, field, reload, latest, pendingName } = await conflictAndRefresh(page, request, headers, user);

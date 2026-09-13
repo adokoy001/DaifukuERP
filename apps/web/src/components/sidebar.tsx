@@ -1,35 +1,15 @@
-import { Link } from '@tanstack/react-router';
-import { useMe } from '../api/company.tsx';
-import { useState } from 'react';
-import { reportActions } from '../api/reports.ts';
-import { canEditSettings } from '../api/settings.ts';
-import type { AppMeta, Locale, MenuItem } from '../api/types.ts';
+import { Link, useRouterState } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
+import { useNavigation } from '../api/navigation.ts';
+import type { Locale } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
-import { reportTitle } from '../lib/report.ts';
+import { findNavigationWorkspace } from '../lib/navigation.ts';
 import { S } from '../strings.ts';
-import { Icon, moduleIcon } from './icon.tsx';
+import { Icon } from './icon.tsx';
+import { WORKSPACE_ICONS } from './workspace-cards.tsx';
 
-interface SidebarProps {
-  meta: AppMeta | undefined;
-  userName: string | undefined;
-  onLogout: () => void;
-  open: boolean;
-  onClose: () => void;
-}
-const LINK = 'nav-link';
+interface SidebarProps { userName: string | undefined; onLogout: () => void; open: boolean; onClose: () => void }
 const ACTIVE = { className: 'nav-link is-active' };
-
-function MenuLink({ item }: { item: MenuItem }) {
-  const { t } = useLocale();
-  if (item.entity) return <Link to="/e/$entity" params={{ entity: item.entity }} className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
-  const report = /^\/r\/([^/?#]+)$/.exec(item.route ?? '');
-  if (report?.[1]) return <Link to="/r/$action" params={{ action: report[1] }} className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
-  const action = /^\/a\/([^/?#]+)$/.exec(item.route ?? '');
-  if (action?.[1]) return <Link to="/a/$action" params={{ action: action[1] }} className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
-  if (item.route === '/operations/devices') return <Link to="/operations/devices" className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
-  if (item.route === '/settings') return <Link to="/settings" className={LINK} activeProps={ACTIVE}>{t(item.label)}</Link>;
-  return null;
-}
 
 function LocaleToggle() {
   const { locale, setLocale, t } = useLocale();
@@ -38,61 +18,74 @@ function LocaleToggle() {
   )}</div>;
 }
 
-function Navigation({ meta }: { meta: AppMeta | undefined }) {
+function Navigation() {
   const { t } = useLocale();
-  const [filter, setFilter] = useState('');
-  const reports = reportActions(meta);
-  const me = useMe();
-  const lineNames = new Set(meta?.entities.flatMap((e) => (e.lines ?? []).map((line) => line.entity)));
-  const entities = (meta?.entities ?? []).filter((e) => !lineNames.has(e.name));
-  const searchable = entities.filter((e) => t(e.label).toLowerCase().includes(filter.toLowerCase()));
+  const { catalog, meta } = useNavigation();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const active = findNavigationWorkspace(catalog, pathname)?.id;
   return <>
-    <Link to="/" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="home" size={18} />{t({ ja: 'ワークスペース', en: 'Workspace' })}</Link>
-    {meta?.actions.some((a) => a.name === 'workforce.my_portal') ? <Link to="/me" className={LINK} activeProps={ACTIVE}><Icon name="people" size={18} />{t({ ja: '自分の勤怠・申請', en: 'My workday' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'workforce.management_portal') ? <Link to="/workforce" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="calendar" size={18} />{t({ ja: '従業員・勤怠管理', en: 'Workforce management' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'workforce.shift_board') ? <Link to="/workforce/shifts" className={LINK} activeProps={ACTIVE}><Icon name="calendar" size={18} />{t({ ja: 'シフト計画・推薦', en: 'Shift planning' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'workforce.fiscal_board') ? <Link to="/workforce/payroll" className={LINK} activeProps={ACTIVE}><Icon name="wallet" size={18} />{t({ ja: '給与・税保険・年末調整', en: 'Payroll, tax and year-end' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'workforce.work_system_board') ? <Link to="/workforce/systems" className={LINK} activeProps={ACTIVE}><Icon name="clock" size={18} />{t({ ja: '変形・フレックス勤務制度', en: 'Working-time systems' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'trade.board') ? <Link to="/commerce/trade" className={LINK} activeProps={ACTIVE}><Icon name="box" size={18}/>{t({ ja: '商流・受発注', en: 'Trade and orders' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'banking.board') ? <Link to="/finance/banking" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18}/>{t({ ja: '銀行連携・消込', en: 'Banking and matching' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'tax_filing.board') ? <Link to="/finance/filing" className={LINK} activeProps={ACTIVE}><Icon name="document" size={18}/>{t({ ja: '申告準備', en: 'Filing preparation' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'pos_integration.inbox') ? <Link to="/commerce/pos" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: 'POS自動連携', en: 'POS integration' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'group_accounting.companies') ? <Link to="/commerce/group" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: '連結会計', en: 'Consolidation' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'franchise.board') ? <Link to="/commerce/franchise" className={LINK} activeProps={ACTIVE}><Icon name="document" size={18} />{t({ ja: 'FC精算', en: 'Franchise settlement' })}</Link> : null}
-    {meta?.actions.some((a) => a.name === 'edge.board') ? <Link to="/operations/devices" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: '店舗・機器連携', en: 'Store and device links' })}</Link> : null}
-    <Link to="/templates" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: '業界テンプレート', en: 'Industry templates' })}</Link>
-    {meta?.actions.some((a) => a.name === 'restaurant_chain.operations_snapshot') ? <Link to="/operations" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="building" size={18} />{t({ ja: 'チェーン運営', en: 'Chain operations' })}</Link> : null}
-    <Link to="/analytics" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: 'ピボット分析', en: 'Pivot analytics' })}</Link>
-    {reports.length ? <Link to="/reports" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: 'BI・レポート', en: 'BI and reports' })}</Link> : null}
-    {me.data?.user.tenantAdmin ? <Link to="/admin/users" className={LINK} activeProps={ACTIVE}><Icon name="people" size={18} />{t({ ja: '利用者と権限', en: 'Users and access' })}</Link> : null}
-    <div className="nav-caption">{t({ ja: '業務メニュー', en: 'Your business' })}</div>
-    {(meta?.modules ?? []).filter((m) => m.menus.length > 0).map((m) => <section className="nav-group" key={m.name}>
-      <h2><Icon name={moduleIcon(m.name)} size={15} />{t(m.label)}</h2>
-      {[...m.menus].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((item, i) => <MenuLink key={item.entity ?? item.route ?? i} item={item} />)}
-    </section>)}
-    {reports.length ? <details className="nav-details"><summary><Icon name="chart" size={17} />{t(S.reports)}<span>{reports.length}</span></summary>
-      {reports.map((a) => <Link key={a.name} to="/r/$action" params={{ action: a.name }} className={LINK} activeProps={ACTIVE}>{t(reportTitle(a))}</Link>)}
-    </details> : null}
-    <details className="nav-details"><summary><Icon name="box" size={17} />{t(S.allEntities)}</summary>
-      <input type="search" className="nav-search" aria-label={t(S.search)} placeholder={t(S.search)} value={filter} onChange={(e) => setFilter(e.target.value)} />
-      {searchable.map((e) => <MenuLink key={e.name} item={{ label: e.label, entity: e.name }} />)}
-    </details>
-    {canEditSettings(meta?.roles) ? <Link to="/settings" className={LINK} activeProps={ACTIVE} data-testid="nav-settings"><Icon name="settings" size={18} />{t(S.settings)}</Link> : null}
+    <Link to="/" className="nav-link" activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="home" size={18} />{t({ ja: 'ホーム', en: 'Home' })}</Link>
+    {catalog.entries.some((entry) => entry.href === '/me') ? <Link to="/me" className="nav-link" activeProps={ACTIVE}><Icon name="clock" size={18} />{t({ ja: '自分の勤怠・申請', en: 'My workday' })}</Link> : null}
+    <Link to="/workspaces" className="nav-link nav-find" activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="search" size={18} />{t({ ja: 'すべての画面を探す', en: 'Find a screen' })}</Link>
+    <div className="nav-caption">{t({ ja: '業務分野', en: 'Business areas' })}</div>
+    {catalog.workspaces.map((workspace) => <Link key={workspace.id} to="/workspaces/$workspace" params={{ workspace: workspace.id }}
+      className={`nav-link ${active === workspace.id ? 'is-active' : ''}`} activeProps={{}} aria-current={active === workspace.id ? 'location' : undefined}>
+      <Icon name={WORKSPACE_ICONS[workspace.id]} size={18} /><span>{t(workspace.label)}</span>
+    </Link>)}
+    {meta.isPending ? <p className="nav-help">{t(S.loading)}</p> : null}
+    <p className="nav-help">{t({ ja: '業務を選ぶと、操作画面やマスターを探せます。', en: 'Choose an area to find workflows and records.' })}</p>
   </>;
 }
 
-export function Sidebar({ meta, userName, onLogout, open, onClose }: SidebarProps) {
+/** Modal behavior follows the CSS breakpoint; desktop navigation stays ordinary. */
+function useDrawer(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const media = globalThis.matchMedia('(max-width: 760px)');
+    if (!media.matches) { onClose(); return; }
+    const previous = document.querySelector<HTMLButtonElement>('button[aria-controls="app-navigation"]');
+    const panel = ref.current;
+    const focusable = () => [...panel.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter((element) => element.getClientRects().length > 0);
+    const first = () => focusable()[0] ?? panel;
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+      if (event.key !== 'Tab') return;
+      const items = focusable(), start = items[0], end = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === start || !panel.contains(document.activeElement))) { event.preventDefault(); (end ?? panel).focus(); }
+      else if (!event.shiftKey && (document.activeElement === end || !panel.contains(document.activeElement))) { event.preventDefault(); first().focus(); }
+    };
+    const keepFocus = (event: FocusEvent) => { if (!panel.contains(event.target as Node)) first().focus(); };
+    const resize = () => { if (!media.matches) onClose(); };
+    // A just-opened drawer can still have the preceding hidden style until the next frame.
+    const frame = globalThis.requestAnimationFrame(() => first().focus());
+    document.addEventListener('keydown', keyboard);
+    document.addEventListener('focusin', keepFocus);
+    media.addEventListener('change', resize);
+    return () => {
+      globalThis.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', keyboard);
+      document.removeEventListener('focusin', keepFocus);
+      media.removeEventListener('change', resize);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [open, onClose]);
+  return ref;
+}
+
+export function Sidebar({ userName, onLogout, open, onClose }: SidebarProps) {
   const { t } = useLocale();
+  const ref = useDrawer(open, onClose);
   return <>
-    {open ? <button type="button" className="nav-scrim" onClick={onClose} aria-label={t(S.close)} /> : null}
-    <aside id="app-navigation" className={`app-sidebar ${open ? 'is-open' : ''}`}>
+    {open ? <button type="button" className="nav-scrim" onClick={onClose} tabIndex={-1} aria-label={t(S.close)} /> : null}
+    <aside ref={ref} id="app-navigation" className={`app-sidebar ${open ? 'is-open' : ''}`} role={open ? 'dialog' : undefined} aria-modal={open || undefined} aria-label={t(S.menu)} tabIndex={-1}>
       <div className="brand-row">
         <Link to="/" className="brand" onClick={onClose}><span className="brand-mark">大</span><span>Daifuku<small>{t({ ja: '日々の仕事を、ひとつに。', en: 'Every day, connected.' })}</small></span></Link>
         <button type="button" className="mobile-close" onClick={onClose} aria-label={t(S.close)}><Icon name="close" /></button>
       </div>
-      <nav aria-label={t(S.menu)} className="sidebar-nav" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) onClose(); }}><Navigation meta={meta} /></nav>
+      <nav aria-label={t(S.menu)} className="sidebar-nav" onClick={(event) => { if ((event.target as HTMLElement).closest('a')) onClose(); }}><Navigation /></nav>
       <footer className="sidebar-footer">
-        <Link to="/account" className={LINK} onClick={onClose}><Icon name="settings" size={17} />{t({ ja: '自分のアカウント', en: 'My account' })}</Link>
+        <Link to="/account" className="nav-link" onClick={onClose}><Icon name="settings" size={17} />{t({ ja: '自分のアカウント', en: 'My account' })}</Link>
         <div className="user-row"><span className="user-avatar">{(userName ?? 'D').slice(0, 1).toUpperCase()}</span><span className="user-name">{userName}<small>{t({ ja: 'ログイン中', en: 'Signed in' })}</small></span><button type="button" onClick={onLogout} title={t(S.logout)} aria-label={t(S.logout)}><Icon name="logout" size={17} /></button></div>
         <div className="sidebar-meta"><span>DAIFUKU WORKSPACE</span><LocaleToggle /></div>
       </footer>

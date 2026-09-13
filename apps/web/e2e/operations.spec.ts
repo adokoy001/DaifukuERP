@@ -1,3 +1,4 @@
+import { findScreen, openScreen } from './navigation-helpers.ts';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { API, DAY, PASSWORD, adminHeaders, api, boardAction, login, member, newStore, openOperations, restaurant, type Row } from './operations-helpers.ts';
@@ -5,7 +6,7 @@ import { API, DAY, PASSWORD, adminHeaders, api, boardAction, login, member, newS
 test('BI: exact sources, fresh CSV authorization, changed-filter guard and mobile layout', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 1180 });
   await login(page); const companyId = await restaurant(page); const headers = await adminHeaders(request, companyId);
-  await page.getByRole('link', { name: 'BI・レポート', exact: true }).click();
+  await openScreen(page, '/reports');
   await expect(page.getByRole('heading', { name: '数字から、次の判断へ。' })).toBeVisible();
   await page.getByRole('searchbox', { name: 'レポートを検索' }).fill('店舗');
   await expect(page.locator('.report-catalog .report-card').first()).toBeVisible();
@@ -53,9 +54,11 @@ test('stores: plan -> staff no-sales submission -> manager return/approve -> hea
   const staffContext = await browser.newContext(contextOptions);
   const managerContext = await browser.newContext(contextOptions);
   try {
-    const clerkPage = await staffContext.newPage(); await login(clerkPage, staff.email, PASSWORD); await openOperations(clerkPage);
+    const clerkPage = await staffContext.newPage(); await login(clerkPage, staff.email, PASSWORD);
+    await findScreen(clerkPage, '/admin/users');
+    await expect(clerkPage.locator('main a[href="/admin/users"]')).toHaveCount(0);
+    await openOperations(clerkPage);
     await expect(clerkPage.getByLabel('対象店舗', { exact: true }).locator('option')).toHaveCount(2);
-    await expect(clerkPage.getByRole('link', { name: '利用者と権限', exact: true })).toHaveCount(0);
     await expect(clerkPage.getByRole('button', { name: '営業計画', exact: true })).toHaveCount(0);
     await clerkPage.getByRole('button', { name: '売上ゼロ・休業を報告', exact: true }).click();
     dialog = clerkPage.getByRole('dialog'); await dialog.getByLabel('理由').fill('開店したが来店がなかったため。');
