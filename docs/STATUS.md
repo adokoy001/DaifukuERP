@@ -1,8 +1,16 @@
-# 現在地（2026-09-13 実用的な検証基盤）
+# 現在地（2026-09-13 AWS の独立試用環境）
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
 
-## 商流・銀行・申告準備（統合検証中）
+## AWS の独立試用
+
+[専用 CloudFormation](../deploy/aws/README.md) と [運用手順](operations/aws-trial.md) を追加しました。同一AWS account内で、既存ゲームとVPC・EC2・DB・IAM・保存先を分け、未使用FQDNへ公開しています。共有するのはaccountとDNS zoneであり、別account相当の分離ではありません。実接続先・秘密・AWSの生出力は私有領域で管理します。
+
+公開済み `69e5846` の固定bundleをNode22/PostgreSQL16/Caddyへ導入し、公開HTTPS、ブラウザ15項目、再起動後13項目、保存した取引先と添付の再取得、S3保全と別DBへの131表の復元照合を確認しました。通常gateは単体819件・DB639件・配備13件が通過。範囲と制約は [実測記録](log/2026-09-13-aws-trial.md) を参照してください。
+
+単一ホストの試用構成です。日次backupと7日後の一回停止を設定しましたが、期限の発火・全行値比較・別ホストへの完全復旧・HA/負荷試験・実外部サービス接続は未実施です。シフト画面のヒーロー部分に低コントラストが残ることも実測記録へ分けて記載しています。
+
+## 商流・銀行・申告準備（前回の統合受入）
 
 [統合仕様](specs/commerce-finance.md) に沿って3つのmodule、専用Web画面、国内の出力profileを追加しています。移行 `0014_commerce_finance.sql` は19表の追加です。`l10n/jp` は既存固定版の `iconv-lite` を直接依存にも指定しました。構造は [commerce-finance](architecture/commerce-finance.md)、操作は [付録L](manual/appendix-l-commerce-bank-filing.md) が入口です。
 
