@@ -1,0 +1,73 @@
+# Finite model and targeted mutation evidence. No database or deployment credentials.
+name: practical verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NODE_VERSION: '22.23.2'
+  TZ: Asia/Tokyo
+
+jobs:
+  mutation:
+    name: Decimal and accounting mutation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify:mutation
+      - name: Save synthetic mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-evidence
+          path: coverage/mutation/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  edge-model:
+    name: Edge finite safety and trace witnesses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Use the runner's Java 21 and verify the pinned official TLC asset
+        run: |
+          test -x "$JAVA_HOME_21_X64/bin/java"
+          "$JAVA_HOME_21_X64/bin/java" -version
+          pnpm verify:edge:model --java "$JAVA_HOME_21_X64/bin/java"
+      - name: Save finite model evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: edge-model-evidence
+          path: |
+            coverage/edge-model/**/result.json
+            coverage/edge-model/**/tlc.log
+            coverage/edge-model/**/*.cfg
+            coverage/edge-model/**/*.tla
+          retention-days: 7
+          if-no-files-found: ignore

@@ -6,7 +6,7 @@ const MAX_FILE_LINES = 400; // docs/conventions/code-style.md — split files be
 const MAX_FN_LINES = 80;
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '**/drizzle/migrations/**', '**/*.generated.ts'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '**/.stryker-tmp/**', '**/coverage/**', '**/drizzle/migrations/**', '**/*.generated.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

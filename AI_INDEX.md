@@ -32,6 +32,7 @@
 | クラウド・オンプレ配備 | [構成](docs/architecture/deployment.md)、[導入](docs/operations/deployment.md) | [配布](scripts/build-release.mjs)、[manifest検査](deploy/files.mjs)、[構成生成](deploy/profile.mjs) |
 | スキーマ・導入・更新 | [検証と公開](docs/architecture/verification-and-release.md)、[安全なsetup](docs/operations/setup.md) | [schema同期](kernel/src/db/schema-sync.ts)、[setup](apps/api/src/setup/) |
 | 日本制度の修正 | [国内税](docs/domain/japan-tax.md)、[労務・給与](docs/domain/japan-workforce.md) | 対象l10n/moduleの期間付き設定・算定処理 |
+| 不変条件・生成検査・検査自身の品質 | [検証設計](docs/architecture/practical-verification.md)、[台帳](docs/verification/invariants.md)、[仕様](docs/specs/practical-verification.md) | [台帳検査](verification/assurance.mjs)、[mutation](verification/mutation/README.md)、[エッジモデル](verification/edge/README.md) |
 
 ## 変更時に保つ契約
 

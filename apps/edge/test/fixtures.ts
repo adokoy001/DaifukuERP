@@ -45,12 +45,12 @@ export async function relayFixture() {
   const port = await listen(server), config = (): EdgeConfig => parseConfig({ apiBaseUrl: `https://127.0.0.1:${port}`, caFile: tls.cert, requestTimeoutMs: 1000, printWaitMs: 2500, devices: [] });
   return { ...tls, state, server, wss, config, session, close: async () => { for (const ws of wss.clients) ws.terminate(); await new Promise<void>((resolve) => wss.close(() => resolve())); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await tls.close(); } };
 }
-export async function printerFixture() {
+export async function printerFixture(onPrint?: (count: number) => Promise<void>) {
   const state = { printCalls: 0, queryCalls: 0, lost: false, asciiOnly: false, reason: 'job-completed-successfully', jobStates: [9], jobId: 41, document: '' };
   const server = httpServer((request, response) => { void (async () => {
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk as Buffer)); const bytes = Buffer.concat(chunks), decoded = parseIpp(bytes), operation = decoded.code; let attributes: IppAttribute[];
     if (operation === 0x000b) attributes = [{ name: 'document-format-supported', tag: 0x49, values: state.asciiOnly ? ['text/plain'] : ['text/plain', 'text/plain; charset=utf-8'] }, { name: 'copies-supported', tag: 0x33, values: [[1, 5]] }, { name: 'printer-is-accepting-jobs', tag: 0x22, values: [true] }, { name: 'printer-state', tag: 0x23, values: [3] }];
-    else if (operation === 0x0002) { state.printCalls++; if (state.lost) return request.socket.destroy(); attributes = [{ name: 'job-id', tag: 0x21, values: [state.jobId] }, { name: 'job-state', tag: 0x23, values: [3] }]; }
+    else if (operation === 0x0002) { state.printCalls++; await onPrint?.(state.printCalls); if (state.lost) return request.socket.destroy(); attributes = [{ name: 'job-id', tag: 0x21, values: [state.jobId] }, { name: 'job-state', tag: 0x23, values: [3] }]; }
     else { state.queryCalls++; attributes = [{ name: 'job-id', tag: 0x21, values: [state.jobId] }, { name: 'job-state', tag: 0x23, values: [state.jobStates[Math.min(state.queryCalls - 1, state.jobStates.length - 1)] ?? 9] }, { name: 'job-state-reasons', tag: 0x44, values: [state.reason] }]; }
     const reply = ippRequest(0, 'ipp://fixture/printer', attributes).body; reply.writeInt32BE(decoded.requestId, 4); response.writeHead(200, { 'content-type': 'application/ipp' }); response.end(reply);
   })().catch(() => { response.writeHead(500); response.end(); }); });

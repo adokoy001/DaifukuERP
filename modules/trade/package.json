@@ -17,20 +17,21 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@daifuku/mod-payment": "workspace:*",
     "@types/node": "^22.0.0",
+    "fast-check": "4.9.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.0",
-    "@daifuku/mod-payment": "workspace:*"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "@daifuku/kernel": "workspace:*",
+    "@daifuku/mod-accounting": "workspace:*",
+    "@daifuku/mod-inventory": "workspace:*",
     "@daifuku/mod-partner": "workspace:*",
     "@daifuku/mod-product": "workspace:*",
-    "@daifuku/mod-tax": "workspace:*",
-    "@daifuku/mod-accounting": "workspace:*",
-    "@daifuku/mod-sales": "workspace:*",
     "@daifuku/mod-purchase": "workspace:*",
-    "@daifuku/mod-inventory": "workspace:*",
+    "@daifuku/mod-sales": "workspace:*",
+    "@daifuku/mod-tax": "workspace:*",
     "zod": "^4.6.1"
   }
 }
