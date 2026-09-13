@@ -34,7 +34,7 @@ MCPは `DAIFUKU_MFA_CODE`（その起動で一度だけ利用するTOTPまたは
 
 SMTPには `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_SECURE` を設定します。`SMTP_SECURE=true` は接続時TLS（既定465）、falseはSTARTTLS必須（既定587）です。証明書検証は無効にできません。APIはメールをトランザクション内の暗号化outboxへ登録し、直接送信しません。
 
-配送は同じ保護設定を持つ環境で `pnpm --filter @daifuku/api mail:deliver` を明示的に実行します。スケジューラで繰り返し実行して配送待ちを処理してください。未設定の場合は未配信のまま終了コード2です。成功件数・失敗件数だけを表示し、宛先、本文、token、SMTP応答の原文はログへ出しません。招待画面の「配送待ち」は受信完了を意味しません。
+配送は同じ保護設定を持つ環境で明示的に実行します。ソース環境では `pnpm --filter @daifuku/api mail:deliver`、配布物では `runtime/apps/api` を作業ディレクトリにして `node --env-file=/absolute/path/to/runtime.env dist/identity/mail-cli.js` を使います。`runtime.env` にはAPIと同じ保護された設定ファイルの絶対パスを指定してください。スケジューラで繰り返し実行して配送待ちを処理してください。未設定の場合は未配信のまま終了コード2です。成功件数・失敗件数だけを表示し、宛先、本文、token、SMTP応答の原文はログへ出しません。招待画面の「配送待ち」は受信完了を意味しません。
 
 workerは2分のlease、固定Message-ID、最大5回の指数間隔で再試行します。SMTPが受理直後に接続切断した場合は再試行で重複配送され得ます（at-least-once）。リンクは同じ単回tokenなので二重受理はできません。成功・期限切れ・試行上限では本文暗号文を削除し、配送状態を残します。通信timeoutはleaseより短い30秒です。エラーは `delivery_failed` / `expired` / `attempt_limit` に分類します。
 
