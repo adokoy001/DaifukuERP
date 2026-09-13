@@ -89,6 +89,25 @@ describe('Repository (ADR-0007) — CRUD, validation, audit', () => {
     const trail = await db.run({}, (ctx) => auditTrail(ctx, 'test_partner', p.id));
     expect(trail.map((t) => t.op)).toEqual(['delete', 'create']);
   });
+
+  it('breaks tied sort values with id so successive pages equal the full ordered result', async () => {
+    const fixed = new Date('2026-09-01T00:00:00Z');
+    await db.run({ now: () => fixed }, async (ctx) => {
+      for (let index = 0; index < 12; index++) await repo(ctx, TPartner).create({ name: 'Paging ties', code: `TIE-${index}` });
+    });
+    for (const orderBy of [undefined, [{ field: 'name', dir: 'asc' as const }], [{ field: 'id', dir: 'desc' as const }]]) {
+      await db.run({}, async (ctx) => {
+        const query = { where: { name: 'Paging ties' }, ...(orderBy ? { orderBy } : {}) };
+        const full = await repo(ctx, TPartner).list({ ...query, limit: 12 });
+        const first = await repo(ctx, TPartner).list({ ...query, limit: 5 });
+        const second = await repo(ctx, TPartner).list({ ...query, limit: 5, offset: 5 });
+        const third = await repo(ctx, TPartner).list({ ...query, limit: 5, offset: 10 });
+        const ids = full.items.map((row) => row.id);
+        expect([...first.items, ...second.items, ...third.items].map((row) => row.id)).toEqual(ids);
+        expect(ids).toEqual(orderBy?.[0]?.field === 'id' ? [...ids].sort().reverse() : [...ids].sort());
+      });
+    }
+  });
 });
 
 describe('Permissions (ADR-0007) — default deny, row rules, field groups', () => {

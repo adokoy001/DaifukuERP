@@ -30,8 +30,10 @@ export function connect(url: string, opts: { max?: number } = {}): Database {
 /**
  * Runs `fn` in a transaction with the tenant set for RLS and a fully built Context.
  * This is the ONLY way to obtain a Context; there is no bypass (ADR-0007).
+ * readOnlySnapshot starts a repeatable-read, read-only transaction before any company/tenant lookup;
+ * use it for bounded multi-page analytical reads whose totals must describe one database snapshot.
  */
-export async function withContext<T>(database: Database, params: ContextParams, fn: (ctx: Context) => Promise<T>): Promise<T> {
+export async function withContext<T>(database: Database, params: ContextParams, fn: (ctx: Context) => Promise<T>, options: { readOnlySnapshot?: boolean } = {}): Promise<T> {
   return database.drizzle.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config(${TENANT_SETTING}, ${params.tenantId}, true)`);
     let appliedPacks: string[] = [];
@@ -42,7 +44,7 @@ export async function withContext<T>(database: Database, params: ContextParams, 
     }
     const ctx = makeContext(tx, { ...params, appliedPacks });
     return fn(ctx);
-  });
+  }, options.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
 }
 
 export function makeContext(db: Db, params: ContextParams): Context {

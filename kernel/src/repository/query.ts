@@ -68,7 +68,10 @@ export function whereCondition(ctx: Context, entity: EntityDef, where: Domain | 
 }
 
 export function orderClauses(entity: EntityDef, orderBy: ListQuery['orderBy'], ctx?: Context): SQL[] {
-  const specs = orderBy && orderBy.length > 0 ? orderBy : [{ field: 'createdAt', dir: 'desc' as const }];
+  const requested = orderBy && orderBy.length > 0 ? orderBy : [{ field: 'createdAt', dir: 'desc' as const }];
+  // LIMIT/OFFSET must use a total order: imports commonly share createdAt and business dates.
+  // Keep an explicitly requested id direction; otherwise break ties with the unique primary key.
+  const specs = requested.some((item) => item.field === 'id') ? requested : [...requested, { field: 'id', dir: 'asc' as const }];
   return specs.map((o) => {
     if (ctx) assertReadableFields(ctx, entity, [o.field]);
     if (!(o.field in entity.columns)) throw new ValidationError(`cannot order by unknown field "${o.field}"`, [{ path: 'orderBy', message: 'unknown field' }]);

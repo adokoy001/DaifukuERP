@@ -34,6 +34,8 @@
 | 出荷後の請求で在庫がもう一度動く | `modules/trade/src/posting.ts` とinventoryの `source-documents.ts`。既存の請求単独処理も回帰する |
 | 銀行の再取込・消込・出力で重複する | bankingの `imports.ts` / `reconcile.ts` / `transfers.ts`、同一キーと内容、原明細の不変性 |
 | 申告資料の根拠が古い・形式が違う | tax-filingの `workflow.ts` / `profile.ts`、l10n/jpの `filing/`。保存根拠と現行根拠を区別する |
+| ピボットの総計・小計・平均が合わない | `apps/web/src/lib/pivot.ts`、対象の1行の粒度・状態・日付、`apps/api/src/analytics/catalog.ts`。帳票の残高と期間増減を区別する |
+| 分析設定や取得行が会社・権限変更後も残る | `analyticsScopeKey`、カタログquery keyと再確認、Worker取消、`analytics-storage.ts` の利用者・tenant・会社キー |
 
 ## 生成物と手書きの境界
 
@@ -61,3 +63,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## 商流・銀行・申告準備
 
 [統合構造](commerce-finance.md) に依存図と変更先をまとめています。`modules/trade` が既存inventory/invoiceを原資料に結び、`modules/banking` が既存payment/accountingと照合します。`modules/tax-filing` は資料採取と確認workflow、`l10n/jp/src/filing` は日本の出力profileを担当します。Webの `/commerce/trade`、`/finance/banking`、`/finance/filing` は公開contractを読み、専用actionを共通の [finance client](../../apps/web/src/api/finance.ts) から呼びます。
+
+## レポートとブラウザ・ピボット
+
+[分析の構造](reporting-pivot.md) と [付録M](../manual/appendix-m-analytics.md) に対象・数字の意味・操作をまとめています。`/reports` は既存 `TableResult` 帳票への入口、`/analytics` は最大9対象・18テンプレートから始めるブラウザ集計です。[API許可リスト](../../apps/api/src/analytics/catalog.ts) と [完全取得](../../apps/api/src/analytics/snapshot.ts) が権限内の最大5万行を同じ読取専用スナップショットから返し、[pivot.ts](../../apps/web/src/lib/pivot.ts) がWeb Worker内で十進集計します。[保存設定](../../apps/web/src/lib/analytics-storage.ts) はブラウザ内で利用者・tenant・会社ごとに分離し、業務行を保存しません。API取得上限・集計状態上限・表示ページ数は別の制限です。

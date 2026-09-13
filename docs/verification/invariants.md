@@ -14,6 +14,26 @@
 - 失効条件: 精度、入出力、丸め方式、比較演算、decimal.jsまたは数値表現の変更。
 - 限界: 任意精度での数学的等式や、誤って入力された現実の金額の正しさは保証しない。
 
+## PV-ANALYTICS-01
+- 条件: ピボットの小計・総計・平均は、表示階層やページに依存せず元の有効値から計算する。
+- 前提: 5万行、行列各3階層、3指標、小計を含む10万集計値以内。十進文字列と安全な整数のみを受け入れる。
+- 仕様: [ブラウザ分析](../specs/reporting-pivot.md)
+- 実装: [集計エンジン](../../apps/web/src/lib/pivot.ts)、[Worker管理](../../apps/web/src/lib/pivot-worker-client.ts)
+- 試験: [数値・階層・上限](../../apps/web/src/lib/pivot.test.ts)、[中断・古い応答](../../apps/web/src/lib/pivot-worker-client.test.ts)
+- 根拠: 安全整数を超える金額、負数、欠測、重みの異なる平均、日付階層、5万行の固定fixtureを比較する。
+- 失効条件: 集計操作、丸め、欠測、軸キー、Worker再利用、上限の変更。
+- 限界: グラフ描画は近似数値。平均は小数6桁または入力の小数桁で丸める。制度上の判定や元記録の真実性は保証しない。
+
+## PV-ANALYTICS-02
+- 条件: 分析取得は会社・拠点・本人・項目権限を適用し、期間全件を一貫して取得できない場合に部分総計を返さない。
+- 前提: 最新認証のContext、明示した対象一覧、Repository、読み取り専用repeatable read。保存対象は会社・利用者別の設定のみ。
+- 仕様: [ブラウザ分析](../specs/reporting-pivot.md)
+- 実装: [対象と項目](../../apps/api/src/analytics/catalog.ts)、[取得](../../apps/api/src/analytics/snapshot.ts)、[設定保管](../../apps/web/src/lib/analytics-storage.ts)
+- 試験: [実APIとDBの境界](../../apps/api/test/analytics.db.test.ts)、[上限と項目許可](../../apps/api/test/analytics.test.ts)、[保存隔離](../../apps/web/src/lib/analytics-storage.test.ts)
+- 根拠: 同姓同名、異なる拠点とtenant、所属変更、非公開項目、同時更新、書込み拒否、上限超過、設定への余分なデータ混入を検査する。
+- 失効条件: 対象追加、派生値の入力項目、参照表示名、認証、取引分離レベル、設定形式の変更。
+- 限界: 取得済みブラウザデータの失効確認は30秒の再取得または画面復帰時。ブラウザ外へ複製された情報を回収する機能ではない。
+
 ## PV-ACCOUNTING-01
 - 条件: 仕訳の貸借、明細の片側正額、反対仕訳の純額を検査する。
 - 前提: 同一会社・通貨、Decimal、承認された仕訳の正規経路。取消の監査履歴は残す。
