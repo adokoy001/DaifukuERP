@@ -6,8 +6,12 @@ export type { ActionConfig, ActionDef, ActionPermission } from './defs.ts';
 
 const NAME_RE = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 
-export function defineAction<I extends z.ZodType, O extends z.ZodType>(cfg: ActionConfig<I, O>, opts: { generic?: boolean } = {}): ActionDef<I, O> {
-  if (!NAME_RE.test(cfg.name)) throw new Error(`action name "${cfg.name}" must look like "<module>.<verb_object>" in snake_case`);
+export function defineAction<I extends z.ZodType, O extends z.ZodType>(
+  cfg: ActionConfig<I, O>,
+  opts: { generic?: boolean } = {},
+): ActionDef<I, O> {
+  if (!NAME_RE.test(cfg.name))
+    throw new Error(`action name "${cfg.name}" must look like "<module>.<verb_object>" in snake_case`);
   const def: ActionDef<I, O> = {
     ...cfg,
     kind: 'action',

@@ -50,11 +50,21 @@ export function fitsScale(d: Decimal, scale = COST_SCALE): boolean {
 }
 
 function assertPositive(qty: Decimal, what: string): void {
-  if (!qty.gt(0)) throw new ValidationError(`${what} quantity ${qty.toString()} must be greater than 0`, [{ path: 'quantity', message: 'must be > 0' }], 'Quantities are positive; the entry type (or line sign) gives the direction.');
+  if (!qty.gt(0))
+    throw new ValidationError(
+      `${what} quantity ${qty.toString()} must be greater than 0`,
+      [{ path: 'quantity', message: 'must be > 0' }],
+      'Quantities are positive; the entry type (or line sign) gives the direction.',
+    );
 }
 
 function assertNonNegative(d: Decimal, path: string): void {
-  if (d.lt(0)) throw new ValidationError(`${path} ${d.toString()} must not be negative`, [{ path, message: 'must be >= 0' }], 'Costs are never negative.');
+  if (d.lt(0))
+    throw new ValidationError(
+      `${path} ${d.toString()} must not be negative`,
+      [{ path, message: 'must be >= 0' }],
+      'Costs are never negative.',
+    );
 }
 
 function maxDecimal(a: Decimal, b: Decimal): Decimal {
@@ -71,7 +81,12 @@ function plainZero(d: Decimal): Decimal {
 
 function movement(before: StockState, next: StockState): Movement {
   const after = { qty: plainZero(next.qty), value: plainZero(next.value), avgCost: plainZero(next.avgCost) };
-  return { qtyDelta: after.qty.minus(before.qty), costDelta: plainZero(after.value.minus(before.value)), unitCost: after.avgCost, after };
+  return {
+    qtyDelta: after.qty.minus(before.qty),
+    costDelta: plainZero(after.value.minus(before.value)),
+    unitCost: after.avgCost,
+    after,
+  };
 }
 
 /** Receipt / adjustment in / transfer in / reversal of an outbound row. */
@@ -87,7 +102,8 @@ export function inbound(state: StockState, qty: Decimal, cost: InboundCost): Mov
   }
   // negative stock before: the hole is filled at the frozen average, the rest enters at the incoming unit cost
   const incomingUnit = 'unitCost' in cost ? round6(cost.unitCost) : round6(total.div(qty));
-  if (newQty.gt(0)) return movement(state, { qty: newQty, value: round6(newQty.times(incomingUnit)), avgCost: incomingUnit });
+  if (newQty.gt(0))
+    return movement(state, { qty: newQty, value: round6(newQty.times(incomingUnit)), avgCost: incomingUnit });
   if (newQty.isZero()) return movement(state, { qty: newQty, value: Decimal.zero(), avgCost: state.avgCost });
   return movement(state, { qty: newQty, value: round6(newQty.times(state.avgCost)), avgCost: state.avgCost });
 }
@@ -96,7 +112,8 @@ export function inbound(state: StockState, qty: Decimal, cost: InboundCost): Mov
 export function outbound(state: StockState, qty: Decimal, cost: OutboundCost): Movement {
   assertPositive(qty, 'outbound');
   const newQty = state.qty.minus(qty);
-  if (newQty.lt(0)) return movement(state, { qty: newQty, value: round6(newQty.times(state.avgCost)), avgCost: state.avgCost });
+  if (newQty.lt(0))
+    return movement(state, { qty: newQty, value: round6(newQty.times(state.avgCost)), avgCost: state.avgCost });
   if (newQty.isZero()) return movement(state, { qty: newQty, value: Decimal.zero(), avgCost: state.avgCost });
   // 0 < newQty < qty before
   const wanted = cost.mode === 'cost' ? round6(cost.totalCost) : round6(qty.times(state.avgCost));

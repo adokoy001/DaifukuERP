@@ -1,7 +1,18 @@
 // inventory.count_variance (docs/specs/inventory.md AC-7): the lines of one stock count with system / counted / variance
 // quantities and the variance value. Draft: system quantity and average cost read live from the balances (what a submit
 // now would adjust). Submitted or cancelled: the quantities fixed at submit and the cost of the adjustment entry lines.
-import { Decimal, defineAction, DOCSTATUS, label, repo, column, tableResult, type Context, type TableColumn, type TableResult } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  DOCSTATUS,
+  label,
+  repo,
+  column,
+  tableResult,
+  type Context,
+  type TableColumn,
+  type TableResult,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { z } from 'zod';
 import { StockCount } from '../entities/stock-count.ts';
@@ -33,19 +44,36 @@ interface Costed {
 }
 
 /** productId → signed cost of the adjustment line (+ in, − out) and its unit cost. */
-async function adjustmentCosts(ctx: Context, entryId: string | null): Promise<Map<string, { unitCost: Decimal; signed: Decimal }>> {
+async function adjustmentCosts(
+  ctx: Context,
+  entryId: string | null,
+): Promise<Map<string, { unitCost: Decimal; signed: Decimal }>> {
   const out = new Map<string, { unitCost: Decimal; signed: Decimal }>();
   if (!entryId) return out;
-  const { items } = await listAll((q) => repo(ctx, StockEntryLine).list(q), { where: { entryId }, orderBy: [{ field: 'seq', dir: 'asc' }] }, 5000);
-  for (const l of items) out.set(l.productId, { unitCost: l.unitCost ?? Decimal.zero(), signed: l.sign === 'out' ? l.amount.neg() : l.amount });
+  const { items } = await listAll(
+    (q) => repo(ctx, StockEntryLine).list(q),
+    { where: { entryId }, orderBy: [{ field: 'seq', dir: 'asc' }] },
+    5000,
+  );
+  for (const l of items)
+    out.set(l.productId, {
+      unitCost: l.unitCost ?? Decimal.zero(),
+      signed: l.sign === 'out' ? l.amount.neg() : l.amount,
+    });
   return out;
 }
 
 export async function countVariance(ctx: Context, input: CountVarianceInput): Promise<TableResult> {
   const count = await repo(ctx, StockCount).get(input.countId);
-  const { items: lines } = await listAll((q) => repo(ctx, StockCountLine).list(q), { where: { countId: count.id }, orderBy: [{ field: 'seq', dir: 'asc' }] }, 5000);
+  const { items: lines } = await listAll(
+    (q) => repo(ctx, StockCountLine).list(q),
+    { where: { countId: count.id }, orderBy: [{ field: 'seq', dir: 'asc' }] },
+    5000,
+  );
   const draft = count.docstatus === DOCSTATUS.draft;
-  const adjustments = draft ? new Map<string, { unitCost: Decimal; signed: Decimal }>() : await adjustmentCosts(ctx, count.adjustmentEntryId);
+  const adjustments = draft
+    ? new Map<string, { unitCost: Decimal; signed: Decimal }>()
+    : await adjustmentCosts(ctx, count.adjustmentEntryId);
   const products = await productNames(
     ctx,
     lines.map((l) => l.productId),
@@ -61,7 +89,11 @@ export async function countVariance(ctx: Context, input: CountVarianceInput): Pr
       costed = { systemQty, unitCost, varianceValue: round6(l.countedQty.minus(systemQty).times(unitCost)) };
     } else {
       const adj = adjustments.get(l.productId);
-      costed = { systemQty: l.systemQty, unitCost: adj?.unitCost ?? Decimal.zero(), varianceValue: adj?.signed ?? Decimal.zero() };
+      costed = {
+        systemQty: l.systemQty,
+        unitCost: adj?.unitCost ?? Decimal.zero(),
+        varianceValue: adj?.signed ?? Decimal.zero(),
+      };
     }
     values.push(costed.varianceValue);
     rows.push({
@@ -81,7 +113,15 @@ export async function countVariance(ctx: Context, input: CountVarianceInput): Pr
     columns: COUNT_VARIANCE_COLUMNS,
     rows,
     totals: { varianceValue: Decimal.sum(values).toString() },
-    meta: { countId: count.id, number: count.number, docstatus: count.docstatus, warehouseId: count.warehouseId, date: count.date, adjustmentEntryId: count.adjustmentEntryId, live: draft },
+    meta: {
+      countId: count.id,
+      number: count.number,
+      docstatus: count.docstatus,
+      warehouseId: count.warehouseId,
+      date: count.date,
+      adjustmentEntryId: count.adjustmentEntryId,
+      live: draft,
+    },
   };
 }
 

@@ -8,7 +8,12 @@ export { RestaurantWasteLine } from './entities/waste-line.ts';
 export { dailySummary, dailySummaryAction } from './actions/daily-summary.ts';
 export { seedRestaurantChain, WALK_IN_CODE } from './seed.ts';
 export { sampleRestaurantChain, SAMPLE_PRODUCTS } from './sample.ts';
-export type { OperationsInput, OperationsRange, OperationsSnapshot, OperationsOverview } from './services/operations-contract.ts';
+export type {
+  OperationsInput,
+  OperationsRange,
+  OperationsSnapshot,
+  OperationsOverview,
+} from './services/operations-contract.ts';
 export { RestaurantDayPlan } from './entities/day-plan.ts';
 export { operationsSnapshot, operationsSnapshotAction, operationsSourcesAction } from './actions/operations.ts';
 export { settlementEvidence, settlementEvidenceAction } from './actions/settlement-evidence.ts';

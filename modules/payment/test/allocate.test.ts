@@ -17,7 +17,14 @@ import {
   type AllocationLine,
   type InvoiceSnapshot,
 } from '../src/services/allocate.ts';
-import { entryDescription, imbalance, journalLinesFor, MEMO, type JournalLineSpec, type PostingInput } from '../src/services/posting.ts';
+import {
+  entryDescription,
+  imbalance,
+  journalLinesFor,
+  MEMO,
+  type JournalLineSpec,
+  type PostingInput,
+} from '../src/services/posting.ts';
 import { defaultAccountCodeFor, PAYMENT_ACCOUNTS_DEFAULT, paymentAccountsSchema } from '../src/settings.ts';
 
 const P = 'partner-a';
@@ -26,7 +33,18 @@ const ACCOUNTS = { receivable: 'acc-1300', payable: 'acc-2100', advanceReceived:
 function invoice(over: Partial<InvoiceSnapshot> = {}): InvoiceSnapshot {
   const total = over.total ?? Decimal.from('3000');
   const paidAmount = over.paidAmount ?? Decimal.zero();
-  return { entity: 'sales_invoice', id: 'inv-1', number: 'INV-2026-000001', partnerId: P, docstatus: DOCSTATUS.submitted, status: 'open', total, paidAmount, balance: total.minus(paidAmount), ...over };
+  return {
+    entity: 'sales_invoice',
+    id: 'inv-1',
+    number: 'INV-2026-000001',
+    partnerId: P,
+    docstatus: DOCSTATUS.submitted,
+    status: 'open',
+    total,
+    paidAmount,
+    balance: total.minus(paidAmount),
+    ...over,
+  };
 }
 function line(over: Partial<AllocationLine> = {}): AllocationLine {
   return { seq: 1, invoiceEntity: 'sales_invoice', invoiceId: 'inv-1', amount: Decimal.from('1000'), ...over };
@@ -51,20 +69,36 @@ describe('allocation rules (AC-2)', () => {
 
   it('lineIssues: a valid line has none; each broken rule names its field', () => {
     expect(lineIssues(line(), head, invoice())).toEqual([]);
-    expect(lineIssues(line({ amount: Decimal.from('3000') }), head, invoice())).toEqual([{ path: 'lines.1.amount', message: 'must be <= the payment amount 2500' }]);
-    expect(lineIssues(line({ amount: Decimal.from('2001') }), head, invoice({ paidAmount: Decimal.from('1000') }))).toEqual([{ path: 'lines.1.amount', message: 'must be <= the invoice balance 2000' }]);
-    expect(lineIssues(line({ amount: Decimal.from('2000') }), head, invoice({ paidAmount: Decimal.from('1000') }))).toEqual([]);
+    expect(lineIssues(line({ amount: Decimal.from('3000') }), head, invoice())).toEqual([
+      { path: 'lines.1.amount', message: 'must be <= the payment amount 2500' },
+    ]);
+    expect(
+      lineIssues(line({ amount: Decimal.from('2001') }), head, invoice({ paidAmount: Decimal.from('1000') })),
+    ).toEqual([{ path: 'lines.1.amount', message: 'must be <= the invoice balance 2000' }]);
+    expect(
+      lineIssues(line({ amount: Decimal.from('2000') }), head, invoice({ paidAmount: Decimal.from('1000') })),
+    ).toEqual([]);
     expect(paths(lineIssues(line({ amount: Decimal.zero() }), head, invoice()))).toEqual(['lines.1.amount']);
     expect(paths(lineIssues(line({ amount: Decimal.from('-1') }), head, invoice()))).toEqual(['lines.1.amount']);
-    expect(lineIssues(line({ invoiceEntity: 'purchase_invoice' }), head, invoice())).toEqual([{ path: 'lines.1.invoiceEntity', message: 'must be sales_invoice for direction receive' }]);
-    expect(lineIssues(line(), { ...head, direction: 'pay' }, invoice())).toEqual([{ path: 'lines.1.invoiceEntity', message: 'must be purchase_invoice for direction pay' }]);
-    expect(lineIssues(line(), head, null)).toEqual([{ path: 'lines.1.invoiceId', message: 'sales_invoice inv-1 does not exist or is not visible' }]);
-    expect(lineIssues(line(), head, invoice({ partnerId: 'partner-b' }))).toEqual([{ path: 'lines.1.invoiceId', message: 'sales_invoice INV-2026-000001 belongs to another partner' }]);
+    expect(lineIssues(line({ invoiceEntity: 'purchase_invoice' }), head, invoice())).toEqual([
+      { path: 'lines.1.invoiceEntity', message: 'must be sales_invoice for direction receive' },
+    ]);
+    expect(lineIssues(line(), { ...head, direction: 'pay' }, invoice())).toEqual([
+      { path: 'lines.1.invoiceEntity', message: 'must be purchase_invoice for direction pay' },
+    ]);
+    expect(lineIssues(line(), head, null)).toEqual([
+      { path: 'lines.1.invoiceId', message: 'sales_invoice inv-1 does not exist or is not visible' },
+    ]);
+    expect(lineIssues(line(), head, invoice({ partnerId: 'partner-b' }))).toEqual([
+      { path: 'lines.1.invoiceId', message: 'sales_invoice INV-2026-000001 belongs to another partner' },
+    ]);
     expect(lineIssues(line(), head, invoice({ status: 'paid', paidAmount: Decimal.from('3000') }))).toEqual([
       { path: 'lines.1.invoiceId', message: 'sales_invoice INV-2026-000001 is not open (docstatus 1, status paid)' },
       { path: 'lines.1.amount', message: 'must be <= the invoice balance 0' },
     ]);
-    expect(paths(lineIssues(line({ seq: 3 }), head, invoice({ docstatus: DOCSTATUS.draft, status: 'draft', number: null })))).toEqual(['lines.3.invoiceId']);
+    expect(
+      paths(lineIssues(line({ seq: 3 }), head, invoice({ docstatus: DOCSTATUS.draft, status: 'draft', number: null }))),
+    ).toEqual(['lines.3.invoiceId']);
     // a bare prefix gives field paths (used by the line hook)
     expect(paths(lineIssues(line({ amount: Decimal.from('2600') }), head, invoice(), ''))).toEqual(['amount']);
   });
@@ -75,7 +109,11 @@ describe('allocation rules (AC-2)', () => {
       ['inv-1', invoice()],
       ['inv-2', inv2],
     ]);
-    const ok = validateAllocations({ ...head, lines: [line(), line({ seq: 2, invoiceId: 'inv-2', amount: Decimal.from('500') })], invoices });
+    const ok = validateAllocations({
+      ...head,
+      lines: [line(), line({ seq: 2, invoiceId: 'inv-2', amount: Decimal.from('500') })],
+      invoices,
+    });
     expect(ok.issues).toEqual([]);
     expect([ok.allocated.toString(), ok.unallocated.toString()]).toEqual(['1500', '1000']);
     // no lines: everything is an advance
@@ -83,14 +121,27 @@ describe('allocation rules (AC-2)', () => {
     expect(none.issues).toEqual([]);
     expect([none.allocated.toString(), none.unallocated.toString()]).toEqual(['0', '2500']);
     // Σ > amount (each line alone fits)
-    const over = validateAllocations({ ...head, lines: [line({ amount: Decimal.from('2000') }), line({ seq: 2, invoiceId: 'inv-2', amount: Decimal.from('500') }), line({ seq: 3, invoiceId: 'inv-2', amount: Decimal.from('1') })], invoices });
+    const over = validateAllocations({
+      ...head,
+      lines: [
+        line({ amount: Decimal.from('2000') }),
+        line({ seq: 2, invoiceId: 'inv-2', amount: Decimal.from('500') }),
+        line({ seq: 3, invoiceId: 'inv-2', amount: Decimal.from('1') }),
+      ],
+      invoices,
+    });
     expect(over.issues).toEqual([
       { path: 'lines.3.invoiceId', message: 'sales_invoice INV-2026-000002 is allocated twice; merge the lines' },
       { path: 'lines', message: 'allocations 2501 exceed the payment amount 2500' },
     ]);
     expect(over.unallocated.toString()).toBe('-1');
     // amount <= 0 on the header, unknown invoice, snapshot of the other entity
-    const bad = validateAllocations({ ...head, amount: Decimal.zero(), lines: [line({ invoiceId: 'nope' }), line({ seq: 2, invoiceId: 'inv-2' })], invoices: new Map([['inv-2', { ...inv2, entity: 'purchase_invoice' }]]) });
+    const bad = validateAllocations({
+      ...head,
+      amount: Decimal.zero(),
+      lines: [line({ invoiceId: 'nope' }), line({ seq: 2, invoiceId: 'inv-2' })],
+      invoices: new Map([['inv-2', { ...inv2, entity: 'purchase_invoice' }]]),
+    });
     expect(paths(bad.issues)).toEqual(['amount', 'lines.1.invoiceId', 'lines.2.invoiceId', 'lines']);
   });
 
@@ -126,8 +177,25 @@ describe('roles vs direction (AC-6)', () => {
 });
 
 describe('journal lines (AC-3)', () => {
-  const base: PostingInput = { direction: 'receive', partnerId: P, accountId: 'acc-1100', amount: '2500', allocations: [{ invoiceNumber: 'INV-2026-000001', amount: '1000' }, { invoiceNumber: 'INV-2026-000002', amount: '500' }], unallocated: '1000', accounts: ACCOUNTS };
-  const shape = (l: JournalLineSpec) => [l.accountId, l.debit?.toString() ?? null, l.credit?.toString() ?? null, l.partnerId ?? null, l.memo ?? null];
+  const base: PostingInput = {
+    direction: 'receive',
+    partnerId: P,
+    accountId: 'acc-1100',
+    amount: '2500',
+    allocations: [
+      { invoiceNumber: 'INV-2026-000001', amount: '1000' },
+      { invoiceNumber: 'INV-2026-000002', amount: '500' },
+    ],
+    unallocated: '1000',
+    accounts: ACCOUNTS,
+  };
+  const shape = (l: JournalLineSpec) => [
+    l.accountId,
+    l.debit?.toString() ?? null,
+    l.credit?.toString() ?? null,
+    l.partnerId ?? null,
+    l.memo ?? null,
+  ];
 
   it('receive: Dr cash (amount) / Cr receivable per allocation / Cr advance received (unallocated)', () => {
     const lines = journalLinesFor(base);
@@ -141,7 +209,14 @@ describe('journal lines (AC-3)', () => {
   });
 
   it('pay: Dr payable per allocation / Dr advance paid (unallocated) / Cr cash (amount)', () => {
-    const lines = journalLinesFor({ ...base, direction: 'pay', accountId: 'acc-1000', amount: '6000', allocations: [{ invoiceNumber: 'BILL-2026-000001', amount: '5000' }], unallocated: '1000' });
+    const lines = journalLinesFor({
+      ...base,
+      direction: 'pay',
+      accountId: 'acc-1000',
+      amount: '6000',
+      allocations: [{ invoiceNumber: 'BILL-2026-000001', amount: '5000' }],
+      unallocated: '1000',
+    });
     expect(lines.map(shape)).toEqual([
       ['acc-2100', '5000', null, P, '買掛金 BILL-2026-000001'],
       ['acc-1900', '1000', null, P, '前払金'],
@@ -160,7 +235,13 @@ describe('journal lines (AC-3)', () => {
       ['acc-1100', '2500', null, P, '入金'],
       ['acc-2400', null, '2500', P, '前受金'],
     ]);
-    expect(journalLinesFor({ ...base, allocations: [{ invoiceNumber: null, amount: '1500' }] }).map(shape)[1]).toEqual(['acc-1300', null, '1500', P, MEMO.receivable]);
+    expect(journalLinesFor({ ...base, allocations: [{ invoiceNumber: null, amount: '1500' }] }).map(shape)[1]).toEqual([
+      'acc-1300',
+      null,
+      '1500',
+      P,
+      MEMO.receivable,
+    ]);
   });
 
   it('entryDescription with and without the number', () => {
@@ -172,26 +253,54 @@ describe('journal lines (AC-3)', () => {
   it('property: for any amount and allocations with Σ <= amount, the entry balances and Σ credit/debit on the cash side = amount', () => {
     const money = fc.bigInt({ min: 1n, max: 10_000_000n }).map((n) => Decimal.from(n));
     fc.assert(
-      fc.property(fc.constantFrom('receive', 'pay'), fc.array(money, { minLength: 0, maxLength: 8 }), money, (direction, parts, extra) => {
-        const allocated = Decimal.sum(parts);
-        const amount = allocated.plus(extra);
-        const result = validateAllocations({
-          direction: direction as 'receive' | 'pay',
-          partnerId: P,
-          amount,
-          lines: parts.map((amt, i) => ({ seq: i + 1, invoiceEntity: invoiceEntityFor(direction as 'receive' | 'pay'), invoiceId: `inv-${i}`, amount: amt })),
-          invoices: new Map(parts.map((amt, i) => [`inv-${i}`, invoice({ entity: invoiceEntityFor(direction as 'receive' | 'pay'), id: `inv-${i}`, number: `N-${i}`, total: amt })])),
-        });
-        expect(result.issues).toEqual([]);
-        expect(result.allocated.plus(result.unallocated).eq(amount)).toBe(true);
-        const lines = journalLinesFor({ direction: direction as 'receive' | 'pay', partnerId: P, accountId: 'cash', amount, allocations: parts.map((amt, i) => ({ invoiceNumber: `N-${i}`, amount: amt })), unallocated: result.unallocated, accounts: ACCOUNTS });
-        expect(imbalance(lines).isZero()).toBe(true);
-        expect(lines.length).toBeGreaterThanOrEqual(2);
-        for (const l of lines) expect((l.debit ?? l.credit ?? Decimal.zero()).gt(0)).toBe(true);
-        const cash = lines.filter((l) => l.accountId === 'cash');
-        expect(cash).toHaveLength(1);
-        expect((direction === 'receive' ? cash[0]?.debit : cash[0]?.credit)?.eq(amount)).toBe(true);
-      }),
+      fc.property(
+        fc.constantFrom('receive', 'pay'),
+        fc.array(money, { minLength: 0, maxLength: 8 }),
+        money,
+        (direction, parts, extra) => {
+          const allocated = Decimal.sum(parts);
+          const amount = allocated.plus(extra);
+          const result = validateAllocations({
+            direction: direction as 'receive' | 'pay',
+            partnerId: P,
+            amount,
+            lines: parts.map((amt, i) => ({
+              seq: i + 1,
+              invoiceEntity: invoiceEntityFor(direction as 'receive' | 'pay'),
+              invoiceId: `inv-${i}`,
+              amount: amt,
+            })),
+            invoices: new Map(
+              parts.map((amt, i) => [
+                `inv-${i}`,
+                invoice({
+                  entity: invoiceEntityFor(direction as 'receive' | 'pay'),
+                  id: `inv-${i}`,
+                  number: `N-${i}`,
+                  total: amt,
+                }),
+              ]),
+            ),
+          });
+          expect(result.issues).toEqual([]);
+          expect(result.allocated.plus(result.unallocated).eq(amount)).toBe(true);
+          const lines = journalLinesFor({
+            direction: direction as 'receive' | 'pay',
+            partnerId: P,
+            accountId: 'cash',
+            amount,
+            allocations: parts.map((amt, i) => ({ invoiceNumber: `N-${i}`, amount: amt })),
+            unallocated: result.unallocated,
+            accounts: ACCOUNTS,
+          });
+          expect(imbalance(lines).isZero()).toBe(true);
+          expect(lines.length).toBeGreaterThanOrEqual(2);
+          for (const l of lines) expect((l.debit ?? l.credit ?? Decimal.zero()).gt(0)).toBe(true);
+          const cash = lines.filter((l) => l.accountId === 'cash');
+          expect(cash).toHaveLength(1);
+          expect((direction === 'receive' ? cash[0]?.debit : cash[0]?.credit)?.eq(amount)).toBe(true);
+        },
+      ),
       { numRuns: 300 },
     );
   });
@@ -199,7 +308,14 @@ describe('journal lines (AC-3)', () => {
 
 describe('settings (AC-1)', () => {
   it('defaults are the l10n/jp codes; cash -> 1000, other methods -> 1100; schema rejects empty codes', () => {
-    expect(PAYMENT_ACCOUNTS_DEFAULT).toEqual({ cash: '1000', bank: '1100', receivable: '1300', payable: '2100', advanceReceived: '2400', advancePaid: '1900' });
+    expect(PAYMENT_ACCOUNTS_DEFAULT).toEqual({
+      cash: '1000',
+      bank: '1100',
+      receivable: '1300',
+      payable: '2100',
+      advanceReceived: '2400',
+      advancePaid: '1900',
+    });
     expect(defaultAccountCodeFor(PAYMENT_ACCOUNTS_DEFAULT, 'cash')).toBe('1000');
     expect(defaultAccountCodeFor(PAYMENT_ACCOUNTS_DEFAULT, 'bank_transfer')).toBe('1100');
     expect(defaultAccountCodeFor(PAYMENT_ACCOUNTS_DEFAULT, 'other')).toBe('1100');

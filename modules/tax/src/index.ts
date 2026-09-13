@@ -8,7 +8,14 @@ export { TaxRate } from './entities/tax-rate.ts';
 export { resolveAction, taxCategorySchema } from './actions/resolve.ts';
 export { summarizeAction, summarizeOutputSchema, summaryToJson } from './actions/summarize.ts';
 export { getSettingsAction, setSettingsAction } from './actions/settings.ts';
-export { TAX_CATEGORIES, TAX_CATEGORY_LABELS, ZERO_RATE_CATEGORIES, isTaxCategory, isZeroRateCategory, type TaxCategory } from './services/categories.ts';
+export {
+  TAX_CATEGORIES,
+  TAX_CATEGORY_LABELS,
+  ZERO_RATE_CATEGORIES,
+  isTaxCategory,
+  isZeroRateCategory,
+  type TaxCategory,
+} from './services/categories.ts';
 export {
   resolveRate,
   computeLineTax,
@@ -38,7 +45,16 @@ export {
   type TaxRounding,
   type TaxSettings,
 } from './services/settings.ts';
-export { taxSummaryFor, resolveRateFor, loadTaxRates, loadTaxSettings, type DocumentTaxLine, type DocumentTaxInput, type DocumentTaxGroup, type DocumentTaxSummary } from './summary.ts';
+export {
+  taxSummaryFor,
+  resolveRateFor,
+  loadTaxRates,
+  loadTaxSettings,
+  type DocumentTaxLine,
+  type DocumentTaxInput,
+  type DocumentTaxGroup,
+  type DocumentTaxSummary,
+} from './summary.ts';
 export { SEED_TAX_RATES, seedTaxRates } from './seeds/rates.ts';
 
 export type TaxRateRow = Infer<typeof TaxRate>;

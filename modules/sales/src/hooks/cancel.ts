@@ -11,15 +11,30 @@ export const CANCEL_PAID_HINT = 'reverse the payment first (cancel the payment d
 async function beforeCancel(ctx: Context, { row, correctionDate }: HookArgs): Promise<void> {
   const paid = Decimal.from(String(row.paidAmount ?? '0'));
   if (paid.gt(0)) {
-    throw new StateError(`sales_invoice ${String(row.number ?? row.id)} has ${paid.toString()} applied as payment and cannot be cancelled`, CANCEL_PAID_HINT, {
-      id: row.id,
-      number: row.number,
-      paidAmount: paid.toString(),
-    });
+    throw new StateError(
+      `sales_invoice ${String(row.number ?? row.id)} has ${paid.toString()} applied as payment and cannot be cancelled`,
+      CANCEL_PAID_HINT,
+      {
+        id: row.id,
+        number: row.number,
+        paidAmount: paid.toString(),
+      },
+    );
   }
-  await assertCancellationDate(ctx, row.id as string, (correctionDate ?? row.date) as LocalDate, row.settlementHistory === true);
-  if (typeof row.journalEntryId !== 'string') throw new StateError('Source posting link is missing', 'Repair the source linkage before cancelling.');
-  await reverseSourceEntry(ctx, { id: row.journalEntryId, sourceEntity: SalesInvoice.name, sourceId: row.id as string, date: correctionDate });
+  await assertCancellationDate(
+    ctx,
+    row.id as string,
+    (correctionDate ?? row.date) as LocalDate,
+    row.settlementHistory === true,
+  );
+  if (typeof row.journalEntryId !== 'string')
+    throw new StateError('Source posting link is missing', 'Repair the source linkage before cancelling.');
+  await reverseSourceEntry(ctx, {
+    id: row.journalEntryId,
+    sourceEntity: SalesInvoice.name,
+    sourceId: row.id as string,
+    date: correctionDate,
+  });
   row.status = 'cancelled';
   row.cancelledDate = correctionDate ?? row.date;
 }

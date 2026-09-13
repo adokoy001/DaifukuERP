@@ -35,7 +35,8 @@ describe('migrations (api-app AC-9)', () => {
     expect(applied[0]?.n).toBe(readJournal().entries.length);
     const rls = await owner.sql`select relrowsecurity, relforcerowsecurity from pg_class where relname = 'partner'`;
     expect(rls[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
-    const grants = await owner.sql`select privilege_type from information_schema.role_table_grants where table_name = 'audit_log' and grantee = 'daifuku_app' order by 1`;
+    const grants =
+      await owner.sql`select privilege_type from information_schema.role_table_grants where table_name = 'audit_log' and grantee = 'daifuku_app' order by 1`;
     expect(grants.map((g) => g.privilege_type)).toEqual(['INSERT', 'SELECT']);
   });
 
@@ -43,10 +44,20 @@ describe('migrations (api-app AC-9)', () => {
     const boot = await seedAll(owner);
     const again = await seedAll(owner);
     expect(again).toEqual(boot);
-    const count = await withContext(app, systemParams(boot.tenantId, boot.companyId), (ctx) => repo(ctx, Partner).count());
+    const count = await withContext(app, systemParams(boot.tenantId, boot.companyId), (ctx) =>
+      repo(ctx, Partner).count(),
+    );
     expect(count).toBe(3);
     // Replaying bootstrap requires the explicit tenant identity, never only an email.
-    const boot2 = await bootstrapTenant(owner, { tenantId: boot.tenantId, tenantName: 'x', companyCode: 'x', companyName: 'x', adminEmail: 'admin@example.com', adminName: 'x', adminPassword: 'x' });
+    const boot2 = await bootstrapTenant(owner, {
+      tenantId: boot.tenantId,
+      tenantName: 'x',
+      companyCode: 'x',
+      companyName: 'x',
+      adminEmail: 'admin@example.com',
+      adminName: 'x',
+      adminPassword: 'x',
+    });
     expect(boot2.tenantId).toBe(boot.tenantId);
   });
 });

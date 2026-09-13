@@ -4,18 +4,44 @@
 import '@daifuku/mod-partner'; // registers `partner`, the target of `partnerId`
 import { defineEntity, f, label, snapshot, type Infer } from '@daifuku/kernel';
 
-export const ATTACHMENT_KINDS = ['invoice_received', 'invoice_issued', 'receipt', 'contract', 'bank_statement', 'other'] as const;
+export const ATTACHMENT_KINDS = [
+  'invoice_received',
+  'invoice_issued',
+  'receipt',
+  'contract',
+  'bank_statement',
+  'other',
+] as const;
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 
 export const Attachment = defineEntity({
   name: 'attachment',
   label: label('証憑', 'Attachment'),
   fields: {
-    storageKey: f.text({ serverOwned: true, label: label('ストレージキー', 'Storage key'), required: true, immutable: true, hidden: true, maxLength: 200 }),
+    storageKey: f.text({
+      serverOwned: true,
+      label: label('ストレージキー', 'Storage key'),
+      required: true,
+      immutable: true,
+      hidden: true,
+      maxLength: 200,
+    }),
     filename: f.text({ serverOwned: true, label: label('ファイル名', 'Filename'), required: true, maxLength: 255 }),
-    contentType: f.text({ serverOwned: true, label: label('コンテンツタイプ', 'Content type'), required: true, maxLength: 100 }),
+    contentType: f.text({
+      serverOwned: true,
+      label: label('コンテンツタイプ', 'Content type'),
+      required: true,
+      maxLength: 100,
+    }),
     size: f.int({ serverOwned: true, label: label('サイズ（バイト）', 'Size (bytes)'), required: true, min: 0 }),
-    sha256: f.text({ serverOwned: true, label: label('SHA-256', 'SHA-256'), required: true, immutable: true, unique: true, pattern: /^[0-9a-f]{64}$/ }),
+    sha256: f.text({
+      serverOwned: true,
+      label: label('SHA-256', 'SHA-256'),
+      required: true,
+      immutable: true,
+      unique: true,
+      pattern: /^[0-9a-f]{64}$/,
+    }),
     kind: f.enum(ATTACHMENT_KINDS, {
       label: label('種別', 'Kind'),
       required: true,

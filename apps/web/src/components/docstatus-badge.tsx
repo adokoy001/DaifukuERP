@@ -12,7 +12,11 @@ export function DocstatusBadge({ docstatus }: { docstatus: unknown }) {
   const { t } = useLocale();
   const ds: 0 | 1 | 2 = docstatus === 1 || docstatus === 2 ? docstatus : 0;
   return (
-    <span data-testid="docstatus" data-docstatus={ds} className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${CLASS[ds]}`}>
+    <span
+      data-testid="docstatus"
+      data-docstatus={ds}
+      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${CLASS[ds]}`}
+    >
       {t(docstatusLabel(ds))}
     </span>
   );

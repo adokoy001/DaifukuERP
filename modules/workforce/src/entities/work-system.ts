@@ -1,7 +1,32 @@
 import { defineEntity, f, label } from '@daifuku/kernel';
 import { E, H, M, P, edit, identityFields, owned, read, reviewFields } from './common.ts';
 export const WorkforceWorkSystemPeriod = defineEntity({
-  name: 'workforce_work_system_period', label: label('社員の勤務・清算期間', 'Employee working-time settlement period'), ext: false, siteAccess: { kind: 'parent', field: 'employeeId', entity: 'workforce_employee' },
-  fields: { ...identityFields(), startsOn: f.date({ ...owned, required: true }), endsOn: f.date({ ...owned, required: true }), mode: f.enum(['ordinary', 'monthly_variable', 'flex'], { ...owned, required: true }), weeklyMinutes: f.int({ ...owned, required: true }), standardDayMinutes: f.int({ ...owned, required: true }), agreedTotalMinutes: f.int({ ...owned, required: true }), days: f.json({ ...owned, required: true }), agreementReference: f.text({ ...owned, required: true, maxLength: 2000 }), agreementConfirmed: f.bool({ ...owned, required: true }), employeeChoiceConfirmed: f.bool({ ...owned, required: true }), filingConfirmed: f.bool({ ...owned, required: true }), basis: f.text({ ...owned, required: true, maxLength: 2000 }), status: f.enum(['draft', 'confirmed', 'cancelled'], { ...owned, required: true, default: 'draft' }), confirmedAt: f.timestamp({ ...owned }), ...reviewFields() },
-  indexes: [['employeeId', 'startsOn', 'endsOn', 'status']], permissions: { roles: { [E]: read, [M]: edit, [H]: edit, [P]: read }, rowRules: [{ roles: [E], where: { userId: '$ctx.userId', status: 'confirmed' } }] }, views: { list: ['employeeId', 'mode', 'startsOn', 'endsOn', 'status'] },
+  name: 'workforce_work_system_period',
+  label: label('社員の勤務・清算期間', 'Employee working-time settlement period'),
+  ext: false,
+  siteAccess: { kind: 'parent', field: 'employeeId', entity: 'workforce_employee' },
+  fields: {
+    ...identityFields(),
+    startsOn: f.date({ ...owned, required: true }),
+    endsOn: f.date({ ...owned, required: true }),
+    mode: f.enum(['ordinary', 'monthly_variable', 'flex'], { ...owned, required: true }),
+    weeklyMinutes: f.int({ ...owned, required: true }),
+    standardDayMinutes: f.int({ ...owned, required: true }),
+    agreedTotalMinutes: f.int({ ...owned, required: true }),
+    days: f.json({ ...owned, required: true }),
+    agreementReference: f.text({ ...owned, required: true, maxLength: 2000 }),
+    agreementConfirmed: f.bool({ ...owned, required: true }),
+    employeeChoiceConfirmed: f.bool({ ...owned, required: true }),
+    filingConfirmed: f.bool({ ...owned, required: true }),
+    basis: f.text({ ...owned, required: true, maxLength: 2000 }),
+    status: f.enum(['draft', 'confirmed', 'cancelled'], { ...owned, required: true, default: 'draft' }),
+    confirmedAt: f.timestamp({ ...owned }),
+    ...reviewFields(),
+  },
+  indexes: [['employeeId', 'startsOn', 'endsOn', 'status']],
+  permissions: {
+    roles: { [E]: read, [M]: edit, [H]: edit, [P]: read },
+    rowRules: [{ roles: [E], where: { userId: '$ctx.userId', status: 'confirmed' } }],
+  },
+  views: { list: ['employeeId', 'mode', 'startsOn', 'endsOn', 'status'] },
 });

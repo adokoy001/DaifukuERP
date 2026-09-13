@@ -10,9 +10,30 @@ export const ContractBilling = defineEntity({
   name: 'contract_billing',
   label: label('契約請求履歴', 'Contract billing record'),
   fields: {
-    contractId: f.ref('contract', { serverOwned: true, label: label('契約', 'Contract'), required: true, immutable: true }),
-    period: f.text({ serverOwned: true, label: label('対象月', 'Period'), description: label('YYYY-MM（請求間隔が複数月なら先頭月）', 'YYYY-MM (first month when the interval spans several months)'), required: true, immutable: true, pattern: PERIOD_PATTERN, maxLength: 7 }),
-    invoiceId: f.ref('sales_invoice', { serverOwned: true, label: label('売上請求書', 'Sales invoice'), required: true, onDelete: 'cascade' }),
+    contractId: f.ref('contract', {
+      serverOwned: true,
+      label: label('契約', 'Contract'),
+      required: true,
+      immutable: true,
+    }),
+    period: f.text({
+      serverOwned: true,
+      label: label('対象月', 'Period'),
+      description: label(
+        'YYYY-MM（請求間隔が複数月なら先頭月）',
+        'YYYY-MM (first month when the interval spans several months)',
+      ),
+      required: true,
+      immutable: true,
+      pattern: PERIOD_PATTERN,
+      maxLength: 7,
+    }),
+    invoiceId: f.ref('sales_invoice', {
+      serverOwned: true,
+      label: label('売上請求書', 'Sales invoice'),
+      required: true,
+      onDelete: 'cascade',
+    }),
   },
   unique: [['contractId', 'period']],
   indexes: [['period']],

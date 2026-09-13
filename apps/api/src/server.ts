@@ -51,10 +51,22 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerErrorHandler(server);
   registerRequestLog(server);
   // @fastify/cors v11 defaults to GET,HEAD,POST only; PATCH/DELETE preflights failed until listed (found by e2e, 2026-09-10).
-  await server.register(fastifyCors, { origin: opts.corsOrigins?.length ? [...opts.corsOrigins] : false, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['authorization', 'content-type', 'x-company-id', 'x-agent-id', 'accept-language'] });
+  await server.register(fastifyCors, {
+    origin: opts.corsOrigins?.length ? [...opts.corsOrigins] : false,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['authorization', 'content-type', 'x-company-id', 'x-agent-id', 'accept-language'],
+  });
   await registerOpenApi(server);
-  await registerAuth(server, { owner: opts.owner, db: opts.app, jwtSecret: opts.jwtSecret, ...(opts.identity ? { identity: opts.identity } : {}) });
-  server.get('/ready', { schema: { hide: true } }, async (_req, reply) => { const result = await (opts.readiness?.() ?? Promise.resolve({ ready: false })); return reply.code(result.ready ? 200 : 503).send(result); });
+  await registerAuth(server, {
+    owner: opts.owner,
+    db: opts.app,
+    jwtSecret: opts.jwtSecret,
+    ...(opts.identity ? { identity: opts.identity } : {}),
+  });
+  server.get('/ready', { schema: { hide: true } }, async (_req, reply) => {
+    const result = await (opts.readiness?.() ?? Promise.resolve({ ready: false }));
+    return reply.code(result.ready ? 200 : 503).send(result);
+  });
   await registerRelayRoutes(server, opts);
   server.get('/health', { schema: { hide: true } }, async () => ({ ok: true }));
   registerMetaRoutes(server, { db: opts.app });
@@ -64,6 +76,10 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerAccessAdminRoutes(server, { db: opts.app });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
   registerAnalyticsRoutes(server, { db: opts.app });
-  await registerSquarePosRoutes(server, { app: opts.app, owner: opts.owner, ...(opts.squarePosConnections ? { connections: opts.squarePosConnections } : {}) });
+  await registerSquarePosRoutes(server, {
+    app: opts.app,
+    owner: opts.owner,
+    ...(opts.squarePosConnections ? { connections: opts.squarePosConnections } : {}),
+  });
   return server;
 }

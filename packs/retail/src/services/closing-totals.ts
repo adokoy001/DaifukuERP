@@ -14,7 +14,10 @@ export interface ClosingTaxLine {
 }
 
 /** Header totals for tax-inclusive lines with explicit rates (the DB hook gets the rates from modules/tax taxSummaryFor). */
-export function closingTotals(lines: readonly ClosingTaxLine[], opts: { roundingMode: RoundingMode; scale: number }): InvoiceTotals {
+export function closingTotals(
+  lines: readonly ClosingTaxLine[],
+  opts: { roundingMode: RoundingMode; scale: number },
+): InvoiceTotals {
   const summary = summarizeTax(
     lines.map((l) => ({ amount: Decimal.from(l.amount), category: l.category, rate: Decimal.from(l.rate) })),
     { roundingMode: opts.roundingMode, scale: opts.scale, priceIncludesTax: true },
@@ -34,7 +37,11 @@ export interface TenderCheck {
 }
 
 /** AC-3: cash + card against the computed total. */
-export function tenderCheck(input: { cashAmount: DecimalInput; cardAmount: DecimalInput; total: DecimalInput }): TenderCheck {
+export function tenderCheck(input: {
+  cashAmount: DecimalInput;
+  cardAmount: DecimalInput;
+  total: DecimalInput;
+}): TenderCheck {
   const tendered = Decimal.from(input.cashAmount).plus(input.cardAmount);
   return { tendered, difference: Decimal.from(input.total).minus(tendered) };
 }
@@ -54,7 +61,13 @@ export function decimalOf(v: unknown): Decimal {
 /** taxSummary JSON as stored on the closing; unreadable entries are dropped. */
 export function summaryRowsOf(v: unknown): InvoiceTaxSummaryRow[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((r): r is InvoiceTaxSummaryRow => typeof r === 'object' && r !== null && typeof (r as { rate?: unknown }).rate === 'string' && typeof (r as { tax?: unknown }).tax === 'string');
+  return v.filter(
+    (r): r is InvoiceTaxSummaryRow =>
+      typeof r === 'object' &&
+      r !== null &&
+      typeof (r as { rate?: unknown }).rate === 'string' &&
+      typeof (r as { tax?: unknown }).tax === 'string',
+  );
 }
 
 /** Percent key of a rate: '0.08' -> '8', '0.1' -> '10'. */

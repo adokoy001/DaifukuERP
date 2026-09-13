@@ -17,7 +17,8 @@ let db: TestDb;
 type Row = Record<string, unknown>;
 const JAN = '4901234567894';
 
-const issues = (e: unknown) => ((e as ValidationError).details as { issues: { path: string; message: string }[] }).issues;
+const issues = (e: unknown) =>
+  ((e as ValidationError).details as { issues: { path: string; message: string }[] }).issues;
 async function caught(p: Promise<unknown>): Promise<unknown> {
   return p.then(
     () => null,
@@ -48,20 +49,54 @@ afterAll(async () => {
 describe('ext fields on the Repository (AC-2)', () => {
   it('AC-2 create with ext: registered keys validated and stored canonically (decimal strings), unknown keys kept', async () => {
     const created = await db.run({}, (ctx) =>
-      repo(ctx, TPartner).create({ name: 'Ext A', ext: { jan: JAN, rank: 'a', creditLine: '100000.50', firstOrder: '2026-09-11', legacyCode: { from: 'old-system', id: 42 } } }),
+      repo(ctx, TPartner).create({
+        name: 'Ext A',
+        ext: {
+          jan: JAN,
+          rank: 'a',
+          creditLine: '100000.50',
+          firstOrder: '2026-09-11',
+          legacyCode: { from: 'old-system', id: 42 },
+        },
+      }),
     );
-    expect(created.ext).toEqual({ jan: JAN, rank: 'a', creditLine: '100000.5', firstOrder: '2026-09-11', legacyCode: { from: 'old-system', id: 42 } });
+    expect(created.ext).toEqual({
+      jan: JAN,
+      rank: 'a',
+      creditLine: '100000.5',
+      firstOrder: '2026-09-11',
+      legacyCode: { from: 'old-system', id: 42 },
+    });
     const raw = await db.owner.sql`select ext from test_partner where id = ${created.id}`;
-    expect(raw[0]?.ext).toEqual({ jan: JAN, rank: 'a', creditLine: '100000.5', firstOrder: '2026-09-11', legacyCode: { from: 'old-system', id: 42 } });
+    expect(raw[0]?.ext).toEqual({
+      jan: JAN,
+      rank: 'a',
+      creditLine: '100000.5',
+      firstOrder: '2026-09-11',
+      legacyCode: { from: 'old-system', id: 42 },
+    });
     expect(typeof (raw[0]?.ext as Row).creditLine).toBe('string');
   });
 
   it('AC-2 bad registered values -> VALIDATION with ext.<key> paths, nothing written; also through the generic action', async () => {
     const before = await db.run({}, (ctx) => repo(ctx, TPartner).count());
-    const e = await caught(db.run({}, (ctx) => repo(ctx, TPartner).create({ name: 'Bad', ext: { jan: 'x49', rank: 'z', creditLine: 12.5, firstOrder: '2026-02-30' } })));
+    const e = await caught(
+      db.run({}, (ctx) =>
+        repo(ctx, TPartner).create({
+          name: 'Bad',
+          ext: { jan: 'x49', rank: 'z', creditLine: 12.5, firstOrder: '2026-02-30' },
+        }),
+      ),
+    );
     expect(e).toBeInstanceOf(ValidationError);
-    expect(issues(e).map((i) => i.path).sort()).toEqual(['ext.creditLine', 'ext.firstOrder', 'ext.jan', 'ext.rank']);
-    const viaAction = await caught(db.run({}, (ctx) => runAction(ctx, 'test_partner.create', { name: 'Bad2', ext: { creditLine: '-1' } })));
+    expect(
+      issues(e)
+        .map((i) => i.path)
+        .sort(),
+    ).toEqual(['ext.creditLine', 'ext.firstOrder', 'ext.jan', 'ext.rank']);
+    const viaAction = await caught(
+      db.run({}, (ctx) => runAction(ctx, 'test_partner.create', { name: 'Bad2', ext: { creditLine: '-1' } })),
+    );
     expect(viaAction).toMatchObject({ code: 'VALIDATION', details: { issues: [{ path: 'ext.creditLine' }] } });
     expect(await db.run({}, (ctx) => repo(ctx, TPartner).count())).toBe(before);
   });
@@ -70,8 +105,13 @@ describe('ext fields on the Repository (AC-2)', () => {
     const p = await db.run({}, (ctx) => repo(ctx, TPartner).create({ name: 'Ext U', ext: { rank: 'b', other: 1 } }));
     const renamed = await db.run({}, (ctx) => repo(ctx, TPartner).update(p.id, { name: 'Ext U2' }));
     expect(renamed.ext).toEqual({ rank: 'b', other: 1 });
-    await expect(db.run({}, (ctx) => repo(ctx, TPartner).update(p.id, { ext: { rank: 'q' } }))).rejects.toMatchObject({ code: 'VALIDATION', details: { issues: [{ path: 'ext.rank' }] } });
-    const changed = await db.run({}, (ctx) => repo(ctx, TPartner).update(p.id, { ext: { rank: 'c', creditLine: '0.10' } }));
+    await expect(db.run({}, (ctx) => repo(ctx, TPartner).update(p.id, { ext: { rank: 'q' } }))).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { issues: [{ path: 'ext.rank' }] },
+    });
+    const changed = await db.run({}, (ctx) =>
+      repo(ctx, TPartner).update(p.id, { ext: { rank: 'c', creditLine: '0.10' } }),
+    );
     expect(changed.ext).toEqual({ rank: 'c', creditLine: '0.1' });
   });
 });
@@ -80,7 +120,8 @@ describe('ext.<key> filters and search (AC-4, AC-5)', () => {
   let ids: Record<string, string>;
 
   beforeAll(async () => {
-    const mk = (name: string, ext?: Row) => db.run({}, (ctx) => repo(ctx, TPartner).create(ext ? { name, ext } : { name })).then((r) => r.id);
+    const mk = (name: string, ext?: Row) =>
+      db.run({}, (ctx) => repo(ctx, TPartner).create(ext ? { name, ext } : { name })).then((r) => r.id);
     ids = {
       b1: await mk('Filter B1', { jan: '4900000000011', rank: 'b', creditLine: '500', memo: 'needle-in-memo' }),
       b2: await mk('Filter B2', { jan: '4900000000028', rank: 'b', creditLine: '500.00' }),
@@ -90,7 +131,9 @@ describe('ext.<key> filters and search (AC-4, AC-5)', () => {
   });
 
   const listIds = async (q: Parameters<ReturnType<typeof repo<typeof TPartner>>['list']>[0]) =>
-    (await db.run({}, (ctx) => repo(ctx, TPartner).list({ ...q, orderBy: [{ field: 'name', dir: 'asc' }] }))).items.map((r) => r.id);
+    (await db.run({}, (ctx) => repo(ctx, TPartner).list({ ...q, orderBy: [{ field: 'name', dir: 'asc' }] }))).items.map(
+      (r) => r.id,
+    );
 
   it('AC-4 where ext.<key>: text equality, $in, $ne, null, $like on text; decimals compare in canonical form', async () => {
     expect(await listIds({ where: { 'ext.jan': '4900000000011' } })).toEqual([ids.b1]);
@@ -102,13 +145,21 @@ describe('ext.<key> filters and search (AC-4, AC-5)', () => {
     // '500' and '500.00' were both stored as '500'; the filter value is canonicalised the same way
     expect(await listIds({ where: { 'ext.creditLine': '500.0' } })).toEqual([ids.b1, ids.b2]);
     // (the 'Ext U' partner of the update test also has rank c, hence the name filter)
-    expect(await listIds({ where: { $or: [{ 'ext.rank': 'c' }, { 'ext.jan': '4900000000028' }], name: { $like: 'Filter%' } } })).toEqual([ids.b2, ids.c]);
+    expect(
+      await listIds({
+        where: { $or: [{ 'ext.rank': 'c' }, { 'ext.jan': '4900000000028' }], name: { $like: 'Filter%' } },
+      }),
+    ).toEqual([ids.b2, ids.c]);
     expect(await listIds({ where: { 'ext.rank': { $in: [] } } })).toEqual([]);
-    expect(await db.run({}, (ctx) => repo(ctx, TPartner).count({ 'ext.rank': 'b', name: { $like: 'Filter%' } }))).toBe(2);
+    expect(await db.run({}, (ctx) => repo(ctx, TPartner).count({ 'ext.rank': 'b', name: { $like: 'Filter%' } }))).toBe(
+      2,
+    );
   });
 
   it('AC-4 the generic list action (REST/MCP path) accepts ext.<key> in where', async () => {
-    const res = (await db.run({}, (ctx) => runAction(ctx, 'test_partner.list', { where: { 'ext.jan': '12345670' } }))) as { items: Row[]; total: number };
+    const res = (await db.run({}, (ctx) =>
+      runAction(ctx, 'test_partner.list', { where: { 'ext.jan': '12345670' } }),
+    )) as { items: Row[]; total: number };
     expect(res.total).toBe(1);
     expect(res.items[0]).toMatchObject({ id: ids.c, ext: { jan: '12345670', rank: 'c' } });
   });
@@ -128,7 +179,9 @@ describe('ext.<key> filters and search (AC-4, AC-5)', () => {
     expect(await listIds({ search: '00000000028' })).toEqual([ids.b2]);
     expect(await listIds({ search: 'Filter C' })).toEqual([ids.c]); // entity search field still works
     expect(await listIds({ search: 'needle-in-memo' })).toEqual([]);
-    const viaAction = (await db.run({}, (ctx) => runAction(ctx, 'test_partner.list', { search: '4900000000011' }))) as { items: Row[] };
+    const viaAction = (await db.run({}, (ctx) => runAction(ctx, 'test_partner.list', { search: '4900000000011' }))) as {
+      items: Row[];
+    };
     expect(viaAction.items.map((r) => r.id)).toEqual([ids.b1]);
   });
 
@@ -141,6 +194,10 @@ describe('ext.<key> filters and search (AC-4, AC-5)', () => {
       ['ext.firstOrder', 'date', false, false, 'pack_retail_test'],
       ['ext.memo', 'text', false, false, 'pack_retail_test'],
     ]);
-    expect(meta.extFields.find((x) => x.name === 'ext.creditLine')).toMatchObject({ label: { ja: '与信枠', en: 'Credit line' }, money: true, scale: 0 });
+    expect(meta.extFields.find((x) => x.name === 'ext.creditLine')).toMatchObject({
+      label: { ja: '与信枠', en: 'Credit line' },
+      money: true,
+      scale: 0,
+    });
   });
 });

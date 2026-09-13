@@ -13,12 +13,21 @@ const MANUAL_DIR = join(ROOT, 'docs', 'manual');
 const OUT = join(MANUAL_DIR, 'daifuku-manual.html');
 const TITLE = 'DaifukuERP 操作マニュアル';
 const IMAGE_WARN_BYTES = 200 * 1024;
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif' };
+const MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.gif': 'image/gif',
+};
 
 /** Chapter files in reading order: 00-…, 01-…, …, then appendix-a-…, appendix-b-…. */
 function chapterFiles() {
-  const names = readdirSync(MANUAL_DIR).filter((n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n === 'edge-service-setup.md');
-  const rank = (n) => n === 'edge-service-setup.md' ? '1appendix-k-edge-service-setup.md' : (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
+  const names = readdirSync(MANUAL_DIR).filter(
+    (n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n === 'edge-service-setup.md',
+  );
+  const rank = (n) =>
+    n === 'edge-service-setup.md' ? '1appendix-k-edge-service-setup.md' : n.startsWith('appendix-') ? `1${n}` : `0${n}`;
   return names.sort((a, b) => rank(a).localeCompare(rank(b)));
 }
 
@@ -49,10 +58,16 @@ json.dump(out, sys.stdout, ensure_ascii=False)
 
 function renderMarkdown(texts) {
   try {
-    const stdout = execFileSync('python3', ['-c', PY], { input: JSON.stringify(texts), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const stdout = execFileSync('python3', ['-c', PY], {
+      input: JSON.stringify(texts),
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
     return JSON.parse(stdout);
   } catch (err) {
-    throw new Error(`python3 markdown rendering failed (needs python3 with the "markdown" package: pip install markdown): ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `python3 markdown rendering failed (needs python3 with the "markdown" package: pip install markdown): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -73,8 +88,15 @@ function inlineImages(html, file, stats) {
     stats.imageBytes += size;
     return `data:${mime};base64,${Buffer.from(readFileSync(path)).toString('base64')}`;
   };
-  const figure = html.replace(/<p>\s*<img alt="([^"]*)" src="(img\/[^"]+)"\s*\/?>\s*<\/p>/g, (_m, alt, src) => `<figure><img alt="${alt}" src="${toDataUri(src)}" loading="lazy"><figcaption>${alt}</figcaption></figure>`);
-  return figure.replace(/<img alt="([^"]*)" src="(img\/[^"]+)"\s*\/?>/g, (_m, alt, src) => `<img alt="${alt}" src="${toDataUri(src)}" loading="lazy">`);
+  const figure = html.replace(
+    /<p>\s*<img alt="([^"]*)" src="(img\/[^"]+)"\s*\/?>\s*<\/p>/g,
+    (_m, alt, src) =>
+      `<figure><img alt="${alt}" src="${toDataUri(src)}" loading="lazy"><figcaption>${alt}</figcaption></figure>`,
+  );
+  return figure.replace(
+    /<img alt="([^"]*)" src="(img\/[^"]+)"\s*\/?>/g,
+    (_m, alt, src) => `<img alt="${alt}" src="${toDataUri(src)}" loading="lazy">`,
+  );
 }
 
 /** Heading ids are unique per chapter only, so prefix them; links to other chapter files become in-page anchors. */
@@ -82,7 +104,9 @@ function rewriteIdsAndLinks(html, key) {
   const prefix = `c${key}-`;
   let out = html.replace(/ id="([^"]+)"/g, (_m, id) => ` id="${prefix}${id}"`);
   out = out.replace(/href="#([^"]+)"/g, (_m, anchor) => `href="#${prefix}${anchor}"`);
-  out = out.replace(/href="((\d\d|appendix-[a-z])-[a-z0-9-]+)\.md(#[^"]*)?"/g, (_m, _file, otherKey, anchor) => (anchor ? `href="#c${otherKey}-${anchor.slice(1)}"` : `href="#ch-${otherKey}"`));
+  out = out.replace(/href="((\d\d|appendix-[a-z])-[a-z0-9-]+)\.md(#[^"]*)?"/g, (_m, _file, otherKey, anchor) =>
+    anchor ? `href="#c${otherKey}-${anchor.slice(1)}"` : `href="#ch-${otherKey}"`,
+  );
   // Tables can be wider than the page on phones: give each its own scroll box.
   return out.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>');
 }
@@ -157,7 +181,9 @@ ${sections.join('\n')}
   writeFileSync(OUT, html);
   const kb = (n) => `${Math.round(n / 1024)} KB`;
   console.log(`wrote ${OUT}`);
-  console.log(`chapters: ${files.length}, images: ${stats.images} (${kb(stats.imageBytes)} source), html: ${kb(Buffer.byteLength(html))}`);
+  console.log(
+    `chapters: ${files.length}, images: ${stats.images} (${kb(stats.imageBytes)} source), html: ${kb(Buffer.byteLength(html))}`,
+  );
   for (const w of stats.warnings) console.warn(`warning: ${w}`);
 }
 

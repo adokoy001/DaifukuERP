@@ -19,12 +19,20 @@ export interface OpenFiscalYearResult {
 /** Plain function for seeds and other modules; overlap with an existing year is refused by the fiscal_year hook. */
 export async function openFiscalYear(ctx: Context, { startDate }: OpenFiscalYearInput): Promise<OpenFiscalYearResult> {
   if (!isFirstOfMonth(startDate)) {
-    throw new ValidationError(`fiscal year must start on the 1st of a month, got ${startDate}`, [{ path: 'startDate', message: 'must be the first day of a month' }], 'Pass e.g. 2026-04-01.');
+    throw new ValidationError(
+      `fiscal year must start on the 1st of a month, got ${startDate}`,
+      [{ path: 'startDate', message: 'must be the first day of a month' }],
+      'Pass e.g. 2026-04-01.',
+    );
   }
-  const fiscalYear = await repo(ctx, FiscalYear).create({ code: fiscalYearCode(startDate), ...fiscalYearRange(startDate) });
+  const fiscalYear = await repo(ctx, FiscalYear).create({
+    code: fiscalYearCode(startDate),
+    ...fiscalYearRange(startDate),
+  });
   const periods: Infer<typeof FiscalPeriod>[] = [];
   const periodRepo = repo(ctx, FiscalPeriod);
-  for (const p of monthlyPeriods(startDate)) periods.push(await periodRepo.create({ fiscalYearId: fiscalYear.id, ...p }));
+  for (const p of monthlyPeriods(startDate))
+    periods.push(await periodRepo.create({ fiscalYearId: fiscalYear.id, ...p }));
   return { fiscalYear, periods };
 }
 

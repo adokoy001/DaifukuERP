@@ -34,7 +34,12 @@ export type TableResult = z.infer<typeof tableResult>;
 /** Row cap from docs/conventions/reports.md; beyond it `meta.truncated = true`. */
 export const MAX_REPORT_ROWS = 10000;
 
-export function column(key: string, label: Label, kind: ColumnKind, extra: { ref?: string; align?: 'left' | 'right' } = {}): TableColumn {
+export function column(
+  key: string,
+  label: Label,
+  kind: ColumnKind,
+  extra: { ref?: string; align?: 'left' | 'right' } = {},
+): TableColumn {
   const align = extra.align ?? (kind === 'decimal' || kind === 'int' ? 'right' : 'left');
   return { key, label, kind, align, ...(extra.ref ? { ref: extra.ref } : {}) };
 }

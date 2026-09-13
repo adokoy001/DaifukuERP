@@ -21,7 +21,12 @@ const applyThing = defineAction({
   handler: async (ctx, { n }) => ({ doubled: n * 2, actor: ctx.actor.id }),
 });
 
-const ctx: Context = makeContext({} as unknown as Db, { tenantId: '00000000-0000-0000-0000-000000000001', companyId: null, actor: { type: 'user', id: 'u-1' }, roles: ['admin'] });
+const ctx: Context = makeContext({} as unknown as Db, {
+  tenantId: '00000000-0000-0000-0000-000000000001',
+  companyId: null,
+  actor: { type: 'user', id: 'u-1' },
+  roles: ['admin'],
+});
 
 describe('internal actions (AC-8)', () => {
   it('AC-8 the flag defaults to false and is kept on the definition', () => {
@@ -46,7 +51,10 @@ describe('internal actions (AC-8)', () => {
   });
 
   it('AC-8 runAction still runs an internal action in-process, with input/output validation', async () => {
-    await expect(runAction(ctx, 'test_internal.apply_thing', { n: 21 })).resolves.toEqual({ doubled: 42, actor: 'u-1' });
+    await expect(runAction(ctx, 'test_internal.apply_thing', { n: 21 })).resolves.toEqual({
+      doubled: 42,
+      actor: 'u-1',
+    });
     await expect(runAction(ctx, 'test_internal.apply_thing', { n: 'x' })).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 });

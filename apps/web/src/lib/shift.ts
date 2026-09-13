@@ -1,16 +1,66 @@
-import type { ShiftAssignment, ShiftAvailabilityDay, ShiftIssueCode, ShiftSlot } from '@daifuku/mod-workforce/scheduling';
+import type {
+  ShiftAssignment,
+  ShiftAvailabilityDay,
+  ShiftIssueCode,
+  ShiftSlot,
+} from '@daifuku/mod-workforce/scheduling';
 import type { Label } from '../api/types.ts';
 import { businessToday, validDate } from './operations.ts';
-export function shiftDate(date: string, days: number): string { const value = new Date(date + 'T00:00:00Z'); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); }
-export function shiftMonday(date = businessToday()): string { const day = validDate(date) ? date : businessToday(); return shiftDate(day, -((new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7)); }
+export function shiftDate(date: string, days: number): string {
+  const value = new Date(date + 'T00:00:00Z');
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+export function shiftMonday(date = businessToday()): string {
+  const day = validDate(date) ? date : businessToday();
+  return shiftDate(day, -((new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7));
+}
 export const shiftWeek = (monday: string): string[] => Array.from({ length: 7 }, (_, i) => shiftDate(monday, i));
-export const minuteTime = (minute: number): string => !Number.isFinite(minute) ? '' : `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-export function timeMinute(value: string): number { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return Number.NaN; const [hours, minutes] = value.split(':').map(Number); return (hours ?? 0) * 60 + (minutes ?? 0); }
-export const shiftHours = (minutes: number): string => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
-export const emptyAvailability = (weekStart: string): ShiftAvailabilityDay[] => shiftWeek(weekStart).map((date) => ({ date, preference: 'unavailable', startMinute: 540, endMinute: 1080 }));
-export const newSlot = (date: string): ShiftSlot => ({ id: crypto.randomUUID(), date, label: '', startMinute: 540, endMinute: 1080, breakMinutes: 60, required: 1, skill: '' });
-export function removeShiftSlot(slots: ShiftSlot[], assignments: ShiftAssignment[], id: string) { return { slots: slots.filter((slot) => slot.id !== id), assignments: assignments.filter((row) => row.slotId !== id) }; }
+export const minuteTime = (minute: number): string =>
+  !Number.isFinite(minute)
+    ? ''
+    : `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+export function timeMinute(value: string): number {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return Number.NaN;
+  const [hours, minutes] = value.split(':').map(Number);
+  return (hours ?? 0) * 60 + (minutes ?? 0);
+}
+export const shiftHours = (minutes: number): string =>
+  `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+export const emptyAvailability = (weekStart: string): ShiftAvailabilityDay[] =>
+  shiftWeek(weekStart).map((date) => ({ date, preference: 'unavailable', startMinute: 540, endMinute: 1080 }));
+export const newSlot = (date: string): ShiftSlot => ({
+  id: crypto.randomUUID(),
+  date,
+  label: '',
+  startMinute: 540,
+  endMinute: 1080,
+  breakMinutes: 60,
+  required: 1,
+  skill: '',
+});
+export function removeShiftSlot(slots: ShiftSlot[], assignments: ShiftAssignment[], id: string) {
+  return { slots: slots.filter((slot) => slot.id !== id), assignments: assignments.filter((row) => row.slotId !== id) };
+}
 export const shiftReasons: Record<ShiftIssueCode, Label> = {
-  work_system: { ja: '確定した勤務制度・所定時間に不一致', en: 'Outside confirmed working-time rules' }, period_limit: { ja: '勤務制度の期間・月の残時間を超過', en: 'Working-period or monthly budget exceeded' },
-  invalid_input: { ja: '勤務枠・入力条件が不正', en: 'Invalid planning input' }, unknown_employee: { ja: '社員が対象外', en: 'Employee is outside the plan' }, unknown_slot: { ja: '勤務枠が対象外', en: 'Unknown shift slot' }, duplicate: { ja: '重複した割当', en: 'Duplicate assignment' }, over_capacity: { ja: '必要人数を超過', en: 'Over capacity' }, inactive: { ja: '在籍期間外', en: 'Outside employment period' }, missing_profile: { ja: '勤務条件が未設定', en: 'Missing work profile' }, missing_availability: { ja: '希望が未提出', en: 'Availability not submitted' }, unavailable: { ja: '希望時間外・勤務不可', en: 'Unavailable or outside requested hours' }, leave: { ja: '有給申請あり（半日も除外）', en: 'Leave requested, including half days' }, skill: { ja: '必要スキルなし', en: 'Required skill missing' }, overlap: { ja: '勤務の重複', en: 'Overlapping shifts' }, daily_limit: { ja: '日の時間上限', en: 'Daily time limit' }, weekly_limit: { ja: '週の時間上限', en: 'Weekly time limit' }, days_limit: { ja: '週の勤務日数上限', en: 'Weekly days limit' }, consecutive_limit: { ja: '連勤上限', en: 'Consecutive days limit' }, rest: { ja: '勤務間隔不足', en: 'Insufficient rest interval' }, break: { ja: '休憩分が不足', en: 'Insufficient break minutes' },
+  work_system: { ja: '確定した勤務制度・所定時間に不一致', en: 'Outside confirmed working-time rules' },
+  period_limit: { ja: '勤務制度の期間・月の残時間を超過', en: 'Working-period or monthly budget exceeded' },
+  invalid_input: { ja: '勤務枠・入力条件が不正', en: 'Invalid planning input' },
+  unknown_employee: { ja: '社員が対象外', en: 'Employee is outside the plan' },
+  unknown_slot: { ja: '勤務枠が対象外', en: 'Unknown shift slot' },
+  duplicate: { ja: '重複した割当', en: 'Duplicate assignment' },
+  over_capacity: { ja: '必要人数を超過', en: 'Over capacity' },
+  inactive: { ja: '在籍期間外', en: 'Outside employment period' },
+  missing_profile: { ja: '勤務条件が未設定', en: 'Missing work profile' },
+  missing_availability: { ja: '希望が未提出', en: 'Availability not submitted' },
+  unavailable: { ja: '希望時間外・勤務不可', en: 'Unavailable or outside requested hours' },
+  leave: { ja: '有給申請あり（半日も除外）', en: 'Leave requested, including half days' },
+  skill: { ja: '必要スキルなし', en: 'Required skill missing' },
+  overlap: { ja: '勤務の重複', en: 'Overlapping shifts' },
+  daily_limit: { ja: '日の時間上限', en: 'Daily time limit' },
+  weekly_limit: { ja: '週の時間上限', en: 'Weekly time limit' },
+  days_limit: { ja: '週の勤務日数上限', en: 'Weekly days limit' },
+  consecutive_limit: { ja: '連勤上限', en: 'Consecutive days limit' },
+  rest: { ja: '勤務間隔不足', en: 'Insufficient rest interval' },
+  break: { ja: '休憩分が不足', en: 'Insufficient break minutes' },
 };

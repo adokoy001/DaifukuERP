@@ -72,13 +72,27 @@ export interface UuidOpts extends CommonOpts {
   default?: 'new';
 }
 
-type KindOpts = TextOpts | IntOpts | DecimalOpts | BoolOpts | DateOpts | TimestampOpts | EnumOpts<string> | RefOpts | JsonOpts | UuidOpts;
+type KindOpts =
+  | TextOpts
+  | IntOpts
+  | DecimalOpts
+  | BoolOpts
+  | DateOpts
+  | TimestampOpts
+  | EnumOpts<string>
+  | RefOpts
+  | JsonOpts
+  | UuidOpts;
 
 /**
  * A field definition. `TValue` is the TS value type, `TRequired` whether NOT NULL,
  * `THasDefault` whether inserts may omit it. The phantom `__value` carries the type only.
  */
-export interface FieldDef<TValue = unknown, TRequired extends boolean = boolean, THasDefault extends boolean = boolean> {
+export interface FieldDef<
+  TValue = unknown,
+  TRequired extends boolean = boolean,
+  THasDefault extends boolean = boolean,
+> {
   readonly kind: FieldKind;
   readonly required: TRequired;
   readonly hasDefault: THasDefault;
@@ -95,7 +109,11 @@ export type FieldMap = Record<string, AnyField>;
 type Req<O> = O extends { required: true } ? true : false;
 type HasDef<O> = O extends { default: unknown } ? true : false;
 
-function make<V, O extends KindOpts>(kind: FieldKind, opts: O | undefined, extra?: { values?: readonly string[]; ref?: string }): FieldDef<V, Req<O>, HasDef<O>> {
+function make<V, O extends KindOpts>(
+  kind: FieldKind,
+  opts: O | undefined,
+  extra?: { values?: readonly string[]; ref?: string },
+): FieldDef<V, Req<O>, HasDef<O>> {
   const o = (opts ?? {}) as O;
   return {
     kind,
@@ -155,21 +173,29 @@ export const f = {
 
 export type ValueOf<D> = D extends FieldDef<infer V, boolean, boolean> ? V : never;
 
-type RequiredKeys<F extends FieldMap> = { [K in keyof F]: F[K] extends FieldDef<unknown, true, boolean> ? K : never }[keyof F];
+type RequiredKeys<F extends FieldMap> = {
+  [K in keyof F]: F[K] extends FieldDef<unknown, true, boolean> ? K : never;
+}[keyof F];
 type OptionalKeys<F extends FieldMap> = Exclude<keyof F, RequiredKeys<F>>;
-type InsertRequiredKeys<F extends FieldMap> = { [K in keyof F]: F[K] extends FieldDef<unknown, true, false> ? K : never }[keyof F];
+type InsertRequiredKeys<F extends FieldMap> = {
+  [K in keyof F]: F[K] extends FieldDef<unknown, true, false> ? K : never;
+}[keyof F];
 
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 /** Row as read from the repository: required fields are non-null, optional fields may be null. */
-export type RowOf<F extends FieldMap> = Simplify<{ [K in RequiredKeys<F>]: ValueOf<F[K]> } & { [K in OptionalKeys<F>]: ValueOf<F[K]> | null }>;
+export type RowOf<F extends FieldMap> = Simplify<
+  { [K in RequiredKeys<F>]: ValueOf<F[K]> } & { [K in OptionalKeys<F>]: ValueOf<F[K]> | null }
+>;
 
 /** Decimal fields also accept decimal strings on input (ADR-0010). */
 export type InputValueOf<D> = ValueOf<D> extends Decimal ? Decimal | string : ValueOf<D>;
 
 /** Input accepted by create: required-without-default fields must be present. */
 export type InsertOf<F extends FieldMap> = Simplify<
-  { [K in InsertRequiredKeys<F>]: InputValueOf<F[K]> } & { [K in Exclude<keyof F, InsertRequiredKeys<F>>]?: InputValueOf<F[K]> | null }
+  { [K in InsertRequiredKeys<F>]: InputValueOf<F[K]> } & {
+    [K in Exclude<keyof F, InsertRequiredKeys<F>>]?: InputValueOf<F[K]> | null;
+  }
 >;
 
 /** Input accepted by update: everything optional. */

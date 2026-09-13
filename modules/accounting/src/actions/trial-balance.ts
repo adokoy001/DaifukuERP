@@ -10,7 +10,11 @@ import { listAll, localDate, resolveReportRange } from './helpers.ts';
 
 /** Σdebit / Σcredit per account over posted lines matching `where`. */
 export async function movementsByAccount(ctx: Context, where: Domain): Promise<Map<string, Movement>> {
-  const rows = await repo(ctx, JournalLine).aggregate({ where: { posted: true, ...where }, groupBy: ['accountId'], metrics: { debit: { sum: 'debit' }, credit: { sum: 'credit' } } });
+  const rows = await repo(ctx, JournalLine).aggregate({
+    where: { posted: true, ...where },
+    groupBy: ['accountId'],
+    metrics: { debit: { sum: 'debit' }, credit: { sum: 'credit' } },
+  });
   const out = new Map<string, Movement>();
   for (const r of rows) out.set(String(r.accountId), { debit: r.debit as Decimal, credit: r.credit as Decimal });
   return out;
@@ -44,7 +48,9 @@ export const trialBalanceAction = defineAction({
     const { from, to } = await resolveReportRange(ctx, input.from, input.to);
     const accounts = await listAll(ctx, Account, { orderBy: [{ field: 'code', dir: 'asc' }] }, MAX_REPORT_ROWS);
     const opening = await movementsByAccount(ctx, { entryDate: { $lt: from } });
-    const period = await movementsByAccount(ctx, { $and: [{ entryDate: { $gte: from } }, { entryDate: { $lte: to } }] });
+    const period = await movementsByAccount(ctx, {
+      $and: [{ entryDate: { $gte: from } }, { entryDate: { $lte: to } }],
+    });
     const { rows, totals } = trialBalanceRows(accounts.items, opening, period);
     return {
       title: label(`試算表 ${from}〜${to}`, `Trial balance ${from}..${to}`),

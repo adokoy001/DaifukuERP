@@ -34,32 +34,44 @@ function validateConfig(cfg: EntityConfig): void {
   for (const [key, fd] of Object.entries(cfg.fields)) {
     if (reserved.has(key)) throw new Error(`entity ${cfg.name}: "${key}" is a reserved system field name`);
     if (!/^[a-z][A-Za-z0-9]*$/.test(key)) throw new Error(`entity ${cfg.name}: field "${key}" must be camelCase`);
-    if ((fd.opts as { searchable?: boolean }).searchable) throw new Error(`entity ${cfg.name}: field "${key}" uses searchable, which is for ext fields only; list entity fields in views.search`);
+    if ((fd.opts as { searchable?: boolean }).searchable)
+      throw new Error(
+        `entity ${cfg.name}: field "${key}" uses searchable, which is for ext fields only; list entity fields in views.search`,
+      );
   }
   for (const [role, ops] of Object.entries(cfg.permissions.roles)) {
     if (!/^[a-z][a-z0-9_]*$/.test(role)) throw new Error(`entity ${cfg.name}: role "${role}" must be snake_case`);
     if (ops.length === 0) throw new Error(`entity ${cfg.name}: role "${role}" grants no operations; remove it`);
   }
   for (const g of Object.values(cfg.permissions.fieldGroups ?? {})) {
-    for (const fname of g.fields) if (!(fname in cfg.fields)) throw new Error(`entity ${cfg.name}: fieldGroup references unknown field "${fname}"`);
+    for (const fname of g.fields)
+      if (!(fname in cfg.fields)) throw new Error(`entity ${cfg.name}: fieldGroup references unknown field "${fname}"`);
   }
-  for (const access of [cfg.storeAccess, cfg.siteAccess]) if (access && access.kind !== 'sharedRead') {
-    if (cfg.scope === 'tenant') throw new Error(`entity ${cfg.name}: store scope requires a company entity`);
-    if (access.kind === 'store' && access.field === 'id') continue;
-    const field = cfg.fields[access.field];
-    if (field?.kind !== 'ref' || !field.required) throw new Error(`entity ${cfg.name}: store scope requires a required reference field`);
-    if (access.kind === 'parent' && field.ref !== access.entity) throw new Error(`entity ${cfg.name}: store parent must match the reference target`);
-  }
+  for (const access of [cfg.storeAccess, cfg.siteAccess])
+    if (access && access.kind !== 'sharedRead') {
+      if (cfg.scope === 'tenant') throw new Error(`entity ${cfg.name}: store scope requires a company entity`);
+      if (access.kind === 'store' && access.field === 'id') continue;
+      const field = cfg.fields[access.field];
+      if (field?.kind !== 'ref' || !field.required)
+        throw new Error(`entity ${cfg.name}: store scope requires a required reference field`);
+      if (access.kind === 'parent' && field.ref !== access.entity)
+        throw new Error(`entity ${cfg.name}: store parent must match the reference target`);
+    }
 }
 
-function build<F extends FieldMap, K extends 'entity' | 'document'>(kind: K, cfg: EntityConfig<F>, doc: DocumentConfig<F> | undefined): EntityDef<F, K> {
+function build<F extends FieldMap, K extends 'entity' | 'document'>(
+  kind: K,
+  cfg: EntityConfig<F>,
+  doc: DocumentConfig<F> | undefined,
+): EntityDef<F, K> {
   validateConfig(cfg as EntityConfig);
   const hasExt = cfg.ext !== false;
   const built = buildTable(cfg as EntityConfig, kind, resolveRef);
   const maskable = new Set(Object.values(cfg.permissions.fieldGroups ?? {}).flatMap((g) => [...g.fields]));
   const schemas = buildSchemas(cfg.fields, { ext: hasExt, document: kind === 'document', maskable });
   const fieldNames = Object.keys(cfg.fields);
-  const displayField = cfg.displayField ?? (fieldNames.includes('name') ? 'name' : fieldNames.includes('code') ? 'code' : undefined);
+  const displayField =
+    cfg.displayField ?? (fieldNames.includes('name') ? 'name' : fieldNames.includes('code') ? 'code' : undefined);
   const def: EntityDef<F, K> = {
     kind,
     name: cfg.name,
@@ -94,7 +106,10 @@ export function defineEntity<const F extends FieldMap>(cfg: EntityConfig<F>): En
 export function defineDocument<const F extends FieldMap>(cfg: DocumentConfig<F>): EntityDef<F, 'document'> {
   if (!cfg.naming) throw new Error(`document ${cfg.name}: naming is required`);
   for (const [name, t] of Object.entries(cfg.transitions ?? {})) {
-    if (!((t.from === 0 && t.to === 1) || (t.from === 1 && t.to === 2))) throw new Error(`document ${cfg.name}: transition ${name} must move draft→submitted or submitted→cancelled; use amend to create a draft`);
+    if (!((t.from === 0 && t.to === 1) || (t.from === 1 && t.to === 2)))
+      throw new Error(
+        `document ${cfg.name}: transition ${name} must move draft→submitted or submitted→cancelled; use amend to create a draft`,
+      );
   }
   return build<F, 'document'>('document', cfg, cfg);
 }

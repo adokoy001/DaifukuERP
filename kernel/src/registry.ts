@@ -82,11 +82,15 @@ class Registry {
   private extStamp = 0;
   private packDefs = new Map<string, PackDef>();
   /** entity -> merged label overrides, plus which pack set each label (for conflict hints). */
-  private labels = new Map<string, { override: { entity?: Label; fields: Record<string, Label> }; sources: Map<string, string> }>();
+  private labels = new Map<
+    string,
+    { override: { entity?: Label; fields: Record<string, Label> }; sources: Map<string, string> }
+  >();
   private warningList: RegistryWarning[] = [];
 
   registerEntity(def: EntityDef): void {
-    if (this.entities.has(def.name)) throw new Error(`entity "${def.name}" is already registered (names are global; pick a unique snake_case name)`);
+    if (this.entities.has(def.name))
+      throw new Error(`entity "${def.name}" is already registered (names are global; pick a unique snake_case name)`);
     this.entities.set(def.name, def);
   }
   entity(name: string): EntityDef {
@@ -155,7 +159,10 @@ class Registry {
   registerModule(def: ModuleDef): void {
     if (this.modules.has(def.name)) throw new Error(`module "${def.name}" is already registered`);
     for (const dep of def.depends) {
-      if (!this.modules.has(dep)) throw new Error(`module "${def.name}" depends on "${dep}" which is not registered yet. Import dependencies first (see docs/conventions/layers.md).`);
+      if (!this.modules.has(dep))
+        throw new Error(
+          `module "${def.name}" depends on "${dep}" which is not registered yet. Import dependencies first (see docs/conventions/layers.md).`,
+        );
     }
     this.modules.set(def.name, def);
   }
@@ -183,7 +190,11 @@ class Registry {
    */
   registerPack(def: PackDef): void {
     if (this.packDefs.has(def.name) || this.modules.has(def.name)) {
-      throw new Conflict(`pack "${def.name}": the name is already registered as a ${this.modules.has(def.name) ? 'module' : 'pack'}`, 'Pack and module names share one namespace (action prefixes). Rename the pack.', { pack: def.name });
+      throw new Conflict(
+        `pack "${def.name}": the name is already registered as a ${this.modules.has(def.name) ? 'module' : 'pack'}`,
+        'Pack and module names share one namespace (action prefixes). Rename the pack.',
+        { pack: def.name },
+      );
     }
     const missing = this.missingDependencies(def.depends);
     if (missing.length > 0) {
@@ -195,7 +206,10 @@ class Registry {
     // Label overrides are global and cosmetic (ADR-0015): when two loaded packs relabel the same entity/field the
     // later pack wins and the overlap is recorded as a warning (apps log registry.warnings() at startup).
     for (const t of this.labelConflicts(def)) {
-      this.warningList.push({ kind: 'label_override', message: `pack "${def.name}" relabels ${t.path}, replacing the label set by "${t.source}"` });
+      this.warningList.push({
+        kind: 'label_override',
+        message: `pack "${def.name}" relabels ${t.path}, replacing the label set by "${t.source}"`,
+      });
     }
     this.packDefs.set(def.name, def);
     for (const [entity, o] of Object.entries(def.labels ?? {})) this.mergeLabels(entity, o, def.name);
@@ -256,7 +270,13 @@ class Registry {
     const key = `${entity}:${phase}`;
     const list = this.hooks.get(key) ?? [];
     const source = this.registrationSource;
-    list.push(source ? async (ctx, args) => { if (packIsActive(ctx, source)) await fn(ctx, args); } : fn);
+    list.push(
+      source
+        ? async (ctx, args) => {
+            if (packIsActive(ctx, source)) await fn(ctx, args);
+          }
+        : fn,
+    );
     this.hooks.set(key, list);
   }
   hooksFor(entity: string, phase: HookPhase): readonly HookFn[] {
@@ -267,7 +287,11 @@ class Registry {
   withRegistrationSource(source: string, register: () => void): void {
     const previous = this.registrationSource;
     this.registrationSource = source;
-    try { register(); } finally { this.registrationSource = previous; }
+    try {
+      register();
+    } finally {
+      this.registrationSource = previous;
+    }
   }
 
   /** Overrides are named replacement points a core module explicitly exposes (ADR-0008). */
@@ -280,7 +304,7 @@ class Registry {
 
   registerGuard(name: string, fn: GuardFn): void {
     const source = this.registrationSource;
-    this.guards.set(name, source ? (ctx, row) => packIsActive(ctx, source) ? fn(ctx, row) : true : fn);
+    this.guards.set(name, source ? (ctx, row) => (packIsActive(ctx, source) ? fn(ctx, row) : true) : fn);
   }
   guard(name: string): GuardFn {
     const g = this.guards.get(name);
@@ -291,7 +315,13 @@ class Registry {
   subscribe(topic: string, handler: EventHandler): void {
     const list = this.subscriptions.get(topic) ?? [];
     const source = this.registrationSource;
-    list.push(source ? async (ctx, payload, meta) => { if (packIsActive(ctx, source)) await handler(ctx, payload, meta); } : handler);
+    list.push(
+      source
+        ? async (ctx, payload, meta) => {
+            if (packIsActive(ctx, source)) await handler(ctx, payload, meta);
+          }
+        : handler,
+    );
     this.subscriptions.set(topic, list);
   }
   subscribersFor(topic: string): readonly EventHandler[] {
@@ -300,7 +330,8 @@ class Registry {
 
   /** Declares a company setting so apps can list/edit it generically (GET/PUT /meta/settings). */
   registerSetting<T>(def: SettingDef<T>): void {
-    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.key)) throw new Error(`setting key "${def.key}" must look like "<module>.<name>" in snake_case`);
+    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.key))
+      throw new Error(`setting key "${def.key}" must look like "<module>.<name>" in snake_case`);
     if (this.settings.has(def.key)) throw new Error(`setting "${def.key}" is already registered`);
     this.settings.set(def.key, def as SettingDef);
   }
@@ -309,7 +340,10 @@ class Registry {
   }
   setting(key: string): SettingDef {
     const s = this.settings.get(key);
-    if (!s) throw new Error(`setting "${key}" is not registered. Declare it with registry.registerSetting in the owning module.`);
+    if (!s)
+      throw new Error(
+        `setting "${key}" is not registered. Declare it with registry.registerSetting in the owning module.`,
+      );
     return s;
   }
   allSettings(): SettingDef[] {

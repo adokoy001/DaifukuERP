@@ -73,7 +73,11 @@ export function formatRate(rate: Decimal): string {
 /** Where one aggregated line group goes, or null when it is not part of the summary. */
 export function classifyGroup(group: TaxLineGroup, account: TaxAccountInfo | undefined): Classified | null {
   account = group.accountAtPosting;
-  if (!account) throw new StateError('Historical account classification is unavailable', 'Recover the original account type and tax role from accounting records before running this report.');
+  if (!account)
+    throw new StateError(
+      'Historical account classification is unavailable',
+      'Recover the original account type and tax role from accounting records before running this report.',
+    );
   const creditNet = group.credit.minus(group.debit);
   if (account.taxRole !== 'none') {
     const classified = group.taxCategory !== null && group.taxRate !== null;
@@ -87,8 +91,16 @@ export function classifyGroup(group: TaxLineGroup, account: TaxAccountInfo | und
     };
   }
   if (group.taxCategory === null) return null;
-  if (account.type === 'revenue') return { side: TAX_SIDES.sales, category: group.taxCategory, rate: group.taxRate, kind: 'base', amount: creditNet };
-  if (account.type === 'expense' || account.type === 'asset') return { side: TAX_SIDES.purchase, category: group.taxCategory, rate: group.taxRate, kind: 'base', amount: creditNet.neg() };
+  if (account.type === 'revenue')
+    return { side: TAX_SIDES.sales, category: group.taxCategory, rate: group.taxRate, kind: 'base', amount: creditNet };
+  if (account.type === 'expense' || account.type === 'asset')
+    return {
+      side: TAX_SIDES.purchase,
+      category: group.taxCategory,
+      rate: group.taxRate,
+      kind: 'base',
+      amount: creditNet.neg(),
+    };
   return null;
 }
 
@@ -121,7 +133,10 @@ function categoryLabel(category: string): string {
 }
 
 /** Rows per (side, taxCategory, taxRate) and the output / input / net totals. */
-export function taxSummaryRows(groups: readonly TaxLineGroup[], accounts: ReadonlyMap<string, TaxAccountInfo>): { rows: TaxSummaryRow[]; totals: TaxSummaryTotals } {
+export function taxSummaryRows(
+  groups: readonly TaxLineGroup[],
+  accounts: ReadonlyMap<string, TaxAccountInfo>,
+): { rows: TaxSummaryRow[]; totals: TaxSummaryTotals } {
   const buckets = new Map<string, Bucket>();
   let output = Decimal.zero();
   let input = Decimal.zero();
@@ -129,7 +144,14 @@ export function taxSummaryRows(groups: readonly TaxLineGroup[], accounts: Readon
     const c = classifyGroup(g, accounts.get(g.accountId));
     if (!c) continue;
     const key = bucketKey(c);
-    const b = buckets.get(key) ?? { side: c.side, category: c.category, rate: c.rate, taxable: Decimal.zero(), tax: Decimal.zero(), count: 0 };
+    const b = buckets.get(key) ?? {
+      side: c.side,
+      category: c.category,
+      rate: c.rate,
+      taxable: Decimal.zero(),
+      tax: Decimal.zero(),
+      count: 0,
+    };
     if (c.kind === 'base') b.taxable = b.taxable.plus(c.amount);
     else b.tax = b.tax.plus(c.amount);
     b.count += g.lines;
@@ -137,16 +159,21 @@ export function taxSummaryRows(groups: readonly TaxLineGroup[], accounts: Readon
     if (c.kind === 'tax' && c.side === TAX_SIDES.sales) output = output.plus(c.amount);
     if (c.kind === 'tax' && c.side === TAX_SIDES.purchase) input = input.plus(c.amount);
   }
-  const rows = [...buckets.values()].sort(compareBuckets).map(
-    (b): TaxSummaryRow => ({
-      side: b.side,
-      taxCategory: b.category,
-      taxCategoryLabel: categoryLabel(b.category),
-      taxRate: b.rate === null ? '' : formatRate(b.rate),
-      taxableAmount: b.taxable.toString(),
-      taxAmount: b.tax.toString(),
-      count: b.count,
-    }),
-  );
-  return { rows, totals: { output_tax_total: output.toString(), input_tax_total: input.toString(), net_tax_due: output.minus(input).toString() } };
+  const rows = [...buckets.values()].sort(compareBuckets).map((b): TaxSummaryRow => ({
+    side: b.side,
+    taxCategory: b.category,
+    taxCategoryLabel: categoryLabel(b.category),
+    taxRate: b.rate === null ? '' : formatRate(b.rate),
+    taxableAmount: b.taxable.toString(),
+    taxAmount: b.tax.toString(),
+    count: b.count,
+  }));
+  return {
+    rows,
+    totals: {
+      output_tax_total: output.toString(),
+      input_tax_total: input.toString(),
+      net_tax_due: output.minus(input).toString(),
+    },
+  };
 }

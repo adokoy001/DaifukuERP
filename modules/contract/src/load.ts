@@ -1,7 +1,16 @@
 // Reads shared by contract.generate_invoices and contract.schedule: the contracts in scope for a period, their lines,
 // partner names, invoice snapshots and the company's currency scale — all through the repository port, in the
 // caller's context (a role that cannot read an entity gets PERMISSION_DENIED, nothing is bypassed).
-import { currencyScale, DOCSTATUS, getCompany, repo, type Context, type Decimal, type Domain, type Infer } from '@daifuku/kernel';
+import {
+  currencyScale,
+  DOCSTATUS,
+  getCompany,
+  repo,
+  type Context,
+  type Decimal,
+  type Domain,
+  type Infer,
+} from '@daifuku/kernel';
 import { Partner } from '@daifuku/mod-partner';
 import { SalesInvoice } from '@daifuku/mod-sales';
 import { ContractLine } from './entities/contract-line.ts';
@@ -36,19 +45,35 @@ export function termsOf(c: ContractRow): ContractTerms {
 export async function loadCandidates(ctx: Context, period: Period, contractId?: string): Promise<ContractRow[]> {
   const r = repo(ctx, Contract);
   if (contractId !== undefined) return [await r.get(contractId)];
-  const where: Domain = { docstatus: DOCSTATUS.submitted, $or: [{ status: 'active' }, { status: 'ended', endDate: { $gte: periodStart(period) } }] };
+  const where: Domain = {
+    docstatus: DOCSTATUS.submitted,
+    $or: [{ status: 'active' }, { status: 'ended', endDate: { $gte: periodStart(period) } }],
+  };
   return allPages((offset) => r.list({ where, orderBy: [{ field: 'number', dir: 'asc' }], limit: PAGE, offset }));
 }
 
 export function termLineOf(l: ContractLineRow): TermLine {
-  return { ext: l.ext, seq: l.seq, productId: l.productId, description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, taxCategory: l.taxCategory };
+  return {
+    ext: l.ext,
+    seq: l.seq,
+    productId: l.productId,
+    description: l.description,
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    taxCategory: l.taxCategory,
+  };
 }
 
 /** Lines of each contract in seq order. */
 export async function linesByContract(ctx: Context, contractIds: readonly string[]): Promise<Map<string, TermLine[]>> {
   const r = repo(ctx, ContractLine);
-  const orderBy = [{ field: 'contractId', dir: 'asc' as const }, { field: 'seq', dir: 'asc' as const }];
-  const rows = await inChunks(contractIds, (chunk) => allPages((offset) => r.list({ where: { contractId: { $in: chunk } }, orderBy, limit: PAGE, offset })));
+  const orderBy = [
+    { field: 'contractId', dir: 'asc' as const },
+    { field: 'seq', dir: 'asc' as const },
+  ];
+  const rows = await inChunks(contractIds, (chunk) =>
+    allPages((offset) => r.list({ where: { contractId: { $in: chunk } }, orderBy, limit: PAGE, offset })),
+  );
   const out = new Map<string, TermLine[]>();
   for (const l of rows) {
     const list = out.get(l.contractId);
@@ -60,7 +85,10 @@ export async function linesByContract(ctx: Context, contractIds: readonly string
 
 export async function partnerNames(ctx: Context, ids: readonly string[]): Promise<Map<string, string>> {
   const r = repo(ctx, Partner);
-  const rows = await inChunks(ids, async (chunk) => (await r.list({ where: { id: { $in: chunk } }, limit: chunk.length })).items);
+  const rows = await inChunks(
+    ids,
+    async (chunk) => (await r.list({ where: { id: { $in: chunk } }, limit: chunk.length })).items,
+  );
   return new Map(rows.map((p) => [p.id, p.name]));
 }
 
@@ -73,7 +101,10 @@ export interface InvoiceSnapshot {
 
 export async function invoicesById(ctx: Context, ids: readonly string[]): Promise<Map<string, InvoiceSnapshot>> {
   const r = repo(ctx, SalesInvoice);
-  const rows = await inChunks(ids, async (chunk) => (await r.list({ where: { id: { $in: chunk } }, limit: chunk.length })).items);
+  const rows = await inChunks(
+    ids,
+    async (chunk) => (await r.list({ where: { id: { $in: chunk } }, limit: chunk.length })).items,
+  );
   return new Map(rows.map((i) => [i.id, { id: i.id, number: i.number, docstatus: i.docstatus, total: i.total }]));
 }
 

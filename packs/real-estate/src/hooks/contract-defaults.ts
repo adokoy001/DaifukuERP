@@ -22,7 +22,11 @@ async function beforeValidateContract(ctx: Context, { row }: HookArgs): Promise<
   if (unitId === null || !isUuid(unitId)) return; // not a lease, or zod reports the malformed uuid
   const unit = await repo(ctx, RealEstateUnit).find(unitId);
   if (!unit) {
-    throw new ValidationError(`real_estate_unit ${unitId} does not exist`, [{ path: 'ext.unitId', message: 'unit not found' }], 'Pick a unit from real_estate_unit.list (物件 → 部屋・区画).');
+    throw new ValidationError(
+      `real_estate_unit ${unitId} does not exist`,
+      [{ path: 'ext.unitId', message: 'unit not found' }],
+      'Pick a unit from real_estate_unit.list (物件 → 部屋・区画).',
+    );
   }
   const filled: Record<string, unknown> = { ...(ext as Record<string, unknown>) };
   for (const key of LEASE_MONEY_KEYS) if (filled[key] === undefined || filled[key] === null) filled[key] = '0';

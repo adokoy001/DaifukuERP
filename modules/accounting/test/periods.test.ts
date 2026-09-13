@@ -1,12 +1,29 @@
 // Fiscal year / period arithmetic (spec AC-2) — examples + properties, no DB.
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { daysInMonth, fiscalYearCode, fiscalYearRange, isFirstOfMonth, isValidRange, monthlyPeriods, rangeContains, rangesOverlap } from '../src/services/periods.ts';
+import {
+  daysInMonth,
+  fiscalYearCode,
+  fiscalYearRange,
+  isFirstOfMonth,
+  isValidRange,
+  monthlyPeriods,
+  rangeContains,
+  rangesOverlap,
+} from '../src/services/periods.ts';
 
 const pad = (n: number, w: number) => String(n).padStart(w, '0');
 const ymd = (y: number, m: number, d: number) => `${pad(y, 4)}-${pad(m, 2)}-${pad(d, 2)}`;
-const arbStart = fc.record({ y: fc.integer({ min: 2000, max: 2098 }), m: fc.integer({ min: 1, max: 12 }) }).map(({ y, m }) => ymd(y, m, 1));
-const arbDate = fc.record({ y: fc.integer({ min: 2000, max: 2099 }), m: fc.integer({ min: 1, max: 12 }), d: fc.integer({ min: 1, max: 31 }) }).map(({ y, m, d }) => ymd(y, m, Math.min(d, daysInMonth(y, m))));
+const arbStart = fc
+  .record({ y: fc.integer({ min: 2000, max: 2098 }), m: fc.integer({ min: 1, max: 12 }) })
+  .map(({ y, m }) => ymd(y, m, 1));
+const arbDate = fc
+  .record({
+    y: fc.integer({ min: 2000, max: 2099 }),
+    m: fc.integer({ min: 1, max: 12 }),
+    d: fc.integer({ min: 1, max: 31 }),
+  })
+  .map(({ y, m, d }) => ymd(y, m, Math.min(d, daysInMonth(y, m))));
 
 describe('fiscal year / monthly periods — examples', () => {
   it('a January year ends on Dec 31 and yields 12 calendar-month periods coded YYYY-MM', () => {
@@ -63,7 +80,8 @@ describe('fiscal year / monthly periods — properties', () => {
           expect(isValidRange(p)).toBe(true);
           expect(p.code).toBe(p.startDate.slice(0, 7));
           expect(p.endDate.slice(0, 7)).toBe(p.code);
-          for (let j = i + 1; j < 12; j++) expect(rangesOverlap(p, periods[j] as { startDate: string; endDate: string })).toBe(false);
+          for (let j = i + 1; j < 12; j++)
+            expect(rangesOverlap(p, periods[j] as { startDate: string; endDate: string })).toBe(false);
         }
         expect(new Set(periods.map((p) => p.code)).size).toBe(12);
       }),

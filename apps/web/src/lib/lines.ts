@@ -26,7 +26,10 @@ const KERNEL_DEFAULT_LIST_LENGTH = 6;
 export function gridColumns(line: EntityMeta, parentField: string): FieldMeta[] {
   const excluded = new Set([parentField, 'seq']);
   const nonHidden = line.fields.filter((f) => !f.hidden && f.kind !== 'timestamp');
-  const kernelDefault = line.fields.filter((f) => !f.hidden).slice(0, KERNEL_DEFAULT_LIST_LENGTH).map((f) => f.name);
+  const kernelDefault = line.fields
+    .filter((f) => !f.hidden)
+    .slice(0, KERNEL_DEFAULT_LIST_LENGTH)
+    .map((f) => f.name);
   const declared = line.views.list.length > 0 && line.views.list.join(',') !== kernelDefault.join(',');
   const listed = declared ? line.views.list.flatMap((n) => nonHidden.filter((f) => f.name === n)) : nonHidden;
   const seen = new Set(listed.map((f) => f.name));
@@ -49,7 +52,10 @@ export function rowsFromRecord(columns: readonly FieldMeta[], rows: readonly Rec
 }
 
 /** All line sets of a record keyed by line entity. Line entities the caller may not read (absent from /meta) are skipped. */
-export function linesFromRecord(specs: readonly { line: EntityMeta; columns: FieldMeta[] }[], record: RecordJson | undefined): Record<string, GridRow[]> {
+export function linesFromRecord(
+  specs: readonly { line: EntityMeta; columns: FieldMeta[] }[],
+  record: RecordJson | undefined,
+): Record<string, GridRow[]> {
   const out: Record<string, GridRow[]> = {};
   for (const s of specs) out[s.line.name] = rowsFromRecord(s.columns, record?.lines?.[s.line.name]);
   return out;
@@ -65,13 +71,23 @@ export interface RowsPayload {
  * Required cells never become null (the kernel's schemas reject that): with a default the cell is left out (default /
  * previous value), without one the row gets a `requiredMessage` error.
  */
-export function rowsToPayload(rows: readonly GridRow[], columns: readonly FieldMeta[], requiredMessage = 'required'): RowsPayload {
+export function rowsToPayload(
+  rows: readonly GridRow[],
+  columns: readonly FieldMeta[],
+  requiredMessage = 'required',
+): RowsPayload {
   const out: RowsPayload = { rows: [], errors: {} };
   for (const row of rows) {
     const mode = row.id ? 'update' : 'create';
     const { payload, errors } = toPayload(row.values, columns, mode);
     for (const c of columns) {
-      if (c.serverOwned || c.readOnly || !c.required || !(mode === 'create' ? payload[c.name] === undefined : payload[c.name] === null)) continue;
+      if (
+        c.serverOwned ||
+        c.readOnly ||
+        !c.required ||
+        !(mode === 'create' ? payload[c.name] === undefined : payload[c.name] === null)
+      )
+        continue;
       delete payload[c.name];
       if (!c.hasDefault) errors[c.name] = requiredMessage;
     }
@@ -82,7 +98,11 @@ export function rowsToPayload(rows: readonly GridRow[], columns: readonly FieldM
 }
 
 /** Whether the grid differs from the server rows (order, membership or any cell). Both sides go through the same payload mapping. */
-export function linesChanged(rows: readonly GridRow[], original: readonly GridRow[], columns: readonly FieldMeta[]): boolean {
+export function linesChanged(
+  rows: readonly GridRow[],
+  original: readonly GridRow[],
+  columns: readonly FieldMeta[],
+): boolean {
   return JSON.stringify(rowsToPayload(rows, columns).rows) !== JSON.stringify(rowsToPayload(original, columns).rows);
 }
 
@@ -99,7 +119,9 @@ export function columnSums(rows: readonly GridRow[], columns: readonly FieldMeta
   const out: Record<string, string> = {};
   for (const c of columns) {
     if (c.kind !== 'decimal' && c.kind !== 'int') continue;
-    out[c.name] = sumDecimalStrings(rows.map((r) => (typeof r.values[c.name] === 'string' ? (r.values[c.name] as string) : '')));
+    out[c.name] = sumDecimalStrings(
+      rows.map((r) => (typeof r.values[c.name] === 'string' ? (r.values[c.name] as string) : '')),
+    );
   }
   return out;
 }
@@ -134,7 +156,10 @@ export function splitLineIssues(issues: readonly ValidationIssue[]): SplitIssues
 }
 
 /** Row-index errors -> row-key errors for the rows as they were sent. */
-export function rowErrorsByKey(rows: readonly GridRow[], byIndex: Record<number, Record<string, string>> | undefined): GridErrors {
+export function rowErrorsByKey(
+  rows: readonly GridRow[],
+  byIndex: Record<number, Record<string, string>> | undefined,
+): GridErrors {
   const out: GridErrors = {};
   if (!byIndex) return out;
   for (const [i, errs] of Object.entries(byIndex)) {
@@ -151,7 +176,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * an enum `<x>Entity` naming a readable entity (payment_allocation.invoiceId + invoiceEntity). The grid shows a link with
  * the target's number/display value under the raw id. Undefined unless both cells hold a usable value.
  */
-export function polymorphicTarget(field: FieldMeta, values: FormValues, siblings: readonly FieldMeta[], entities: readonly EntityMeta[]): { entity: EntityMeta; id: string } | undefined {
+export function polymorphicTarget(
+  field: FieldMeta,
+  values: FormValues,
+  siblings: readonly FieldMeta[],
+  entities: readonly EntityMeta[],
+): { entity: EntityMeta; id: string } | undefined {
   if ((field.kind !== 'uuid' && field.kind !== 'text') || !field.name.endsWith('Id')) return undefined;
   const entityField = `${field.name.slice(0, -2)}Entity`;
   if (!siblings.some((f) => f.name === entityField && f.kind === 'enum')) return undefined;

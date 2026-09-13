@@ -1,4 +1,12 @@
-import { registerCrudActions, registerPackActions, runAction, systemParams, withContext, type Context, type ContextParams } from '@daifuku/kernel';
+import {
+  registerCrudActions,
+  registerPackActions,
+  runAction,
+  systemParams,
+  withContext,
+  type Context,
+  type ContextParams,
+} from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { JapanModule } from '@daifuku/l10n-jp';
 import { AccountingModule } from '@daifuku/mod-accounting';
@@ -23,22 +31,40 @@ export interface Scenario {
   submit(entity: string, input: Row): Promise<Doc>;
 }
 export async function setup(sample = true): Promise<Scenario> {
-  registerCrudActions(); registerPackActions();
+  registerCrudActions();
+  registerPackActions();
   const db = await freshDb();
   const run: Scenario['run'] = (fn, params = {}) => db.run({ now: () => NOW, ...params }, fn);
   const act: Scenario['act'] = (name, input, params) => run((ctx) => runAction(ctx, name, input), params) as never;
-  for (const module of [PartnerModule, ProductModule, TaxModule, AccountingModule, SalesModule, PurchaseModule, PaymentModule, InventoryModule, JapanModule]) {
-    await withContext(db.owner, systemParams(db.tenantId, db.companyId, { now: () => NOW }), async (ctx) => module.seed?.(ctx));
+  for (const module of [
+    PartnerModule,
+    ProductModule,
+    TaxModule,
+    AccountingModule,
+    SalesModule,
+    PurchaseModule,
+    PaymentModule,
+    InventoryModule,
+    JapanModule,
+  ]) {
+    await withContext(db.owner, systemParams(db.tenantId, db.companyId, { now: () => NOW }), async (ctx) =>
+      module.seed?.(ctx),
+    );
   }
   await act('pack.apply', { name: FarmPack.name, sample });
   return {
-    db, run, act,
+    db,
+    run,
+    act,
     id: async (entity, field, value) => {
       const row = (await act<List>(`${entity}.list`, { where: { [field]: value }, limit: 1 })).items[0];
       if (!row) throw new Error(`Missing fixture ${entity}.${field}=${value}`);
       return row.id;
     },
-    submit: async (entity, input) => { const draft = await act(`${entity}.create`, input); return act(`${entity}.submit`, { id: draft.id }); },
+    submit: async (entity, input) => {
+      const draft = await act(`${entity}.create`, input);
+      return act(`${entity}.submit`, { id: draft.id });
+    },
   };
 }
 export async function sampleIds(s: Scenario) {

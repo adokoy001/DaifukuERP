@@ -8,7 +8,9 @@ function toDecimal(value: DecimalInput, path: string): Decimal {
   try {
     return Decimal.from(value);
   } catch (e) {
-    throw new ValidationError(`${path}: not a decimal`, [{ path, message: e instanceof Error ? e.message : String(e) }]);
+    throw new ValidationError(`${path}: not a decimal`, [
+      { path, message: e instanceof Error ? e.message : String(e) },
+    ]);
   }
 }
 

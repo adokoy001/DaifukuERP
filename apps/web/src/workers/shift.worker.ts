@@ -7,6 +7,9 @@ const scope = globalThis as unknown as {
   postMessage(value: ShiftWorkerReply): void;
 };
 scope.onmessage = ({ data }) => {
-  try { scope.postMessage({ kind: 'result', result: recommendShift(data.problem, data.options) }); }
-  catch { scope.postMessage({ kind: 'error' }); }
+  try {
+    scope.postMessage({ kind: 'result', result: recommendShift(data.problem, data.options) });
+  } catch {
+    scope.postMessage({ kind: 'error' });
+  }
 };

@@ -26,7 +26,10 @@ export function useDocstatusCounts(entities: readonly EntityMeta[]): (entity: st
   const cells = new Map<string, CountCell>();
   specs.forEach((s, i) => {
     const r = results[i];
-    cells.set(`${s.entity}:${s.ds}`, r?.data ? { total: r.data.total, error: false } : { total: undefined, error: r?.isError === true });
+    cells.set(
+      `${s.entity}:${s.ds}`,
+      r?.data ? { total: r.data.total, error: false } : { total: undefined, error: r?.isError === true },
+    );
   });
   return (entity, ds) => cells.get(`${entity}:${ds}`) ?? PENDING;
 }

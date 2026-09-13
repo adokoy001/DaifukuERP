@@ -5,6 +5,14 @@ import { JP_ORDINARY_RULES } from './services/policy-data.ts';
 export async function seedWorkforce(ctx: Context): Promise<void> {
   await withLock(ctx, 'workforce:policy-seed', async () => {
     if (await repo(ctx, WorkforcePayPolicy).count()) return;
-    await repo(ctx, WorkforcePayPolicy).create({ code: 'JP-ORDINARY-2023', name: '日本・通常の労働時間制（会社で就業規則を確認）', ...JP_ORDINARY_RULES[0], workSystem: 'ordinary', weekStartsOn: 1, basis: 'MHLW official ordinary working time and premium rules; effective 2023-04-01. Confirm company workweek/holidays/employment terms before use.' });
+    await repo(ctx, WorkforcePayPolicy).create({
+      code: 'JP-ORDINARY-2023',
+      name: '日本・通常の労働時間制（会社で就業規則を確認）',
+      ...JP_ORDINARY_RULES[0],
+      workSystem: 'ordinary',
+      weekStartsOn: 1,
+      basis:
+        'MHLW official ordinary working time and premium rules; effective 2023-04-01. Confirm company workweek/holidays/employment terms before use.',
+    });
   });
 }

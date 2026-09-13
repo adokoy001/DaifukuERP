@@ -113,9 +113,13 @@ try { PrivateAcl ($stream.GetAccessControl()); [Console]::Out.WriteLine('locked'
 } as const;
 export type WindowsOperation = keyof typeof actions;
 export function windowsScript(operation: WindowsOperation): string {
-  return common + String.raw`
+  return (
+    common +
+    String.raw`
 try { $edgeInput = [Console]::In.ReadLine() | ConvertFrom-Json
-` + actions[operation] + String.raw`
+` +
+    actions[operation] +
+    String.raw`
 } catch {
   $code = $_.Exception.Message
   if ($code -notmatch '^(ENOENT|private_file_permissions_required|local_state_path_required|unsafe_state_path|private_parent_required|unsafe_state_directory|invalid_state_file|journal_capacity_exceeded|private_atomic_replace_failed|unsafe_parent_permissions|private_file_exists)$') {
@@ -125,5 +129,6 @@ try { $edgeInput = [Console]::In.ReadLine() | ConvertFrom-Json
   }
   [Console]::Out.WriteLine((@{ok=$false;code=$code} | ConvertTo-Json -Compress)); exit 74
 }
-`;
+`
+  );
 }

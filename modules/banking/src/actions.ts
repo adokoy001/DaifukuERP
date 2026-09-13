@@ -8,15 +8,112 @@ import { candidates } from './matching.ts';
 import { reconcile, undoReconciliation } from './reconcile.ts';
 import { prepareTransfer, transferDetail, exportTransfer, cancelTransfer } from './transfers.ts';
 const permission = { roles: ['accounting'] };
-export const board = defineAction({ name: 'banking.board', description: label('銀行明細・照合・支払資料を表示', 'Read the banking workspace'), input: wire.bankBoardInput, output: wire.bankBoardOutput, permission, mutates: false, handler: bankBoard });
-export const account = defineAction({ name: 'banking.save_account', description: label('銀行口座を登録・変更', 'Save a bank account'), input: wire.bankAccountInput, output: wire.bankAccountView, permission, handler: saveAccount });
-export const payee = defineAction({ name: 'banking.save_payee', description: label('振込先を登録・変更', 'Save a bank payee'), input: wire.bankPayeeInput, output: wire.bankPayeeView, permission, handler: savePayee });
-export const preview = defineAction({ name: 'banking.preview_import', description: label('銀行明細CSVの検査と重複プレビュー', 'Preview and validate statement CSV'), input: wire.bankImportInput, output: wire.bankImportPreview, permission, mutates: false, handler: previewImport });
-export const importStatement = defineAction({ name: 'banking.import_statement_csv', description: label('確認済み銀行明細CSVを一括取込', 'Import the reviewed statement CSV atomically'), input: wire.bankImportCommitInput, output: wire.bankImportResult, permission, handler: importCsv });
-export const candidate = defineAction({ name: 'banking.candidates', description: label('照合候補と根拠を表示（自動消込なし）', 'List explainable reconciliation candidates'), input: wire.bankCandidatesInput, output: wire.bankCandidatesOutput, permission, mutates: false, handler: (ctx, input) => candidates(ctx, input.statementId) });
-export const confirm = defineAction({ name: 'banking.reconcile', description: label('明細と既存入出金を照合、または請求への入出金を確定', 'Confirm a statement against a payment or create an invoice payment'), input: wire.bankReconcileInput, output: wire.bankReconciliationView, permission, handler: reconcile });
-export const undo = defineAction({ name: 'banking.undo_reconciliation', description: label('照合取消（銀行起点伝票は反対仕訳）', 'Undo reconciliation with reversal of bank-created payment'), input: wire.bankUndoInput, output: wire.bankReconciliationView, permission, handler: undoReconciliation });
-export const prepare = defineAction({ name: 'banking.prepare_transfer', description: label('未払請求から支払ファイルの確認資料を保存', 'Prepare a transfer preview without sending money'), input: wire.bankTransferInput, output: wire.bankTransferDetail, permission, handler: prepareTransfer });
-export const detail = defineAction({ name: 'banking.transfer_detail', description: label('支払内訳・振込先全桁を確認', 'Review transfer details and full destination accounts'), input: z.object({ batchId: wire.bankId }).strict(), output: wire.bankTransferDetail, permission, mutates: false, handler: (ctx, input) => transferDetail(ctx, input.batchId) });
-export const download = defineAction({ name: 'banking.export_transfer', description: label('支払ファイルを作成・再取得（送金は行いません）', 'Create or retrieve a transfer file without bank submission'), input: wire.bankTransferExportInput, output: wire.bankTransferExportOutput, permission, handler: exportTransfer });
-export const cancel = defineAction({ name: 'banking.cancel_transfer', description: label('支払資料を取消（銀行側依頼は取消されません）', 'Cancel transfer preparation without cancelling a bank request'), input: wire.bankTransferCancelInput, output: wire.bankTransferView, permission, handler: cancelTransfer });
+export const board = defineAction({
+  name: 'banking.board',
+  description: label('銀行明細・照合・支払資料を表示', 'Read the banking workspace'),
+  input: wire.bankBoardInput,
+  output: wire.bankBoardOutput,
+  permission,
+  mutates: false,
+  handler: bankBoard,
+});
+export const account = defineAction({
+  name: 'banking.save_account',
+  description: label('銀行口座を登録・変更', 'Save a bank account'),
+  input: wire.bankAccountInput,
+  output: wire.bankAccountView,
+  permission,
+  handler: saveAccount,
+});
+export const payee = defineAction({
+  name: 'banking.save_payee',
+  description: label('振込先を登録・変更', 'Save a bank payee'),
+  input: wire.bankPayeeInput,
+  output: wire.bankPayeeView,
+  permission,
+  handler: savePayee,
+});
+export const preview = defineAction({
+  name: 'banking.preview_import',
+  description: label('銀行明細CSVの検査と重複プレビュー', 'Preview and validate statement CSV'),
+  input: wire.bankImportInput,
+  output: wire.bankImportPreview,
+  permission,
+  mutates: false,
+  handler: previewImport,
+});
+export const importStatement = defineAction({
+  name: 'banking.import_statement_csv',
+  description: label('確認済み銀行明細CSVを一括取込', 'Import the reviewed statement CSV atomically'),
+  input: wire.bankImportCommitInput,
+  output: wire.bankImportResult,
+  permission,
+  handler: importCsv,
+});
+export const candidate = defineAction({
+  name: 'banking.candidates',
+  description: label('照合候補と根拠を表示（自動消込なし）', 'List explainable reconciliation candidates'),
+  input: wire.bankCandidatesInput,
+  output: wire.bankCandidatesOutput,
+  permission,
+  mutates: false,
+  handler: (ctx, input) => candidates(ctx, input.statementId),
+});
+export const confirm = defineAction({
+  name: 'banking.reconcile',
+  description: label(
+    '明細と既存入出金を照合、または請求への入出金を確定',
+    'Confirm a statement against a payment or create an invoice payment',
+  ),
+  input: wire.bankReconcileInput,
+  output: wire.bankReconciliationView,
+  permission,
+  handler: reconcile,
+});
+export const undo = defineAction({
+  name: 'banking.undo_reconciliation',
+  description: label('照合取消（銀行起点伝票は反対仕訳）', 'Undo reconciliation with reversal of bank-created payment'),
+  input: wire.bankUndoInput,
+  output: wire.bankReconciliationView,
+  permission,
+  handler: undoReconciliation,
+});
+export const prepare = defineAction({
+  name: 'banking.prepare_transfer',
+  description: label('未払請求から支払ファイルの確認資料を保存', 'Prepare a transfer preview without sending money'),
+  input: wire.bankTransferInput,
+  output: wire.bankTransferDetail,
+  permission,
+  handler: prepareTransfer,
+});
+export const detail = defineAction({
+  name: 'banking.transfer_detail',
+  description: label('支払内訳・振込先全桁を確認', 'Review transfer details and full destination accounts'),
+  input: z.object({ batchId: wire.bankId }).strict(),
+  output: wire.bankTransferDetail,
+  permission,
+  mutates: false,
+  handler: (ctx, input) => transferDetail(ctx, input.batchId),
+});
+export const download = defineAction({
+  name: 'banking.export_transfer',
+  description: label(
+    '支払ファイルを作成・再取得（送金は行いません）',
+    'Create or retrieve a transfer file without bank submission',
+  ),
+  input: wire.bankTransferExportInput,
+  output: wire.bankTransferExportOutput,
+  permission,
+  handler: exportTransfer,
+});
+export const cancel = defineAction({
+  name: 'banking.cancel_transfer',
+  description: label(
+    '支払資料を取消（銀行側依頼は取消されません）',
+    'Cancel transfer preparation without cancelling a bank request',
+  ),
+  input: wire.bankTransferCancelInput,
+  output: wire.bankTransferView,
+  permission,
+  handler: cancelTransfer,
+});

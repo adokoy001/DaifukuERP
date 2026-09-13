@@ -51,13 +51,19 @@ export function registerPackActions(): void {
     permission: { roles: ['admin'] },
     mutates: true,
     handler: async (ctx, input) => {
-      const opts = { ...(input.sample !== undefined ? { sample: input.sample } : {}), ...(input.force !== undefined ? { force: input.force } : {}) };
+      const opts = {
+        ...(input.sample !== undefined ? { sample: input.sample } : {}),
+        ...(input.force !== undefined ? { force: input.force } : {}),
+      };
       return applyPack(ctx, input.name, opts);
     },
   });
   defineAction({
     name: 'pack.list',
-    description: label('読み込まれているパックと、現在の会社への適用状況を一覧します。', 'List loaded packs with their applied status for the current company.'),
+    description: label(
+      '読み込まれているパックと、現在の会社への適用状況を一覧します。',
+      'List loaded packs with their applied status for the current company.',
+    ),
     input: z.object({}),
     output: z.object({ items: z.array(packItem) }),
     permission: 'authenticated',

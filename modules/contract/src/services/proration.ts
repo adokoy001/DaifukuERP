@@ -29,7 +29,9 @@ function gcd(a: number, b: number): number {
 
 export function fraction(num: number, den: number): Fraction {
   if (!Number.isSafeInteger(num) || !Number.isSafeInteger(den) || num < 0 || den < 1) {
-    throw new ValidationError(`invalid fraction ${num}/${den}`, [{ path: 'factor', message: 'expected non-negative safe integers with den >= 1' }]);
+    throw new ValidationError(`invalid fraction ${num}/${den}`, [
+      { path: 'factor', message: 'expected non-negative safe integers with den >= 1' },
+    ]);
   }
   const g = gcd(num, den);
   return { num: num / g, den: den / g };
@@ -60,15 +62,29 @@ export function coveredDays(period: Period, startDate: LocalDate, endDate: Local
 }
 
 /** Factor of one month: covered/days (daily) or 1 when any day is covered (none); 0 outside the contract. */
-export function monthFactor(period: Period, startDate: LocalDate, endDate: LocalDate | null, rule: ProrationRule): Fraction {
+export function monthFactor(
+  period: Period,
+  startDate: LocalDate,
+  endDate: LocalDate | null,
+  rule: ProrationRule,
+): Fraction {
   const days = coveredDays(period, startDate, endDate);
   if (days === 0) return ZERO;
   return rule === 'none' ? ONE : fraction(days, daysInPeriod(period));
 }
 
 /** Factor of a billing period of `intervalMonths` months starting at `period`: the sum of its month factors (0..k). */
-export function periodFactor(period: Period, intervalMonths: number, startDate: LocalDate, endDate: LocalDate | null, rule: ProrationRule): Fraction {
-  return coveredPeriods(period, intervalMonths).reduce((acc, p) => addFractions(acc, monthFactor(p, startDate, endDate, rule)), ZERO);
+export function periodFactor(
+  period: Period,
+  intervalMonths: number,
+  startDate: LocalDate,
+  endDate: LocalDate | null,
+  rule: ProrationRule,
+): Fraction {
+  return coveredPeriods(period, intervalMonths).reduce(
+    (acc, p) => addFractions(acc, monthFactor(p, startDate, endDate, rule)),
+    ZERO,
+  );
 }
 
 /** Invoice unit price: unitPrice × factor rounded once with the contract's mode to `scale` decimals (currency scale). */

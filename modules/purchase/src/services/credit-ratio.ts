@@ -28,7 +28,9 @@ export function isSupplierTaxStatus(v: unknown): v is SupplierTaxStatus {
 /** Default when no pack overrides the point: registered → 1, exempt → 0 (no transitional relief). */
 export const defaultCreditRatio: CreditRatioFn = (input) => {
   if (!isSupplierTaxStatus(input.supplierTaxStatus)) {
-    throw new ValidationError(`unknown supplierTaxStatus "${String(input.supplierTaxStatus)}"`, [{ path: 'supplierTaxStatus', message: `must be one of ${SUPPLIER_TAX_STATUSES.join(', ')}` }]);
+    throw new ValidationError(`unknown supplierTaxStatus "${String(input.supplierTaxStatus)}"`, [
+      { path: 'supplierTaxStatus', message: `must be one of ${SUPPLIER_TAX_STATUSES.join(', ')}` },
+    ]);
   }
   return input.supplierTaxStatus === 'registered' ? FULL_CREDIT : NO_CREDIT;
 };

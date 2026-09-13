@@ -14,7 +14,15 @@ export function docstatusLabel(ds: unknown): Label {
 export function formatTimestamp(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return d.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-GB', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
 /** Adds thousands separators to a decimal string without converting to a float (ADR-0010). */
@@ -79,7 +87,12 @@ export interface DisplayOptions {
 }
 
 /** Text shown in list cells and read-only views. */
-export function formatValue(field: FieldMeta | undefined, value: unknown, locale: Locale, opts: DisplayOptions = {}): Formatted {
+export function formatValue(
+  field: FieldMeta | undefined,
+  value: unknown,
+  locale: Locale,
+  opts: DisplayOptions = {},
+): Formatted {
   if (value === null || value === undefined) return { text: '', align: 'left', mono: false };
   const kind = field?.kind ?? (typeof value === 'number' ? 'int' : 'text');
   const refLabel = opts.refLabel;
@@ -89,7 +102,11 @@ export function formatValue(field: FieldMeta | undefined, value: unknown, locale
     case 'int':
       return { text: groupDigits(String(value)), align: 'right', mono: true };
     case 'decimal':
-      return { text: formatDecimal(String(value), decimalMinScale(field, opts.currencyScale ?? 0)), align: 'right', mono: true };
+      return {
+        text: formatDecimal(String(value), decimalMinScale(field, opts.currencyScale ?? 0)),
+        align: 'right',
+        mono: true,
+      };
     case 'timestamp':
       return { text: formatTimestamp(String(value), locale), align: 'left', mono: true };
     case 'date':
@@ -99,13 +116,19 @@ export function formatValue(field: FieldMeta | undefined, value: unknown, locale
       return { text: l ? l[locale] : String(value), align: 'left', mono: false };
     }
     case 'ref':
-      return refLabel !== undefined ? { text: refLabel, align: 'left', mono: false } : { text: shortId(String(value)), align: 'left', mono: true };
+      return refLabel !== undefined
+        ? { text: refLabel, align: 'left', mono: false }
+        : { text: shortId(String(value)), align: 'left', mono: true };
     case 'uuid':
       return { text: shortId(String(value)), align: 'left', mono: true };
     case 'json':
       return { text: JSON.stringify(value), align: 'left', mono: true };
     default:
-      return { text: typeof value === 'string' ? value : JSON.stringify(value), align: 'left', mono: field?.name === 'code' || field?.name === 'number' };
+      return {
+        text: typeof value === 'string' ? value : JSON.stringify(value),
+        align: 'left',
+        mono: field?.name === 'code' || field?.name === 'number',
+      };
   }
 }
 
@@ -113,7 +136,16 @@ export function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
 
-const AUDIT_NOISE = new Set(['updatedAt', 'updatedBy', 'version', 'createdAt', 'createdBy', 'tenantId', 'companyId', 'id']);
+const AUDIT_NOISE = new Set([
+  'updatedAt',
+  'updatedBy',
+  'version',
+  'createdAt',
+  'createdBy',
+  'tenantId',
+  'companyId',
+  'id',
+]);
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -124,7 +156,8 @@ export function changedFields(entry: Pick<AuditEntry, 'before' | 'after'>): stri
   const before = asRecord(entry.before);
   const after = asRecord(entry.after);
   if (!before && !after) return [];
-  if (!before && after) return Object.keys(after).filter((k) => !AUDIT_NOISE.has(k) && after[k] !== null && after[k] !== undefined);
+  if (!before && after)
+    return Object.keys(after).filter((k) => !AUDIT_NOISE.has(k) && after[k] !== null && after[k] !== undefined);
   if (before && !after) return [];
   const b = before ?? {};
   const a = after ?? {};
@@ -148,7 +181,12 @@ export function fieldChanges(entry: Pick<AuditEntry, 'before' | 'after'>): Field
 const CHANGE_TEXT_MAX = 40;
 
 /** One value of an audit change, through the same display rules as cells (decimals by scale), cut so the row stays short. */
-export function changeValueText(field: FieldMeta | undefined, value: unknown, locale: Locale, opts: DisplayOptions = {}): string {
+export function changeValueText(
+  field: FieldMeta | undefined,
+  value: unknown,
+  locale: Locale,
+  opts: DisplayOptions = {},
+): string {
   if (value === null || value === undefined) return '—';
   const text = formatValue(field, value, locale, opts).text;
   return text.length > CHANGE_TEXT_MAX ? `${text.slice(0, CHANGE_TEXT_MAX)}…` : text;

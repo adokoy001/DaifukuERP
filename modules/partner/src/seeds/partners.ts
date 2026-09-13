@@ -55,7 +55,10 @@ export const SEED_PARTNERS: readonly PartnerInsert[] = [
 
 export async function seedPartners(ctx: Context): Promise<void> {
   const r = repo(ctx, Partner);
-  const existing = await r.list({ where: { code: { $in: SEED_PARTNERS.map((p) => p.code) } }, limit: SEED_PARTNERS.length });
+  const existing = await r.list({
+    where: { code: { $in: SEED_PARTNERS.map((p) => p.code) } },
+    limit: SEED_PARTNERS.length,
+  });
   const present = new Set(existing.items.map((p) => p.code));
   for (const p of SEED_PARTNERS) {
     if (present.has(p.code)) continue;

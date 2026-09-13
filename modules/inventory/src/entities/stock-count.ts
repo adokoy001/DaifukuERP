@@ -8,10 +8,17 @@ export const StockCount = defineDocument({
   label: label('棚卸', 'Stock count'),
   naming: { type: 'sequence', prefix: 'CNT-', period: 'year' },
   fields: {
-    warehouseId: f.ref('warehouse', { label: label('倉庫', 'Warehouse'), description: label('省略時は既定の倉庫', 'defaults to the default warehouse'), required: true }),
+    warehouseId: f.ref('warehouse', {
+      label: label('倉庫', 'Warehouse'),
+      description: label('省略時は既定の倉庫', 'defaults to the default warehouse'),
+      required: true,
+    }),
     date: f.date({ label: label('棚卸日', 'Count date'), required: true, default: 'today', index: true }),
     note: f.text({ label: label('備考', 'Note'), multiline: true, maxLength: 2000 }),
-    adjustmentEntryId: f.ref('stock_entry', { label: label('調整伝票', 'Adjustment entry'), description: label('submit 時に作成', 'created at submit') }),
+    adjustmentEntryId: f.ref('stock_entry', {
+      label: label('調整伝票', 'Adjustment entry'),
+      description: label('submit 時に作成', 'created at submit'),
+    }),
   },
   allowOnSubmit: ['adjustmentEntryId'],
   lines: [{ entity: 'stock_count_line', parentField: 'countId' }],
@@ -25,7 +32,10 @@ export const StockCount = defineDocument({
   views: {
     list: ['warehouseId', 'date', 'adjustmentEntryId'],
     search: ['note'],
-    form: [['warehouseId', 'date'], ['note', 'adjustmentEntryId']],
+    form: [
+      ['warehouseId', 'date'],
+      ['note', 'adjustmentEntryId'],
+    ],
   },
 });
 

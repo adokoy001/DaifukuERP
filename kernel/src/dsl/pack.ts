@@ -34,15 +34,21 @@ function dependencyClosure(name: string, depends: readonly string[]): Set<string
 function shapeIssues(cfg: PackConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!NAME_RE.test(cfg.name)) issues.push({ path: 'name', message: `must be snake_case (${String(NAME_RE)})` });
-  if (RESERVED_NAMES.has(cfg.name)) issues.push({ path: 'name', message: `"${cfg.name}" is reserved for the kernel's generic pack actions` });
+  if (RESERVED_NAMES.has(cfg.name))
+    issues.push({ path: 'name', message: `"${cfg.name}" is reserved for the kernel's generic pack actions` });
   for (const a of cfg.actions ?? []) {
-    if (!a.name.startsWith(`${cfg.name}.`)) issues.push({ path: `actions.${a.name}`, message: `must be prefixed with the pack name "${cfg.name}."` });
+    if (!a.name.startsWith(`${cfg.name}.`))
+      issues.push({ path: `actions.${a.name}`, message: `must be prefixed with the pack name "${cfg.name}."` });
   }
   for (const [entity, o] of Object.entries(cfg.labels ?? {})) {
     if (!registry.hasEntity(entity)) continue; // reported as a dependency error
     const fields = registry.entity(entity).config.fields;
     for (const f of Object.keys(o.fields ?? {})) {
-      if (!(f in fields)) issues.push({ path: `labels.${entity}.fields.${f}`, message: `${entity} has no field "${f}" (ext fields take their label from the ext definition)` });
+      if (!(f in fields))
+        issues.push({
+          path: `labels.${entity}.fields.${f}`,
+          message: `${entity} has no field "${f}" (ext fields take their label from the ext definition)`,
+        });
     }
   }
   return issues;
@@ -60,7 +66,8 @@ function assertTargetsReachable(cfg: PackConfig): void {
       continue;
     }
     const owner = registry.entity(name).module;
-    if (owner && !own.has(name) && !closure.has(owner)) problems.push(`entity "${name}" belongs to "${owner}", which is not in depends`);
+    if (owner && !own.has(name) && !closure.has(owner))
+      problems.push(`entity "${name}" belongs to "${owner}", which is not in depends`);
   }
   if (problems.length > 0) {
     throw new DependencyError(`pack:${cfg.name}`, '', [], {
@@ -73,7 +80,11 @@ function assertTargetsReachable(cfg: PackConfig): void {
 function assertOwnership(cfg: PackConfig): void {
   for (const e of cfg.entities ?? []) {
     if (e.module && e.module !== cfg.name) {
-      throw new Conflict(`pack "${cfg.name}": entity ${e.name} already belongs to "${e.module}"`, 'List an entity in exactly one module or pack manifest.', { pack: cfg.name, entity: e.name });
+      throw new Conflict(
+        `pack "${cfg.name}": entity ${e.name} already belongs to "${e.module}"`,
+        'List an entity in exactly one module or pack manifest.',
+        { pack: cfg.name, entity: e.name },
+      );
     }
   }
 }
@@ -96,7 +107,12 @@ function checkedExt(cfg: PackConfig): [string, FieldMap][] {
  */
 export function definePack(cfg: PackConfig): PackDef {
   const issues = shapeIssues(cfg);
-  if (issues.length > 0) throw new ValidationError(`definePack(${cfg.name}): invalid pack definition`, issues, 'Fix the listed pack fields (docs/conventions/packs.md).');
+  if (issues.length > 0)
+    throw new ValidationError(
+      `definePack(${cfg.name}): invalid pack definition`,
+      issues,
+      'Fix the listed pack fields (docs/conventions/packs.md).',
+    );
   const def: PackDef = { ...cfg, kind: 'pack', version: cfg.version ?? DEFAULT_PACK_VERSION };
   const missing = registry.missingDependencies(cfg.depends);
   if (missing.length === 0) {

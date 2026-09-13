@@ -2,7 +2,20 @@
 // from..to with a running balance. The opening balance is Σ of the rows dated before `from` (first row, type 'opening');
 // movements follow in date order, then posting order. unitCost is the moving average recorded after each row (posting
 // order); balanceQty / balanceValue are the running sums in this report's date order.
-import { Decimal, defineAction, label, MAX_REPORT_ROWS, repo, ValidationError, column, tableResult, type Context, type Domain, type TableColumn, type TableResult } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  label,
+  MAX_REPORT_ROWS,
+  repo,
+  ValidationError,
+  column,
+  tableResult,
+  type Context,
+  type Domain,
+  type TableColumn,
+  type TableResult,
+} from '@daifuku/kernel';
 import { z } from 'zod';
 import { StockEntry } from '../entities/stock-entry.ts';
 import { StockLedger } from '../entities/stock-ledger.ts';
@@ -34,7 +47,10 @@ export const LEDGER_COLUMNS: TableColumn[] = [
   column('warehouseId', label('倉庫ID', 'Warehouse id'), 'ref', { ref: Warehouse.name }),
 ];
 
-async function entriesById(ctx: Context, ids: readonly string[]): Promise<Map<string, { number: string | null; type: string }>> {
+async function entriesById(
+  ctx: Context,
+  ids: readonly string[],
+): Promise<Map<string, { number: string | null; type: string }>> {
   const unique = [...new Set(ids)];
   const out = new Map<string, { number: string | null; type: string }>();
   for (let i = 0; i < unique.length; i += 200) {
@@ -44,7 +60,12 @@ async function entriesById(ctx: Context, ids: readonly string[]): Promise<Map<st
   return out;
 }
 
-function movementRow(r: LedgerRow, running: { qty: Decimal; value: Decimal }, entry: { number: string | null; type: string } | undefined, warehouseCode: string): Record<string, unknown> {
+function movementRow(
+  r: LedgerRow,
+  running: { qty: Decimal; value: Decimal },
+  entry: { number: string | null; type: string } | undefined,
+  warehouseCode: string,
+): Record<string, unknown> {
   return {
     date: r.date,
     number: entry?.number ?? null,
@@ -63,12 +84,31 @@ function movementRow(r: LedgerRow, running: { qty: Decimal; value: Decimal }, en
 }
 
 export async function stockLedger(ctx: Context, input: LedgerInput): Promise<TableResult> {
-  if (input.from > input.to) throw new ValidationError(`from ${input.from} is after to ${input.to}`, [{ path: 'from', message: 'must be <= to' }], 'Pass a from date on or before the to date.');
-  const scope: Domain = { productId: input.productId, ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}) };
-  const opening = (await ledgerSums(ctx, { ...scope, date: { $lt: input.from } }, false)).sums[0] ?? { qty: Decimal.zero(), value: Decimal.zero() };
+  if (input.from > input.to)
+    throw new ValidationError(
+      `from ${input.from} is after to ${input.to}`,
+      [{ path: 'from', message: 'must be <= to' }],
+      'Pass a from date on or before the to date.',
+    );
+  const scope: Domain = {
+    productId: input.productId,
+    ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
+  };
+  const opening = (await ledgerSums(ctx, { ...scope, date: { $lt: input.from } }, false)).sums[0] ?? {
+    qty: Decimal.zero(),
+    value: Decimal.zero(),
+  };
   const where: Domain = { ...scope, $and: [{ date: { $gte: input.from } }, { date: { $lte: input.to } }] };
-  const orderBy = [{ field: 'date', dir: 'asc' as const }, { field: 'createdAt', dir: 'asc' as const }, { field: 'id', dir: 'asc' as const }];
-  const { items, truncated } = await listAll((q) => repo(ctx, StockLedger).list(q), { where, orderBy }, MAX_REPORT_ROWS - 1);
+  const orderBy = [
+    { field: 'date', dir: 'asc' as const },
+    { field: 'createdAt', dir: 'asc' as const },
+    { field: 'id', dir: 'asc' as const },
+  ];
+  const { items, truncated } = await listAll(
+    (q) => repo(ctx, StockLedger).list(q),
+    { where, orderBy },
+    MAX_REPORT_ROWS - 1,
+  );
   const entries = await entriesById(
     ctx,
     items.filter((r) => r.sourceEntity === StockEntry.name).map((r) => r.sourceId),
@@ -78,7 +118,23 @@ export async function stockLedger(ctx: Context, input: LedgerInput): Promise<Tab
     items.map((r) => r.warehouseId),
   );
   const running = { qty: opening.qty, value: opening.value };
-  const rows: Record<string, unknown>[] = [{ date: input.from, number: null, type: 'opening', warehouseCode: null, qtyIn: '0', qtyOut: '0', unitCost: null, costDelta: '0', balanceQty: running.qty.toString(), balanceValue: running.value.toString(), reversal: false, entryId: null, warehouseId: input.warehouseId ?? null }];
+  const rows: Record<string, unknown>[] = [
+    {
+      date: input.from,
+      number: null,
+      type: 'opening',
+      warehouseCode: null,
+      qtyIn: '0',
+      qtyOut: '0',
+      unitCost: null,
+      costDelta: '0',
+      balanceQty: running.qty.toString(),
+      balanceValue: running.value.toString(),
+      reversal: false,
+      entryId: null,
+      warehouseId: input.warehouseId ?? null,
+    },
+  ];
   for (const r of items) {
     running.qty = running.qty.plus(r.qtyDelta);
     running.value = running.value.plus(r.costDelta);
@@ -90,7 +146,11 @@ export async function stockLedger(ctx: Context, input: LedgerInput): Promise<Tab
     title: label('在庫台帳', 'Stock ledger'),
     columns: LEDGER_COLUMNS,
     rows,
-    totals: { qtyIn: sum((r) => (r.qtyDelta.gt(0) ? r.qtyDelta : Decimal.zero())), qtyOut: sum((r) => (r.qtyDelta.lt(0) ? r.qtyDelta.neg() : Decimal.zero())), costDelta: sum((r) => r.costDelta) },
+    totals: {
+      qtyIn: sum((r) => (r.qtyDelta.gt(0) ? r.qtyDelta : Decimal.zero())),
+      qtyOut: sum((r) => (r.qtyDelta.lt(0) ? r.qtyDelta.neg() : Decimal.zero())),
+      costDelta: sum((r) => r.costDelta),
+    },
     meta: {
       productId: input.productId,
       productCode: product?.code ?? null,

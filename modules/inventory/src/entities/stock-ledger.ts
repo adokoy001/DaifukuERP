@@ -13,14 +13,28 @@ export const StockLedger = defineEntity({
     warehouseId: f.ref('warehouse', { label: label('倉庫', 'Warehouse'), required: true }),
     productId: f.ref('product', { label: label('品目', 'Product'), required: true }),
     qtyDelta: f.quantity({ label: label('数量増減', 'Quantity change'), required: true }),
-    unitCost: f.money({ label: label('単価（移動平均後）', 'Unit cost (moving average after)'), required: true, scale: 6 }),
+    unitCost: f.money({
+      label: label('単価（移動平均後）', 'Unit cost (moving average after)'),
+      required: true,
+      scale: 6,
+    }),
     costDelta: f.money({ label: label('金額増減', 'Cost change'), required: true, scale: 6 }),
     balanceQty: f.quantity({ label: label('残数量', 'Balance quantity'), required: true }),
     balanceCost: f.money({ label: label('残高金額', 'Balance cost'), required: true, scale: 6 }),
     sourceEntity: f.text({ label: label('発生元エンティティ', 'Source entity'), required: true, maxLength: 100 }),
     sourceId: f.uuid({ label: label('発生元', 'Source'), required: true, index: true }),
-    seq: f.int({ label: label('連番', 'Seq'), description: label('品目×倉庫ごとの転記順', 'posting order per product × warehouse'), required: true, min: 1 }),
-    reversal: f.bool({ label: label('取消行', 'Reversal'), description: label('入出庫伝票の取消で追加された逆仕訳行', 'appended when the stock entry was cancelled'), required: true, default: false }),
+    seq: f.int({
+      label: label('連番', 'Seq'),
+      description: label('品目×倉庫ごとの転記順', 'posting order per product × warehouse'),
+      required: true,
+      min: 1,
+    }),
+    reversal: f.bool({
+      label: label('取消行', 'Reversal'),
+      description: label('入出庫伝票の取消で追加された逆仕訳行', 'appended when the stock entry was cancelled'),
+      required: true,
+      default: false,
+    }),
   },
   audit: 'none',
   unique: [['productId', 'warehouseId', 'seq']],
@@ -34,7 +48,19 @@ export const StockLedger = defineEntity({
       viewer: ['read'],
     },
   },
-  views: { list: ['date', 'productId', 'warehouseId', 'qtyDelta', 'unitCost', 'costDelta', 'balanceQty', 'balanceCost', 'reversal'] },
+  views: {
+    list: [
+      'date',
+      'productId',
+      'warehouseId',
+      'qtyDelta',
+      'unitCost',
+      'costDelta',
+      'balanceQty',
+      'balanceCost',
+      'reversal',
+    ],
+  },
 });
 
 export type StockLedgerDef = typeof StockLedger;

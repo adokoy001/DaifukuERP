@@ -32,7 +32,11 @@ export const resolvePrice = defineAction({
   handler: async (ctx, { productId, side }) => {
     const p = await repo(ctx, Product).get(productId);
     // uomId is kept non-null by the before_validate hook; a null here means the row bypassed it.
-    if (!p.uomId) throw new StateError(`product ${productId} has no unit of measure`, 'Update the product with a uomId, then retry.');
+    if (!p.uomId)
+      throw new StateError(
+        `product ${productId} has no unit of measure`,
+        'Update the product with a uomId, then retry.',
+      );
     const price = side === 'sale' ? p.salePrice : p.purchasePrice;
     return { price: price ? price.toString() : null, taxCategory: p.taxCategory, uomId: p.uomId };
   },

@@ -1,6 +1,17 @@
 // sales.render_invoice_html (spec AC-5): builds InvoiceRenderData (issuer from `sales.issuer`, recipient from the
 // partner, money as Decimal strings) and hands it to registry.override('sales.invoice_html', defaultInvoiceHtml).
-import { defineAction, getCompany, getSetting, label, registry, repo, StateError, DOCSTATUS, type Context, type Infer } from '@daifuku/kernel';
+import {
+  defineAction,
+  getCompany,
+  getSetting,
+  label,
+  registry,
+  repo,
+  StateError,
+  DOCSTATUS,
+  type Context,
+  type Infer,
+} from '@daifuku/kernel';
 import { Partner } from '@daifuku/mod-partner';
 import { z } from 'zod';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
@@ -26,23 +37,46 @@ export async function loadIssuer(ctx: Context): Promise<SalesIssuer> {
 export async function buildInvoiceRenderData(ctx: Context, id: string): Promise<InvoiceRenderData> {
   const inv = await repo(ctx, SalesInvoice).get(id);
   if (inv.docstatus !== DOCSTATUS.draft) {
-    if (!inv.issuedSnapshot) throw new StateError('Issued invoice snapshot is unavailable', 'This invoice predates snapshot support; restore its original issued document before reprinting.');
-    return { ...inv.issuedSnapshot, invoice: { ...inv.issuedSnapshot.invoice, docstatus: inv.docstatus }, locale: ctx.locale };
+    if (!inv.issuedSnapshot)
+      throw new StateError(
+        'Issued invoice snapshot is unavailable',
+        'This invoice predates snapshot support; restore its original issued document before reprinting.',
+      );
+    return {
+      ...inv.issuedSnapshot,
+      invoice: { ...inv.issuedSnapshot.invoice, docstatus: inv.docstatus },
+      locale: ctx.locale,
+    };
   }
   return buildLiveInvoiceRenderData(ctx, inv);
 }
 
 /** Used for draft preview and once, in the posting transaction, to capture the issued facts. */
-export async function buildLiveInvoiceRenderData(ctx: Context, inv: Infer<typeof SalesInvoice>): Promise<InvoiceRenderData> {
+export async function buildLiveInvoiceRenderData(
+  ctx: Context,
+  inv: Infer<typeof SalesInvoice>,
+): Promise<InvoiceRenderData> {
   const lines = await loadInvoiceLines(ctx, inv.id);
   const partner = await repo(ctx, Partner).get(inv.partnerId);
   const issuer = await loadIssuer(ctx);
   const taxSummary = inv.taxSummary ?? [];
-  const address = [partner.prefecture, partner.address1, partner.address2].filter((s): s is string => typeof s === 'string' && s.length > 0).join(' ');
+  const address = [partner.prefecture, partner.address1, partner.address2]
+    .filter((s): s is string => typeof s === 'string' && s.length > 0)
+    .join(' ');
   return {
     issuer: defined<InvoiceRenderData['issuer']>(issuer),
-    invoice: { number: inv.number ?? '', date: inv.date, dueDate: inv.dueDate, note: inv.note, priceIncludesTax: inv.priceIncludesTax },
-    recipient: defined<InvoiceRenderData['recipient']>({ name: partner.name, postalCode: partner.postalCode, address: address || null }),
+    invoice: {
+      number: inv.number ?? '',
+      date: inv.date,
+      dueDate: inv.dueDate,
+      note: inv.note,
+      priceIncludesTax: inv.priceIncludesTax,
+    },
+    recipient: defined<InvoiceRenderData['recipient']>({
+      name: partner.name,
+      postalCode: partner.postalCode,
+      address: address || null,
+    }),
     lines: lines.map((l) => ({
       seq: l.seq,
       ...(l.uomCode ? { uomCode: l.uomCode } : {}),
@@ -53,7 +87,13 @@ export async function buildLiveInvoiceRenderData(ctx: Context, inv: Infer<typeof
       taxCategory: l.taxCategory,
       rate: rateOfCategory(taxSummary, l.taxCategory),
     })),
-    taxSummary: taxSummary.map((g) => ({ category: g.category, rate: g.rate, taxable: g.taxable, tax: g.tax, gross: g.gross })),
+    taxSummary: taxSummary.map((g) => ({
+      category: g.category,
+      rate: g.rate,
+      taxable: g.taxable,
+      tax: g.tax,
+      gross: g.gross,
+    })),
     totals: { subtotal: inv.subtotal.toString(), taxTotal: inv.taxTotal.toString(), total: inv.total.toString() },
     locale: ctx.locale,
   };
@@ -74,7 +114,16 @@ export const renderInvoiceHtmlAction = defineAction({
     const data = await buildInvoiceRenderData(ctx, id);
     const render = registry.override<InvoiceHtmlRenderer>(INVOICE_HTML_OVERRIDE, defaultInvoiceHtml);
     const html = render(data);
-    const banner = data.invoice.docstatus === DOCSTATUS.cancelled ? '<p role="status" style="border:2px solid #b91c1c;padding:12px;color:#b91c1c;font-weight:bold">取消済み / CANCELLED</p>' : '';
-    return { html: banner ? (/<body[^>]*>/i.test(html) ? html.replace(/<body([^>]*)>/i, `<body$1>${banner}`) : banner + html) : html };
+    const banner =
+      data.invoice.docstatus === DOCSTATUS.cancelled
+        ? '<p role="status" style="border:2px solid #b91c1c;padding:12px;color:#b91c1c;font-weight:bold">取消済み / CANCELLED</p>'
+        : '';
+    return {
+      html: banner
+        ? /<body[^>]*>/i.test(html)
+          ? html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
+          : banner + html
+        : html,
+    };
   },
 });

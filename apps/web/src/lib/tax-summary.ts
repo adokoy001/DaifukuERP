@@ -20,8 +20,19 @@ export function parseTaxSummary(value: FormValue): TaxSummaryRow[] | undefined {
     for (const entry of rows) {
       if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return undefined;
       const row = entry as Record<string, unknown>;
-      if (typeof row.category !== 'string' || !['rate', 'taxable', 'tax', 'gross'].every((key) => typeof row[key] === 'string' && isDecimalString(row[key]))) return undefined;
-      result.push({ category: row.category, label: typeof row.label === 'string' ? row.label : '', rate: String(row.rate), taxable: String(row.taxable), tax: String(row.tax), gross: String(row.gross) });
+      if (
+        typeof row.category !== 'string' ||
+        !['rate', 'taxable', 'tax', 'gross'].every((key) => typeof row[key] === 'string' && isDecimalString(row[key]))
+      )
+        return undefined;
+      result.push({
+        category: row.category,
+        label: typeof row.label === 'string' ? row.label : '',
+        rate: String(row.rate),
+        taxable: String(row.taxable),
+        tax: String(row.tax),
+        gross: String(row.gross),
+      });
     }
     return result;
   } catch {

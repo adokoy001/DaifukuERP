@@ -56,7 +56,18 @@ export interface TaxSummaryJson {
   creditRatio: string;
   priceIncludesTax: boolean;
   rounding: { mode: RoundingMode; scale: number };
-  groups: { category: TaxCategory; code: string; label: string; rate: string; taxable: string; tax: string; gross: string; lineCount: number; deductibleTax: string; nonDeductibleTax: string }[];
+  groups: {
+    category: TaxCategory;
+    code: string;
+    label: string;
+    rate: string;
+    taxable: string;
+    tax: string;
+    gross: string;
+    lineCount: number;
+    deductibleTax: string;
+    nonDeductibleTax: string;
+  }[];
   totals: { subtotal: string; taxTotal: string; deductibleTax: string; nonDeductibleTax: string; total: string };
 }
 
@@ -66,7 +77,12 @@ export function lineAmount(quantity: Decimal | string, unitPrice: Decimal | stri
 }
 
 /** One rate group's tax split: deductible = round(tax × ratio) (sign never flipped by rounding), non-deductible = the rest. */
-export function splitTax(tax: Decimal, creditRatio: Decimal, mode: RoundingMode, scale: number): { deductibleTax: Decimal; nonDeductibleTax: Decimal } {
+export function splitTax(
+  tax: Decimal,
+  creditRatio: Decimal,
+  mode: RoundingMode,
+  scale: number,
+): { deductibleTax: Decimal; nonDeductibleTax: Decimal } {
   const rounded = tax.times(creditRatio).round(mode, scale);
   const deductibleTax = rounded.isZero() ? Decimal.zero() : rounded;
   return { deductibleTax, nonDeductibleTax: tax.minus(deductibleTax) };

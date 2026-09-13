@@ -7,7 +7,16 @@
 //   from the contract_billing ledger. contract.end, generation (which touches the contract after writing the ledger)
 //   and a tampered generic update therefore all end in the same derived state. submit/cancel write through the
 //   kernel's rawUpdate (no update hooks), so hooks/submit.ts and hooks/cancel.ts set the fields themselves.
-import { DOCSTATUS, isLocalDate, registry, todayLocal, ValidationError, type Context, type HookArgs, type LocalDate } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  isLocalDate,
+  registry,
+  todayLocal,
+  ValidationError,
+  type Context,
+  type HookArgs,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { Contract } from '../entities/contract.ts';
 import { billingsOf } from '../ledger.ts';
 import { nextPeriodOf, statusFor } from '../services/periods.ts';
@@ -33,19 +42,27 @@ export function assertDateRange(startDate: unknown, endDate: unknown): void {
   const start = asDate(startDate);
   const end = asDate(endDate);
   if (start === null || end === null || end >= start) return;
-  throw new ValidationError(`contract endDate ${end} is before startDate ${start}`, [{ path: 'endDate', message: `must be >= startDate (${start})` }], DATE_RANGE_HINT);
+  throw new ValidationError(
+    `contract endDate ${end} is before startDate ${start}`,
+    [{ path: 'endDate', message: `must be >= startDate (${start})` }],
+    DATE_RANGE_HINT,
+  );
 }
 
 async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promise<void> {
   if (!previous) {
     Object.assign(row, { status: 'draft', nextPeriod: null });
-    if (row.prorationRule === undefined || row.prorationRule === null) row.prorationRule = await loadDefaultProration(ctx);
+    if (row.prorationRule === undefined || row.prorationRule === null)
+      row.prorationRule = await loadDefaultProration(ctx);
   }
   assertDateRange(merged(row, previous, 'startDate'), merged(row, previous, 'endDate'));
 }
 
 /** status and nextPeriod of a submitted contract as of today and its ledger. */
-export async function derivedState(ctx: Context, row: Raw): Promise<{ status: 'active' | 'ended'; nextPeriod: string | null }> {
+export async function derivedState(
+  ctx: Context,
+  row: Raw,
+): Promise<{ status: 'active' | 'ended'; nextPeriod: string | null }> {
   const start = asDate(row.startDate);
   const interval = typeof row.intervalMonths === 'number' ? row.intervalMonths : 1;
   const status = statusFor(asDate(row.endDate), todayLocal(ctx.now()));

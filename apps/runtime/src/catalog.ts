@@ -21,4 +21,26 @@ import { BankingModule } from '@daifuku/mod-banking';
 import { TaxFilingModule } from '@daifuku/mod-tax-filing';
 import { JapanModule } from '@daifuku/l10n-jp';
 
-export const businessModules: readonly ModuleDef[] = [PartnerModule, ProductModule, TaxModule, AccountingModule, AttachmentsModule, SalesModule, PurchaseModule, PaymentModule, InventoryModule, ContractModule, WorkforceModule, WorkforceEvidenceModule, IndustryOperationsModule, PosIntegrationModule, GroupAccountingModule, FranchiseModule, EdgeIntegrationModule, TradeModule, BankingModule, TaxFilingModule, JapanModule];
+export const businessModules: readonly ModuleDef[] = [
+  PartnerModule,
+  ProductModule,
+  TaxModule,
+  AccountingModule,
+  AttachmentsModule,
+  SalesModule,
+  PurchaseModule,
+  PaymentModule,
+  InventoryModule,
+  ContractModule,
+  WorkforceModule,
+  WorkforceEvidenceModule,
+  IndustryOperationsModule,
+  PosIntegrationModule,
+  GroupAccountingModule,
+  FranchiseModule,
+  EdgeIntegrationModule,
+  TradeModule,
+  BankingModule,
+  TaxFilingModule,
+  JapanModule,
+];

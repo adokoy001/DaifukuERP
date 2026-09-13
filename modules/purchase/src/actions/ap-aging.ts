@@ -1,7 +1,18 @@
 // purchase.ap_aging (docs/specs/purchase.md AC-5): 買掛金年齢表 as a TableResult (docs/conventions/reports.md). Open,
 // submitted bills dated on or before `asOf`, bucketed by days past their due date, one row per supplier. Balances are the
 // bills' current balances (the module keeps no payment history, so payments after `asOf` are already deducted).
-import { DOCSTATUS, defineAction, isLocalDate, label, repo, todayLocal, type Context, type Infer, type ListQuery, type LocalDate } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  defineAction,
+  isLocalDate,
+  label,
+  repo,
+  todayLocal,
+  type Context,
+  type Infer,
+  type ListQuery,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { MAX_REPORT_ROWS, column, tableResult } from '@daifuku/kernel';
 import { Partner } from '@daifuku/mod-partner';
 import { z } from 'zod';
@@ -25,12 +36,24 @@ export const AP_AGING_COLUMNS = [
 ];
 
 /** Every visible open bill up to `max`, paged through repo.list (500 per page). */
-async function listOpenBills(ctx: Context, asOf: LocalDate, max: number): Promise<{ items: InvoiceRow[]; truncated: boolean }> {
-  const where: ListQuery['where'] = { date: { $lte: asOf }, $or: [{ docstatus: DOCSTATUS.submitted }, { docstatus: DOCSTATUS.cancelled, cancelledDate: { $gt: asOf } }] };
+async function listOpenBills(
+  ctx: Context,
+  asOf: LocalDate,
+  max: number,
+): Promise<{ items: InvoiceRow[]; truncated: boolean }> {
+  const where: ListQuery['where'] = {
+    date: { $lte: asOf },
+    $or: [{ docstatus: DOCSTATUS.submitted }, { docstatus: DOCSTATUS.cancelled, cancelledDate: { $gt: asOf } }],
+  };
   const items: InvoiceRow[] = [];
   let offset = 0;
   for (;;) {
-    const page = await repo(ctx, PurchaseInvoice).list({ where, orderBy: [{ field: 'date', dir: 'asc' }], limit: 500, offset });
+    const page = await repo(ctx, PurchaseInvoice).list({
+      where,
+      orderBy: [{ field: 'date', dir: 'asc' }],
+      limit: 500,
+      offset,
+    });
     items.push(...page.items);
     offset += page.items.length;
     if (page.items.length === 0 || offset >= page.total) return { items, truncated: false };
@@ -69,7 +92,12 @@ export const apAgingAction = defineAction({
       bills.items.map((b) => b.partnerId),
     );
     const { rows, totals } = agingRows(
-      bills.items.map((b) => ({ partnerId: b.partnerId, date: b.date, dueDate: b.dueDate, balance: balances.get(b.id) ?? b.total })),
+      bills.items.map((b) => ({
+        partnerId: b.partnerId,
+        date: b.date,
+        dueDate: b.dueDate,
+        balance: balances.get(b.id) ?? b.total,
+      })),
       partners,
       asOf,
     );
@@ -78,7 +106,12 @@ export const apAgingAction = defineAction({
       columns: AP_AGING_COLUMNS,
       rows,
       totals,
-      meta: { asOf, bills: bills.items.length, suppliers: rows.length, ...(bills.truncated ? { truncated: true } : {}) },
+      meta: {
+        asOf,
+        bills: bills.items.length,
+        suppliers: rows.length,
+        ...(bills.truncated ? { truncated: true } : {}),
+      },
     };
   },
 });

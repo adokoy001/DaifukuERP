@@ -5,10 +5,47 @@
 import { DOCSTATUS, getCompany, readAppliedPacks, appMeta, registry, ValidationError } from '@daifuku/kernel';
 import { CLOSING_ACCOUNTS_KEY, RETAIL_SETTING_DEFAULTS } from '../src/index.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { caught, createSubmit, entryLines, entryTaxTags, loadAccounts, seedModules, setupScenario, sum, type DocJson, type ListJson, type Row, type Scenario, type Table } from './fixture.ts';
+import {
+  caught,
+  createSubmit,
+  entryLines,
+  entryTaxTags,
+  loadAccounts,
+  seedModules,
+  setupScenario,
+  sum,
+  type DocJson,
+  type ListJson,
+  type Row,
+  type Scenario,
+  type Table,
+} from './fixture.ts';
 
-type ClosingJson = DocJson & { date: string; warehouseId: string; subtotal: string; taxTotal: string; total: string; cashAmount: string; cardAmount: string; salesInvoiceId: string | null; paymentId: string | null; taxSummary: Row[] };
-type InvoiceJson = DocJson & { partnerId: string; date: string; priceIncludesTax: boolean; subtotal: string; taxTotal: string; total: string; paidAmount: string; balance: string; status: string; note: string | null; journalEntryId: string | null };
+type ClosingJson = DocJson & {
+  date: string;
+  warehouseId: string;
+  subtotal: string;
+  taxTotal: string;
+  total: string;
+  cashAmount: string;
+  cardAmount: string;
+  salesInvoiceId: string | null;
+  paymentId: string | null;
+  taxSummary: Row[];
+};
+type InvoiceJson = DocJson & {
+  partnerId: string;
+  date: string;
+  priceIncludesTax: boolean;
+  subtotal: string;
+  taxTotal: string;
+  total: string;
+  paidAmount: string;
+  balance: string;
+  status: string;
+  note: string | null;
+  journalEntryId: string | null;
+};
 type PaymentJson = DocJson & { accountId: string; amount: string; method: string; journalEntryId: string | null };
 
 let s: Scenario;
@@ -26,7 +63,9 @@ afterAll(async () => {
   await s.close();
 });
 
-const closingLines = (qty: Record<string, string>) => ({ retail_closing_line: Object.entries(qty).map(([code, quantity]) => ({ productId: product[code], quantity })) });
+const closingLines = (qty: Record<string, string>) => ({
+  retail_closing_line: Object.entries(qty).map(([code, quantity]) => ({ productId: product[code], quantity })),
+});
 
 describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/scenario-retail.md)', () => {
   it('1. 会計年度・モジュール seed・pack.apply（sample）: 設定・勘定科目 5050/5100/6990・店頭客・品目 P1..P4・仕入先 S1、2 回目は no-op、force で税込入力', async () => {
@@ -34,8 +73,23 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     expect(await seedModules(s)).toEqual(['partner', 'product', 'tax', 'accounting', 'inventory', 'l10n_jp']);
     const first = await s.act<Row>('pack.apply', { name: 'retail', sample: true, force: true });
     // This fixture explicitly selects the pack defaults; an ordinary apply preserves existing company settings.
-    expect(first).toMatchObject({ name: 'retail', version: '0.1.0', alreadyApplied: false, seeded: true, sampled: true });
-    expect(first.settings).toEqual({ written: ['tax.price_includes_tax', 'inventory.allow_negative_stock', 'inventory.auto_issue_on_sales', 'inventory.auto_receipt_on_purchase', CLOSING_ACCOUNTS_KEY], kept: [] });
+    expect(first).toMatchObject({
+      name: 'retail',
+      version: '0.1.0',
+      alreadyApplied: false,
+      seeded: true,
+      sampled: true,
+    });
+    expect(first.settings).toEqual({
+      written: [
+        'tax.price_includes_tax',
+        'inventory.allow_negative_stock',
+        'inventory.auto_issue_on_sales',
+        'inventory.auto_receipt_on_purchase',
+        CLOSING_ACCOUNTS_KEY,
+      ],
+      kept: [],
+    });
     expect((await s.run(getCompany)).settings['tax.price_includes_tax']).toBe(true);
     const second = await s.act<Row>('pack.apply', { name: 'retail', sample: true });
     expect(second).toMatchObject({ alreadyApplied: true, seeded: false, sampled: false, settings: { written: [] } });
@@ -46,21 +100,40 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     expect(settings[CLOSING_ACCOUNTS_KEY]).toEqual({ inventory: '1400', closingStock: '5100', openingStock: '5050' });
 
     await loadAccounts(s);
-    const accounts = await s.act<ListJson>('account.list', { where: { code: { $in: ['1400', '5050', '5100', '6990'] } }, orderBy: [{ field: 'code', dir: 'asc' }] });
+    const accounts = await s.act<ListJson>('account.list', {
+      where: { code: { $in: ['1400', '5050', '5100', '6990'] } },
+      orderBy: [{ field: 'code', dir: 'asc' }],
+    });
     expect(accounts.items.map((a) => [a.code, a.name, a.type, a.taxCategoryDefault])).toEqual([
       ['1400', '商品', 'asset', null],
       ['5050', '期首商品棚卸高', 'expense', null],
       ['5100', '期末商品棚卸高', 'expense', null],
       ['6990', '棚卸減耗損', 'expense', null],
     ]);
-    const partners = await s.act<ListJson>('partner.list', { where: { code: { $in: ['WALKIN', 'S1'] } }, orderBy: [{ field: 'code', dir: 'asc' }] });
+    const partners = await s.act<ListJson>('partner.list', {
+      where: { code: { $in: ['WALKIN', 'S1'] } },
+      orderBy: [{ field: 'code', dir: 'asc' }],
+    });
     expect(partners.items.map((p) => [p.code, p.name, p.isCustomer, p.isSupplier, p.ext])).toEqual([
       ['S1', '卸売商事', false, true, { retailKind: 'wholesaler' }],
       ['WALKIN', '店頭客', true, false, { retailKind: 'walk_in' }],
     ]);
     for (const p of partners.items) partner[String(p.code)] = String(p.id);
-    const products = await s.act<ListJson>('product.list', { where: { code: { $in: ['P1', 'P2', 'P3', 'P4'] } }, orderBy: [{ field: 'code', dir: 'asc' }] });
-    expect(products.items.map((p) => [p.code, p.name, p.kind, p.taxCategory, p.salePrice, p.purchasePrice, (p.ext as Row).jan])).toEqual([
+    const products = await s.act<ListJson>('product.list', {
+      where: { code: { $in: ['P1', 'P2', 'P3', 'P4'] } },
+      orderBy: [{ field: 'code', dir: 'asc' }],
+    });
+    expect(
+      products.items.map((p) => [
+        p.code,
+        p.name,
+        p.kind,
+        p.taxCategory,
+        p.salePrice,
+        p.purchasePrice,
+        (p.ext as Row).jan,
+      ]),
+    ).toEqual([
       ['P1', '弁当', 'goods', 'reduced', '540', '300', '2000000000015'],
       ['P2', 'お茶', 'goods', 'reduced', '162', '80', '2000000000022'],
       ['P3', '雑貨', 'goods', 'standard', '1100', '600', '2000000000039'],
@@ -68,8 +141,12 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     ]);
     for (const p of products.items) product[String(p.code)] = String(p.id);
     // AC-1 ext: searchable JAN, list filter on ext.jan, enum validation on ext.retailKind
-    expect((await s.act<ListJson>('product.list', { search: '2000000000039' })).items.map((p) => p.code)).toEqual(['P3']);
-    expect((await s.act<ListJson>('product.list', { where: { 'ext.shelf': 'A-02' } })).items.map((p) => p.code)).toEqual(['P2']);
+    expect((await s.act<ListJson>('product.list', { search: '2000000000039' })).items.map((p) => p.code)).toEqual([
+      'P3',
+    ]);
+    expect(
+      (await s.act<ListJson>('product.list', { where: { 'ext.shelf': 'A-02' } })).items.map((p) => p.code),
+    ).toEqual(['P2']);
     const badKind = await caught(s.act('partner.create', { name: 'X', ext: { retailKind: 'vip' } }));
     expect(badKind).toBeInstanceOf(ValidationError);
     expect(registry.extFields('product').map((d) => [d.key, d.source])).toEqual([
@@ -85,7 +162,12 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     const je0 = await createSubmit<DocJson & { totalDebit: string }>(s, 'journal_entry', {
       date: '2026-11-01',
       description: 'JE0 元入金',
-      lines: { journal_line: [{ accountId: s.acc['1100'], debit: '200000' }, { accountId: s.acc['3000'], credit: '200000' }] },
+      lines: {
+        journal_line: [
+          { accountId: s.acc['1100'], debit: '200000' },
+          { accountId: s.acc['3000'], credit: '200000' },
+        ],
+      },
     });
     expect(je0).toMatchObject({ docstatus: DOCSTATUS.submitted, totalDebit: '200000' });
     expect(await entryLines(s, je0.id)).toEqual([
@@ -95,14 +177,34 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
   });
 
   it('3. 仕入 BILL1（11-01、S1、税抜入力）: 税抜 41,000 / 税 3,640（軽減 23,000→1,840、標準 18,000→1,800）/ 税込 44,640、自動入庫（移動平均 = 仕入単価）', async () => {
-    const qty: Record<string, [string, string]> = { P1: ['50', '300'], P2: ['100', '80'], P3: ['20', '600'], P4: ['40', '150'] };
+    const qty: Record<string, [string, string]> = {
+      P1: ['50', '300'],
+      P2: ['100', '80'],
+      P3: ['20', '600'],
+      P4: ['40', '150'],
+    };
     bill1 = await createSubmit(s, 'purchase_invoice', {
       partnerId: partner.S1,
       date: '2026-11-01',
       priceIncludesTax: false,
-      lines: { purchase_invoice_line: Object.entries(qty).map(([code, [quantity, unitPrice]]) => ({ productId: product[code], quantity, unitPrice })) },
+      lines: {
+        purchase_invoice_line: Object.entries(qty).map(([code, [quantity, unitPrice]]) => ({
+          productId: product[code],
+          quantity,
+          unitPrice,
+        })),
+      },
     });
-    expect(bill1).toMatchObject({ docstatus: DOCSTATUS.submitted, status: 'open', priceIncludesTax: false, subtotal: '41000', taxTotal: '3640', deductibleTax: '3640', total: '44640', balance: '44640' });
+    expect(bill1).toMatchObject({
+      docstatus: DOCSTATUS.submitted,
+      status: 'open',
+      priceIncludesTax: false,
+      subtotal: '41000',
+      taxTotal: '3640',
+      deductibleTax: '3640',
+      total: '44640',
+      balance: '44640',
+    });
     expect(await entryLines(s, bill1.journalEntryId)).toEqual([
       ['5000', '23000', '0'],
       ['1500', '1840', '0'],
@@ -110,8 +212,12 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
       ['1500', '1800', '0'],
       ['2100', '0', '44640'],
     ]);
-    const receipts = await s.act<ListJson>('stock_entry.list', { where: { sourceEntity: 'purchase_invoice', sourceId: bill1.id } });
-    expect(receipts.items.map((e) => [e.type, e.docstatus, e.warehouseId])).toEqual([['receipt', DOCSTATUS.submitted, main]]);
+    const receipts = await s.act<ListJson>('stock_entry.list', {
+      where: { sourceEntity: 'purchase_invoice', sourceId: bill1.id },
+    });
+    expect(receipts.items.map((e) => [e.type, e.docstatus, e.warehouseId])).toEqual([
+      ['receipt', DOCSTATUS.submitted, main],
+    ]);
     const onHand = await s.act<Table>('inventory.stock_on_hand', {});
     expect(onHand.rows.map((r) => [r.productCode, r.qty, r.avgCost, r.value])).toEqual([
       ['P1', '50', '300', '15000'],
@@ -124,7 +230,14 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 
   it('4. AC-3 検算: 現金 + カード ≠ 税込合計 → VALIDATION（hint に差額）、数量 0 → VALIDATION、何も書かれない', async () => {
     const before = (await s.act<ListJson>('retail_closing.list', {})).total;
-    const short = await caught(s.act('retail_closing.create', { date: '2026-11-05', cashAmount: '20000', cardAmount: '4000', lines: closingLines({ P1: '20', P2: '30', P3: '5', P4: '10' }) }));
+    const short = await caught(
+      s.act('retail_closing.create', {
+        date: '2026-11-05',
+        cashAmount: '20000',
+        cardAmount: '4000',
+        lines: closingLines({ P1: '20', P2: '30', P3: '5', P4: '10' }),
+      }),
+    );
     expect(short).toBeInstanceOf(ValidationError);
     expect(short).toMatchObject({ code: 'VALIDATION', hint: expect.stringContaining('差額 460') });
     const zero = await caught(s.act('retail_closing.create', { date: '2026-11-05', lines: closingLines({ P1: '0' }) }));
@@ -139,10 +252,23 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
       ['REG3', '2026-11-25', { P1: '3', P2: '5', P3: '2', P4: '-1' }, '0', '4300'],
     ] as const;
     for (const [no, date, qty, cashAmount, cardAmount] of script) {
-      const draft = await s.act<ClosingJson>('retail_closing.create', { date, cashAmount, cardAmount, lines: closingLines(qty) });
-      expect(draft, `${no} draft defaults`).toMatchObject({ docstatus: DOCSTATUS.draft, warehouseId: main, salesInvoiceId: null, paymentId: null });
+      const draft = await s.act<ClosingJson>('retail_closing.create', {
+        date,
+        cashAmount,
+        cardAmount,
+        lines: closingLines(qty),
+      });
+      expect(draft, `${no} draft defaults`).toMatchObject({
+        docstatus: DOCSTATUS.draft,
+        warehouseId: main,
+        salesInvoiceId: null,
+        paymentId: null,
+      });
       const draftLines = (draft.lines as { retail_closing_line: Row[] }).retail_closing_line;
-      expect(draftLines.map((l) => [l.unitPrice, l.taxCategory]), `${no} unit price / tax category from the product`).toEqual([
+      expect(
+        draftLines.map((l) => [l.unitPrice, l.taxCategory]),
+        `${no} unit price / tax category from the product`,
+      ).toEqual([
         ['540', 'reduced'],
         ['162', 'reduced'],
         ['1100', 'standard'],
@@ -164,12 +290,32 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
       const c = closing[no];
       const i = invoice[no];
       if (!c || !i) throw new TypeError(`${no} missing`);
-      expect(c).toMatchObject({ docstatus: DOCSTATUS.submitted, number, subtotal, taxTotal, total, cashAmount: cash, cardAmount: card });
+      expect(c).toMatchObject({
+        docstatus: DOCSTATUS.submitted,
+        number,
+        subtotal,
+        taxTotal,
+        total,
+        cashAmount: cash,
+        cardAmount: card,
+      });
       expect(c.taxSummary.map((g) => [g.category, g.rate, g.taxable, g.tax])).toEqual([
         ['reduced', '0.08', ...reduced],
         ['standard', '0.1', ...standard],
       ]);
-      expect(i, `${no} invoice`).toMatchObject({ docstatus: DOCSTATUS.submitted, partnerId: partner.WALKIN, date: c.date, priceIncludesTax: true, subtotal, taxTotal, total, paidAmount: cash, balance: card, status: card === '0' ? 'paid' : 'open', note: `レジ締め ${number}` });
+      expect(i, `${no} invoice`).toMatchObject({
+        docstatus: DOCSTATUS.submitted,
+        partnerId: partner.WALKIN,
+        date: c.date,
+        priceIncludesTax: true,
+        subtotal,
+        taxTotal,
+        total,
+        paidAmount: cash,
+        balance: card,
+        status: card === '0' ? 'paid' : 'open',
+        note: `レジ締め ${number}`,
+      });
       // 売上の転記（税込入力: 税率ごとに 1 行）: Dr 1300 税込 / Cr 4000 軽減税抜 / Cr 4000 標準税抜 / Cr 2200 軽減税 / Cr 2200 標準税
       expect(await entryLines(s, i.journalEntryId), `${no} sales entry`).toEqual([
         ['1300', total, '0'],
@@ -188,7 +334,16 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
         expect(c.paymentId, `${no} no cash receipt`).toBeNull();
       } else {
         const pay = await s.act<PaymentJson>('payment.get', { id: String(c.paymentId) });
-        expect(pay).toMatchObject({ docstatus: DOCSTATUS.submitted, direction: 'receive', partnerId: partner.WALKIN, method: 'cash', accountId: s.acc['1000'], amount: cash, allocatedAmount: cash, unallocatedAmount: '0' });
+        expect(pay).toMatchObject({
+          docstatus: DOCSTATUS.submitted,
+          direction: 'receive',
+          partnerId: partner.WALKIN,
+          method: 'cash',
+          accountId: s.acc['1000'],
+          amount: cash,
+          allocatedAmount: cash,
+          unallocatedAmount: '0',
+        });
         expect(await entryLines(s, pay.journalEntryId), `${no} cash entry`).toEqual([
           ['1000', cash, '0'],
           ['1300', '0', cash],
@@ -196,10 +351,15 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
       }
     }
     // stock issues: goods lines with quantity > 0 only — REG3's return (P4 −1) is not received back (ひっかけ 3)
-    const issues = await s.act<ListJson>('stock_entry.list', { where: { type: 'issue', docstatus: DOCSTATUS.submitted }, orderBy: [{ field: 'date', dir: 'asc' }] });
+    const issues = await s.act<ListJson>('stock_entry.list', {
+      where: { type: 'issue', docstatus: DOCSTATUS.submitted },
+      orderBy: [{ field: 'date', dir: 'asc' }],
+    });
     expect(issues.items.map((e) => e.sourceId)).toEqual([invoice.REG1?.id, invoice.REG2?.id, invoice.REG3?.id]);
     const reg3Issue = await s.act<Row>('stock_entry.get', { id: String(issues.items[2]?.id) });
-    expect((reg3Issue.lines as { stock_entry_line: Row[] }).stock_entry_line.map((l) => [l.productId, l.quantity])).toEqual([
+    expect(
+      (reg3Issue.lines as { stock_entry_line: Row[] }).stock_entry_line.map((l) => [l.productId, l.quantity]),
+    ).toEqual([
       [product.P1, '3'],
       [product.P2, '5'],
       [product.P3, '2'],
@@ -210,7 +370,14 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
   });
 
   it('6. 11-20 BILL1 を全額支払（普通預金 1100）: Dr 2100 44,640 / Cr 1100 44,640 → paid', async () => {
-    const pay = await createSubmit<PaymentJson>(s, 'payment', { direction: 'pay', partnerId: partner.S1, date: '2026-11-20', amount: '44640', method: 'bank_transfer', lines: { payment_allocation: [{ invoiceEntity: 'purchase_invoice', invoiceId: bill1.id, amount: '44640' }] } });
+    const pay = await createSubmit<PaymentJson>(s, 'payment', {
+      direction: 'pay',
+      partnerId: partner.S1,
+      date: '2026-11-20',
+      amount: '44640',
+      method: 'bank_transfer',
+      lines: { payment_allocation: [{ invoiceEntity: 'purchase_invoice', invoiceId: bill1.id, amount: '44640' }] },
+    });
     expect(pay).toMatchObject({ docstatus: DOCSTATUS.submitted, accountId: s.acc['1100'] });
     expect(await entryLines(s, pay.journalEntryId)).toEqual([
       ['2100', '44640', '0'],
@@ -221,8 +388,17 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 
   it('7. 棚卸 CNT1（11-30）: 帳簿 P1 2 / P2 25 / P3 5 / P4 15、実地 1 / 25 / 5 / 16 → 差異 −1（減耗 300）と +1（返品 150）', async () => {
     const counted: Record<string, string> = { P1: '1', P2: '25', P3: '5', P4: '16' };
-    const cnt = await s.act<DocJson>('stock_count.create', { date: '2026-11-30', lines: { stock_count_line: Object.entries(counted).map(([code, countedQty]) => ({ productId: product[code], countedQty })) } });
-    const draftLines = ((await s.act<Row>('stock_count.get', { id: cnt.id })).lines as { stock_count_line: Row[] }).stock_count_line;
+    const cnt = await s.act<DocJson>('stock_count.create', {
+      date: '2026-11-30',
+      lines: {
+        stock_count_line: Object.entries(counted).map(([code, countedQty]) => ({
+          productId: product[code],
+          countedQty,
+        })),
+      },
+    });
+    const draftLines = ((await s.act<Row>('stock_count.get', { id: cnt.id })).lines as { stock_count_line: Row[] })
+      .stock_count_line;
     expect(draftLines.map((l) => [l.systemQty, l.countedQty, l.varianceQty])).toEqual([
       ['2', '1', '-1'],
       ['25', '25', '0'],
@@ -231,7 +407,9 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     ]);
     await s.act('stock_count.submit', { id: cnt.id });
     const variance = await s.act<Table>('inventory.count_variance', { countId: cnt.id });
-    expect(variance.rows.map((r) => [r.productCode, r.systemQty, r.countedQty, r.varianceQty, r.unitCost, r.varianceValue])).toEqual([
+    expect(
+      variance.rows.map((r) => [r.productCode, r.systemQty, r.countedQty, r.varianceQty, r.unitCost, r.varianceValue]),
+    ).toEqual([
       ['P1', '2', '1', '-1', '300', '-300'],
       // a submitted count reports the cost of its adjustment lines; products without variance have none (unit cost 0)
       ['P2', '25', '25', '0', '0', '0'],
@@ -253,12 +431,23 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 
   it('9. retail.close_month 2026-11: Dr 1400 商品 7,700 / Cr 5100 期末商品棚卸高 7,700（初月なので期首振替なし）、2 回目は何もしない', async () => {
     const closed = await s.act<Row>('retail.close_month', { period: '2026-11' });
-    expect(closed).toMatchObject({ period: '2026-11', asOf: '2026-11-30', valuationTotal: '7700', openingAmount: '0', alreadyClosed: false, journalEntryId: expect.any(String) });
+    expect(closed).toMatchObject({
+      period: '2026-11',
+      asOf: '2026-11-30',
+      valuationTotal: '7700',
+      openingAmount: '0',
+      alreadyClosed: false,
+      journalEntryId: expect.any(String),
+    });
     expect(await entryLines(s, closed.journalEntryId)).toEqual([
       ['1400', '7700', '0'],
       ['5100', '0', '7700'],
     ]);
-    expect(await s.act('journal_entry.get', { id: String(closed.journalEntryId) })).toMatchObject({ date: '2026-11-30', sourceEntity: 'retail_month_close', docstatus: DOCSTATUS.submitted });
+    expect(await s.act('journal_entry.get', { id: String(closed.journalEntryId) })).toMatchObject({
+      date: '2026-11-30',
+      sourceEntity: 'retail_month_close',
+      docstatus: DOCSTATUS.submitted,
+    });
     const entriesBefore = (await s.act<ListJson>('journal_entry.list', {})).total;
     expect(await s.act('retail.close_month', { period: '2026-11' })).toEqual({ ...closed, alreadyClosed: true });
     expect((await s.act<ListJson>('journal_entry.list', {})).total).toBe(entriesBefore);
@@ -283,10 +472,18 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
     const byCode = new Map(tb.rows.map((r) => [String(r.code), r]));
     for (const [code, [debit, credit, balance]] of Object.entries(expected)) {
       expect([byCode.get(code)?.openingDebit, byCode.get(code)?.openingCredit], `${code} 期首ゼロ`).toEqual(['0', '0']);
-      expect([byCode.get(code)?.periodDebit, byCode.get(code)?.periodCredit, byCode.get(code)?.closingBalance], `${code}`).toEqual([debit, credit, balance]);
+      expect(
+        [byCode.get(code)?.periodDebit, byCode.get(code)?.periodCredit, byCode.get(code)?.closingBalance],
+        `${code}`,
+      ).toEqual([debit, credit, balance]);
     }
     for (const r of tb.rows) {
-      if (!expected[String(r.code)]) expect([r.periodDebit, r.periodCredit, r.closingBalance], `${String(r.code)} ${String(r.name)} idle`).toEqual(['0', '0', '0']);
+      if (!expected[String(r.code)])
+        expect([r.periodDebit, r.periodCredit, r.closingBalance], `${String(r.code)} ${String(r.name)} idle`).toEqual([
+          '0',
+          '0',
+          '0',
+        ]);
     }
     expect(tb.totals).toMatchObject({ periodDebit: '413200', periodCredit: '413200', closingBalance: '0' });
     const net = (type: string) => sum(tb.rows.filter((r) => r.type === type).map((r) => r.closingBalance));
@@ -297,16 +494,70 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 
   it('11. retail.daily_sales（11/01〜11/30）: 日ごとの 税抜・税 8%/10%・税込・現金・カード・件数、合計', async () => {
     const t = await s.act<Table>('retail.daily_sales', { from: '2026-11-01', to: '2026-11-30' });
-    expect(t.columns.map((c) => c.key)).toEqual(['date', 'subtotal', 'tax_reduced_8', 'tax_standard_10', 'taxTotal', 'total', 'cashAmount', 'cardAmount', 'count']);
+    expect(t.columns.map((c) => c.key)).toEqual([
+      'date',
+      'subtotal',
+      'tax_reduced_8',
+      'tax_standard_10',
+      'taxTotal',
+      'total',
+      'cashAmount',
+      'cardAmount',
+      'count',
+    ]);
     expect(t.columns[2]?.label).toEqual({ ja: '消費税 8%（軽減税率）', en: 'Tax 8% (Reduced rate)' });
     expect(t.rows).toEqual([
-      { date: '2026-11-05', subtotal: '22500', tax_reduced_8: '1160', tax_standard_10: '800', taxTotal: '1960', total: '24460', cashAmount: '20000', cardAmount: '4460', count: 1 },
-      { date: '2026-11-15', subtotal: '31000', tax_reduced_8: '1480', tax_standard_10: '1250', taxTotal: '2730', total: '33730', cashAmount: '33730', cardAmount: '0', count: 1 },
-      { date: '2026-11-25', subtotal: '3950', tax_reduced_8: '180', tax_standard_10: '170', taxTotal: '350', total: '4300', cashAmount: '0', cardAmount: '4300', count: 1 },
+      {
+        date: '2026-11-05',
+        subtotal: '22500',
+        tax_reduced_8: '1160',
+        tax_standard_10: '800',
+        taxTotal: '1960',
+        total: '24460',
+        cashAmount: '20000',
+        cardAmount: '4460',
+        count: 1,
+      },
+      {
+        date: '2026-11-15',
+        subtotal: '31000',
+        tax_reduced_8: '1480',
+        tax_standard_10: '1250',
+        taxTotal: '2730',
+        total: '33730',
+        cashAmount: '33730',
+        cardAmount: '0',
+        count: 1,
+      },
+      {
+        date: '2026-11-25',
+        subtotal: '3950',
+        tax_reduced_8: '180',
+        tax_standard_10: '170',
+        taxTotal: '350',
+        total: '4300',
+        cashAmount: '0',
+        cardAmount: '4300',
+        count: 1,
+      },
     ]);
-    expect(t.totals).toEqual({ subtotal: '57450', tax_reduced_8: '2820', tax_standard_10: '2220', taxTotal: '5040', total: '62490', cashAmount: '53730', cardAmount: '8760', count: '3' });
-    expect((await s.act<Table>('retail.daily_sales', { from: '2026-11-06', to: '2026-11-15' })).totals).toMatchObject({ total: '33730', count: '1' });
-    await expect(s.act('retail.daily_sales', { from: '2026-11-30', to: '2026-11-01' })).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect(t.totals).toEqual({
+      subtotal: '57450',
+      tax_reduced_8: '2820',
+      tax_standard_10: '2220',
+      taxTotal: '5040',
+      total: '62490',
+      cashAmount: '53730',
+      cardAmount: '8760',
+      count: '3',
+    });
+    expect((await s.act<Table>('retail.daily_sales', { from: '2026-11-06', to: '2026-11-15' })).totals).toMatchObject({
+      total: '33730',
+      count: '1',
+    });
+    await expect(s.act('retail.daily_sales', { from: '2026-11-30', to: '2026-11-01' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
   });
 
   it('12. 売掛残（カード分）8,760: REG1 の請求書 4,460 + REG3 の請求書 4,300（payment.outstanding・元帳 1300 と一致）', async () => {
@@ -331,10 +582,20 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 
   it('14. ラベル・メニュー・ext（AC-8, AC-1）: sales_invoice「売上（店頭/掛）」、partner「取引先（店頭客・仕入先）」、小売メニュー', async () => {
     const meta = await s.run(async (ctx) => appMeta(ctx, { appliedPacks: Object.keys(await readAppliedPacks(ctx)) }));
-    expect(meta.entities.find((e) => e.name === 'sales_invoice')?.label).toEqual({ ja: '売上（店頭/掛）', en: 'Sales (register / credit)' });
-    expect(meta.entities.find((e) => e.name === 'partner')?.label).toEqual({ ja: '取引先（店頭客・仕入先）', en: 'Partners (walk-in / suppliers)' });
+    expect(meta.entities.find((e) => e.name === 'sales_invoice')?.label).toEqual({
+      ja: '売上（店頭/掛）',
+      en: 'Sales (register / credit)',
+    });
+    expect(meta.entities.find((e) => e.name === 'partner')?.label).toEqual({
+      ja: '取引先（店頭客・仕入先）',
+      en: 'Partners (walk-in / suppliers)',
+    });
     expect(meta.packs).toEqual([{ name: 'retail', label: { ja: '小売', en: 'Retail' }, applied: true }]);
-    expect(meta.modules.find((m) => m.name === 'retail')?.menus.map((m) => m.label.ja)).toEqual(['レジ締め', '日次売上', '月次締め']);
+    expect(meta.modules.find((m) => m.name === 'retail')?.menus.map((m) => m.label.ja)).toEqual([
+      'レジ締め',
+      '日次売上',
+      '月次締め',
+    ]);
     expect(meta.entities.find((e) => e.name === 'product')?.extFields.map((x) => [x.name, x.searchable])).toEqual([
       ['ext.jan', true],
       ['ext.supplierCode', undefined],
@@ -347,47 +608,92 @@ describe('台本: 食品雑貨店「まめや」の 2026年11月 (docs/domain/sc
 describe('台本の後（12月）: 取消（AC-4）と翌月の月次締め（AC-7）', () => {
   it('AC-4 取消: sales ロールで締め・submit できる。請求書は単独で取消できない（締めが参照）→ 締めを取消すと 現金入金 → 請求書 の順に取消、在庫は戻る', async () => {
     const clerk = { roles: ['sales'], actor: { type: 'user' as const, id: s.db.adminUserId } };
-    const draft = await s.act<ClosingJson>('retail_closing.create', { date: '2026-12-01', cashAmount: '1100', lines: closingLines({ P3: '1' }) }, clerk);
+    const draft = await s.act<ClosingJson>(
+      'retail_closing.create',
+      { date: '2026-12-01', cashAmount: '1100', lines: closingLines({ P3: '1' }) },
+      clerk,
+    );
     await s.act('retail_closing.submit', { id: draft.id }, clerk);
     const c = await s.act<ClosingJson>('retail_closing.get', { id: draft.id });
     expect(c).toMatchObject({ docstatus: DOCSTATUS.submitted, total: '1100', subtotal: '1000', taxTotal: '100' });
-    expect((await s.act<Table>('inventory.stock_on_hand', { asOf: '2026-12-01' })).rows.find((r) => r.productCode === 'P3')?.qty).toBe('4');
-    await expect(s.act('sales_invoice.cancel', { id: String(c.salesInvoiceId) })).rejects.toMatchObject({ code: 'HAS_DEPENDENTS' });
-    await expect(s.act('payment.cancel', { id: String(c.paymentId) })).rejects.toMatchObject({ code: 'HAS_DEPENDENTS' });
+    expect(
+      (await s.act<Table>('inventory.stock_on_hand', { asOf: '2026-12-01' })).rows.find((r) => r.productCode === 'P3')
+        ?.qty,
+    ).toBe('4');
+    await expect(s.act('sales_invoice.cancel', { id: String(c.salesInvoiceId) })).rejects.toMatchObject({
+      code: 'HAS_DEPENDENTS',
+    });
+    await expect(s.act('payment.cancel', { id: String(c.paymentId) })).rejects.toMatchObject({
+      code: 'HAS_DEPENDENTS',
+    });
     // a patch cannot re-point the system-owned links of a submitted closing (stripped from the patch)
     await s.act('retail_closing.update', { id: c.id, patch: { salesInvoiceId: null } });
     expect((await s.act<ClosingJson>('retail_closing.get', { id: c.id })).salesInvoiceId).toBe(c.salesInvoiceId);
 
     // the cascade runs in the caller's context: sales alone may not cancel the cash receipt (payment.cancel is accounting's)
-    await expect(s.act('retail_closing.cancel', { id: c.id }, clerk)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(s.act('retail_closing.cancel', { id: c.id }, clerk)).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
     expect(await s.act('retail_closing.get', { id: c.id })).toMatchObject({ docstatus: DOCSTATUS.submitted });
     await s.act('retail_closing.cancel', { id: c.id }, { roles: ['sales', 'accounting'], actor: clerk.actor });
     expect(await s.act('retail_closing.get', { id: c.id })).toMatchObject({ docstatus: DOCSTATUS.cancelled });
     expect(await s.act('payment.get', { id: String(c.paymentId) })).toMatchObject({ docstatus: DOCSTATUS.cancelled });
-    expect(await s.act('sales_invoice.get', { id: String(c.salesInvoiceId) })).toMatchObject({ docstatus: DOCSTATUS.cancelled, status: 'cancelled', paidAmount: '0' });
-    expect((await s.act<Table>('inventory.stock_on_hand', { asOf: '2026-12-01' })).rows.find((r) => r.productCode === 'P3')?.qty).toBe('5');
+    expect(await s.act('sales_invoice.get', { id: String(c.salesInvoiceId) })).toMatchObject({
+      docstatus: DOCSTATUS.cancelled,
+      status: 'cancelled',
+      paidAmount: '0',
+    });
+    expect(
+      (await s.act<Table>('inventory.stock_on_hand', { asOf: '2026-12-01' })).rows.find((r) => r.productCode === 'P3')
+        ?.qty,
+    ).toBe('5');
     const dec = await s.act<Table>('accounting.trial_balance', { from: '2026-12-01', to: '2026-12-31' });
-    for (const code of ['1000', '1300', '2200', '4000']) expect(dec.rows.find((r) => r.code === code)?.closingBalance, `${code} unchanged by the reversed entries`).toBe(code === '1000' ? '53730' : code === '1300' ? '8760' : code === '2200' ? '-5040' : '-57450');
+    for (const code of ['1000', '1300', '2200', '4000'])
+      expect(dec.rows.find((r) => r.code === code)?.closingBalance, `${code} unchanged by the reversed entries`).toBe(
+        code === '1000' ? '53730' : code === '1300' ? '8760' : code === '2200' ? '-5040' : '-57450',
+      );
     // lines of a submitted/cancelled closing are frozen
-    await expect(s.act('retail_closing_line.create', { closingId: c.id, productId: product.P1, quantity: '1' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await expect(
+      s.act('retail_closing_line.create', { closingId: c.id, productId: product.P1, quantity: '1' }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
     // amend: a new draft with the same lines and amounts, links reset (left as a draft: nothing posts or moves)
     const amended = await s.act<ClosingJson>('retail_closing.amend', { id: c.id });
-    expect(await s.act('retail_closing.get', { id: amended.id })).toMatchObject({ docstatus: DOCSTATUS.draft, amendedFrom: c.id, total: '1100', cashAmount: '1100', salesInvoiceId: null, paymentId: null });
+    expect(await s.act('retail_closing.get', { id: amended.id })).toMatchObject({
+      docstatus: DOCSTATUS.draft,
+      amendedFrom: c.id,
+      total: '1100',
+      cashAmount: '1100',
+      salesInvoiceId: null,
+      paymentId: null,
+    });
   });
 
   it('AC-7 翌月 2026-12: Dr 5050 期首 7,700 / Cr 1400、Dr 1400 7,700 / Cr 5100（12 月は取引なし）; 古い月の締めと記録の直接作成は拒否', async () => {
     const closed = await s.act<Row>('retail.close_month', { period: '2026-12' });
-    expect(closed).toMatchObject({ period: '2026-12', asOf: '2026-12-31', valuationTotal: '7700', openingAmount: '7700', alreadyClosed: false });
+    expect(closed).toMatchObject({
+      period: '2026-12',
+      asOf: '2026-12-31',
+      valuationTotal: '7700',
+      openingAmount: '7700',
+      alreadyClosed: false,
+    });
     expect(await entryLines(s, closed.journalEntryId)).toEqual([
       ['5050', '7700', '0'],
       ['1400', '0', '7700'],
       ['1400', '7700', '0'],
       ['5100', '0', '7700'],
     ]);
-    await expect(s.act('retail.close_month', { period: '2026-10' })).rejects.toMatchObject({ code: 'INVALID_STATE', hint: expect.stringContaining('oldest first') });
-    await expect(s.act('retail_month_close.create', { period: '2027-01', asOf: '2027-01-31', valuationTotal: '0' })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(s.act('retail.close_month', { period: '2026-10' })).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+      hint: expect.stringContaining('oldest first'),
+    });
+    await expect(
+      s.act('retail_month_close.create', { period: '2027-01', asOf: '2027-01-31', valuationTotal: '0' }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     await expect(s.act('retail.close_month', { period: '2026-13' })).rejects.toMatchObject({ code: 'VALIDATION' });
     const sales = { roles: ['sales'], actor: { type: 'user' as const, id: s.db.adminUserId } };
-    await expect(s.act('retail.close_month', { period: '2027-01' }, sales)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(s.act('retail.close_month', { period: '2027-01' }, sales)).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
   });
 });

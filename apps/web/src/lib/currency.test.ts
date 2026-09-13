@@ -21,7 +21,13 @@ describe('currencyScale (web-phase15 AC-4)', () => {
 
 describe('currencyOf (GET /auth/me reader)', () => {
   it('reads company.currency of the kernel-phase15 response', () => {
-    const me = { user: { id: 'u' }, companyId: 'c', company: { id: 'c', name: 'デモ株式会社', currency: 'JPY' }, actor: { type: 'user', id: 'u' }, locale: 'ja' };
+    const me = {
+      user: { id: 'u' },
+      companyId: 'c',
+      company: { id: 'c', name: 'デモ株式会社', currency: 'JPY' },
+      actor: { type: 'user', id: 'u' },
+      locale: 'ja',
+    };
     expect(currencyOf(me)).toBe('JPY');
     expect(currencyOf({ company: { id: 'c', name: 'x', currency: 'EUR' } })).toBe('EUR');
   });

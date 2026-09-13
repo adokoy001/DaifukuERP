@@ -8,8 +8,21 @@ import { currencyOf, currencyScale } from '../lib/currency.ts';
 import { request } from './client.ts';
 import type { LoginUser } from './types.ts';
 
-export interface MeResponse { user: LoginUser; companyId: string | null; company: { id: string; name: string; currency: string } | null }
-export function useMe() { return useQuery({ queryKey: meKey, queryFn: () => request<MeResponse>('/auth/me'), staleTime: 15_000, refetchInterval: 30_000, refetchOnWindowFocus: 'always', retry: false }); }
+export interface MeResponse {
+  user: LoginUser;
+  companyId: string | null;
+  company: { id: string; name: string; currency: string } | null;
+}
+export function useMe() {
+  return useQuery({
+    queryKey: meKey,
+    queryFn: () => request<MeResponse>('/auth/me'),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: 'always',
+    retry: false,
+  });
+}
 
 export const meKey = ['me'] as const;
 

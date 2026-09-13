@@ -6,10 +6,34 @@ import { Decimal, type Label, type Locale } from '@daifuku/kernel';
 import { TAX_CATEGORY_LABELS, isTaxCategory } from '@daifuku/mod-tax';
 
 export interface InvoiceRenderData {
-  issuer: { name: string; invoiceRegistrationNo?: string; postalCode?: string; address?: string; phone?: string; email?: string; bankInfo?: string };
-  invoice: { docstatus?: number; number: string; date: string; dueDate: string | null; note: string | null; priceIncludesTax: boolean };
+  issuer: {
+    name: string;
+    invoiceRegistrationNo?: string;
+    postalCode?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    bankInfo?: string;
+  };
+  invoice: {
+    docstatus?: number;
+    number: string;
+    date: string;
+    dueDate: string | null;
+    note: string | null;
+    priceIncludesTax: boolean;
+  };
   recipient: { name: string; postalCode?: string; address?: string };
-  lines: Array<{ uomCode?: string; seq: number; description: string; quantity: string; unitPrice: string; amount: string; taxCategory: string; rate: string }>;
+  lines: Array<{
+    uomCode?: string;
+    seq: number;
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    amount: string;
+    taxCategory: string;
+    rate: string;
+  }>;
   /** rate '0.10' etc.; money as Decimal strings */
   taxSummary: Array<{ category: string; rate: string; taxable: string; tax: string; gross: string }>;
   totals: { subtotal: string; taxTotal: string; total: string };
@@ -48,7 +72,10 @@ const L = {
 } satisfies Record<string, Label>;
 
 export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  );
 }
 
 /** '1234567.5' -> '1,234,567.5' (string arithmetic only, ADR-0010). Non-decimal input is returned as-is. */
@@ -73,13 +100,15 @@ function rateLabel(category: string, rate: string, locale: Locale): string {
 
 const CELL = 'padding:4px 8px;border-bottom:1px solid #ddd;';
 const RIGHT = `${CELL}text-align:right;`;
-const th = (text: string, right = false) => `<th style="${right ? RIGHT : CELL}text-align:${right ? 'right' : 'left'};background:#f5f5f5;">${escapeHtml(text)}</th>`;
+const th = (text: string, right = false) =>
+  `<th style="${right ? RIGHT : CELL}text-align:${right ? 'right' : 'left'};background:#f5f5f5;">${escapeHtml(text)}</th>`;
 const td = (text: string, right = false) => `<td style="${right ? RIGHT : CELL}">${escapeHtml(text)}</td>`;
 
 function partiesHtml(d: InvoiceRenderData, t: (l: Label) => string): string {
   const r = d.recipient;
   const i = d.issuer;
-  const addr = (postal: string | undefined, address: string | undefined) => [postal ? `〒${postal}` : '', address ?? ''].filter(Boolean).map(escapeHtml).join(' ');
+  const addr = (postal: string | undefined, address: string | undefined) =>
+    [postal ? `〒${postal}` : '', address ?? ''].filter(Boolean).map(escapeHtml).join(' ');
   const issuerLines = [
     `<strong>${escapeHtml(i.name)}</strong>`,
     i.invoiceRegistrationNo ? `${escapeHtml(t(L.registrationNo))}: ${escapeHtml(i.invoiceRegistrationNo)}` : '',
@@ -110,7 +139,10 @@ ${rows}
 function summaryHtml(d: InvoiceRenderData, t: (l: Label) => string): string {
   const amountHead = d.invoice.priceIncludesTax ? t(L.taxableIncl) : t(L.taxableExcl);
   const rows = d.taxSummary
-    .map((g) => `<tr>${td(rateLabel(g.category, g.rate, d.locale))}${td(formatMoney(d.invoice.priceIncludesTax ? g.gross : g.taxable), true)}${td(formatMoney(g.tax), true)}</tr>`)
+    .map(
+      (g) =>
+        `<tr>${td(rateLabel(g.category, g.rate, d.locale))}${td(formatMoney(d.invoice.priceIncludesTax ? g.gross : g.taxable), true)}${td(formatMoney(g.tax), true)}</tr>`,
+    )
     .join('\n');
   return `<table class="tax-summary" style="border-collapse:collapse;margin:16px 0;min-width:50%;">
 <thead><tr>${th(t(L.summaryRate))}${th(amountHead, true)}${th(t(L.tax), true)}</tr></thead>
@@ -120,7 +152,8 @@ ${rows}
 }
 
 function totalsHtml(d: InvoiceRenderData, t: (l: Label) => string): string {
-  const row = (label: string, value: string, strong = false) => `<tr>${th(label)}<td style="${RIGHT}${strong ? 'font-weight:bold;font-size:1.1em;' : ''}">${escapeHtml(formatMoney(value))}</td></tr>`;
+  const row = (label: string, value: string, strong = false) =>
+    `<tr>${th(label)}<td style="${RIGHT}${strong ? 'font-weight:bold;font-size:1.1em;' : ''}">${escapeHtml(formatMoney(value))}</td></tr>`;
   return `<table class="totals" style="border-collapse:collapse;margin:16px 0 16px auto;min-width:40%;">
 <tbody>
 ${row(t(L.subtotal), d.totals.subtotal)}
@@ -139,8 +172,12 @@ export const defaultInvoiceHtml: InvoiceHtmlRenderer = (d) => {
     d.invoice.dueDate ? `<tr>${th(t(L.dueDate))}${td(d.invoice.dueDate)}</tr>` : '',
   ].join('\n');
   const hasReduced = d.lines.some((l) => l.taxCategory === 'reduced');
-  const bank = d.issuer.bankInfo ? `<section class="bank"><h2 style="font-size:1em;margin:16px 0 4px;">${escapeHtml(t(L.bank))}</h2><p style="margin:0;white-space:pre-line;">${escapeHtml(d.issuer.bankInfo)}</p></section>` : '';
-  const note = d.invoice.note ? `<section class="note"><h2 style="font-size:1em;margin:16px 0 4px;">${escapeHtml(t(L.note))}</h2><p style="margin:0;white-space:pre-line;">${escapeHtml(d.invoice.note)}</p></section>` : '';
+  const bank = d.issuer.bankInfo
+    ? `<section class="bank"><h2 style="font-size:1em;margin:16px 0 4px;">${escapeHtml(t(L.bank))}</h2><p style="margin:0;white-space:pre-line;">${escapeHtml(d.issuer.bankInfo)}</p></section>`
+    : '';
+  const note = d.invoice.note
+    ? `<section class="note"><h2 style="font-size:1em;margin:16px 0 4px;">${escapeHtml(t(L.note))}</h2><p style="margin:0;white-space:pre-line;">${escapeHtml(d.invoice.note)}</p></section>`
+    : '';
   return `<article class="invoice" lang="${d.locale}" style="font-family:sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
 <header style="display:flex;justify-content:space-between;align-items:flex-start;">
 <h1 style="font-size:1.6em;margin:0;">${escapeHtml(t(L.title))}</h1>

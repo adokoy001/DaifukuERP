@@ -7,13 +7,31 @@
 //      `toWarehouseId` at exactly the cost that left (value is conserved);
 //   4. outbound and transfer lines get unitCost = the average they were issued at and amount = the posted cost.
 // Any failure (validation, insufficient stock, concurrent balance change) leaves the entry a draft and nothing posted.
-import { Decimal, DOCSTATUS, registry, repo, StateError, ValidationError, type Context, type EntityDef, type HookArgs, type Infer, type LocalDate } from '@daifuku/kernel';
+import {
+  Decimal,
+  DOCSTATUS,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  type Context,
+  type EntityDef,
+  type HookArgs,
+  type Infer,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { assertInventoryDate } from '../period-close.ts';
 import { StockEntry, type StockEntryType } from '../entities/stock-entry.ts';
 import { StockEntryLine } from '../entities/stock-entry-line.ts';
 import { listAll, postMovement, type PostingMeta } from '../ledger.ts';
-import { entryIssues, lineDirection, type EntryHead, type EntryLineInput, type ProductKind } from '../services/entry-rules.ts';
+import {
+  entryIssues,
+  lineDirection,
+  type EntryHead,
+  type EntryLineInput,
+  type ProductKind,
+} from '../services/entry-rules.ts';
 import { round6 } from '../services/moving-average.ts';
 import { allowNegativeStock } from '../settings.ts';
 import { registeredStockSource } from '../source-documents.ts';
@@ -23,14 +41,22 @@ import { assertEntryRole } from './entry.ts';
 type EntryLineRow = Infer<typeof StockEntryLine>;
 
 export const SUBMIT_HINT = 'Fix the entry (see details.issues), then submit again.';
-export const SOURCE_HINT = 'Stock entries linked to a source are created by the source document; submit or cancel that document instead.';
+export const SOURCE_HINT =
+  'Stock entries linked to a source are created by the source document; submit or cancel that document instead.';
 
 /** Source documents this module links stock entries to (hooks/invoices.ts, hooks/count.ts). */
 export const SOURCE_ENTITIES = ['purchase_invoice', 'sales_invoice', 'stock_count'] as const;
 
 export async function loadEntryLines(ctx: Context, entryId: string): Promise<EntryLineRow[]> {
-  const result = await listAll((q) => repo(ctx, StockEntryLine).list(q), { where: { entryId }, orderBy: [{ field: 'seq', dir: 'asc' }] }, 500);
-  if (result.truncated) throw new ValidationError('Document exceeds the supported line count', [{ path: 'lines', message: 'at most 500 lines' }]);
+  const result = await listAll(
+    (q) => repo(ctx, StockEntryLine).list(q),
+    { where: { entryId }, orderBy: [{ field: 'seq', dir: 'asc' }] },
+    500,
+  );
+  if (result.truncated)
+    throw new ValidationError('Document exceeds the supported line count', [
+      { path: 'lines', message: 'at most 500 lines' },
+    ]);
   return result.items;
 }
 
@@ -49,10 +75,18 @@ async function assertSourceLink(ctx: Context, row: Record<string, unknown>): Pro
   const entity = row.sourceEntity;
   const id = row.sourceId;
   if ((entity === null || entity === undefined) && (id === null || id === undefined)) return;
-  const known = typeof entity === 'string' && ((SOURCE_ENTITIES as readonly string[]).includes(entity) || registeredStockSource(entity)) && registry.hasEntity(entity);
-  const source = known && typeof id === 'string' ? await repo(ctx, registry.entity(entity) as EntityDef).find(id) : null;
+  const known =
+    typeof entity === 'string' &&
+    ((SOURCE_ENTITIES as readonly string[]).includes(entity) || registeredStockSource(entity)) &&
+    registry.hasEntity(entity);
+  const source =
+    known && typeof id === 'string' ? await repo(ctx, registry.entity(entity) as EntityDef).find(id) : null;
   if (!source || source.docstatus !== DOCSTATUS.submitted) {
-    throw new StateError(`stock_entry ${String(row.id)}: source ${String(entity)} ${String(id)} is not a submitted document`, SOURCE_HINT, { sourceEntity: entity, sourceId: id });
+    throw new StateError(
+      `stock_entry ${String(row.id)}: source ${String(entity)} ${String(id)} is not a submitted document`,
+      SOURCE_HINT,
+      { sourceEntity: entity, sourceId: id },
+    );
   }
 }
 
@@ -61,8 +95,19 @@ interface PostedLine {
   amount: Decimal;
 }
 
-async function postLine(ctx: Context, head: EntryHead & { id: string; date: LocalDate }, line: EntryLineInput, allowNegative: boolean): Promise<PostedLine> {
-  const meta: PostingMeta = { date: head.date, sourceEntity: StockEntry.name, sourceId: head.id, reversal: false, allowNegative };
+async function postLine(
+  ctx: Context,
+  head: EntryHead & { id: string; date: LocalDate },
+  line: EntryLineInput,
+  allowNegative: boolean,
+): Promise<PostedLine> {
+  const meta: PostingMeta = {
+    date: head.date,
+    sourceEntity: StockEntry.name,
+    sourceId: head.id,
+    reversal: false,
+    allowNegative,
+  };
   const from = { productId: line.productId, warehouseId: head.warehouseId ?? '' };
   const direction = lineDirection(head.type, line.sign);
   if (direction === 'in') {
@@ -110,7 +155,10 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   for (const line of lines) {
     const posted = await postLine(ctx, head, lineInputOf(line), allowNegative);
     const unchanged = line.unitCost !== null && line.unitCost.eq(posted.unitCost) && line.amount.eq(posted.amount);
-    if (!unchanged) await asModule(ctx, (ctx) => repo(ctx, StockEntryLine).update(line.id, { unitCost: posted.unitCost, amount: posted.amount }));
+    if (!unchanged)
+      await asModule(ctx, (ctx) =>
+        repo(ctx, StockEntryLine).update(line.id, { unitCost: posted.unitCost, amount: posted.amount }),
+      );
   }
 }
 

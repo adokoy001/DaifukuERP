@@ -19,7 +19,11 @@ const ENTRY = resolve(import.meta.dirname, 'fixtures/stdio-entry.ts');
 
 let db: TestDb;
 
-function spawnServer(env: Record<string, string>): { client: Client; transport: StdioClientTransport; stderr: string[] } {
+function spawnServer(env: Record<string, string>): {
+  client: Client;
+  transport: StdioClientTransport;
+  stderr: string[];
+} {
   const stderr: string[] = [];
   const transport = new StdioClientTransport({
     command: TSX,
@@ -43,21 +47,36 @@ afterAll(async () => {
 
 describe('AC-1 stdio entrypoint', () => {
   it('AC-1 authenticates from env, lists tools and writes audit rows as agent DAIFUKU_AGENT_ID on behalf of the user', async () => {
-    const { client, transport, stderr } = spawnServer({ DAIFUKU_EMAIL: 'admin@example.com', DAIFUKU_PASSWORD: 'password', DAIFUKU_AGENT_ID: 'stdio-agent' });
+    const { client, transport, stderr } = spawnServer({
+      DAIFUKU_EMAIL: 'admin@example.com',
+      DAIFUKU_PASSWORD: 'password',
+      DAIFUKU_AGENT_ID: 'stdio-agent',
+    });
     try {
       await client.connect(transport);
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(['mcp_test_item_list', 'mcp_test_item_create']));
 
-      const res = await client.callTool({ name: 'mcp_test_item_create', arguments: { name: 'Over stdio', code: 'S-1' } }, CallToolResultSchema);
+      const res = await client.callTool(
+        { name: 'mcp_test_item_create', arguments: { name: 'Over stdio', code: 'S-1' } },
+        CallToolResultSchema,
+      );
       const first: unknown = 'content' in res && Array.isArray(res.content) ? res.content[0] : undefined;
-      const text = typeof first === 'object' && first !== null && 'text' in first && typeof first.text === 'string' ? first.text : '{}';
+      const text =
+        typeof first === 'object' && first !== null && 'text' in first && typeof first.text === 'string'
+          ? first.text
+          : '{}';
       const created = JSON.parse(text) as { id: string; name: string };
       expect(res.isError).not.toBe(true);
       expect(created.name).toBe('Over stdio');
 
       const trail = await db.run({}, (ctx) => auditTrail(ctx, 'mcp_test_item', created.id));
-      expect(trail[0]).toMatchObject({ op: 'create', actorType: 'agent', actorId: 'stdio-agent', onBehalfOf: db.adminUserId });
+      expect(trail[0]).toMatchObject({
+        op: 'create',
+        actorType: 'agent',
+        actorId: 'stdio-agent',
+        onBehalfOf: db.adminUserId,
+      });
       expect(stderr.join('')).toContain('daifuku mcp server ready');
     } finally {
       await client.close();
@@ -73,7 +92,11 @@ describe('AC-1 stdio entrypoint', () => {
 
   it('quality-foundation AC-1 reports startup failures without echoing connection secrets', async () => {
     const secret = 'private-startup-password';
-    const { stderr, exited } = spawnRaw({ DATABASE_URL_OWNER: `postgres://${secret}@[`, DAIFUKU_EMAIL: 'admin@example.com', DAIFUKU_PASSWORD: secret });
+    const { stderr, exited } = spawnRaw({
+      DATABASE_URL_OWNER: `postgres://${secret}@[`,
+      DAIFUKU_EMAIL: 'admin@example.com',
+      DAIFUKU_PASSWORD: secret,
+    });
     expect(await exited).toBe(1);
     expect(stderr.join('')).toContain('fatal');
     expect(stderr.join('')).toContain('Check database connection');
@@ -93,7 +116,11 @@ describe('AC-1 stdio entrypoint', () => {
   }, 60000);
 });
 
-function spawnRaw(env: Record<string, string>): { child: ReturnType<typeof spawn>; stderr: string[]; exited: Promise<number | null> } {
+function spawnRaw(env: Record<string, string>): {
+  child: ReturnType<typeof spawn>;
+  stderr: string[];
+  exited: Promise<number | null>;
+} {
   const child = spawn(TSX, [ENTRY], {
     cwd: APP_DIR,
     env: { PATH: process.env.PATH ?? '', DATABASE_URL_OWNER: OWNER_URL, DATABASE_URL: APP_URL, ...env },

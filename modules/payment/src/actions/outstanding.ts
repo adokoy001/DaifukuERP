@@ -61,7 +61,10 @@ export async function outstanding(ctx: Context, input: OutstandingInput): Promis
     balance: i.balance.toString(),
   }));
   const sum = (key: 'total' | 'paidAmount' | 'balance') => Decimal.sum(items.map((i) => i[key])).toString();
-  const title = input.direction === 'receive' ? label('未入金の売上請求書', 'Outstanding sales invoices') : label('未払の仕入請求書', 'Outstanding purchase invoices');
+  const title =
+    input.direction === 'receive'
+      ? label('未入金の売上請求書', 'Outstanding sales invoices')
+      : label('未払の仕入請求書', 'Outstanding purchase invoices');
   return {
     title,
     columns: outstandingColumns(input.direction),

@@ -2,7 +2,18 @@
 // Without asOf: the maintained stock_balance rows. With asOf: the ledger replayed up to that date (Σ qtyDelta / Σ costDelta
 // of rows dated ≤ asOf; cancelled entries net to zero because their reverse rows carry the original date), average = value ÷ qty.
 // Balances with neither quantity nor value are left out. totals.value = Σ value.
-import { Decimal, defineAction, label, MAX_REPORT_ROWS, repo, column, tableResult, type Context, type TableColumn, type TableResult } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  label,
+  MAX_REPORT_ROWS,
+  repo,
+  column,
+  tableResult,
+  type Context,
+  type TableColumn,
+  type TableResult,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { z } from 'zod';
 import { StockBalance } from '../entities/stock-balance.ts';
@@ -35,19 +46,54 @@ interface BalanceLine {
   value: Decimal;
 }
 
-async function currentBalances(ctx: Context, warehouseId: string | undefined): Promise<{ lines: BalanceLine[]; truncated: boolean }> {
+async function currentBalances(
+  ctx: Context,
+  warehouseId: string | undefined,
+): Promise<{ lines: BalanceLine[]; truncated: boolean }> {
   const where = warehouseId ? { warehouseId } : {};
-  const { items, truncated } = await listAll((q) => repo(ctx, StockBalance).list(q), { where, orderBy: [{ field: 'createdAt', dir: 'asc' }] }, MAX_REPORT_ROWS);
-  return { lines: items.map((b) => ({ productId: b.productId, warehouseId: b.warehouseId, qty: b.qty, avgCost: b.avgCost, value: b.value })), truncated };
+  const { items, truncated } = await listAll(
+    (q) => repo(ctx, StockBalance).list(q),
+    { where, orderBy: [{ field: 'createdAt', dir: 'asc' }] },
+    MAX_REPORT_ROWS,
+  );
+  return {
+    lines: items.map((b) => ({
+      productId: b.productId,
+      warehouseId: b.warehouseId,
+      qty: b.qty,
+      avgCost: b.avgCost,
+      value: b.value,
+    })),
+    truncated,
+  };
 }
 
-async function replayedBalances(ctx: Context, warehouseId: string | undefined, asOf: string): Promise<{ lines: BalanceLine[]; truncated: boolean }> {
-  const { sums, truncated } = await ledgerSums(ctx, { date: { $lte: asOf }, ...(warehouseId ? { warehouseId } : {}) }, true);
-  return { lines: sums.map((s) => ({ productId: s.productId, warehouseId: s.warehouseId ?? '', qty: s.qty, avgCost: averageOf(s.qty, s.value), value: s.value })), truncated };
+async function replayedBalances(
+  ctx: Context,
+  warehouseId: string | undefined,
+  asOf: string,
+): Promise<{ lines: BalanceLine[]; truncated: boolean }> {
+  const { sums, truncated } = await ledgerSums(
+    ctx,
+    { date: { $lte: asOf }, ...(warehouseId ? { warehouseId } : {}) },
+    true,
+  );
+  return {
+    lines: sums.map((s) => ({
+      productId: s.productId,
+      warehouseId: s.warehouseId ?? '',
+      qty: s.qty,
+      avgCost: averageOf(s.qty, s.value),
+      value: s.value,
+    })),
+    truncated,
+  };
 }
 
 export async function stockOnHand(ctx: Context, input: StockOnHandInput): Promise<TableResult> {
-  const loaded = input.asOf ? await replayedBalances(ctx, input.warehouseId, input.asOf) : await currentBalances(ctx, input.warehouseId);
+  const loaded = input.asOf
+    ? await replayedBalances(ctx, input.warehouseId, input.asOf)
+    : await currentBalances(ctx, input.warehouseId);
   const lines = loaded.lines.filter((l) => !isEmptyBalance(l));
   const products = await productNames(
     ctx,
@@ -57,7 +103,11 @@ export async function stockOnHand(ctx: Context, input: StockOnHandInput): Promis
     ctx,
     lines.map((l) => l.warehouseId),
   );
-  const ordered = [...lines].sort((a, b) => sortKey(products, a.productId).localeCompare(sortKey(products, b.productId)) || sortKey(warehouses, a.warehouseId).localeCompare(sortKey(warehouses, b.warehouseId)));
+  const ordered = [...lines].sort(
+    (a, b) =>
+      sortKey(products, a.productId).localeCompare(sortKey(products, b.productId)) ||
+      sortKey(warehouses, a.warehouseId).localeCompare(sortKey(warehouses, b.warehouseId)),
+  );
   const rows = ordered.map((l) => ({
     productCode: products.get(l.productId)?.code ?? null,
     productName: products.get(l.productId)?.name ?? l.productId,
@@ -73,7 +123,12 @@ export async function stockOnHand(ctx: Context, input: StockOnHandInput): Promis
     columns: STOCK_ON_HAND_COLUMNS,
     rows,
     totals: { value: Decimal.sum(lines.map((l) => l.value)).toString() },
-    meta: { asOf: input.asOf ?? null, warehouseId: input.warehouseId ?? null, source: input.asOf ? 'ledger' : 'balance', truncated: loaded.truncated },
+    meta: {
+      asOf: input.asOf ?? null,
+      warehouseId: input.warehouseId ?? null,
+      source: input.asOf ? 'ledger' : 'balance',
+      truncated: loaded.truncated,
+    },
   };
 }
 

@@ -8,31 +8,408 @@ import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceReceipts } from './workforce-receipts.tsx';
 import { WorkforceEmpty, WorkforceMoney, WorkforcePanel, WorkforceStatus } from './workforce-shared.tsx';
 
-interface Review { title: string; description: string; action: string; id: string; version: number; input: Record<string, unknown>; field?: 'dayKind' | 'halfDayAgreement' | 'settlement' }
+interface Review {
+  title: string;
+  description: string;
+  action: string;
+  id: string;
+  version: number;
+  input: Record<string, unknown>;
+  field?: 'dayKind' | 'halfDayAgreement' | 'settlement';
+}
 type Records = Pick<ManagementPortal, 'attendances' | 'corrections' | 'leaveRequests' | 'expenses'>;
 
-export function WorkforceReviews({ data, actions, selfEmployeeId, category = 'all' }: { data: Records; actions: string[]; selfEmployeeId?: string; category?: 'all' | 'attendance' | 'expenses' }) {
-  const { t, locale } = useLocale(), task = useWorkforceTask();
-  const [review, setReview] = useState<Review>(), [receiptId, setReceiptId] = useState<string>();
+export function WorkforceReviews({
+  data,
+  actions,
+  selfEmployeeId,
+  category = 'all',
+}: {
+  data: Records;
+  actions: string[];
+  selfEmployeeId?: string;
+  category?: 'all' | 'attendance' | 'expenses';
+}) {
+  const { t, locale } = useLocale(),
+    task = useWorkforceTask();
+  const [review, setReview] = useState<Review>(),
+    [receiptId, setReceiptId] = useState<string>();
   const allowed = (action: string) => actions.includes('workforce.' + action);
   const open = (value: Review) => setReview(value);
   const attendance = data.attendances.filter((row) => row.status === 'submitted');
   const corrections = data.corrections.filter((row) => row.status === 'pending');
   const leave = data.leaveRequests.filter((row) => row.status === 'pending');
   const expenses = data.expenses.filter((row) => ['submitted', 'approved'].includes(row.status));
-  const current = [...data.attendances, ...data.corrections, ...data.leaveRequests, ...data.expenses].find((row) => row.id === review?.id);
-  const ownNote = (employeeId: string) => employeeId === selfEmployeeId ? <p>{t({ ja: '自分の記録は、別の担当者に承認を依頼してください。', en: 'Ask another reviewer to approve your own records.' })}</p> : null;
+  const current = [...data.attendances, ...data.corrections, ...data.leaveRequests, ...data.expenses].find(
+    (row) => row.id === review?.id,
+  );
+  const ownNote = (employeeId: string) =>
+    employeeId === selfEmployeeId ? (
+      <p>
+        {t({
+          ja: '自分の記録は、別の担当者に承認を依頼してください。',
+          en: 'Ask another reviewer to approve your own records.',
+        })}
+      </p>
+    ) : null;
   const receipt = data.expenses.find((row) => row.id === receiptId);
-  return <div className="workforce-stack">
-    {category !== 'expenses' && (attendance.length > 0 || category === 'attendance') ? <WorkforcePanel title={t({ ja: '勤怠の確認待ち', en: 'Attendance awaiting review' })} icon="clock">{attendance.length ? <div className="workforce-record-list">{attendance.map((row) => <article className="workforce-record" key={row.id}><header><h3>{row.employeeName} · {row.workDate}</h3><WorkforceStatus status={row.status} /></header><p>{timeLabel(row.clockIn)} — {timeLabel(row.clockOut)} · {minutesLabel(row.workedMinutes, locale)}</p>{ownNote(row.employeeId)}{allowed('review_attendance') ? <div className="workforce-record-actions">{(['approve', 'return'] as const).map((decision) => <button type="button" className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')} key={decision} disabled={row.employeeId === selfEmployeeId} onClick={() => open({ title: t(decision === 'approve' ? { ja: '勤怠を承認', en: 'Approve attendance' } : { ja: '勤怠を差し戻す', en: 'Return attendance' }), description: `${row.employeeName} · ${row.workDate} · ${timeLabel(row.clockIn)} — ${timeLabel(row.clockOut)}`, action: 'workforce.review_attendance', id: row.id, version: row.version, input: { attendanceId: row.id, expectedVersion: row.version, decision }, field: 'dayKind' })}>{t(decision === 'approve' ? { ja: '承認する', en: 'Approve' } : { ja: '差し戻す', en: 'Return' })}</button>)}</div> : null}</article>)}</div> : <WorkforceEmpty icon="check">{t({ ja: '確認待ちの勤怠はありません。', en: 'No attendance records are awaiting review.' })}</WorkforceEmpty>}</WorkforcePanel> : null}
-    {category !== 'expenses' && (corrections.length > 0 || category === 'attendance') ? <WorkforcePanel title={t({ ja: '勤怠訂正の申請', en: 'Attendance corrections' })} icon="calendar">{corrections.length ? <div className="workforce-record-list">{corrections.map((row) => <article className="workforce-record" key={row.id}><header><h3>{row.employeeName} · {row.workDate}</h3><WorkforceStatus status={row.status} /></header><p>{t({ ja: '訂正後', en: 'Requested times' })}: {timeLabel(row.clockIn)} — {timeLabel(row.clockOut)}</p>{row.breaks.map((b, i) => <p key={i}>{t({ ja: '訂正後の休憩', en: 'Corrected break' })} {i + 1}: {timeLabel(b.start)} — {timeLabel(b.end)}</p>)}<p>{row.reason}</p>{ownNote(row.employeeId)}{allowed('review_correction') ? <div className="workforce-record-actions">{(['approve', 'reject'] as const).map((decision) => <button type="button" className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')} disabled={row.employeeId === selfEmployeeId} key={decision} onClick={() => open({ title: t(decision === 'approve' ? { ja: '勤怠訂正を承認', en: 'Approve correction' } : { ja: '勤怠訂正を却下', en: 'Reject correction' }), description: `${row.employeeName} · ${row.workDate} · ${row.reason}`, action: 'workforce.review_correction', id: row.id, version: row.version, input: { correctionId: row.id, expectedVersion: row.version, decision } })}>{t(decision === 'approve' ? { ja: '承認する', en: 'Approve' } : { ja: '却下する', en: 'Reject' })}</button>)}</div> : null}</article>)}</div> : <WorkforceEmpty>{t({ ja: '確認待ちの訂正申請はありません。', en: 'No corrections are awaiting review.' })}</WorkforceEmpty>}</WorkforcePanel> : null}
-    {category === 'all' && leave.length > 0 ? <WorkforcePanel title={t({ ja: '有給の承認待ち', en: 'Paid leave awaiting approval' })} icon="leaf">{leave.length ? <div className="workforce-record-list">{leave.map((row) => <article className="workforce-record" key={row.id}><header><h3>{row.employeeName} · {row.leaveDate}</h3><WorkforceStatus status={row.status} /></header><p>{t(leavePortions[row.portion] ?? { ja: '有給', en: 'Paid leave' })} · {row.reason}</p>{ownNote(row.employeeId)}{allowed('review_leave') ? <div className="workforce-record-actions">{(['approve', 'reject'] as const).map((decision) => <button type="button" className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')} disabled={row.employeeId === selfEmployeeId} key={decision} onClick={() => open({ title: t(decision === 'approve' ? { ja: '有給を承認', en: 'Approve paid leave' } : { ja: '有給を却下', en: 'Reject paid leave' }), description: `${row.employeeName} · ${row.leaveDate} · ${row.reason}`, action: 'workforce.review_leave', id: row.id, version: row.version, input: { requestId: row.id, expectedVersion: row.version, decision }, ...(row.portion !== 'full' && decision === 'approve' ? { field: 'halfDayAgreement' as const } : {}) })}>{t(decision === 'approve' ? { ja: '承認する', en: 'Approve' } : { ja: '却下する', en: 'Reject' })}</button>)}</div> : null}</article>)}</div> : <WorkforceEmpty icon="leaf">{t({ ja: '承認待ちの有給申請はありません。', en: 'No paid leave requests are awaiting approval.' })}</WorkforceEmpty>}</WorkforcePanel> : null}
-    {category !== 'attendance' && (expenses.length > 0 || category === 'expenses') ? <WorkforcePanel title={t({ ja: '経費の確認・精算', en: 'Expense review and reimbursement' })} icon="wallet">{expenses.length ? <div className="workforce-record-list">{expenses.map((row) => <article className="workforce-record" key={row.id}><header><h3>{row.employeeName} · {row.category}</h3><WorkforceStatus status={row.status} /></header><div className="workforce-record-meta"><span>{row.expenseDate}</span><WorkforceMoney value={row.amount} /></div><p>{row.description}</p><p>{t({ ja: '証憑', en: 'Evidence' })}: {row.evidence}</p>{ownNote(row.employeeId)}<div className="workforce-record-actions"><button type="button" className="btn" onClick={() => setReceiptId(row.id)}>{t({ ja: '領収書を確認', en: 'View receipts' })}</button>{row.status === 'submitted' && allowed('review_expense') ? (['approve', 'return'] as const).map((decision) => <button type="button" className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')} disabled={row.employeeId === selfEmployeeId} key={decision} onClick={() => open({ title: t(decision === 'approve' ? { ja: '経費を承認', en: 'Approve expense' } : { ja: '経費を差し戻す', en: 'Return expense' }), description: `${row.employeeName} · ${row.description}`, action: 'workforce.review_expense', id: row.id, version: row.version, input: { expenseId: row.id, expectedVersion: row.version, decision } })}>{t(decision === 'approve' ? { ja: '承認する', en: 'Approve' } : { ja: '差し戻す', en: 'Return' })}</button>) : null}{row.status === 'approved' && allowed('settle_expense') ? <button type="button" className="btn btn-primary" disabled={row.employeeId === selfEmployeeId} onClick={() => open({ title: t({ ja: '精算を記録', en: 'Record reimbursement' }), description: `${row.employeeName} · ${row.description}`, action: 'workforce.settle_expense', id: row.id, version: row.version, input: { expenseId: row.id, expectedVersion: row.version }, field: 'settlement' })}>{t({ ja: '精算を記録', en: 'Record reimbursement' })}</button> : null}</div></article>)}</div> : <WorkforceEmpty icon="wallet">{t({ ja: '確認・精算待ちの経費はありません。', en: 'No expenses await review or reimbursement.' })}</WorkforceEmpty>}</WorkforcePanel> : null}
-    {category === 'all' && attendance.length + corrections.length + leave.length + expenses.length === 0 ? <WorkforcePanel title={t({ ja: '確認待ちの仕事', en: 'Your review queue' })} icon="check"><WorkforceEmpty icon="check">{t({ ja: 'この月・拠点に確認待ちの記録はありません。', en: 'No records are awaiting review for this month and site.' })}</WorkforceEmpty></WorkforcePanel> : null}
-    {review ? <WorkforceDialog title={review.title} description={review.description} submitLabel={review.title} stale={current?.version !== review.version} onClose={() => setReview(undefined)} onSubmit={async (form) => {
-      const extra = review.field === 'settlement' ? { paidOn: formText(form, 'paidOn'), reference: formText(form, 'reference') } : { reason: formText(form, 'reason'), ...(review.field === 'dayKind' ? { dayKind: formText(form, 'dayKind') } : {}), ...(review.field === 'halfDayAgreement' ? { halfDayAgreement: form.get('halfDayAgreement') === 'on' } : {}) };
-      await task.mutateAsync({ action: review.action, input: { ...review.input, ...extra } });
-    }}>{review.field === 'dayKind' ? <label>{t({ ja: '当日の勤務区分', en: 'Type of workday' })}<select className="input" name="dayKind" aria-label={t({ ja: '当日の勤務区分', en: 'Type of workday' })} required defaultValue=""><option value="">{t({ ja: '勤務区分を確認して選択', en: 'Review and select' })}</option><option value="workday">{t({ ja: '通常の勤務日', en: 'Ordinary workday' })}</option><option value="statutory_holiday">{t({ ja: '法定休日', en: 'Statutory holiday' })}</option></select></label> : null}{review.field === 'halfDayAgreement' ? <label className="workforce-checkbox"><input name="halfDayAgreement" type="checkbox" required />{t({ ja: '半日取得の合意・会社の運用を確認しました', en: 'I verified the half-day agreement and company policy' })}</label> : null}{review.field === 'settlement' ? <><label>{t({ ja: '精算日', en: 'Payment date' })}<input className="input" name="paidOn" type="date" defaultValue={businessToday()} required /></label><label>{t({ ja: '支払・精算の記録', en: 'Payment reference and evidence' })}<textarea className="input" name="reference" required maxLength={1000} rows={3} /></label><p className="workforce-notice">{t({ ja: '実際に行った支払を記録します。銀行への送信や会計仕訳の自動作成は行いません。', en: 'Record a payment already made. This does not send a bank transfer or create an accounting entry.' })}</p></> : <label>{t({ ja: '確認した内容・理由', en: 'Review details and reason' })}<textarea className="input" name="reason" required maxLength={1000} rows={3} /></label>}</WorkforceDialog> : null}
-    {receipt ? <WorkforceReceipts expense={receipt} canUpload={false} onClose={() => setReceiptId(undefined)} /> : null}
-  </div>;
+  return (
+    <div className="workforce-stack">
+      {category !== 'expenses' && (attendance.length > 0 || category === 'attendance') ? (
+        <WorkforcePanel title={t({ ja: '勤怠の確認待ち', en: 'Attendance awaiting review' })} icon="clock">
+          {attendance.length ? (
+            <div className="workforce-record-list">
+              {attendance.map((row) => (
+                <article className="workforce-record" key={row.id}>
+                  <header>
+                    <h3>
+                      {row.employeeName} · {row.workDate}
+                    </h3>
+                    <WorkforceStatus status={row.status} />
+                  </header>
+                  <p>
+                    {timeLabel(row.clockIn)} — {timeLabel(row.clockOut)} · {minutesLabel(row.workedMinutes, locale)}
+                  </p>
+                  {ownNote(row.employeeId)}
+                  {allowed('review_attendance') ? (
+                    <div className="workforce-record-actions">
+                      {(['approve', 'return'] as const).map((decision) => (
+                        <button
+                          type="button"
+                          className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')}
+                          key={decision}
+                          disabled={row.employeeId === selfEmployeeId}
+                          onClick={() =>
+                            open({
+                              title: t(
+                                decision === 'approve'
+                                  ? { ja: '勤怠を承認', en: 'Approve attendance' }
+                                  : { ja: '勤怠を差し戻す', en: 'Return attendance' },
+                              ),
+                              description: `${row.employeeName} · ${row.workDate} · ${timeLabel(row.clockIn)} — ${timeLabel(row.clockOut)}`,
+                              action: 'workforce.review_attendance',
+                              id: row.id,
+                              version: row.version,
+                              input: { attendanceId: row.id, expectedVersion: row.version, decision },
+                              field: 'dayKind',
+                            })
+                          }
+                        >
+                          {t(
+                            decision === 'approve'
+                              ? { ja: '承認する', en: 'Approve' }
+                              : { ja: '差し戻す', en: 'Return' },
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <WorkforceEmpty icon="check">
+              {t({ ja: '確認待ちの勤怠はありません。', en: 'No attendance records are awaiting review.' })}
+            </WorkforceEmpty>
+          )}
+        </WorkforcePanel>
+      ) : null}
+      {category !== 'expenses' && (corrections.length > 0 || category === 'attendance') ? (
+        <WorkforcePanel title={t({ ja: '勤怠訂正の申請', en: 'Attendance corrections' })} icon="calendar">
+          {corrections.length ? (
+            <div className="workforce-record-list">
+              {corrections.map((row) => (
+                <article className="workforce-record" key={row.id}>
+                  <header>
+                    <h3>
+                      {row.employeeName} · {row.workDate}
+                    </h3>
+                    <WorkforceStatus status={row.status} />
+                  </header>
+                  <p>
+                    {t({ ja: '訂正後', en: 'Requested times' })}: {timeLabel(row.clockIn)} — {timeLabel(row.clockOut)}
+                  </p>
+                  {row.breaks.map((b, i) => (
+                    <p key={i}>
+                      {t({ ja: '訂正後の休憩', en: 'Corrected break' })} {i + 1}: {timeLabel(b.start)} —{' '}
+                      {timeLabel(b.end)}
+                    </p>
+                  ))}
+                  <p>{row.reason}</p>
+                  {ownNote(row.employeeId)}
+                  {allowed('review_correction') ? (
+                    <div className="workforce-record-actions">
+                      {(['approve', 'reject'] as const).map((decision) => (
+                        <button
+                          type="button"
+                          className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')}
+                          disabled={row.employeeId === selfEmployeeId}
+                          key={decision}
+                          onClick={() =>
+                            open({
+                              title: t(
+                                decision === 'approve'
+                                  ? { ja: '勤怠訂正を承認', en: 'Approve correction' }
+                                  : { ja: '勤怠訂正を却下', en: 'Reject correction' },
+                              ),
+                              description: `${row.employeeName} · ${row.workDate} · ${row.reason}`,
+                              action: 'workforce.review_correction',
+                              id: row.id,
+                              version: row.version,
+                              input: { correctionId: row.id, expectedVersion: row.version, decision },
+                            })
+                          }
+                        >
+                          {t(
+                            decision === 'approve'
+                              ? { ja: '承認する', en: 'Approve' }
+                              : { ja: '却下する', en: 'Reject' },
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <WorkforceEmpty>
+              {t({ ja: '確認待ちの訂正申請はありません。', en: 'No corrections are awaiting review.' })}
+            </WorkforceEmpty>
+          )}
+        </WorkforcePanel>
+      ) : null}
+      {category === 'all' && leave.length > 0 ? (
+        <WorkforcePanel title={t({ ja: '有給の承認待ち', en: 'Paid leave awaiting approval' })} icon="leaf">
+          {leave.length ? (
+            <div className="workforce-record-list">
+              {leave.map((row) => (
+                <article className="workforce-record" key={row.id}>
+                  <header>
+                    <h3>
+                      {row.employeeName} · {row.leaveDate}
+                    </h3>
+                    <WorkforceStatus status={row.status} />
+                  </header>
+                  <p>
+                    {t(leavePortions[row.portion] ?? { ja: '有給', en: 'Paid leave' })} · {row.reason}
+                  </p>
+                  {ownNote(row.employeeId)}
+                  {allowed('review_leave') ? (
+                    <div className="workforce-record-actions">
+                      {(['approve', 'reject'] as const).map((decision) => (
+                        <button
+                          type="button"
+                          className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')}
+                          disabled={row.employeeId === selfEmployeeId}
+                          key={decision}
+                          onClick={() =>
+                            open({
+                              title: t(
+                                decision === 'approve'
+                                  ? { ja: '有給を承認', en: 'Approve paid leave' }
+                                  : { ja: '有給を却下', en: 'Reject paid leave' },
+                              ),
+                              description: `${row.employeeName} · ${row.leaveDate} · ${row.reason}`,
+                              action: 'workforce.review_leave',
+                              id: row.id,
+                              version: row.version,
+                              input: { requestId: row.id, expectedVersion: row.version, decision },
+                              ...(row.portion !== 'full' && decision === 'approve'
+                                ? { field: 'halfDayAgreement' as const }
+                                : {}),
+                            })
+                          }
+                        >
+                          {t(
+                            decision === 'approve'
+                              ? { ja: '承認する', en: 'Approve' }
+                              : { ja: '却下する', en: 'Reject' },
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <WorkforceEmpty icon="leaf">
+              {t({ ja: '承認待ちの有給申請はありません。', en: 'No paid leave requests are awaiting approval.' })}
+            </WorkforceEmpty>
+          )}
+        </WorkforcePanel>
+      ) : null}
+      {category !== 'attendance' && (expenses.length > 0 || category === 'expenses') ? (
+        <WorkforcePanel title={t({ ja: '経費の確認・精算', en: 'Expense review and reimbursement' })} icon="wallet">
+          {expenses.length ? (
+            <div className="workforce-record-list">
+              {expenses.map((row) => (
+                <article className="workforce-record" key={row.id}>
+                  <header>
+                    <h3>
+                      {row.employeeName} · {row.category}
+                    </h3>
+                    <WorkforceStatus status={row.status} />
+                  </header>
+                  <div className="workforce-record-meta">
+                    <span>{row.expenseDate}</span>
+                    <WorkforceMoney value={row.amount} />
+                  </div>
+                  <p>{row.description}</p>
+                  <p>
+                    {t({ ja: '証憑', en: 'Evidence' })}: {row.evidence}
+                  </p>
+                  {ownNote(row.employeeId)}
+                  <div className="workforce-record-actions">
+                    <button type="button" className="btn" onClick={() => setReceiptId(row.id)}>
+                      {t({ ja: '領収書を確認', en: 'View receipts' })}
+                    </button>
+                    {row.status === 'submitted' && allowed('review_expense')
+                      ? (['approve', 'return'] as const).map((decision) => (
+                          <button
+                            type="button"
+                            className={'btn ' + (decision === 'approve' ? 'btn-primary' : '')}
+                            disabled={row.employeeId === selfEmployeeId}
+                            key={decision}
+                            onClick={() =>
+                              open({
+                                title: t(
+                                  decision === 'approve'
+                                    ? { ja: '経費を承認', en: 'Approve expense' }
+                                    : { ja: '経費を差し戻す', en: 'Return expense' },
+                                ),
+                                description: `${row.employeeName} · ${row.description}`,
+                                action: 'workforce.review_expense',
+                                id: row.id,
+                                version: row.version,
+                                input: { expenseId: row.id, expectedVersion: row.version, decision },
+                              })
+                            }
+                          >
+                            {t(
+                              decision === 'approve'
+                                ? { ja: '承認する', en: 'Approve' }
+                                : { ja: '差し戻す', en: 'Return' },
+                            )}
+                          </button>
+                        ))
+                      : null}
+                    {row.status === 'approved' && allowed('settle_expense') ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={row.employeeId === selfEmployeeId}
+                        onClick={() =>
+                          open({
+                            title: t({ ja: '精算を記録', en: 'Record reimbursement' }),
+                            description: `${row.employeeName} · ${row.description}`,
+                            action: 'workforce.settle_expense',
+                            id: row.id,
+                            version: row.version,
+                            input: { expenseId: row.id, expectedVersion: row.version },
+                            field: 'settlement',
+                          })
+                        }
+                      >
+                        {t({ ja: '精算を記録', en: 'Record reimbursement' })}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <WorkforceEmpty icon="wallet">
+              {t({ ja: '確認・精算待ちの経費はありません。', en: 'No expenses await review or reimbursement.' })}
+            </WorkforceEmpty>
+          )}
+        </WorkforcePanel>
+      ) : null}
+      {category === 'all' && attendance.length + corrections.length + leave.length + expenses.length === 0 ? (
+        <WorkforcePanel title={t({ ja: '確認待ちの仕事', en: 'Your review queue' })} icon="check">
+          <WorkforceEmpty icon="check">
+            {t({
+              ja: 'この月・拠点に確認待ちの記録はありません。',
+              en: 'No records are awaiting review for this month and site.',
+            })}
+          </WorkforceEmpty>
+        </WorkforcePanel>
+      ) : null}
+      {review ? (
+        <WorkforceDialog
+          title={review.title}
+          description={review.description}
+          submitLabel={review.title}
+          stale={current?.version !== review.version}
+          onClose={() => setReview(undefined)}
+          onSubmit={async (form) => {
+            const extra =
+              review.field === 'settlement'
+                ? { paidOn: formText(form, 'paidOn'), reference: formText(form, 'reference') }
+                : {
+                    reason: formText(form, 'reason'),
+                    ...(review.field === 'dayKind' ? { dayKind: formText(form, 'dayKind') } : {}),
+                    ...(review.field === 'halfDayAgreement'
+                      ? { halfDayAgreement: form.get('halfDayAgreement') === 'on' }
+                      : {}),
+                  };
+            await task.mutateAsync({ action: review.action, input: { ...review.input, ...extra } });
+          }}
+        >
+          {review.field === 'dayKind' ? (
+            <label>
+              {t({ ja: '当日の勤務区分', en: 'Type of workday' })}
+              <select
+                className="input"
+                name="dayKind"
+                aria-label={t({ ja: '当日の勤務区分', en: 'Type of workday' })}
+                required
+                defaultValue=""
+              >
+                <option value="">{t({ ja: '勤務区分を確認して選択', en: 'Review and select' })}</option>
+                <option value="workday">{t({ ja: '通常の勤務日', en: 'Ordinary workday' })}</option>
+                <option value="statutory_holiday">{t({ ja: '法定休日', en: 'Statutory holiday' })}</option>
+              </select>
+            </label>
+          ) : null}
+          {review.field === 'halfDayAgreement' ? (
+            <label className="workforce-checkbox">
+              <input name="halfDayAgreement" type="checkbox" required />
+              {t({
+                ja: '半日取得の合意・会社の運用を確認しました',
+                en: 'I verified the half-day agreement and company policy',
+              })}
+            </label>
+          ) : null}
+          {review.field === 'settlement' ? (
+            <>
+              <label>
+                {t({ ja: '精算日', en: 'Payment date' })}
+                <input className="input" name="paidOn" type="date" defaultValue={businessToday()} required />
+              </label>
+              <label>
+                {t({ ja: '支払・精算の記録', en: 'Payment reference and evidence' })}
+                <textarea className="input" name="reference" required maxLength={1000} rows={3} />
+              </label>
+              <p className="workforce-notice">
+                {t({
+                  ja: '実際に行った支払を記録します。銀行への送信や会計仕訳の自動作成は行いません。',
+                  en: 'Record a payment already made. This does not send a bank transfer or create an accounting entry.',
+                })}
+              </p>
+            </>
+          ) : (
+            <label>
+              {t({ ja: '確認した内容・理由', en: 'Review details and reason' })}
+              <textarea className="input" name="reason" required maxLength={1000} rows={3} />
+            </label>
+          )}
+        </WorkforceDialog>
+      ) : null}
+      {receipt ? (
+        <WorkforceReceipts expense={receipt} canUpload={false} onClose={() => setReceiptId(undefined)} />
+      ) : null}
+    </div>
+  );
 }

@@ -11,7 +11,15 @@ import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { ALLOCATION, allocationSummary, type AllocationConvention } from '../lib/allocation.ts';
 import { extFieldsOf, extInitialValues, isExtFieldEditable } from '../lib/ext.ts';
-import { formGroups, initialValues, isFieldEditable, issuesToFieldErrors, type EditContext, type FormValue, type FormValues } from '../lib/form.ts';
+import {
+  formGroups,
+  initialValues,
+  isFieldEditable,
+  issuesToFieldErrors,
+  type EditContext,
+  type FormValue,
+  type FormValues,
+} from '../lib/form.ts';
 import { linesFromRecord, rowErrorsByKey, splitLineIssues, type GridErrors, type GridRow } from '../lib/lines.ts';
 import { lineSpecsOf, planSave, type LineSpecMeta } from '../lib/save.ts';
 import { S } from '../strings.ts';
@@ -46,7 +54,16 @@ interface FormState {
 function freshState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined): FormState {
   const values = { ...initialValues(entity.fields, record), ...extInitialValues(extFieldsOf(entity), record) };
   const lines = linesFromRecord(specs, record);
-  return { values, lines, baseline: formFingerprint(values, lines), record, fieldErrors: {}, lineErrors: {}, formErrors: [], conflict: false };
+  return {
+    values,
+    lines,
+    baseline: formFingerprint(values, lines),
+    record,
+    fieldErrors: {},
+    lineErrors: {},
+    formErrors: [],
+    conflict: false,
+  };
 }
 
 function useFormState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined) {
@@ -76,7 +93,11 @@ function useFormState(entity: EntityMeta, specs: readonly LineSpecMeta[], record
 function ConflictBanner({ onReload }: { onReload: () => void }) {
   const { t } = useLocale();
   return (
-    <div role="alert" data-testid="conflict" className="flex items-center gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+    <div
+      role="alert"
+      data-testid="conflict"
+      className="flex items-center gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900"
+    >
       <div className="flex-1">
         <div className="font-medium">{t(S.conflictTitle)}</div>
         <div className="text-xs">{t(S.conflictBody)}</div>
@@ -110,7 +131,9 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
     setState(freshState(entity, specs, rec));
     onSaved(rec, mode);
   };
-  const settled = () => { inFlight.current = false; };
+  const settled = () => {
+    inFlight.current = false;
+  };
 
   const fail = (e: unknown) => {
     // AC-7: a CONFLICT while editing means the version moved (or a unique clash); either way the fix is to reload.
@@ -118,10 +141,19 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
     if (isApiError(e) && e.code === 'CONFLICT' && mode === 'update') setState((s) => ({ ...s, conflict: true }));
     if (isApiError(e) && e.code === 'VALIDATION') {
       const split = splitLineIssues(e.issues());
-      const mapped = issuesToFieldErrors(split.rest, [...entity.fields, ...extFieldsOf(entity)].map((f) => f.name));
+      const mapped = issuesToFieldErrors(
+        split.rest,
+        [...entity.fields, ...extFieldsOf(entity)].map((f) => f.name),
+      );
       const lineErrors: Record<string, GridErrors> = {};
-      for (const [line, byIndex] of Object.entries(split.lines)) lineErrors[line] = rowErrorsByKey(state.lines[line] ?? [], byIndex);
-      setState((s) => ({ ...s, fieldErrors: { ...s.fieldErrors, ...mapped.fieldErrors }, lineErrors, formErrors: mapped.formErrors }));
+      for (const [line, byIndex] of Object.entries(split.lines))
+        lineErrors[line] = rowErrorsByKey(state.lines[line] ?? [], byIndex);
+      setState((s) => ({
+        ...s,
+        fieldErrors: { ...s.fieldErrors, ...mapped.fieldErrors },
+        lineErrors,
+        formErrors: mapped.formErrors,
+      }));
     }
     toast.error(e);
   };
@@ -135,10 +167,22 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
       toast.push({ kind: 'error', title: t(S.overAllocated) });
       return;
     }
-    const plan = planSave({ entity, mode, record, values: state.values, specs, lines: state.lines, originalLines: linesFromRecord(specs, record), requiredMessage: t(S.requiredFieldMissing) });
+    const plan = planSave({
+      entity,
+      mode,
+      record,
+      values: state.values,
+      specs,
+      lines: state.lines,
+      originalLines: linesFromRecord(specs, record),
+      requiredMessage: t(S.requiredFieldMissing),
+    });
     if (plan.hasErrors) {
       setState((s) => ({ ...s, fieldErrors: plan.fieldErrors, lineErrors: plan.lineErrors, formErrors: [] }));
-      toast.push({ kind: 'error', title: t(Object.keys(plan.lineErrors).length > 0 ? S.linesHaveErrors : S.formHasErrors) });
+      toast.push({
+        kind: 'error',
+        title: t(Object.keys(plan.lineErrors).length > 0 ? S.linesHaveErrors : S.formHasErrors),
+      });
       return;
     }
     if (!record) {
@@ -153,7 +197,10 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
     }
     const patch = plan.body.patch as Record<string, unknown>;
     inFlight.current = true;
-    update.mutate({ id: record.id, patch, expectedVersion: record.version }, { onSuccess: saved, onError: fail, onSettled: settled });
+    update.mutate(
+      { id: record.id, patch, expectedVersion: record.version },
+      { onSuccess: saved, onError: fail, onSettled: settled },
+    );
   };
 
   return { submit, saving: create.isPending || update.isPending };
@@ -170,9 +217,24 @@ interface HeaderFieldsProps {
 /** Header fieldsets from `views.form`, then the registered ext fields under 「追加項目」 (AC-3, same widgets). */
 function HeaderFields({ entity, state, setValue, editCtx, locked }: HeaderFieldsProps) {
   const { t } = useLocale();
-  const groups = useMemo(() => formGroups(entity).map((group) => group.filter((f) => editCtx.mode !== 'create' || (!f.serverOwned && !f.readOnly))).filter((group) => group.length > 0), [entity, editCtx.mode]);
+  const groups = useMemo(
+    () =>
+      formGroups(entity)
+        .map((group) => group.filter((f) => editCtx.mode !== 'create' || (!f.serverOwned && !f.readOnly)))
+        .filter((group) => group.length > 0),
+    [entity, editCtx.mode],
+  );
   const ext = useMemo(() => extFieldsOf(entity), [entity]);
-  const widget = (f: FieldMeta, editable: boolean) => <FieldWidget key={f.name} field={f} value={state.values[f.name] ?? ''} onChange={(v) => setValue(f.name, v)} disabled={locked || !editable} error={state.fieldErrors[f.name]} />;
+  const widget = (f: FieldMeta, editable: boolean) => (
+    <FieldWidget
+      key={f.name}
+      field={f}
+      value={state.values[f.name] ?? ''}
+      onChange={(v) => setValue(f.name, v)}
+      disabled={locked || !editable}
+      error={state.fieldErrors[f.name]}
+    />
+  );
   const box = 'grid grid-cols-1 gap-x-4 gap-y-2 rounded border border-neutral-200 bg-white p-3 md:grid-cols-3';
   return (
     <>
@@ -200,15 +262,50 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
   const conv = useAllocationConvention(entity);
   const { state, setState, setValue, setRows } = useFormState(entity, specs, record);
   const exitAllowed = useRef(false);
-  const { submit, saving } = useSave({ entity, specs, record: state.record, state, setState, onSaved: (rec, savedMode) => { exitAllowed.current = true; onSaved(rec, savedMode); }, conv });
+  const { submit, saving } = useSave({
+    entity,
+    specs,
+    record: state.record,
+    state,
+    setState,
+    onSaved: (rec, savedMode) => {
+      exitAllowed.current = true;
+      onSaved(rec, savedMode);
+    },
+    conv,
+  });
   const dirty = formFingerprint(state.values, state.lines) !== state.baseline;
   const canWrite = entity.ops.includes(mode === 'create' ? 'create' : 'update');
-  useEffect(() => { if (dirty && !saving) exitAllowed.current = false; onStatus?.({ dirty, saving }); }, [dirty, saving, onStatus]);
-  useBlocker({ shouldBlockFn: () => !exitAllowed.current && (saving || (dirty && !globalThis.confirm(t({ ja: '未保存の変更があります。変更を破棄して移動しますか？', en: 'Discard your unsaved changes and leave?' })))), enableBeforeUnload: dirty || saving });
+  useEffect(() => {
+    if (dirty && !saving) exitAllowed.current = false;
+    onStatus?.({ dirty, saving });
+  }, [dirty, saving, onStatus]);
+  useBlocker({
+    shouldBlockFn: () =>
+      !exitAllowed.current &&
+      (saving ||
+        (dirty &&
+          !globalThis.confirm(
+            t({
+              ja: '未保存の変更があります。変更を破棄して移動しますか？',
+              en: 'Discard your unsaved changes and leave?',
+            }),
+          ))),
+    enableBeforeUnload: dirty || saving,
+  });
   const editCtx: EditContext = { mode, docstatus: record?.docstatus, allowOnSubmit: entity.allowOnSubmit };
-  const editable = canWrite && (entity.fields.some((f) => isFieldEditable(f, editCtx)) || extFieldsOf(entity).some((f) => isExtFieldEditable(f, editCtx)));
+  const editable =
+    canWrite &&
+    (entity.fields.some((f) => isFieldEditable(f, editCtx)) ||
+      extFieldsOf(entity).some((f) => isExtFieldEditable(f, editCtx)));
   // AC-1: grids are read-only while the document is submitted/cancelled (kernel freezes lines) or the caller may not update.
-  const lineLock = lineLockReason({ canWrite, actionBusy, saving, conflict: state.conflict, frozen: mode === 'update' && (record?.docstatus ?? 0) !== 0 });
+  const lineLock = lineLockReason({
+    canWrite,
+    actionBusy,
+    saving,
+    conflict: state.conflict,
+    frozen: mode === 'update' && (record?.docstatus ?? 0) !== 0,
+  });
   const linesReadOnly = lineLock !== undefined;
 
   // Explicit reset after refetch: if nothing changed server-side the record reference is reused (structural sharing)
@@ -223,7 +320,18 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
   };
 
   return (
-    <form onSubmit={(e) => { if (actionBusy || !canWrite) e.preventDefault(); else submit(e); }} onKeyDown={onKey} noValidate className="record-form flex flex-col gap-3" data-testid="record-form" data-mode={mode} data-dirty={dirty}>
+    <form
+      onSubmit={(e) => {
+        if (actionBusy || !canWrite) e.preventDefault();
+        else submit(e);
+      }}
+      onKeyDown={onKey}
+      noValidate
+      className="record-form flex flex-col gap-3"
+      data-testid="record-form"
+      data-mode={mode}
+      data-dirty={dirty}
+    >
       {state.conflict ? <ConflictBanner onReload={() => void reload()} /> : null}
       {state.formErrors.length > 0 ? (
         <ul role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
@@ -232,21 +340,59 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
           ))}
         </ul>
       ) : null}
-      {!canWrite ? <p className="notice">{t({ ja: '閲覧モード — この記録は編集できません。', en: 'View mode — you cannot edit this record.' })}</p> : null}
-      <HeaderFields entity={entity} state={state} setValue={setValue} editCtx={editCtx} locked={!canWrite || actionBusy || saving || state.conflict} />
+      {!canWrite ? (
+        <p className="notice">
+          {t({ ja: '閲覧モード — この記録は編集できません。', en: 'View mode — you cannot edit this record.' })}
+        </p>
+      ) : null}
+      <HeaderFields
+        entity={entity}
+        state={state}
+        setValue={setValue}
+        editCtx={editCtx}
+        locked={!canWrite || actionBusy || saving || state.conflict}
+      />
       {specs.map((s) => {
         const rows = state.lines[s.line.name] ?? [];
         return (
-          <LineGrid key={s.line.name} line={s.line} columns={s.columns} rows={rows} onChange={(next) => setRows(s.line.name, next)} readOnly={linesReadOnly} readOnlyReason={t(lineLock)} errors={state.lineErrors[s.line.name] ?? {}}>
-            {conv?.lineEntity === s.line.name ? <AllocationPicker conv={conv} columns={s.columns} values={state.values} rows={rows} onAppend={(added) => setRows(s.line.name, [...rows, ...added])} readOnly={linesReadOnly} /> : null}
+          <LineGrid
+            key={s.line.name}
+            line={s.line}
+            columns={s.columns}
+            rows={rows}
+            onChange={(next) => setRows(s.line.name, next)}
+            readOnly={linesReadOnly}
+            readOnlyReason={t(lineLock)}
+            errors={state.lineErrors[s.line.name] ?? {}}
+          >
+            {conv?.lineEntity === s.line.name ? (
+              <AllocationPicker
+                conv={conv}
+                columns={s.columns}
+                values={state.values}
+                rows={rows}
+                onAppend={(added) => setRows(s.line.name, [...rows, ...added])}
+                readOnly={linesReadOnly}
+              />
+            ) : null}
           </LineGrid>
         );
       })}
       <div className="form-toolbar flex items-center gap-2">
-        {canWrite && (editable || !linesReadOnly) ? <button type="submit" className="btn btn-primary" disabled={actionBusy || saving || state.conflict || (!editable && linesReadOnly)}>
-          {saving ? t(S.saving) : t(S.save)}
-        </button> : null}
-        {dirty ? <span className="dirty-label" role="status">{t({ ja: '未保存の変更', en: 'Unsaved changes' })}</span> : null}
+        {canWrite && (editable || !linesReadOnly) ? (
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={actionBusy || saving || state.conflict || (!editable && linesReadOnly)}
+          >
+            {saving ? t(S.saving) : t(S.save)}
+          </button>
+        ) : null}
+        {dirty ? (
+          <span className="dirty-label" role="status">
+            {t({ ja: '未保存の変更', en: 'Unsaved changes' })}
+          </span>
+        ) : null}
         <button type="button" className="btn" onClick={onCancel}>
           {t(S.cancel)}
         </button>

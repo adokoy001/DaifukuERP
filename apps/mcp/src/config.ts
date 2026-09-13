@@ -24,7 +24,9 @@ function present(v: string | undefined): v is string {
   return typeof v === 'string' && v.trim() !== '';
 }
 
-export function readConfig(env: Record<string, string | undefined>): { ok: true; config: McpConfig } | { ok: false; problem: ConfigProblem } {
+export function readConfig(
+  env: Record<string, string | undefined>,
+): { ok: true; config: McpConfig } | { ok: false; problem: ConfigProblem } {
   const required = ['DATABASE_URL_OWNER', 'DATABASE_URL', 'DAIFUKU_EMAIL', 'DAIFUKU_PASSWORD'] as const;
   const missing = required.filter((k) => !present(env[k]));
   if (missing.length > 0) return { ok: false, problem: { missing } };

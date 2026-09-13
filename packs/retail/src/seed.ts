@@ -23,5 +23,11 @@ export async function seedRetail(ctx: Context): Promise<void> {
   await seedChartOfAccounts(ctx, RETAIL_ACCOUNTS);
   const partners = repo(ctx, Partner);
   if ((await partners.count({ code: WALK_IN_CODE })) > 0) return;
-  await partners.create({ code: WALK_IN_CODE, name: '店頭客', isCustomer: true, notes: 'レジ締めの売上請求書の相手（retail pack）', ext: { retailKind: 'walk_in' satisfies RetailKind } });
+  await partners.create({
+    code: WALK_IN_CODE,
+    name: '店頭客',
+    isCustomer: true,
+    notes: 'レジ締めの売上請求書の相手（retail pack）',
+    ext: { retailKind: 'walk_in' satisfies RetailKind },
+  });
 }

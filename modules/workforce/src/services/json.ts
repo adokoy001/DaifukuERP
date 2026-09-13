@@ -5,5 +5,8 @@ export function stableJson(value: unknown): string {
   if (value instanceof Date) return JSON.stringify(value.toISOString());
   if ('toJSON' in value && typeof value.toJSON === 'function') return stableJson(value.toJSON());
   const object = value as Record<string, unknown>;
-  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(',')}}`;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`)
+    .join(',')}}`;
 }

@@ -10,13 +10,17 @@ const notificationBytes = Buffer.byteLength(payload, 'utf8') + 14;
 export function relaySocketHasCapacity(socket: NotificationSocket, additionalBytes: number): boolean {
   if (socket.readyState !== WebSocket.OPEN) return false;
   if (socket.bufferedAmount + additionalBytes > RELAY_SOCKET_BUFFER_LIMIT) {
-    socket.terminate(); return false;
+    socket.terminate();
+    return false;
   }
   return true;
 }
 
 /** Notification hints may be discarded: polling recovers them without retaining an unbounded send queue. */
-export async function sendRelayNotification(socket: NotificationSocket, pending: () => Promise<boolean>): Promise<void> {
+export async function sendRelayNotification(
+  socket: NotificationSocket,
+  pending: () => Promise<boolean>,
+): Promise<void> {
   if (!relaySocketHasCapacity(socket, notificationBytes)) return;
   const hint = await pending();
   // A ping or another transport write may have accumulated while authorization/DB work was pending.

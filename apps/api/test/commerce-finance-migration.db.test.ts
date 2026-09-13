@@ -7,11 +7,42 @@ import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
 import { legacyMigrationFolder } from './legacy-fixture.ts';
 
-const owner = connect(OWNER_URL, { max: 1 }), app = connect(APP_URL, { max: 1 }), previous = legacyMigrationFolder(13);
-const tenant = newId(), company = newId(), user = newId(), partner = newId(), account = newId(), invoice = newId(), payment = newId(), site = newId(), gateway = newId();
-const newTables = ['trade_quotation', 'trade_quotation_line', 'trade_order', 'trade_order_line', 'trade_fulfillment', 'trade_fulfillment_line', 'trade_billing', 'trade_billing_line', 'bank_account', 'bank_payee', 'bank_import', 'bank_statement', 'bank_reconciliation', 'bank_transfer', 'bank_transfer_reservation', 'filing_accounting_profile', 'filing_payroll_profile', 'filing_accounting_pack', 'filing_payroll_pack'];
+const owner = connect(OWNER_URL, { max: 1 }),
+  app = connect(APP_URL, { max: 1 }),
+  previous = legacyMigrationFolder(13);
+const tenant = newId(),
+  company = newId(),
+  user = newId(),
+  partner = newId(),
+  account = newId(),
+  invoice = newId(),
+  payment = newId(),
+  site = newId(),
+  gateway = newId();
+const newTables = [
+  'trade_quotation',
+  'trade_quotation_line',
+  'trade_order',
+  'trade_order_line',
+  'trade_fulfillment',
+  'trade_fulfillment_line',
+  'trade_billing',
+  'trade_billing_line',
+  'bank_account',
+  'bank_payee',
+  'bank_import',
+  'bank_statement',
+  'bank_reconciliation',
+  'bank_transfer',
+  'bank_transfer_reservation',
+  'filing_accounting_profile',
+  'filing_payroll_profile',
+  'filing_accounting_pack',
+  'filing_payroll_pack',
+];
 beforeAll(async () => {
-  await dropAll(owner); await migrate(owner.drizzle, { migrationsFolder: previous });
+  await dropAll(owner);
+  await migrate(owner.drizzle, { migrationsFolder: previous });
   await owner.sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id',${tenant},true)`;
     await tx`insert into tenants(id,name) values(${tenant},'Existing finance tenant')`;
@@ -27,17 +58,44 @@ beforeAll(async () => {
     await tx`insert into edge_gateway(id,tenant_id,company_id,site_id,code,name) values(${gateway},${tenant},${company},${site},'OLD-RELAY','Existing relay')`;
   });
 });
-afterAll(async () => { await app.close(); await owner.close(); rmSync(previous, { recursive: true, force: true }); });
-const facts = () => owner.sql.begin(async (tx) => {
-  await tx`select set_config('app.tenant_id',${tenant},true)`;
-  return { users: await tx`select * from users`, memberships: await tx`select * from user_company_memberships`, factors: await tx`select * from identity_factors`, companies: await tx`select * from companies`, invoices: await tx`select * from sales_invoice`, payments: await tx`select * from payment`, gateways: await tx`select * from edge_gateway` };
+afterAll(async () => {
+  await app.close();
+  await owner.close();
+  rmSync(previous, { recursive: true, force: true });
 });
+const facts = () =>
+  owner.sql.begin(async (tx) => {
+    await tx`select set_config('app.tenant_id',${tenant},true)`;
+    return {
+      users: await tx`select * from users`,
+      memberships: await tx`select * from user_company_memberships`,
+      factors: await tx`select * from identity_factors`,
+      companies: await tx`select * from companies`,
+      invoices: await tx`select * from sales_invoice`,
+      payments: await tx`select * from payment`,
+      gateways: await tx`select * from edge_gateway`,
+    };
+  });
 it('upgrades populated 0013 without changing invoices, payment facts, MFA or registered relays', async () => {
-  const before = await facts(); await runMigrations(owner, MIGRATIONS_DIR); expect(await facts()).toEqual(before);
+  const before = await facts();
+  await runMigrations(owner, MIGRATIONS_DIR);
+  expect(await facts()).toEqual(before);
   for (const table of newTables) {
-    expect((await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where relname=${table}`)[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
-    expect((await app.sql.begin(async (tx) => { await tx`select set_config('app.tenant_id',${tenant},true)`; return tx`select count(*)::int n from ${tx(table)}`; }))[0]?.n).toBe(0);
+    expect(
+      (await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where relname=${table}`)[0],
+    ).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+    expect(
+      (
+        await app.sql.begin(async (tx) => {
+          await tx`select set_config('app.tenant_id',${tenant},true)`;
+          return tx`select count(*)::int n from ${tx(table)}`;
+        })
+      )[0]?.n,
+    ).toBe(0);
   }
-  await runMigrations(owner, MIGRATIONS_DIR); expect(await facts()).toEqual(before);
-  expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(readJournal().entries.length);
+  await runMigrations(owner, MIGRATIONS_DIR);
+  expect(await facts()).toEqual(before);
+  expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
+    readJournal().entries.length,
+  );
 });

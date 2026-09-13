@@ -55,7 +55,13 @@ export function agingBucket(dueDate: LocalDate, asOf: LocalDate): AgingBucket {
 type Acc = { partnerId: string; billCount: number; buckets: Record<AgingBucket, Decimal>; balance: Decimal };
 
 function emptyBuckets(): Record<AgingBucket, Decimal> {
-  return { notDue: Decimal.zero(), days1to30: Decimal.zero(), days31to60: Decimal.zero(), days61to90: Decimal.zero(), over90: Decimal.zero() };
+  return {
+    notDue: Decimal.zero(),
+    days1to30: Decimal.zero(),
+    days31to60: Decimal.zero(),
+    days61to90: Decimal.zero(),
+    over90: Decimal.zero(),
+  };
 }
 
 function sortKey(row: AgingRow): string {
@@ -63,10 +69,19 @@ function sortKey(row: AgingRow): string {
 }
 
 /** One row per partner (sorted by code, then name), plus column totals. Unknown partners are shown by id. */
-export function agingRows(bills: readonly AgingBill[], partners: ReadonlyMap<string, AgingPartner>, asOf: LocalDate): { rows: AgingRow[]; totals: Record<string, string> } {
+export function agingRows(
+  bills: readonly AgingBill[],
+  partners: ReadonlyMap<string, AgingPartner>,
+  asOf: LocalDate,
+): { rows: AgingRow[]; totals: Record<string, string> } {
   const acc = new Map<string, Acc>();
   for (const bill of bills) {
-    const a = acc.get(bill.partnerId) ?? { partnerId: bill.partnerId, billCount: 0, buckets: emptyBuckets(), balance: Decimal.zero() };
+    const a = acc.get(bill.partnerId) ?? {
+      partnerId: bill.partnerId,
+      billCount: 0,
+      buckets: emptyBuckets(),
+      balance: Decimal.zero(),
+    };
     const bucket = agingBucket(bill.dueDate ?? bill.date, asOf);
     a.buckets[bucket] = a.buckets[bucket].plus(bill.balance);
     a.balance = a.balance.plus(bill.balance);
@@ -90,6 +105,7 @@ export function agingRows(bills: readonly AgingBill[], partners: ReadonlyMap<str
   });
   rows.sort((x, y) => (sortKey(x) < sortKey(y) ? -1 : sortKey(x) > sortKey(y) ? 1 : 0));
   const totals: Record<string, string> = {};
-  for (const key of [...AGING_BUCKETS, 'balance'] as const) totals[key] = Decimal.sum(rows.map((r) => Decimal.from(r[key]))).toString();
+  for (const key of [...AGING_BUCKETS, 'balance'] as const)
+    totals[key] = Decimal.sum(rows.map((r) => Decimal.from(r[key]))).toString();
   return { rows, totals };
 }

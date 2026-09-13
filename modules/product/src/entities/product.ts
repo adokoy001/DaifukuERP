@@ -15,7 +15,8 @@ export const Product = defineEntity({
     code: f.text({ unique: true, immutable: true, maxLength: 30, label: label('品目コード', 'Code') }),
     name: f.text({ required: true, maxLength: 200, label: label('品目名', 'Name') }),
     nameKana: f.text({ normalize: 'halfwidth-kana', label: label('品目名カナ', 'Name (kana)') }),
-    kind: f.enum(PRODUCT_KINDS, { immutable: true,
+    kind: f.enum(PRODUCT_KINDS, {
+      immutable: true,
       required: true,
       default: 'goods',
       label: label('種別', 'Kind'),

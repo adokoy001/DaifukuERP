@@ -9,10 +9,32 @@
 //   state. No Σ <= amount check here: the generic update saves the header before its lines and the replace-all line
 //   save creates before it deletes, so an intermediate Σ may legitimately exceed the amount; submit is the gate.
 // after_lines_saved (phase15-cleanup AC-4): a replace-all line save touches the header once, whatever the line count.
-import { Decimal, DOCSTATUS, PermissionDenied, registry, repo, todayLocal, ValidationError, type Context, type HookArgs } from '@daifuku/kernel';
+import {
+  Decimal,
+  DOCSTATUS,
+  PermissionDenied,
+  registry,
+  repo,
+  todayLocal,
+  ValidationError,
+  type Context,
+  type HookArgs,
+} from '@daifuku/kernel';
 import { PaymentAllocation } from '../entities/payment-allocation.ts';
-import { Payment, PAYMENT_DIRECTIONS, PAYMENT_METHODS, type PaymentDirection, type PaymentMethod } from '../entities/payment.ts';
-import { allocatedOf, roleAllowsDirection, rolesForDirection, tryDecimal, unallocatedOf } from '../services/allocate.ts';
+import {
+  Payment,
+  PAYMENT_DIRECTIONS,
+  PAYMENT_METHODS,
+  type PaymentDirection,
+  type PaymentMethod,
+} from '../entities/payment.ts';
+import {
+  allocatedOf,
+  roleAllowsDirection,
+  rolesForDirection,
+  tryDecimal,
+  unallocatedOf,
+} from '../services/allocate.ts';
 import { defaultAccountIdFor, PAYMENT_ACCOUNTS_KEY } from '../settings.ts';
 
 type Raw = Record<string, unknown>;
@@ -20,7 +42,8 @@ type Raw = Record<string, unknown>;
 /** Fields the caller never controls on a draft. */
 export const SYSTEM_OWNED_FIELDS = ['allocatedAmount', 'unallocatedAmount', 'journalEntryId'] as const;
 
-export const DIRECTION_HINT = 'Use a context whose roles cover this direction (accounting: both; sales: receive; purchasing: pay).';
+export const DIRECTION_HINT =
+  'Use a context whose roles cover this direction (accounting: both; sales: receive; purchasing: pay).';
 
 function isDirection(v: unknown): v is PaymentDirection {
   return typeof v === 'string' && (PAYMENT_DIRECTIONS as readonly string[]).includes(v);
@@ -33,7 +56,13 @@ function isMethod(v: unknown): v is PaymentMethod {
 export function assertDirectionRole(ctx: Context, direction: unknown, op: string): void {
   if (!isDirection(direction)) return; // zod reports the invalid enum
   if (roleAllowsDirection(ctx.roles, direction)) return;
-  ctx.log.info('payment direction refused', { op, direction, roles: ctx.roles, requiredRoles: rolesForDirection(direction), hint: DIRECTION_HINT });
+  ctx.log.info('payment direction refused', {
+    op,
+    direction,
+    roles: ctx.roles,
+    requiredRoles: rolesForDirection(direction),
+    hint: DIRECTION_HINT,
+  });
   throw new PermissionDenied(Payment.name, `${op}:${direction}`, ctx.roles);
 }
 
@@ -53,7 +82,12 @@ async function fillAccount(ctx: Context, row: Raw, method: unknown): Promise<voi
 function assertPositiveAmount(row: Raw, previous: Raw | undefined): void {
   if (row.amount === undefined && previous) return;
   const amount = tryDecimal(row.amount);
-  if (amount && !amount.gt(0)) throw new ValidationError(`payment amount ${amount.toString()} must be greater than 0`, [{ path: 'amount', message: 'must be > 0' }], 'A payment moves a positive amount; the direction says which way.');
+  if (amount && !amount.gt(0))
+    throw new ValidationError(
+      `payment amount ${amount.toString()} must be greater than 0`,
+      [{ path: 'amount', message: 'must be > 0' }],
+      'A payment moves a positive amount; the direction says which way.',
+    );
 }
 
 async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promise<void> {
@@ -62,7 +96,11 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   assertPositiveAmount(row, previous);
   if (!previous) {
     // a new draft has no lines yet: everything is unallocated
-    Object.assign(row, { allocatedAmount: '0', unallocatedAmount: tryDecimal(row.amount)?.toString() ?? '0', journalEntryId: null });
+    Object.assign(row, {
+      allocatedAmount: '0',
+      unallocatedAmount: tryDecimal(row.amount)?.toString() ?? '0',
+      journalEntryId: null,
+    });
     if (row.date === undefined || row.date === null) row.date = todayLocal(ctx.now());
     if (row.method === undefined || row.method === null) row.method = 'bank_transfer';
     if (row.accountId === undefined || row.accountId === null) await fillAccount(ctx, row, row.method);
@@ -76,7 +114,11 @@ async function beforeUpdate(ctx: Context, { row }: HookArgs): Promise<void> {
   const lines = await repo(ctx, PaymentAllocation).list({ where: { paymentId: row.id as string }, limit: 500 });
   const allocated = allocatedOf(lines.items);
   const amount = row.amount instanceof Decimal ? row.amount : Decimal.from(String(row.amount ?? '0'));
-  Object.assign(row, { allocatedAmount: allocated, unallocatedAmount: unallocatedOf(amount, allocated), journalEntryId: null });
+  Object.assign(row, {
+    allocatedAmount: allocated,
+    unallocatedAmount: unallocatedOf(amount, allocated),
+    journalEntryId: null,
+  });
 }
 
 /** One header touch per saveLines call; before_update above re-derives the amounts. `row` is the parent, re-read by the kernel. */

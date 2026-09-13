@@ -82,7 +82,10 @@ function extChanged(input: ExtPayloadInput, payload: Record<string, unknown>): b
 export function extPayload(input: ExtPayloadInput): ExtPayload {
   const { payload, errors } = toPayload(input.values, input.fields, 'update');
   if (!extChanged(input, payload)) {
-    const required = input.mode === 'create' ? input.fields.filter((f) => f.required && !f.hasDefault && !f.serverOwned && !f.readOnly) : [];
+    const required =
+      input.mode === 'create'
+        ? input.fields.filter((f) => f.required && !f.hasDefault && !f.serverOwned && !f.readOnly)
+        : [];
     for (const f of required) errors[f.name] ??= input.requiredMessage;
     return { ext: undefined, errors };
   }

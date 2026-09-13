@@ -4,11 +4,23 @@ import { Decimal } from '@daifuku/kernel';
 import { describe, expect, it } from 'vitest';
 import { arrearsRows, isInArrears, type ArrearsInput } from '../src/services/arrears.ts';
 import { leaseOn, rentRoll, unitStatusOn, type RentRollLease, type RentRollUnit } from '../src/services/rent-roll.ts';
-import { DEPOSIT_TAX_CATEGORY, isShortTerm, isTaxableCategory, oneMonthEnd, rentTaxCategory, UNIT_USAGES } from '../src/services/tax-rule.ts';
+import {
+  DEPOSIT_TAX_CATEGORY,
+  isShortTerm,
+  isTaxableCategory,
+  oneMonthEnd,
+  rentTaxCategory,
+  UNIT_USAGES,
+} from '../src/services/tax-rule.ts';
 
 describe('rentTaxCategory (No.6226 / No.6225, 別表第二 十三)', () => {
   it('residential → non_taxable; office, store, parking → standard', () => {
-    expect(Object.fromEntries(UNIT_USAGES.map((u) => [u, rentTaxCategory(u)]))).toEqual({ residential: 'non_taxable', office: 'standard', store: 'standard', parking: 'standard' });
+    expect(Object.fromEntries(UNIT_USAGES.map((u) => [u, rentTaxCategory(u)]))).toEqual({
+      residential: 'non_taxable',
+      office: 'standard',
+      store: 'standard',
+      parking: 'standard',
+    });
   });
 
   it('a returnable deposit is out of scope (不課税), never a rent category', () => {
@@ -36,7 +48,13 @@ describe('rentTaxCategory (No.6226 / No.6225, 別表第二 十三)', () => {
   });
 
   it('isTaxableCategory: standard / reduced / exempt (0%) are 課税売上; non_taxable and out_of_scope are not', () => {
-    expect(['standard', 'reduced', 'exempt', 'non_taxable', 'out_of_scope'].map(isTaxableCategory)).toEqual([true, true, true, false, false]);
+    expect(['standard', 'reduced', 'exempt', 'non_taxable', 'out_of_scope'].map(isTaxableCategory)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
   });
 });
 
@@ -59,11 +77,43 @@ describe('occupancy (unit.status, rent roll)', () => {
   });
 
   it('rentRoll: rows by property/unit code, occupied rent split taxable / non-taxable, vacant units at asking rent and out of totals', () => {
-    const unit = (id: string, code: string, usage: RentRollUnit['usage'], rent: string): RentRollUnit => ({ id, propertyCode: 'SH', propertyName: 'サンプルハイツ', code, name: code, usage, floorArea: null, monthlyRent: Decimal.from(rent) });
-    const units = [unit('u2', '201', 'office', '100000'), unit('u1', '101', 'residential', '60000'), unit('u3', '102', 'residential', '65000')];
+    const unit = (id: string, code: string, usage: RentRollUnit['usage'], rent: string): RentRollUnit => ({
+      id,
+      propertyCode: 'SH',
+      propertyName: 'サンプルハイツ',
+      code,
+      name: code,
+      usage,
+      floorArea: null,
+      monthlyRent: Decimal.from(rent),
+    });
+    const units = [
+      unit('u2', '201', 'office', '100000'),
+      unit('u1', '101', 'residential', '60000'),
+      unit('u3', '102', 'residential', '65000'),
+    ];
     const leases: RentRollLease[] = [
-      { contractId: 'c1', unitId: 'u1', partnerId: 'p1', partnerName: 'T1', startDate: '2026-04-01', endDate: null, lines: [{ amount: Decimal.from('60000'), taxCategory: 'non_taxable' }] },
-      { contractId: 'c2', unitId: 'u2', partnerId: 'p2', partnerName: 'T3', startDate: '2026-11-01', endDate: null, lines: [{ amount: Decimal.from('100000'), taxCategory: 'standard' }, { amount: Decimal.from('5000'), taxCategory: 'non_taxable' }] },
+      {
+        contractId: 'c1',
+        unitId: 'u1',
+        partnerId: 'p1',
+        partnerName: 'T1',
+        startDate: '2026-04-01',
+        endDate: null,
+        lines: [{ amount: Decimal.from('60000'), taxCategory: 'non_taxable' }],
+      },
+      {
+        contractId: 'c2',
+        unitId: 'u2',
+        partnerId: 'p2',
+        partnerName: 'T3',
+        startDate: '2026-11-01',
+        endDate: null,
+        lines: [
+          { amount: Decimal.from('100000'), taxCategory: 'standard' },
+          { amount: Decimal.from('5000'), taxCategory: 'non_taxable' },
+        ],
+      },
     ];
     const { rows, totals, counts } = rentRoll(units, leases, '2026-11-30');
     expect(rows.map((r) => [r.unitCode, r.status, r.monthlyRent, r.tenantName, r.taxCategory])).toEqual([
@@ -103,7 +153,9 @@ describe('arrears', () => {
 
   it('arrearsRows: days overdue = asOf − dueDate, total of balances', () => {
     const { rows, total } = arrearsRows([input('2026-11-30'), input('2026-12-31', '2026-12-01')], '2026-12-05');
-    expect(rows.map((r) => [r.tenantName, r.unitCode, r.dueDate, r.daysOverdue, r.balance])).toEqual([['T4', 'P1', '2026-11-30', 5, '8800']]);
+    expect(rows.map((r) => [r.tenantName, r.unitCode, r.dueDate, r.daysOverdue, r.balance])).toEqual([
+      ['T4', 'P1', '2026-11-30', 5, '8800'],
+    ]);
     expect(total.toString()).toBe('8800');
   });
 });

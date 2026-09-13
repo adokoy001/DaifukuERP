@@ -7,9 +7,25 @@
 //   priceIncludesTax change, a line write (hooks/lines.ts touches the header) and a tampered patch all end in the
 //   same derived state. Submitted invoices skip this (lines are frozen; applyPayment writes paidAmount/balance/status).
 // after_lines_saved (kernel-phase15 AC-7): a replace-all line save touches the header once, whatever the line count.
-import { Decimal, DOCSTATUS, getSetting, isLocalDate, isUuid, registry, repo, todayLocal, type Context, type HookArgs, type LocalDate } from '@daifuku/kernel';
+import {
+  Decimal,
+  DOCSTATUS,
+  getSetting,
+  isLocalDate,
+  isUuid,
+  registry,
+  repo,
+  todayLocal,
+  type Context,
+  type HookArgs,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { computeDueDate, Partner } from '@daifuku/mod-partner';
-import { TAX_PRICE_INCLUDES_TAX_DEFAULT, TAX_PRICE_INCLUDES_TAX_KEY, taxPriceIncludesTaxSchema } from '@daifuku/mod-tax';
+import {
+  TAX_PRICE_INCLUDES_TAX_DEFAULT,
+  TAX_PRICE_INCLUDES_TAX_KEY,
+  taxPriceIncludesTaxSchema,
+} from '@daifuku/mod-tax';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
 import { recalculateInvoice } from '../recalculate.ts';
 import { balanceOf } from '../services/recalculate.ts';
@@ -17,10 +33,32 @@ import { balanceOf } from '../services/recalculate.ts';
 type Raw = Record<string, unknown>;
 
 /** Fields the caller never controls on a draft. */
-export const SYSTEM_OWNED_FIELDS = ['subtotal', 'taxTotal', 'total', 'taxSummary', 'paidAmount', 'balance', 'status', 'journalEntryId'] as const;
+export const SYSTEM_OWNED_FIELDS = [
+  'subtotal',
+  'taxTotal',
+  'total',
+  'taxSummary',
+  'paidAmount',
+  'balance',
+  'status',
+  'journalEntryId',
+] as const;
 
 function resetSystemFields(row: Raw): void {
-  Object.assign(row, { subtotal: '0', taxTotal: '0', total: '0', taxSummary: [], paidAmount: '0', balance: '0', status: 'draft', journalEntryId: null, issuedSnapshot: null, cancelledDate: null, controlAccountId: null, settlementHistory: false });
+  Object.assign(row, {
+    subtotal: '0',
+    taxTotal: '0',
+    total: '0',
+    taxSummary: [],
+    paidAmount: '0',
+    balance: '0',
+    status: 'draft',
+    journalEntryId: null,
+    issuedSnapshot: null,
+    cancelledDate: null,
+    controlAccountId: null,
+    settlementHistory: false,
+  });
 }
 
 async function fillDueDate(ctx: Context, row: Raw, previous: Raw | undefined): Promise<void> {
@@ -38,7 +76,12 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   if (!previous) {
     resetSystemFields(row);
     if (row.priceIncludesTax === undefined || row.priceIncludesTax === null) {
-      row.priceIncludesTax = await getSetting(ctx, TAX_PRICE_INCLUDES_TAX_KEY, taxPriceIncludesTaxSchema, TAX_PRICE_INCLUDES_TAX_DEFAULT);
+      row.priceIncludesTax = await getSetting(
+        ctx,
+        TAX_PRICE_INCLUDES_TAX_KEY,
+        taxPriceIncludesTaxSchema,
+        TAX_PRICE_INCLUDES_TAX_DEFAULT,
+      );
     }
     if (row.date === undefined || row.date === null) row.date = todayLocal(ctx.now());
   }
@@ -47,7 +90,11 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
 
 async function beforeUpdate(ctx: Context, { row }: HookArgs): Promise<void> {
   if (row.docstatus !== DOCSTATUS.draft) return;
-  const { totals } = await recalculateInvoice(ctx, { id: row.id as string, date: row.date as LocalDate, priceIncludesTax: row.priceIncludesTax === true });
+  const { totals } = await recalculateInvoice(ctx, {
+    id: row.id as string,
+    date: row.date as LocalDate,
+    priceIncludesTax: row.priceIncludesTax === true,
+  });
   // a draft has no payments: paidAmount 0, balance = total
   Object.assign(row, {
     subtotal: totals.subtotal,

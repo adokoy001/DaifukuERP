@@ -17,21 +17,41 @@ export interface AnalyticsDataset {
   defaultState: string;
   states: { value: string; label: Label }[];
 }
-export interface AnalyticsCatalog { datasets: AnalyticsDataset[]; scopeKey: string }
-export interface AnalyticsInput { dataset: string; from: string; to: string; state: string }
+export interface AnalyticsCatalog {
+  datasets: AnalyticsDataset[];
+  scopeKey: string;
+}
+export interface AnalyticsInput {
+  dataset: string;
+  from: string;
+  to: string;
+  state: string;
+}
 export interface AnalyticsSnapshot {
   scopeKey: string;
   dataset: string;
   columns: TableColumn[];
   rows: Record<string, unknown>[];
-  meta: { from: string; to: string; state: string; rowCount: number; limit: number; complete: true; retrievedAt: string };
+  meta: {
+    from: string;
+    to: string;
+    state: string;
+    rowCount: number;
+    limit: number;
+    complete: true;
+    retrievedAt: string;
+  };
 }
 export function useAnalyticsCatalog() {
   const user = getUser();
   return useQuery({
     queryKey: ['analytics-catalog', user?.tenantId, user?.id, getCompanyId()],
     queryFn: ({ signal }) => request<AnalyticsCatalog>('/analytics/catalog', { signal, cache: 'no-store' }),
-    gcTime: 0, staleTime: 0, retry: false, refetchInterval: 30_000, refetchOnWindowFocus: 'always',
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: 'always',
   });
 }
 export function fetchAnalytics(input: AnalyticsInput, signal: AbortSignal) {

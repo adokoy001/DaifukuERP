@@ -6,7 +6,8 @@ import { Contract } from '../entities/contract.ts';
 import { billingsOf } from '../ledger.ts';
 import { invoicesById } from '../load.ts';
 
-export const LIVE_INVOICES_HINT = 'Cancel the submitted invoices (or delete the drafts) generated from this contract first; to stop future billing use contract.end instead.';
+export const LIVE_INVOICES_HINT =
+  'Cancel the submitted invoices (or delete the drafts) generated from this contract first; to stop future billing use contract.end instead.';
 
 async function beforeCancel(ctx: Context, { row }: HookArgs): Promise<void> {
   const id = row.id as string;
@@ -17,9 +18,17 @@ async function beforeCancel(ctx: Context, { row }: HookArgs): Promise<void> {
   );
   const live = billings.filter((b) => invoices.get(b.invoiceId)?.docstatus !== DOCSTATUS.cancelled);
   if (live.length > 0) {
-    throw new StateError(`contract ${String(row.number ?? id)} has ${live.length} live generated invoice(s) and cannot be cancelled`, LIVE_INVOICES_HINT, {
-      invoices: live.map((b) => ({ period: b.period, invoiceId: b.invoiceId, number: invoices.get(b.invoiceId)?.number ?? null })),
-    });
+    throw new StateError(
+      `contract ${String(row.number ?? id)} has ${live.length} live generated invoice(s) and cannot be cancelled`,
+      LIVE_INVOICES_HINT,
+      {
+        invoices: live.map((b) => ({
+          period: b.period,
+          invoiceId: b.invoiceId,
+          number: invoices.get(b.invoiceId)?.number ?? null,
+        })),
+      },
+    );
   }
   row.status = 'cancelled';
 }

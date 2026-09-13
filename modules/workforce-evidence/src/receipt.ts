@@ -3,7 +3,9 @@ import { defineEntity, f, label, type Infer } from '@daifuku/kernel';
 const owned = { serverOwned: true, immutable: true, required: true } as const;
 const ownUpload = ['read', 'create', 'export'] as const;
 export const WorkforceReceipt = defineEntity({
-  name: 'workforce_receipt', label: label('経費の領収書', 'Expense receipts'), ext: false,
+  name: 'workforce_receipt',
+  label: label('経費の領収書', 'Expense receipts'),
+  ext: false,
   siteAccess: { kind: 'parent', field: 'expenseId', entity: 'workforce_expense' },
   fields: {
     expenseId: f.ref('workforce_expense', { ...owned, label: label('経費申請', 'Expense') }),
@@ -17,13 +19,31 @@ export const WorkforceReceipt = defineEntity({
     sha256: f.text({ ...owned, pattern: /^[0-9a-f]{64}$/, maxLength: 64 }),
   },
   permissions: {
-    roles: { workforce_employee: ownUpload, workforce_manager: ownUpload, workforce_hr: ownUpload, workforce_payroll: ownUpload },
+    roles: {
+      workforce_employee: ownUpload,
+      workforce_manager: ownUpload,
+      workforce_hr: ownUpload,
+      workforce_payroll: ownUpload,
+    },
     rowRules: [{ roles: ['workforce_employee'], where: { userId: '$ctx.userId' } }],
   },
   unique: [['expenseId', 'sha256']],
-  displayField: 'filename', views: { list: ['expenseId', 'filename', 'contentType', 'size'] },
+  displayField: 'filename',
+  views: { list: ['expenseId', 'filename', 'contentType', 'size'] },
 });
-export type ReceiptInfo = Pick<Infer<typeof WorkforceReceipt>, 'id' | 'expenseId' | 'filename' | 'contentType' | 'size' | 'sha256' | 'version'> & { createdAt: string };
+export type ReceiptInfo = Pick<
+  Infer<typeof WorkforceReceipt>,
+  'id' | 'expenseId' | 'filename' | 'contentType' | 'size' | 'sha256' | 'version'
+> & { createdAt: string };
 export function receiptInfo(row: Infer<typeof WorkforceReceipt>): ReceiptInfo {
-  return { id: row.id, expenseId: row.expenseId, filename: row.filename, contentType: row.contentType, size: row.size, sha256: row.sha256, version: row.version, createdAt: row.createdAt.toISOString() };
+  return {
+    id: row.id,
+    expenseId: row.expenseId,
+    filename: row.filename,
+    contentType: row.contentType,
+    size: row.size,
+    sha256: row.sha256,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+  };
 }

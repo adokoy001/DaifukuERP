@@ -6,7 +6,17 @@ const MAX_FILE_LINES = 400; // docs/conventions/code-style.md — split files be
 const MAX_FN_LINES = 80;
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '**/.stryker-tmp/**', '**/coverage/**', '**/drizzle/migrations/**', '**/*.generated.ts'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/.turbo/**',
+      '**/.stryker-tmp/**',
+      '**/coverage/**',
+      '**/drizzle/migrations/**',
+      '**/*.generated.ts',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -34,14 +44,15 @@ export default tseslint.config(
         },
         {
           selector: "Identifier[name='ignorePermissions']",
-          message: 'There is no permission bypass in this codebase (ADR-0007). Run the operation with a context that has the right role instead.',
+          message:
+            'There is no permission bypass in this codebase (ADR-0007). Run the operation with a context that has the right role instead.',
         },
         {
           selector: "CallExpression[callee.property.name='skip'][callee.object.name=/^(it|test|describe)$/]",
           message: 'Do not skip tests to make gates pass. Fix the test or delete it with a note in docs/log/.',
         },
       ],
-      'eqeqeq': ['error', 'always'],
+      eqeqeq: ['error', 'always'],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
@@ -52,7 +63,14 @@ export default tseslint.config(
   {
     files: ['**/*.cjs', '**/*.mjs', '**/*.js'],
     languageOptions: {
-      globals: { module: 'readonly', require: 'readonly', process: 'readonly', console: 'readonly', __dirname: 'readonly', URL: 'readonly' },
+      globals: {
+        module: 'readonly',
+        require: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        __dirname: 'readonly',
+        URL: 'readonly',
+      },
     },
     rules: { 'no-console': 'off' },
   },

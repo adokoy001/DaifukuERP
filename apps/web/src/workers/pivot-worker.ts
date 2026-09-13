@@ -7,6 +7,9 @@ const scope = globalThis as unknown as {
   postMessage(value: PivotWorkerReply): void;
 };
 scope.onmessage = ({ data }) => {
-  try { scope.postMessage({ kind: 'result', result: pivot(data.rows, data.config) }); }
-  catch (error) { scope.postMessage({ kind: 'error', code: error instanceof PivotError ? error.code : 'failed' }); }
+  try {
+    scope.postMessage({ kind: 'result', result: pivot(data.rows, data.config) });
+  } catch (error) {
+    scope.postMessage({ kind: 'error', code: error instanceof PivotError ? error.code : 'failed' });
+  }
 };

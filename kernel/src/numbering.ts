@@ -16,10 +16,12 @@ export interface NumberingInput {
 
 export async function nextNumber(ctx: Context, input: NumberingInput): Promise<string> {
   const { naming } = input;
-  if (naming.type === 'field') throw new StateError('field-based naming has no sequence', 'Set the field value before submit.');
+  if (naming.type === 'field')
+    throw new StateError('field-based naming has no sequence', 'Set the field value before submit.');
   const scope = naming.scope ?? 'company';
   const companyId = scope === 'company' ? ctx.companyId : null;
-  if (scope === 'company' && !companyId) throw new StateError('company-scoped numbering requires a company context', 'Provide companyId in the context.');
+  if (scope === 'company' && !companyId)
+    throw new StateError('company-scoped numbering requires a company context', 'Provide companyId in the context.');
   const key = naming.key ?? input.entityName;
   const period = naming.period === 'year' ? input.date.slice(0, 4) : '';
   const width = naming.width ?? 6;

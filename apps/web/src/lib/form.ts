@@ -121,7 +121,9 @@ function convert(field: FieldMeta, raw: FormValue): Conversion {
     case 'int':
       return INT_RE.test(s.trim()) ? { ok: true, value: Number(s.trim()) } : { ok: false, error: 'integer expected' };
     case 'decimal':
-      return DECIMAL_RE.test(s.trim()) ? { ok: true, value: normalizeDecimalString(s) } : { ok: false, error: 'number expected' };
+      return DECIMAL_RE.test(s.trim())
+        ? { ok: true, value: normalizeDecimalString(s) }
+        : { ok: false, error: 'number expected' };
     case 'json':
       try {
         return { ok: true, value: JSON.parse(s) };
@@ -163,12 +165,17 @@ export function toPayload(values: FormValues, fields: readonly FieldMeta[], mode
 }
 
 function sameValue(field: FieldMeta, a: unknown, b: unknown): boolean {
-  if (field.kind === 'decimal' && typeof a === 'string' && typeof b === 'string') return normalizeDecimalString(a) === normalizeDecimalString(b);
+  if (field.kind === 'decimal' && typeof a === 'string' && typeof b === 'string')
+    return normalizeDecimalString(a) === normalizeDecimalString(b);
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** Only changed fields are sent on update: immutable fields untouched by the user must not appear in the patch. */
-export function diffPatch(payload: Record<string, unknown>, original: RecordJson, fields: readonly FieldMeta[]): Record<string, unknown> {
+export function diffPatch(
+  payload: Record<string, unknown>,
+  original: RecordJson,
+  fields: readonly FieldMeta[],
+): Record<string, unknown> {
   const byName = new Map(fields.map((f) => [f.name, f] as const));
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {

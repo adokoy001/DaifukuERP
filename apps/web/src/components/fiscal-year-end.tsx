@@ -11,23 +11,323 @@ import { WorkforceEmpty, WorkforceMoney, WorkforcePanel, WorkforceStatus } from 
 type Declaration = FiscalBoard['declarations'][number];
 type Adjustment = FiscalBoard['adjustments'][number];
 type Decision = { kind: 'review'; row: Declaration } | { kind: 'confirm' | 'cancel' | 'settle'; row: Adjustment };
-function YearEndDecision({ decision, currentVersion, onClose }: { decision: Decision; currentVersion: number | undefined; onClose: () => void }) {
-  const { t } = useLocale(), task = useWorkforceTask(), kind = decision.kind;
-  const title = t(kind === 'review' ? { ja: '申告内容と証明資料を確認', en: 'Review declaration and evidence' } : kind === 'confirm' ? { ja: '年末調整を確定', en: 'Confirm year-end adjustment' } : kind === 'cancel' ? { ja: '年末調整を取消', en: 'Cancel year-end adjustment' } : { ja: '還付・追加徴収を記録', en: 'Record refund / additional collection' });
-  return <WorkforceDialog title={title} submitLabel={title} onClose={onClose} stale={currentVersion !== decision.row.version} onSubmit={async (data) => {
-    const input = kind === 'review' ? { declarationId: decision.row.id, expectedVersion: decision.row.version, decision: formText(data, 'decision'), reason: formText(data, 'reason') } : { adjustmentId: decision.row.id, expectedVersion: decision.row.version, ...(kind === 'settle' ? { settledOn: formText(data, 'settledOn'), reference: formText(data, 'reason') } : { reason: formText(data, 'reason'), ...(kind === 'confirm' ? { calculationConfirmed: data.get('calculationConfirmed') === 'on' } : {}) }) };
-    await task.mutateAsync({ action: kind === 'review' ? 'workforce.review_year_end_declaration' : `workforce.${kind}_year_end_adjustment`, input });
-  }}>{decision.kind === 'review' ? <><FiscalDeclarationSummary declaration={decision.row.declaration} /><label>{t({ ja: '確認結果', en: 'Review outcome' })}<select className="input" name="decision" required><option value="accept">{t({ ja: '資料を確認して受付', en: 'Accept verified declaration' })}</option><option value="return">{t({ ja: '本人へ差戻し', en: 'Return to employee' })}</option></select></label></> : <FiscalCalculation row={decision.row} />}{kind === 'settle' ? <label>{t({ ja: '実際の精算日', en: 'Actual settlement date' })}<input className="input" type="date" name="settledOn" max={businessToday()} defaultValue={businessToday()} required /></label> : null}<label>{t(kind === 'settle' ? { ja: '振込・給与精算等の実行記録', en: 'Bank transfer / payroll settlement reference' } : { ja: '確認根拠・理由', en: 'Evidence / reason' })}<textarea className="input" name="reason" maxLength={1000} required rows={3} /></label>{kind === 'confirm' ? <FiscalCheck name="calculationConfirmed" label={{ ja: '年間給与・本人申告・控除・税額・還付徴収額を確認しました', en: 'I verified annual pay, declarations, deductions, tax and refund / collection amounts' }} required /> : null}</WorkforceDialog>;
+function YearEndDecision({
+  decision,
+  currentVersion,
+  onClose,
+}: {
+  decision: Decision;
+  currentVersion: number | undefined;
+  onClose: () => void;
+}) {
+  const { t } = useLocale(),
+    task = useWorkforceTask(),
+    kind = decision.kind;
+  const title = t(
+    kind === 'review'
+      ? { ja: '申告内容と証明資料を確認', en: 'Review declaration and evidence' }
+      : kind === 'confirm'
+        ? { ja: '年末調整を確定', en: 'Confirm year-end adjustment' }
+        : kind === 'cancel'
+          ? { ja: '年末調整を取消', en: 'Cancel year-end adjustment' }
+          : { ja: '還付・追加徴収を記録', en: 'Record refund / additional collection' },
+  );
+  return (
+    <WorkforceDialog
+      title={title}
+      submitLabel={title}
+      onClose={onClose}
+      stale={currentVersion !== decision.row.version}
+      onSubmit={async (data) => {
+        const input =
+          kind === 'review'
+            ? {
+                declarationId: decision.row.id,
+                expectedVersion: decision.row.version,
+                decision: formText(data, 'decision'),
+                reason: formText(data, 'reason'),
+              }
+            : {
+                adjustmentId: decision.row.id,
+                expectedVersion: decision.row.version,
+                ...(kind === 'settle'
+                  ? { settledOn: formText(data, 'settledOn'), reference: formText(data, 'reason') }
+                  : {
+                      reason: formText(data, 'reason'),
+                      ...(kind === 'confirm'
+                        ? { calculationConfirmed: data.get('calculationConfirmed') === 'on' }
+                        : {}),
+                    }),
+              };
+        await task.mutateAsync({
+          action: kind === 'review' ? 'workforce.review_year_end_declaration' : `workforce.${kind}_year_end_adjustment`,
+          input,
+        });
+      }}
+    >
+      {decision.kind === 'review' ? (
+        <>
+          <FiscalDeclarationSummary declaration={decision.row.declaration} />
+          <label>
+            {t({ ja: '確認結果', en: 'Review outcome' })}
+            <select className="input" name="decision" required>
+              <option value="accept">{t({ ja: '資料を確認して受付', en: 'Accept verified declaration' })}</option>
+              <option value="return">{t({ ja: '本人へ差戻し', en: 'Return to employee' })}</option>
+            </select>
+          </label>
+        </>
+      ) : (
+        <FiscalCalculation row={decision.row} />
+      )}
+      {kind === 'settle' ? (
+        <label>
+          {t({ ja: '実際の精算日', en: 'Actual settlement date' })}
+          <input
+            className="input"
+            type="date"
+            name="settledOn"
+            max={businessToday()}
+            defaultValue={businessToday()}
+            required
+          />
+        </label>
+      ) : null}
+      <label>
+        {t(
+          kind === 'settle'
+            ? { ja: '振込・給与精算等の実行記録', en: 'Bank transfer / payroll settlement reference' }
+            : { ja: '確認根拠・理由', en: 'Evidence / reason' },
+        )}
+        <textarea className="input" name="reason" maxLength={1000} required rows={3} />
+      </label>
+      {kind === 'confirm' ? (
+        <FiscalCheck
+          name="calculationConfirmed"
+          label={{
+            ja: '年間給与・本人申告・控除・税額・還付徴収額を確認しました',
+            en: 'I verified annual pay, declarations, deductions, tax and refund / collection amounts',
+          }}
+          required
+        />
+      ) : null}
+    </WorkforceDialog>
+  );
 }
-function YearEndCalculate({ employee, prior, current, onClose }: { employee: FiscalBoard['employees'][number]; prior: Adjustment | undefined; current: Adjustment | undefined; onClose: () => void }) {
-  const { t } = useLocale(), task = useWorkforceTask();
-  return <WorkforceDialog title={t({ ja: '2026年末調整を計算', en: 'Calculate 2026 year-end adjustment' })} description={employee.name} submitLabel={t({ ja: '年間資料から計算', en: 'Calculate from annual evidence' })} onClose={onClose} stale={(prior?.version ?? 0) !== (current?.version ?? 0)} onSubmit={async (data) => { await task.mutateAsync({ action: 'workforce.calculate_year_end_adjustment', input: { employeeId: employee.id, taxYear: 2026, expectedVersion: prior?.version ?? 0, adjustedOn: formText(data, 'adjustedOn'), annualPayrollCompleteConfirmed: data.get('annualPayrollCompleteConfirmed') === 'on' } }); }}><p>{t({ ja: '2026年12月の通常の年末調整と翌年1月の再調整に対応します。確定給与の支払証跡、前職資料、無支払月と受付済み申告が必要です。未来日・年途中退職等の例外年調は計算できません。', en: 'Supports ordinary December 2026 adjustment and January re-adjustment. Confirmed payment evidence, previous-employer statements, unpaid months and an accepted declaration are required. Future-dated or exceptional mid-year adjustments are unavailable.' })}</p><label>{t({ ja: '年末調整日', en: 'Adjustment date' })}<input className="input" type="date" name="adjustedOn" min="2026-12-01" max={businessToday() < '2027-01-31' ? businessToday() : '2027-01-31'} defaultValue={businessToday() < '2026-12-01' ? '2026-12-01' : businessToday()} required /></label><FiscalCheck name="annualPayrollCompleteConfirmed" label={{ ja: '対象年の給与支払・社会保険・税額・本人申告が揃い、年間給与の処理が完了しています', en: 'All annual payroll payments, premiums, withholding and declarations are complete' }} required /></WorkforceDialog>;
+function YearEndCalculate({
+  employee,
+  prior,
+  current,
+  onClose,
+}: {
+  employee: FiscalBoard['employees'][number];
+  prior: Adjustment | undefined;
+  current: Adjustment | undefined;
+  onClose: () => void;
+}) {
+  const { t } = useLocale(),
+    task = useWorkforceTask();
+  return (
+    <WorkforceDialog
+      title={t({ ja: '2026年末調整を計算', en: 'Calculate 2026 year-end adjustment' })}
+      description={employee.name}
+      submitLabel={t({ ja: '年間資料から計算', en: 'Calculate from annual evidence' })}
+      onClose={onClose}
+      stale={(prior?.version ?? 0) !== (current?.version ?? 0)}
+      onSubmit={async (data) => {
+        await task.mutateAsync({
+          action: 'workforce.calculate_year_end_adjustment',
+          input: {
+            employeeId: employee.id,
+            taxYear: 2026,
+            expectedVersion: prior?.version ?? 0,
+            adjustedOn: formText(data, 'adjustedOn'),
+            annualPayrollCompleteConfirmed: data.get('annualPayrollCompleteConfirmed') === 'on',
+          },
+        });
+      }}
+    >
+      <p>
+        {t({
+          ja: '2026年12月の通常の年末調整と翌年1月の再調整に対応します。確定給与の支払証跡、前職資料、無支払月と受付済み申告が必要です。未来日・年途中退職等の例外年調は計算できません。',
+          en: 'Supports ordinary December 2026 adjustment and January re-adjustment. Confirmed payment evidence, previous-employer statements, unpaid months and an accepted declaration are required. Future-dated or exceptional mid-year adjustments are unavailable.',
+        })}
+      </p>
+      <label>
+        {t({ ja: '年末調整日', en: 'Adjustment date' })}
+        <input
+          className="input"
+          type="date"
+          name="adjustedOn"
+          min="2026-12-01"
+          max={businessToday() < '2027-01-31' ? businessToday() : '2027-01-31'}
+          defaultValue={businessToday() < '2026-12-01' ? '2026-12-01' : businessToday()}
+          required
+        />
+      </label>
+      <FiscalCheck
+        name="annualPayrollCompleteConfirmed"
+        label={{
+          ja: '対象年の給与支払・社会保険・税額・本人申告が揃い、年間給与の処理が完了しています',
+          en: 'All annual payroll payments, premiums, withholding and declarations are complete',
+        }}
+        required
+      />
+    </WorkforceDialog>
+  );
 }
-export function FiscalYearEnd({ data, employeeId, selfEmployeeId }: { data: FiscalBoard; employeeId: string; selfEmployeeId?: string }) {
-  const { t } = useLocale(), [decision, setDecision] = useState<Decision>(), [calculate, setCalculate] = useState<{ employee: FiscalBoard['employees'][number]; prior?: Adjustment }>();
+export function FiscalYearEnd({
+  data,
+  employeeId,
+  selfEmployeeId,
+}: {
+  data: FiscalBoard;
+  employeeId: string;
+  selfEmployeeId?: string;
+}) {
+  const { t } = useLocale(),
+    [decision, setDecision] = useState<Decision>(),
+    [calculate, setCalculate] = useState<{ employee: FiscalBoard['employees'][number]; prior?: Adjustment }>();
   const employees = data.employees.filter((employee) => !employeeId || employee.id === employeeId);
-  return <WorkforcePanel title={t({ ja: '申告受付・年末調整・精算', en: 'Declarations, year-end calculation and settlement' })} icon="document">{!employees.length ? <WorkforceEmpty>{t({ ja: '従業員を登録してください。', en: 'Register an employee to begin.' })}</WorkforceEmpty> : employees.map((employee) => {
-    const declaration = data.declarations.find((row) => row.employeeId === employee.id), adjustments = data.adjustments.filter((row) => row.employeeId === employee.id), prior = adjustments.find((row) => row.status === 'draft'), frozen = adjustments.some((row) => row.status === 'confirmed');
-    return <article className="workforce-record" key={employee.id}><header><h3>{employee.code} · {employee.name}</h3>{declaration ? <WorkforceStatus status={declaration.status} /> : <span>{t({ ja: '未提出', en: 'Not submitted' })}</span>}</header>{declaration ? <details><summary>{t({ ja: '本人申告を見る', en: 'View employee declaration' })}</summary><FiscalDeclarationSummary declaration={declaration.declaration} />{declaration.reviewReason ? <p>{declaration.reviewReason}</p> : null}</details> : null}<div className="workforce-record-actions">{declaration?.status === 'submitted' ? <button className="btn" disabled={employee.id === selfEmployeeId || frozen} onClick={() => setDecision({ kind: 'review', row: declaration })}>{t({ ja: '申告を確認・受付', en: 'Review declaration' })}</button> : null}<button className="btn btn-primary" disabled={declaration?.status !== 'accepted' || frozen || employee.id === selfEmployeeId || businessToday() < '2026-12-01'} onClick={() => setCalculate({ employee, ...(prior ? { prior } : {}) })}>{t({ ja: '年末調整を計算', en: 'Calculate year-end adjustment' })}</button></div>{businessToday() < '2026-12-01' ? <p className="account-help">{t({ ja: '年末調整の計算は2026年12月1日以降に利用できます。申告と条件の準備は先に進められます。', en: 'Year-end calculation opens on December 1, 2026. Declarations and conditions can be prepared now.' })}</p> : null}{adjustments.map((row) => <section className="fiscal-choice-card" key={row.id}><header><WorkforceStatus status={row.status} /> {row.adjustedOn}</header><div className="workforce-record-meta"><span>{t({ ja: '還付', en: 'Refund' })}: <WorkforceMoney value={row.refund} /></span><span>{t({ ja: '追加徴収', en: 'Additional collection' })}: <WorkforceMoney value={row.additionalTax} /></span></div><details><summary>{t({ ja: '計算根拠を見る', en: 'Review calculation' })}</summary><FiscalCalculation row={row} /></details>{row.settledOn ? <p>{row.settledOn} · {row.settlementReference}</p> : <div className="button-row">{row.status === 'draft' ? <button className="btn btn-primary" disabled={employee.id === selfEmployeeId} onClick={() => setDecision({ kind: 'confirm', row })}>{t({ ja: '年末調整を確定', en: 'Confirm adjustment' })}</button> : null}{row.status === 'confirmed' ? <><button className="btn" disabled={employee.id === selfEmployeeId} onClick={() => setDecision({ kind: 'settle', row })}>{t({ ja: '実際の還付・徴収を記録', en: 'Record actual settlement' })}</button><button className="btn" disabled={employee.id === selfEmployeeId} onClick={() => setDecision({ kind: 'cancel', row })}>{t({ ja: '取消', en: 'Cancel' })}</button></> : null}</div>}</section>)}</article>;
-  })}{decision ? <YearEndDecision decision={decision} currentVersion={(decision.kind === 'review' ? data.declarations : data.adjustments).find((row) => row.id === decision.row.id)?.version} onClose={() => setDecision(undefined)} /> : null}{calculate ? <YearEndCalculate employee={calculate.employee} prior={calculate.prior} current={data.adjustments.find((row) => row.employeeId === calculate.employee.id && row.status === 'draft')} onClose={() => setCalculate(undefined)} /> : null}</WorkforcePanel>;
+  return (
+    <WorkforcePanel
+      title={t({ ja: '申告受付・年末調整・精算', en: 'Declarations, year-end calculation and settlement' })}
+      icon="document"
+    >
+      {!employees.length ? (
+        <WorkforceEmpty>{t({ ja: '従業員を登録してください。', en: 'Register an employee to begin.' })}</WorkforceEmpty>
+      ) : (
+        employees.map((employee) => {
+          const declaration = data.declarations.find((row) => row.employeeId === employee.id),
+            adjustments = data.adjustments.filter((row) => row.employeeId === employee.id),
+            prior = adjustments.find((row) => row.status === 'draft'),
+            frozen = adjustments.some((row) => row.status === 'confirmed');
+          return (
+            <article className="workforce-record" key={employee.id}>
+              <header>
+                <h3>
+                  {employee.code} · {employee.name}
+                </h3>
+                {declaration ? (
+                  <WorkforceStatus status={declaration.status} />
+                ) : (
+                  <span>{t({ ja: '未提出', en: 'Not submitted' })}</span>
+                )}
+              </header>
+              {declaration ? (
+                <details>
+                  <summary>{t({ ja: '本人申告を見る', en: 'View employee declaration' })}</summary>
+                  <FiscalDeclarationSummary declaration={declaration.declaration} />
+                  {declaration.reviewReason ? <p>{declaration.reviewReason}</p> : null}
+                </details>
+              ) : null}
+              <div className="workforce-record-actions">
+                {declaration?.status === 'submitted' ? (
+                  <button
+                    className="btn"
+                    disabled={employee.id === selfEmployeeId || frozen}
+                    onClick={() => setDecision({ kind: 'review', row: declaration })}
+                  >
+                    {t({ ja: '申告を確認・受付', en: 'Review declaration' })}
+                  </button>
+                ) : null}
+                <button
+                  className="btn btn-primary"
+                  disabled={
+                    declaration?.status !== 'accepted' ||
+                    frozen ||
+                    employee.id === selfEmployeeId ||
+                    businessToday() < '2026-12-01'
+                  }
+                  onClick={() => setCalculate({ employee, ...(prior ? { prior } : {}) })}
+                >
+                  {t({ ja: '年末調整を計算', en: 'Calculate year-end adjustment' })}
+                </button>
+              </div>
+              {businessToday() < '2026-12-01' ? (
+                <p className="account-help">
+                  {t({
+                    ja: '年末調整の計算は2026年12月1日以降に利用できます。申告と条件の準備は先に進められます。',
+                    en: 'Year-end calculation opens on December 1, 2026. Declarations and conditions can be prepared now.',
+                  })}
+                </p>
+              ) : null}
+              {adjustments.map((row) => (
+                <section className="fiscal-choice-card" key={row.id}>
+                  <header>
+                    <WorkforceStatus status={row.status} /> {row.adjustedOn}
+                  </header>
+                  <div className="workforce-record-meta">
+                    <span>
+                      {t({ ja: '還付', en: 'Refund' })}: <WorkforceMoney value={row.refund} />
+                    </span>
+                    <span>
+                      {t({ ja: '追加徴収', en: 'Additional collection' })}: <WorkforceMoney value={row.additionalTax} />
+                    </span>
+                  </div>
+                  <details>
+                    <summary>{t({ ja: '計算根拠を見る', en: 'Review calculation' })}</summary>
+                    <FiscalCalculation row={row} />
+                  </details>
+                  {row.settledOn ? (
+                    <p>
+                      {row.settledOn} · {row.settlementReference}
+                    </p>
+                  ) : (
+                    <div className="button-row">
+                      {row.status === 'draft' ? (
+                        <button
+                          className="btn btn-primary"
+                          disabled={employee.id === selfEmployeeId}
+                          onClick={() => setDecision({ kind: 'confirm', row })}
+                        >
+                          {t({ ja: '年末調整を確定', en: 'Confirm adjustment' })}
+                        </button>
+                      ) : null}
+                      {row.status === 'confirmed' ? (
+                        <>
+                          <button
+                            className="btn"
+                            disabled={employee.id === selfEmployeeId}
+                            onClick={() => setDecision({ kind: 'settle', row })}
+                          >
+                            {t({ ja: '実際の還付・徴収を記録', en: 'Record actual settlement' })}
+                          </button>
+                          <button
+                            className="btn"
+                            disabled={employee.id === selfEmployeeId}
+                            onClick={() => setDecision({ kind: 'cancel', row })}
+                          >
+                            {t({ ja: '取消', en: 'Cancel' })}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </section>
+              ))}
+            </article>
+          );
+        })
+      )}
+      {decision ? (
+        <YearEndDecision
+          decision={decision}
+          currentVersion={
+            (decision.kind === 'review' ? data.declarations : data.adjustments).find(
+              (row) => row.id === decision.row.id,
+            )?.version
+          }
+          onClose={() => setDecision(undefined)}
+        />
+      ) : null}
+      {calculate ? (
+        <YearEndCalculate
+          employee={calculate.employee}
+          prior={calculate.prior}
+          current={data.adjustments.find((row) => row.employeeId === calculate.employee.id && row.status === 'draft')}
+          onClose={() => setCalculate(undefined)}
+        />
+      ) : null}
+    </WorkforcePanel>
+  );
 }

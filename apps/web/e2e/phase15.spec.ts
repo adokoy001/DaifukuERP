@@ -20,8 +20,30 @@ interface MetaEntity {
 
 const label = (ja: string, en: string) => ({ ja, en });
 const EXT_FIELDS = [
-  { name: 'ext.rank', kind: 'enum', label: label('ランク', 'Rank'), required: false, hasDefault: false, hidden: false, immutable: false, values: ['a', 'b'], valueLabels: { a: label('A ランク', 'Rank A'), b: label('B ランク', 'Rank B') }, source: 'e2e' },
-  { name: 'ext.creditLimit', kind: 'decimal', label: label('与信限度額', 'Credit limit'), required: false, hasDefault: false, hidden: false, immutable: false, money: true, scale: 0, source: 'e2e' },
+  {
+    name: 'ext.rank',
+    kind: 'enum',
+    label: label('ランク', 'Rank'),
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    values: ['a', 'b'],
+    valueLabels: { a: label('A ランク', 'Rank A'), b: label('B ランク', 'Rank B') },
+    source: 'e2e',
+  },
+  {
+    name: 'ext.creditLimit',
+    kind: 'decimal',
+    label: label('与信限度額', 'Credit limit'),
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    money: true,
+    scale: 0,
+    source: 'e2e',
+  },
 ];
 
 /** Serves the real /meta with two ext fields on partner and `ext.rank` in its list view. */
@@ -59,7 +81,9 @@ async function apiGet(page: Page, path: string): Promise<Record<string, unknown>
   return result.body;
 }
 
-test('AC-3/AC-8: ext fields render under 追加項目, round-trip through row.ext, and show as a list column', async ({ page }) => {
+test('AC-3/AC-8: ext fields render under 追加項目, round-trip through row.ext, and show as a list column', async ({
+  page,
+}) => {
   await withPartnerExt(page);
   await login(page);
   const name = `E2E ext ${Date.now()}`;
@@ -85,7 +109,9 @@ test('AC-3/AC-8: ext fields render under 追加項目, round-trip through row.ex
   await saved.locator('div[data-field="ext.rank"] select').selectOption('a');
   await page.getByTestId('record-form').getByRole('button', { name: '保存' }).click();
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
-  await expect.poll(async () => (await apiGet(page, `/api/partner/${id}`)).ext).toEqual({ rank: 'a', creditLimit: '1234.5' });
+  await expect
+    .poll(async () => (await apiGet(page, `/api/partner/${id}`)).ext)
+    .toEqual({ rank: 'a', creditLimit: '1234.5' });
 
   // List view with `ext.rank` in views.list shows the column with the enum label.
   await page.goto(`/e/partner?q=${encodeURIComponent(name)}`);
@@ -103,7 +129,8 @@ test('AC-7: report totals that match no column are listed under the table', asyn
   await expect(page.getByTestId('report-table')).toBeVisible();
   const extra = page.getByTestId('report-extra-totals');
   await expect(extra).toContainText('合計');
-  for (const key of ['output_tax_total', 'input_tax_total', 'net_tax_due']) await expect(extra.locator(`[data-total-key="${key}"]`)).toBeVisible();
+  for (const key of ['output_tax_total', 'input_tax_total', 'net_tax_due'])
+    await expect(extra.locator(`[data-total-key="${key}"]`)).toBeVisible();
   // No empty totals row in the table when no total belongs to a column.
   await expect(page.getByTestId('report-totals')).toHaveCount(0);
 });

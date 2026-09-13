@@ -13,7 +13,13 @@ import { localDate } from './receive-deposit.ts';
 
 export const moveOutInput = z.object({ contractId: z.uuid(), endDate: localDate });
 export type MoveOutInput = z.output<typeof moveOutInput>;
-export const moveOutOutput = z.object({ contractId: z.uuid(), endDate: z.string(), contractStatus: z.string(), unitId: z.uuid(), unitStatus: z.enum(UNIT_STATUSES) });
+export const moveOutOutput = z.object({
+  contractId: z.uuid(),
+  endDate: z.string(),
+  contractStatus: z.string(),
+  unitId: z.uuid(),
+  unitStatus: z.enum(UNIT_STATUSES),
+});
 export type MoveOutResult = z.output<typeof moveOutOutput>;
 
 export async function moveOut(ctx: Context, input: MoveOutInput): Promise<MoveOutResult> {
@@ -21,7 +27,11 @@ export async function moveOut(ctx: Context, input: MoveOutInput): Promise<MoveOu
   const contract = await r.get(input.contractId);
   const unitId = unitIdOf(contract);
   if (contract.docstatus !== DOCSTATUS.submitted || unitId === null) {
-    throw new StateError(`contract ${contract.number ?? contract.id} is not a submitted lease`, LEASE_HINT, { contractId: contract.id, docstatus: contract.docstatus, unitId });
+    throw new StateError(`contract ${contract.number ?? contract.id} is not a submitted lease`, LEASE_HINT, {
+      contractId: contract.id,
+      docstatus: contract.docstatus,
+      unitId,
+    });
   }
   await runAction(ctx, 'contract.end', { id: contract.id, endDate: input.endDate });
   const unitStatus = (await refreshUnitStatus(ctx, unitId)) ?? 'vacant';

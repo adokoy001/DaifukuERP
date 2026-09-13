@@ -9,16 +9,21 @@ const TENANT = process.env.E2E_TENANT_ID;
 const API = (process.env.E2E_API_URL ?? process.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
 
 async function fixtures(request: APIRequestContext) {
-  const login = await request.post(`${API}/auth/login`, { data: { email: EMAIL, password: PASSWORD, ...(TENANT ? { tenantId: TENANT } : {}) } });
+  const login = await request.post(`${API}/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD, ...(TENANT ? { tenantId: TENANT } : {}) },
+  });
   expect(login.status()).toBe(200);
-  const session = await login.json() as { token: string; user: { defaultCompanyId: string } };
+  const session = (await login.json()) as { token: string; user: { defaultCompanyId: string } };
   const headers = { authorization: `Bearer ${session.token}`, 'x-company-id': session.user.defaultCompanyId };
   const marker = Date.now().toString();
   const partnerName = `UI回帰 顧客 ${marker}`;
   const productName = `UI回帰 サービス ${marker}`;
   for (const [entity, data] of [
     ['partner', { code: `UI${marker}`, name: partnerName, isCustomer: true }],
-    ['product', { code: `UI${marker}`, name: productName, kind: 'service', salePrice: '8000', taxCategory: 'standard' }],
+    [
+      'product',
+      { code: `UI${marker}`, name: productName, kind: 'service', salePrice: '8000', taxCategory: 'standard' },
+    ],
   ] as const) {
     const response = await request.post(`${API}/api/${entity}`, { headers, data });
     expect(response.ok(), `${entity}: ${await response.text()}`).toBe(true);
@@ -90,7 +95,9 @@ test('invoice UI defaults, dirty save protection, submit and dated cancellation'
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('訂正日（任意）').fill(correctionDate);
   await expect(dialog.getByLabel('訂正日（任意）')).toHaveValue(correctionDate);
-  const cancelled = page.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/sales_invoice\/[^/]+\/cancel$/.test(r.url()));
+  const cancelled = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && /\/api\/sales_invoice\/[^/]+\/cancel$/.test(r.url()),
+  );
   // No blur step: submit must read the displayed value even if native date events differ across browsers.
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   const response = await cancelled;

@@ -76,17 +76,26 @@ function inPeriod(r: RateRow, date: LocalDate): boolean {
  */
 export function resolveRate(rates: readonly RateRow[], category: TaxCategory, date: LocalDate): ResolvedRate {
   if (!isTaxCategory(category)) {
-    throw new ValidationError(`unknown tax category "${String(category)}"`, [{ path: 'category', message: 'unknown tax category' }]);
+    throw new ValidationError(`unknown tax category "${String(category)}"`, [
+      { path: 'category', message: 'unknown tax category' },
+    ]);
   }
-  if (!isLocalDate(date)) throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
-  const matches = rates.filter((r) => r.category === category && inPeriod(r, date)).sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
+  if (!isLocalDate(date))
+    throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
+  const matches = rates
+    .filter((r) => r.category === category && inPeriod(r, date))
+    .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
   const hit = matches[0];
   if (isZeroRateCategory(category)) {
     const fb = ZERO_RATE_FALLBACK[category];
     return { category, code: hit?.code ?? fb.code, rate: Decimal.zero(), label: hit?.label ?? fb.label };
   }
   if (!hit) {
-    throw new ValidationError(`no tax_rate for category "${category}" is valid on ${date}`, [{ path: 'category', message: `no tax rate for ${category} on ${date}` }], `add a tax_rate row for ${category} covering ${date}`);
+    throw new ValidationError(
+      `no tax_rate for category "${category}" is valid on ${date}`,
+      [{ path: 'category', message: `no tax rate for ${category} on ${date}` }],
+      `add a tax_rate row for ${category} covering ${date}`,
+    );
   }
   return { category, code: hit.code, rate: Decimal.from(hit.rate), label: hit.label };
 }
@@ -108,9 +117,14 @@ export function computeLineTax(input: LineTaxInput): LineTax {
 }
 
 function assertRate(category: TaxCategory, rate: Decimal): void {
-  if (rate.isNegative()) throw new ValidationError(`tax rate ${rate.toString()} must not be negative`, [{ path: 'rate', message: 'must be >= 0' }]);
+  if (rate.isNegative())
+    throw new ValidationError(`tax rate ${rate.toString()} must not be negative`, [
+      { path: 'rate', message: 'must be >= 0' },
+    ]);
   if (isZeroRateCategory(category) && !rate.isZero()) {
-    throw new ValidationError(`category ${category} must have rate 0, got ${rate.toString()}`, [{ path: 'rate', message: `must be 0 for ${category}` }]);
+    throw new ValidationError(`category ${category} must have rate 0, got ${rate.toString()}`, [
+      { path: 'rate', message: `must be 0 for ${category}` },
+    ]);
   }
 }
 
@@ -127,7 +141,10 @@ function groupTax(sum: Decimal, rate: Decimal, opts: SummarizeOptions): Decimal 
  * Group order = first appearance. Totals are the sums of the rounded groups.
  */
 export function summarizeTax(lines: readonly LineTaxInput[], opts: SummarizeOptions): TaxSummary {
-  if (!Number.isInteger(opts.scale) || opts.scale < 0) throw new ValidationError(`invalid scale ${opts.scale}`, [{ path: 'scale', message: 'must be a non-negative integer' }]);
+  if (!Number.isInteger(opts.scale) || opts.scale < 0)
+    throw new ValidationError(`invalid scale ${opts.scale}`, [
+      { path: 'scale', message: 'must be a non-negative integer' },
+    ]);
   const inclusive = opts.priceIncludesTax === true;
   const sums = new Map<string, { category: TaxCategory; rate: Decimal; sum: Decimal; lineCount: number }>();
   for (const line of lines) {

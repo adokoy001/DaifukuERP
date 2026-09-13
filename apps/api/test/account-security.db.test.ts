@@ -13,8 +13,19 @@ const logs: string[] = [];
 async function createAccount(withCompany = true) {
   const id = newId();
   const email = `${id}@example.com`;
-  await db.owner.drizzle.insert(users).values({ id, tenantId: db.tenantId, email, name: 'Staff', passwordHash: hashPassword(PASSWORD), roles: [], defaultCompanyId: withCompany ? db.companyId : null });
-  if (withCompany) await db.owner.drizzle.insert(companyMemberships).values({ tenantId: db.tenantId, userId: id, companyId: db.companyId, roles: ['viewer'] });
+  await db.owner.drizzle.insert(users).values({
+    id,
+    tenantId: db.tenantId,
+    email,
+    name: 'Staff',
+    passwordHash: hashPassword(PASSWORD),
+    roles: [],
+    defaultCompanyId: withCompany ? db.companyId : null,
+  });
+  if (withCompany)
+    await db.owner.drizzle
+      .insert(companyMemberships)
+      .values({ tenantId: db.tenantId, userId: id, companyId: db.companyId, roles: ['viewer'] });
   const login = await loginAs(email, PASSWORD);
   expect(login.statusCode).toBe(200);
   return { id, email, token: login.json<{ token: string }>().token };
@@ -23,7 +34,12 @@ async function createAccount(withCompany = true) {
 function loginAs(email: string, password: string) {
   return app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
 }
-function post(url: string, token: string, payload: InjectOptions['payload'] = {}, headers: Record<string, string> = {}) {
+function post(
+  url: string,
+  token: string,
+  payload: InjectOptions['payload'] = {},
+  headers: Record<string, string> = {},
+) {
   return app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}`, ...headers } });
 }
 function me(token: string) {
@@ -31,25 +47,42 @@ function me(token: string) {
 }
 beforeAll(async () => {
   db = await freshDb();
-  app = await buildServer({ owner: db.owner, app: db.app, jwtSecret: 'test-account-security', logger: { stream: { write: (line: string) => void logs.push(line) } } });
+  app = await buildServer({
+    owner: db.owner,
+    app: db.app,
+    jwtSecret: 'test-account-security',
+    logger: { stream: { write: (line: string) => void logs.push(line) } },
+  });
   await app.ready();
 });
-afterAll(async () => { await app.close(); await db.close(); });
+afterAll(async () => {
+  await app.close();
+  await db.close();
+});
 
 describe('quality-foundation AC-2/3: self-service account lifecycle', () => {
   it('lets ordinary staff change their password, invalidates REST sessions, and records only safe audit flags', async () => {
     const account = await createAccount();
     const secondToken = (await loginAs(account.email, PASSWORD)).json<{ token: string }>().token;
-    const changed = await post('/auth/password', account.token, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    const changed = await post('/auth/password', account.token, {
+      currentPassword: PASSWORD,
+      newPassword: NEW_PASSWORD,
+    });
     expect(changed.statusCode).toBe(200);
     expect(changed.json()).toEqual({ ok: true });
     expect(changed.headers['cache-control']).toBe('private, no-store');
     for (const token of [account.token, secondToken]) expect((await me(token)).statusCode).toBe(401);
     expect((await loginAs(account.email, PASSWORD)).statusCode).toBe(401);
     expect((await loginAs(account.email, NEW_PASSWORD)).statusCode).toBe(200);
-    const rows = await db.owner.sql`select company_id, before, after, actor_id from audit_log where record_id = ${account.id} and op = 'password_change'`;
+    const rows = await db.owner
+      .sql`select company_id, before, after, actor_id from audit_log where record_id = ${account.id} and op = 'password_change'`;
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ company_id: null, before: null, after: { passwordChanged: true, sessionsRevoked: true }, actor_id: account.id });
+    expect(rows[0]).toMatchObject({
+      company_id: null,
+      before: null,
+      after: { passwordChanged: true, sessionsRevoked: true },
+      actor_id: account.id,
+    });
     for (const secret of [PASSWORD, NEW_PASSWORD, 'scrypt$']) {
       expect(JSON.stringify(rows)).not.toContain(secret);
       expect(logs.join('')).not.toContain(secret);
@@ -79,7 +112,12 @@ describe('quality-foundation AC-2/3: self-service account lifecycle', () => {
   it('supports no-company accounts and ignores stale company selections for security operations', async () => {
     const account = await createAccount(false);
     expect((await me(account.token)).json()).toMatchObject({ companyId: null });
-    const changed = await post('/auth/password', account.token, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD }, { 'x-company-id': newId() });
+    const changed = await post(
+      '/auth/password',
+      account.token,
+      { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+      { 'x-company-id': newId() },
+    );
     expect(changed.statusCode).toBe(200);
     const token = (await loginAs(account.email, NEW_PASSWORD)).json<{ token: string }>().token;
     const revoked = await post('/auth/logout-all', token, {}, { 'x-company-id': 'stale-company-selection' });
@@ -98,12 +136,14 @@ describe('quality-foundation AC-2/3: self-service account lifecycle', () => {
     expect((await me(other.token)).statusCode).toBe(200);
     expect((await loginAs(account.email, PASSWORD)).statusCode).toBe(200);
     expect((await post('/auth/logout-all', account.token)).statusCode).toBe(401);
-    const rows = await db.owner.sql`select company_id, before, after from audit_log where record_id = ${account.id} and op = 'sessions_revoke'`;
+    const rows = await db.owner
+      .sql`select company_id, before, after from audit_log where record_id = ${account.id} and op = 'sessions_revoke'`;
     expect(rows).toEqual([{ company_id: null, before: null, after: { sessionsRevoked: true } }]);
   });
 
   it('requires authentication and rejects extra revoke targets', async () => {
-    for (const url of ['/auth/password', '/auth/logout-all']) expect((await app.inject({ method: 'POST', url, payload: {} })).statusCode).toBe(401);
+    for (const url of ['/auth/password', '/auth/logout-all'])
+      expect((await app.inject({ method: 'POST', url, payload: {} })).statusCode).toBe(401);
     const account = await createAccount();
     expect((await post('/auth/logout-all', account.token, { userId: db.adminUserId })).statusCode).toBe(400);
     expect((await me(account.token)).statusCode).toBe(200);
@@ -114,13 +154,18 @@ describe('quality-foundation AC-2/3: self-service account lifecycle', () => {
     const sessionVersion = app.jwt.verify<{ sessionVersion: number }>(account.token).sessionVersion;
     const params = { actor: { type: 'user' as const, id: account.id }, roles: ['viewer'], companyId: null };
     const results = await Promise.allSettled([
-      db.run(params, (ctx) => changeOwnPassword(ctx, sessionVersion, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })),
-      db.run(params, (ctx) => changeOwnPassword(ctx, sessionVersion, { currentPassword: PASSWORD, newPassword: 'other-concurrent-password' })),
+      db.run(params, (ctx) =>
+        changeOwnPassword(ctx, sessionVersion, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD }),
+      ),
+      db.run(params, (ctx) =>
+        changeOwnPassword(ctx, sessionVersion, { currentPassword: PASSWORD, newPassword: 'other-concurrent-password' }),
+      ),
     ]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { httpStatus: 401 } });
     expect((await me(account.token)).statusCode).toBe(401);
-    const rows = await db.owner.sql`select id from audit_log where record_id = ${account.id} and op = 'password_change'`;
+    const rows = await db.owner
+      .sql`select id from audit_log where record_id = ${account.id} and op = 'password_change'`;
     expect(rows).toHaveLength(1);
   });
 });

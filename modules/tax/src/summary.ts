@@ -1,9 +1,25 @@
 // Company-aware entry points (spec AC-6/AC-7 and the sales/purchase call site): load the company's tax_rate rows and
 // settings through kernel ports, then delegate to the pure functions in services/compute.ts.
-import { getCompany, getSetting, repo, type Context, type Decimal, type Infer, type LocalDate, type RoundingMode } from '@daifuku/kernel';
+import {
+  getCompany,
+  getSetting,
+  repo,
+  type Context,
+  type Decimal,
+  type Infer,
+  type LocalDate,
+  type RoundingMode,
+} from '@daifuku/kernel';
 import { TaxRate } from './entities/tax-rate.ts';
 import type { TaxCategory } from './services/categories.ts';
-import { resolveRate, summarizeTax, taxScaleForCurrency, type ResolvedRate, type TaxGroup, type TaxTotals } from './services/compute.ts';
+import {
+  resolveRate,
+  summarizeTax,
+  taxScaleForCurrency,
+  type ResolvedRate,
+  type TaxGroup,
+  type TaxTotals,
+} from './services/compute.ts';
 import {
   TAX_PRICE_INCLUDES_TAX_DEFAULT,
   TAX_PRICE_INCLUDES_TAX_KEY,
@@ -46,7 +62,12 @@ export async function loadTaxRates(ctx: Context): Promise<Infer<typeof TaxRate>[
 
 export async function loadTaxSettings(ctx: Context): Promise<TaxSettings> {
   const rounding = await getSetting(ctx, TAX_ROUNDING_KEY, taxRoundingSchema, TAX_ROUNDING_DEFAULT);
-  const priceIncludesTax = await getSetting(ctx, TAX_PRICE_INCLUDES_TAX_KEY, taxPriceIncludesTaxSchema, TAX_PRICE_INCLUDES_TAX_DEFAULT);
+  const priceIncludesTax = await getSetting(
+    ctx,
+    TAX_PRICE_INCLUDES_TAX_KEY,
+    taxPriceIncludesTaxSchema,
+    TAX_PRICE_INCLUDES_TAX_DEFAULT,
+  );
   return { rounding, priceIncludesTax };
 }
 
@@ -76,5 +97,11 @@ export async function taxSummaryFor(ctx: Context, input: DocumentTaxInput): Prom
     const r = resolved.get(g.category);
     return { ...g, code: r?.code ?? '', label: r?.label ?? '' };
   });
-  return { date: input.date, priceIncludesTax, rounding: { mode: settings.rounding.mode, unit: settings.rounding.unit, scale }, groups, totals: summary.totals };
+  return {
+    date: input.date,
+    priceIncludesTax,
+    rounding: { mode: settings.rounding.mode, unit: settings.rounding.unit, scale },
+    groups,
+    totals: summary.totals,
+  };
 }

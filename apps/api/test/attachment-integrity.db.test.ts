@@ -17,22 +17,52 @@ beforeAll(async () => {
   directory = await mkdtemp(join(tmpdir(), 'daifuku-evidence-integrity-'));
   configureStorage(new LocalStorage(directory));
   app = await buildServer({ app: db.app, owner: db.owner, jwtSecret: 'test-integrity-secret' });
-  const result = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@example.com', password: 'password' } });
+  const result = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { email: 'admin@example.com', password: 'password' },
+  });
   token = (result.json() as { token: string }).token;
 });
-afterAll(async () => { await app.close(); await db.close(); });
+afterAll(async () => {
+  await app.close();
+  await db.close();
+});
 
 async function evidence(text: string) {
-  return db.run({}, (ctx) => uploadAttachment(ctx, { data: new TextEncoder().encode(text), filename: 'evidence.txt', contentType: 'text/plain', fields: {} }));
+  return db.run({}, (ctx) =>
+    uploadAttachment(ctx, {
+      data: new TextEncoder().encode(text),
+      filename: 'evidence.txt',
+      contentType: 'text/plain',
+      fields: {},
+    }),
+  );
 }
 
 async function download(id: string) {
-  return app.inject({ method: 'GET', url: `/api/attachments/${id}/download`, headers: { authorization: `Bearer ${token}` } });
+  return app.inject({
+    method: 'GET',
+    url: `/api/attachments/${id}/download`,
+    headers: { authorization: `Bearer ${token}` },
+  });
 }
 
 describe('foundation-refresh attachment boundaries', () => {
   it('AC-4 refuses forged storage metadata through generic creation', async () => {
-    const result = await app.inject({ method: 'POST', url: '/api/attachment', headers: { authorization: `Bearer ${token}` }, payload: { storageKey: `${newId()}/${newId()}`, filename: 'forged.txt', size: 1, sha256: 'a'.repeat(64), contentType: 'text/plain', kind: 'other' } });
+    const result = await app.inject({
+      method: 'POST',
+      url: '/api/attachment',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        storageKey: `${newId()}/${newId()}`,
+        filename: 'forged.txt',
+        size: 1,
+        sha256: 'a'.repeat(64),
+        contentType: 'text/plain',
+        kind: 'other',
+      },
+    });
     expect(result.statusCode).toBeGreaterThanOrEqual(400);
     const rows = await db.owner.sql`select id from attachment where filename = 'forged.txt'`;
     expect(rows).toHaveLength(0);

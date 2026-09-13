@@ -11,13 +11,26 @@ import { buildServer } from './server.ts';
 async function main(): Promise<void> {
   const cfg = apiConfig();
   const squarePosConnections = parseSquareConnections(process.env.SQUARE_POS_CONNECTIONS_JSON);
-  const identityConfig = readIdentityConfig(process.env), smtp = readSmtpConfig(process.env);
-  const identity = identityConfig ? { ...identityConfig, ...(smtp ? { mailTransport: smtpTransport(smtp) } : {}) } : undefined;
+  const identityConfig = readIdentityConfig(process.env),
+    smtp = readSmtpConfig(process.env);
+  const identity = identityConfig
+    ? { ...identityConfig, ...(smtp ? { mailTransport: smtpTransport(smtp) } : {}) }
+    : undefined;
   const storageDirectory = process.env.DAIFUKU_STORAGE_DIR ?? '.data/storage';
   configureStorage(new LocalStorage(storageDirectory));
   const owner = connect(cfg.databaseUrlOwner, { max: 2 });
   const app = connect(cfg.databaseUrl, { max: 10 });
-  const server = await buildServer({ owner, app, jwtSecret: cfg.jwtSecret, trustedProxies: cfg.trustedProxies, readiness: createReadiness({ owner, app, storageDirectory }), corsOrigins: cfg.corsOrigins, squarePosConnections, ...(identity ? { identity } : {}), logger: true });
+  const server = await buildServer({
+    owner,
+    app,
+    jwtSecret: cfg.jwtSecret,
+    trustedProxies: cfg.trustedProxies,
+    readiness: createReadiness({ owner, app, storageDirectory }),
+    corsOrigins: cfg.corsOrigins,
+    squarePosConnections,
+    ...(identity ? { identity } : {}),
+    logger: true,
+  });
   const shutdown = async () => {
     await server.close();
     await app.close();

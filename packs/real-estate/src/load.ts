@@ -14,7 +14,7 @@ const CHUNK = 200;
 /** Every page of a list query (repo.list caps a page at 500). */
 export async function allPages<T>(page: (offset: number) => Promise<ListResult<T>>): Promise<T[]> {
   const out: T[] = [];
-  for (let offset = 0; ; ) {
+  for (let offset = 0; ;) {
     const res = await page(offset);
     out.push(...res.items);
     offset += res.items.length;
@@ -49,10 +49,22 @@ export function extDecimal(row: { ext?: unknown }, key: string): Decimal {
 /** Submitted contracts bound to any of the units. */
 export async function leasesOfUnits(ctx: Context, unitIds: readonly string[]): Promise<ContractRow[]> {
   const r = repo(ctx, Contract);
-  return inChunks(unitIds, (chunk) => allPages((offset) => r.list({ where: { docstatus: DOCSTATUS.submitted, 'ext.unitId': { $in: chunk } }, orderBy: [{ field: 'startDate', dir: 'asc' }], limit: PAGE, offset })));
+  return inChunks(unitIds, (chunk) =>
+    allPages((offset) =>
+      r.list({
+        where: { docstatus: DOCSTATUS.submitted, 'ext.unitId': { $in: chunk } },
+        orderBy: [{ field: 'startDate', dir: 'asc' }],
+        limit: PAGE,
+        offset,
+      }),
+    ),
+  );
 }
 
-export async function byIds<T extends { id: string }>(ids: readonly string[], list: (chunk: string[]) => Promise<ListResult<T>>): Promise<Map<string, T>> {
+export async function byIds<T extends { id: string }>(
+  ids: readonly string[],
+  list: (chunk: string[]) => Promise<ListResult<T>>,
+): Promise<Map<string, T>> {
   const rows = await inChunks(ids, async (chunk) => (await list(chunk)).items);
   return new Map(rows.map((row) => [row.id, row]));
 }
@@ -73,7 +85,8 @@ export function propertiesById(ctx: Context, ids: readonly string[]) {
   return byIds(ids, (chunk) => r.list({ where: { id: { $in: chunk } }, limit: chunk.length }));
 }
 
-export const ACCOUNT_HINT = 'seed the chart of accounts (l10n/jp) and apply the real_estate pack, or change real_estate.accounts';
+export const ACCOUNT_HINT =
+  'seed the chart of accounts (l10n/jp) and apply the real_estate pack, or change real_estate.accounts';
 
 /** Account id for a code; INVALID_STATE naming the setting when it does not exist. */
 export async function accountIdByCode(ctx: Context, code: string, role: string): Promise<string> {

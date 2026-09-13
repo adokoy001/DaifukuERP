@@ -15,12 +15,29 @@ describe('bounded device wire contract', () => {
       { kind: 'print.text', payload: { text: 'x', title: 'T', copies: 6 } },
       { kind: 'cash.dispense', payload: { amount: '1.5', currency: 'JPY' } },
       { kind: 'cash.dispense', payload: { amount: '100', currency: 'USD' } },
-    ]) expect(edgeJobRequest.safeParse(request).success).toBe(false);
+    ])
+      expect(edgeJobRequest.safeParse(request).success).toBe(false);
   });
   it('accepts only high entropy shaped credentials, UUID events and positive fencing attempts', () => {
     const id = '00000000-0000-4000-8000-000000000001';
-    expect(edgePairInput.safeParse({ pairingToken: 'short', credentialSecret: 'x'.repeat(43), protocolVersion: 1, agentVersion: 'test' }).success).toBe(false);
+    expect(
+      edgePairInput.safeParse({
+        pairingToken: 'short',
+        credentialSecret: 'x'.repeat(43),
+        protocolVersion: 1,
+        agentVersion: 'test',
+      }).success,
+    ).toBe(false);
     expect(edgeLease.safeParse({ jobId: id, leaseToken: 'x'.repeat(43), attempt: 0 }).success).toBe(false);
-    expect(edgeEventInput.safeParse({ eventId: id, deviceId: id, localDeviceId: '../printer', observedAt: '2026-09-12T00:00:00Z', status: 'online', code: 'ready' }).success).toBe(false);
+    expect(
+      edgeEventInput.safeParse({
+        eventId: id,
+        deviceId: id,
+        localDeviceId: '../printer',
+        observedAt: '2026-09-12T00:00:00Z',
+        status: 'online',
+        code: 'ready',
+      }).success,
+    ).toBe(false);
   });
 });

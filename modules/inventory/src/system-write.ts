@@ -3,10 +3,30 @@ import { defineWriteCapability, hasWriteCapability, withWriteCapability, type Co
 const grants = [
   defineWriteCapability({ name: 'inventory.ledger', entity: 'stock_ledger', operations: ['create'] }),
   defineWriteCapability({ name: 'inventory.balance', entity: 'stock_balance', operations: ['create', 'update'] }),
-  defineWriteCapability({ name: 'inventory.entry', entity: 'stock_entry', fields: ['sourceEntity', 'sourceId'], operations: ['create', 'update'] }),
-  defineWriteCapability({ name: 'inventory.entry-line', entity: 'stock_entry_line', fields: ['unitCost', 'amount'], operations: ['update'] }),
-  defineWriteCapability({ name: 'inventory.count', entity: 'stock_count', fields: ['adjustmentEntryId'], operations: ['update'] }),
-  defineWriteCapability({ name: 'inventory.count-line', entity: 'stock_count_line', fields: ['systemQty', 'varianceQty'], operations: ['update'] }),
+  defineWriteCapability({
+    name: 'inventory.entry',
+    entity: 'stock_entry',
+    fields: ['sourceEntity', 'sourceId'],
+    operations: ['create', 'update'],
+  }),
+  defineWriteCapability({
+    name: 'inventory.entry-line',
+    entity: 'stock_entry_line',
+    fields: ['unitCost', 'amount'],
+    operations: ['update'],
+  }),
+  defineWriteCapability({
+    name: 'inventory.count',
+    entity: 'stock_count',
+    fields: ['adjustmentEntryId'],
+    operations: ['update'],
+  }),
+  defineWriteCapability({
+    name: 'inventory.count-line',
+    entity: 'stock_count_line',
+    fields: ['systemQty', 'varianceQty'],
+    operations: ['update'],
+  }),
 ];
 export const isModuleWrite = (ctx: Context): boolean => hasWriteCapability(ctx, 'stock_ledger', 'create');
 export async function asModule<T>(ctx: Context, fn: (ctx: Context) => Promise<T>): Promise<T> {

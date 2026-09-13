@@ -34,7 +34,11 @@ export async function enforcePolicies(owner: Database): Promise<void> {
       BEGIN RAISE EXCEPTION 'audit_log is append-only'; END $$`),
   );
   await owner.drizzle.execute(sql.raw(`DROP TRIGGER IF EXISTS audit_log_immutable_trg ON audit_log`));
-  await owner.drizzle.execute(sql.raw(`CREATE TRIGGER audit_log_immutable_trg BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_immutable()`));
+  await owner.drizzle.execute(
+    sql.raw(
+      `CREATE TRIGGER audit_log_immutable_trg BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_immutable()`,
+    ),
+  );
 }
 
 function grantsFor(name: string): string {
@@ -50,6 +54,8 @@ function grantsFor(name: string): string {
 
 /** Drops every registered table (test databases only). */
 export async function dropAll(owner: Database): Promise<void> {
-  await owner.drizzle.execute(sql.raw(`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`));
+  await owner.drizzle.execute(
+    sql.raw(`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`),
+  );
   await owner.drizzle.execute(sql.raw(`DROP SCHEMA IF EXISTS drizzle CASCADE;`));
 }

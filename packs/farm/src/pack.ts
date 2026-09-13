@@ -21,11 +21,27 @@ import { sampleFarm } from './sample.ts';
 import { seedFarm } from './seed.ts';
 
 export const FarmPack = definePack({
-  name: 'farm', label: label('農家', 'Crop farm'), version: '0.1.0',
-  depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name, PaymentModule.name, InventoryModule.name, JapanModule.name],
+  name: 'farm',
+  label: label('農家', 'Crop farm'),
+  version: '0.1.0',
+  depends: [
+    PartnerModule.name,
+    ProductModule.name,
+    TaxModule.name,
+    AccountingModule.name,
+    SalesModule.name,
+    PurchaseModule.name,
+    PaymentModule.name,
+    InventoryModule.name,
+    JapanModule.name,
+  ],
   entities: [FarmField, FarmCrop, FarmSeason, FarmWork, FarmMaterialLine, FarmHarvest],
   actions: [closeSeasonAction, seasonSummaryAction],
-  hooks: () => { registerMasterHooks(); registerWorkHooks(); registerHarvestHooks(); },
+  hooks: () => {
+    registerMasterHooks();
+    registerWorkHooks();
+    registerHarvestHooks();
+  },
   menus: [
     { label: label('圃場', 'Fields'), entity: FarmField.name, order: 150 },
     { label: label('作物', 'Crops'), entity: FarmCrop.name, order: 151 },
@@ -34,5 +50,7 @@ export const FarmPack = definePack({
     { label: label('収穫', 'Harvests'), entity: FarmHarvest.name, order: 154 },
     { label: label('圃場・作期集計', 'Field and season summary'), route: '/r/farm.season_summary', order: 155 },
     { label: label('作期を終了', 'Close growing season'), route: '/a/farm.close_season', order: 156 },
-  ], seed: seedFarm, sample: sampleFarm,
+  ],
+  seed: seedFarm,
+  sample: sampleFarm,
 });

@@ -1,4 +1,12 @@
-import { registerCrudActions, registerPackActions, runAction, systemParams, withContext, type Context, type ContextParams } from '@daifuku/kernel';
+import {
+  registerCrudActions,
+  registerPackActions,
+  runAction,
+  systemParams,
+  withContext,
+  type Context,
+  type ContextParams,
+} from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { JapanModule } from '@daifuku/l10n-jp';
 import { AccountingModule } from '@daifuku/mod-accounting';
@@ -12,10 +20,22 @@ import { TaxModule } from '@daifuku/mod-tax';
 import { INDUSTRY_PACK_NAMES, loadIndustryPack, sampleReference } from '../src/index.ts';
 for (const name of INDUSTRY_PACK_NAMES) loadIndustryPack(name);
 export type Row = Record<string, unknown>;
-export type Doc = Row & { id: string; version: number; docstatus: number; salesInvoiceId?: string; total: string; date: string; partnerId: string; productId: string };
+export type Doc = Row & {
+  id: string;
+  version: number;
+  docstatus: number;
+  salesInvoiceId?: string;
+  total: string;
+  date: string;
+  partnerId: string;
+  productId: string;
+};
 export type List = { items: Doc[]; total: number };
 export type Table = { rows: Row[]; totals: Record<string, string>; meta: Row };
-export function must<T>(value: T | undefined): T { if (value === undefined) throw new Error('Required test fixture missing'); return value; }
+export function must<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('Required test fixture missing');
+  return value;
+}
 export const NOW = new Date('2026-09-12T03:00:00Z');
 export interface Scenario {
   db: TestDb;
@@ -24,14 +44,38 @@ export interface Scenario {
   sample(name: string): Promise<Doc>;
 }
 export async function seedModules(db: TestDb, companyId = db.companyId): Promise<void> {
-  for (const module of [PartnerModule, ProductModule, TaxModule, AccountingModule, SalesModule, PaymentModule, InventoryModule, JapanModule, IndustryOperationsModule]) await withContext(db.owner, systemParams(db.tenantId, companyId, { now: () => NOW }), async (ctx) => module.seed?.(ctx));
+  for (const module of [
+    PartnerModule,
+    ProductModule,
+    TaxModule,
+    AccountingModule,
+    SalesModule,
+    PaymentModule,
+    InventoryModule,
+    JapanModule,
+    IndustryOperationsModule,
+  ])
+    await withContext(db.owner, systemParams(db.tenantId, companyId, { now: () => NOW }), async (ctx) =>
+      module.seed?.(ctx),
+    );
 }
 export async function setup(): Promise<Scenario> {
-  registerCrudActions(); registerPackActions(); const db = await freshDb();
+  registerCrudActions();
+  registerPackActions();
+  const db = await freshDb();
   const run: Scenario['run'] = (fn, params = {}) => db.run({ now: () => NOW, ...params }, fn);
   const act: Scenario['act'] = (name, input, params) => run((ctx) => runAction(ctx, name, input), params) as never;
   await seedModules(db);
-  return { db, run, act, sample: async (name) => { const row = (await act<List>(`${name}_job.list`, { where: { reference: sampleReference(name) } })).items[0]; if (!row) throw new Error(`Missing sample ${name}`); return row; } };
+  return {
+    db,
+    run,
+    act,
+    sample: async (name) => {
+      const row = (await act<List>(`${name}_job.list`, { where: { reference: sampleReference(name) } })).items[0];
+      if (!row) throw new Error(`Missing sample ${name}`);
+      return row;
+    },
+  };
 }
 export const COMPLETION: Record<string, { quantity: string; patch: Row }> = {
   wholesale: { quantity: '10', patch: { deliveryProof: 'POD-001' } },
@@ -48,5 +92,10 @@ export const COMPLETION: Record<string, { quantity: string; patch: Row }> = {
 export async function finish(s: Scenario, name: string, job: Doc): Promise<Doc> {
   const info = must(COMPLETION[name]);
   await s.act(`${name}_job.update`, { id: job.id, patch: info.patch });
-  return s.act(`${name}.complete_job`, { jobId: job.id, completedDate: '2026-09-14', completedQuantity: info.quantity, completionNote: '契約どおりの履行と相手方確認を記録（サンプル）' });
+  return s.act(`${name}.complete_job`, {
+    jobId: job.id,
+    completedDate: '2026-09-14',
+    completedQuantity: info.quantity,
+    completionNote: '契約どおりの履行と相手方確認を記録（サンプル）',
+  });
 }

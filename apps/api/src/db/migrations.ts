@@ -55,17 +55,28 @@ export interface PendingMigration {
 export function assertNonDestructive(statements: readonly string[]): void {
   const destructive = statements.filter((statement) => /\bDROP\s+(?:TABLE|COLUMN|SCHEMA)\b/i.test(statement));
   if (destructive.length) {
-    throw new Error('Automatic migration would remove tables or columns. Load the complete installed schema catalog. Data removal requires a separately reviewed migration with a preservation/restore plan.');
+    throw new Error(
+      'Automatic migration would remove tables or columns. Load the complete installed schema catalog. Data removal requires a separately reviewed migration with a preservation/restore plan.',
+    );
   }
 }
 
 /** Drizzle can emit a referenced UNIQUE after ADD FOREIGN KEY; preserve prerequisites before references. */
 export function orderMigrationConstraints(statements: readonly string[]): string[] {
-  const firstForeignKey = statements.findIndex((statement) => /^ALTER TABLE[\s\S]+ADD CONSTRAINT[\s\S]+FOREIGN KEY/i.test(statement.trim()));
+  const firstForeignKey = statements.findIndex((statement) =>
+    /^ALTER TABLE[\s\S]+ADD CONSTRAINT[\s\S]+FOREIGN KEY/i.test(statement.trim()),
+  );
   if (firstForeignKey < 0) return [...statements];
-  const lateUnique = statements.filter((statement, i) => i > firstForeignKey && /^ALTER TABLE[\s\S]+ADD CONSTRAINT[\s\S]+UNIQUE\s*\(/i.test(statement.trim()));
+  const lateUnique = statements.filter(
+    (statement, i) =>
+      i > firstForeignKey && /^ALTER TABLE[\s\S]+ADD CONSTRAINT[\s\S]+UNIQUE\s*\(/i.test(statement.trim()),
+  );
   const toMove = new Set(lateUnique);
-  return [...statements.slice(0, firstForeignKey), ...lateUnique, ...statements.slice(firstForeignKey).filter((statement) => !toMove.has(statement))];
+  return [
+    ...statements.slice(0, firstForeignKey),
+    ...lateUnique,
+    ...statements.slice(firstForeignKey).filter((statement) => !toMove.has(statement)),
+  ];
 }
 
 /** SQL needed to bring the last snapshot up to the registry. Empty statements = nothing to migrate. */

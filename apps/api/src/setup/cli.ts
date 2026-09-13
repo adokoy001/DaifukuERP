@@ -19,11 +19,19 @@ Read docs/operations/setup.md before running. Help does not inspect or change th
   }
   const options = parseOptions(args);
   const plan = await buildPlan(options);
-  process.stdout.write(`${JSON.stringify({ ...plan, executionRequested: options.execute, initialAdmin: options.mode === 'install' ? { tenant: options.tenantName ?? '(required)', company: options.companyCode ?? '(required)', email: options.adminEmail ?? '(required)' } : undefined, backupScope: 'PostgreSQL only; preserve evidence files and runtime.env separately' }, null, 2)}\n`);
-  if (!options.execute) { process.stdout.write('計画のみです。DB・設定・ファイルを変更していません。\n'); return; }
+  process.stdout.write(
+    `${JSON.stringify({ ...plan, executionRequested: options.execute, initialAdmin: options.mode === 'install' ? { tenant: options.tenantName ?? '(required)', company: options.companyCode ?? '(required)', email: options.adminEmail ?? '(required)' } : undefined, backupScope: 'PostgreSQL only; preserve evidence files and runtime.env separately' }, null, 2)}\n`,
+  );
+  if (!options.execute) {
+    process.stdout.write('計画のみです。DB・設定・ファイルを変更していません。\n');
+    return;
+  }
   await runSetup(options, { progress: (phase) => process.stdout.write(`setup: ${phase}\n`) });
   process.stdout.write('セットアップ処理を完了しました。保存済み設定とバックアップを保全してください。\n');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv.slice(2)).catch((error: unknown) => { process.stderr.write(`${safeFailure(error)}\n`); process.exitCode = 1; });
+  main(process.argv.slice(2)).catch((error: unknown) => {
+    process.stderr.write(`${safeFailure(error)}\n`);
+    process.exitCode = 1;
+  });
 }

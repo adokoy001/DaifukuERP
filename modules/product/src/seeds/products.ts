@@ -52,7 +52,11 @@ export async function seedProducts(ctx: Context): Promise<void> {
     const existing = await r.list({ where: { code: fields.code }, limit: 1 });
     if (existing.items.length > 0) continue;
     const uom = await findUomByCode(ctx, uomCode);
-    if (!uom) throw new StateError(`product seed: uom ${uomCode} is missing after seedUoms`, 'Check that STANDARD_UOMS contains every uomCode used by SAMPLE_PRODUCTS.');
+    if (!uom)
+      throw new StateError(
+        `product seed: uom ${uomCode} is missing after seedUoms`,
+        'Check that STANDARD_UOMS contains every uomCode used by SAMPLE_PRODUCTS.',
+      );
     await r.create({ ...fields, uomId: uom.id });
   }
 }

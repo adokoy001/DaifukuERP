@@ -116,16 +116,26 @@ export function fieldMeta(entity: EntityDef, name: string, opts: MetaOptions = {
 /** AC-3 (ADR-0014): registered ext fields as `ext.<key>` FieldMeta. */
 export function extFieldMetas(entity: EntityDef, opts: MetaOptions = {}): FieldMeta[] {
   if (!entity.hasExt) return [];
-  return registry.extFields(entity.name).filter((d) => !d.field.opts.outputHidden && (!opts.appliedPacks || !d.source.startsWith('pack:') || opts.appliedPacks.includes(d.source.slice(5)))).map((d) => {
-    const meta = describeField(`${EXT_PREFIX}${d.key}`, d.field, opts);
-    if ((d.field.opts as { searchable?: boolean }).searchable === true) meta.searchable = true;
-    meta.source = d.source;
-    return meta;
-  });
+  return registry
+    .extFields(entity.name)
+    .filter(
+      (d) =>
+        !d.field.opts.outputHidden &&
+        (!opts.appliedPacks || !d.source.startsWith('pack:') || opts.appliedPacks.includes(d.source.slice(5))),
+    )
+    .map((d) => {
+      const meta = describeField(`${EXT_PREFIX}${d.key}`, d.field, opts);
+      if ((d.field.opts as { searchable?: boolean }).searchable === true) meta.searchable = true;
+      meta.source = d.source;
+      return meta;
+    });
 }
 
 export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = {}): EntityMeta {
-  opts = { ...opts, ...(opts.appliedPacks === undefined && ctx.appliedPacks !== undefined ? { appliedPacks: ctx.appliedPacks } : {}) };
+  opts = {
+    ...opts,
+    ...(opts.appliedPacks === undefined && ctx.appliedPacks !== undefined ? { appliedPacks: ctx.appliedPacks } : {}),
+  };
   const masked = maskedFields(ctx, entity);
   const visible = entity.fieldNames.filter((f) => !masked.has(f) && !entity.config.fields[f]?.opts.outputHidden);
   const views = entity.config.views;
@@ -142,13 +152,28 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
     extFields: extFieldMetas(entity, opts),
     views: {
       list: [...(views?.list ?? nonHidden.slice(0, 6))].filter((f) => visible.includes(f)),
-      form: views?.form && views.form !== 'auto' ? views.form.map((g) => [...g].filter((f) => visible.includes(f))) : 'auto',
-      search: [...(views?.search ?? (entity.displayField ? [entity.displayField] : []))].filter((field) => visible.includes(field)),
+      form:
+        views?.form && views.form !== 'auto'
+          ? views.form.map((g) => [...g].filter((f) => visible.includes(f)))
+          : 'auto',
+      search: [...(views?.search ?? (entity.displayField ? [entity.displayField] : []))].filter((field) =>
+        visible.includes(field),
+      ),
     },
-    ops: allowedOps({ roles: ctx.roles, appliedPacks: opts.appliedPacks ?? ctx.appliedPacks ?? [], ...(ctx.accessScope ? { accessScope: ctx.accessScope } : {}) }, entity),
+    ops: allowedOps(
+      {
+        roles: ctx.roles,
+        appliedPacks: opts.appliedPacks ?? ctx.appliedPacks ?? [],
+        ...(ctx.accessScope ? { accessScope: ctx.accessScope } : {}),
+      },
+      entity,
+    ),
   };
   if (entity.doc) {
-    meta.allowOnSubmit = [...(entity.doc.allowOnSubmit ?? [])].filter((field) => visible.includes(field) || (field.startsWith('ext.') && meta.extFields.some((ext) => ext.name === field)));
+    meta.allowOnSubmit = [...(entity.doc.allowOnSubmit ?? [])].filter(
+      (field) =>
+        visible.includes(field) || (field.startsWith('ext.') && meta.extFields.some((ext) => ext.name === field)),
+    );
     meta.transitions = Object.keys(entity.doc.transitions ?? {});
     meta.lines = (entity.doc.lines ?? []).map((l) => ({ entity: l.entity, parentField: l.parentField }));
   }
@@ -160,7 +185,14 @@ export interface AppMeta {
   /** Modules, then packs (ADR-0015: loaded packs contribute menus and entity groups like modules). */
   modules: { name: string; label: Label; menus: { label: Label; entity?: string; route?: string; order?: number }[] }[];
   /** Exposed actions only: `internal` ones are omitted (ADR-0014). */
-  actions: { name: string; module: string; description: Label; generic: boolean; mutates: boolean; canExport: boolean }[];
+  actions: {
+    name: string;
+    module: string;
+    description: Label;
+    generic: boolean;
+    mutates: boolean;
+    canExport: boolean;
+  }[];
   roles: string[];
   /** Loaded packs; `applied` for the caller's company comes from MetaOptions.appliedPacks (false when not given). */
   packs: { name: string; label: Label; applied: boolean }[];
@@ -168,20 +200,45 @@ export interface AppMeta {
 
 export function appMeta(ctx: Context, opts: MetaOptions = {}): AppMeta {
   opts = { ...opts, appliedPacks: opts.appliedPacks ?? ctx.appliedPacks ?? [] };
-  const scope = { roles: ctx.roles, appliedPacks: opts.appliedPacks ?? [], ...(ctx.accessScope ? { accessScope: ctx.accessScope } : {}) };
+  const scope = {
+    roles: ctx.roles,
+    appliedPacks: opts.appliedPacks ?? [],
+    ...(ctx.accessScope ? { accessScope: ctx.accessScope } : {}),
+  };
   const entities = registry
     .allEntities()
     .filter((e) => allowedOps(scope, e).includes('read'))
     .map((e) => entityMeta(ctx, e, opts));
-  const modules = [...registry.allModules(), ...registry.packs().filter((pack) => opts.appliedPacks?.includes(pack.name))].map((m) => ({
+  const modules = [
+    ...registry.allModules(),
+    ...registry.packs().filter((pack) => opts.appliedPacks?.includes(pack.name)),
+  ].map((m) => ({
     name: m.name,
     label: m.label,
-    menus: (m.menus ?? []).map((mi) => ({ ...mi })).filter((mi) => !mi.entity || entities.some((e) => e.name === mi.entity)),
+    menus: (m.menus ?? [])
+      .map((mi) => ({ ...mi }))
+      .filter((mi) => !mi.entity || entities.some((e) => e.name === mi.entity)),
   }));
   const effective = Object.create(ctx) as Context;
   Object.defineProperty(effective, 'appliedPacks', { value: opts.appliedPacks ?? [] });
-  const actions = registry.actions().filter((a) => canRunAction(effective, a)).map((a) => ({ name: a.name, module: a.module, description: a.description, generic: a.generic, mutates: a.mutates, canExport: canExportAction(effective, a) }));
-  for (const module of modules) module.menus = module.menus.filter((m) => !m.route || !/^\/[ra]\//.test(m.route) || actions.some((a) => m.route === `/r/${a.name}` || m.route === `/a/${a.name}`));
+  const actions = registry
+    .actions()
+    .filter((a) => canRunAction(effective, a))
+    .map((a) => ({
+      name: a.name,
+      module: a.module,
+      description: a.description,
+      generic: a.generic,
+      mutates: a.mutates,
+      canExport: canExportAction(effective, a),
+    }));
+  for (const module of modules)
+    module.menus = module.menus.filter(
+      (m) =>
+        !m.route ||
+        !/^\/[ra]\//.test(m.route) ||
+        actions.some((a) => m.route === `/r/${a.name}` || m.route === `/a/${a.name}`),
+    );
   const applied = new Set(opts.appliedPacks ?? []);
   const packs = registry.packs().map((p) => ({ name: p.name, label: p.label, applied: applied.has(p.name) }));
   return { entities, modules, actions, roles: [...ctx.roles], packs };

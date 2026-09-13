@@ -2,19 +2,203 @@ import type { ShiftAssignment, ShiftEvaluation, ShiftProblem } from '@daifuku/mo
 import { useLocale } from '../i18n.tsx';
 import { minuteTime, shiftHours, shiftReasons } from '../lib/shift.ts';
 import { WorkforceMetric } from './workforce-shell.tsx';
-export function ShiftResults({ problem, assignments, evaluation, disabled, onChange }: { problem: ShiftProblem; assignments: ShiftAssignment[]; evaluation: ShiftEvaluation; disabled: boolean; onChange: (rows: ShiftAssignment[]) => void }) {
+export function ShiftResults({
+  problem,
+  assignments,
+  evaluation,
+  disabled,
+  onChange,
+}: {
+  problem: ShiftProblem;
+  assignments: ShiftAssignment[];
+  evaluation: ShiftEvaluation;
+  disabled: boolean;
+  onChange: (rows: ShiftAssignment[]) => void;
+}) {
   const { t } = useLocale();
   const invalidInput = evaluation.issues.some((issue) => issue.code === 'invalid_input');
   const named = (id?: string) => problem.employees.find((employee) => employee.id === id)?.name ?? id ?? '';
-  return <section className="shift-results"><div className="workforce-metrics"><WorkforceMetric title={t({ ja: '必要人数（延べ）', en: 'Required assignments' })} value={problem.slots.reduce((sum, slot) => sum + slot.required, 0)} note={t({ ja: '勤務枠ごとの必要人数の合計', en: 'Sum of required people across slots' })} icon="people" /><WorkforceMetric title={t({ ja: '割当 / 不足', en: 'Assigned / shortage' })} value={`${assignments.length} / ${invalidInput ? '—' : evaluation.shortage}`} note={t(invalidInput ? { ja: '入力条件を修正すると不足を計算します', en: 'Fix invalid input to calculate shortage' } : { ja: '不足を残した公開には確認と理由が必要', en: 'Publishing with shortages requires acknowledgment and a reason' })} icon="calendar" tone={evaluation.shortage ? 'coral' : 'cyan'} /><WorkforceMetric title={t({ ja: '希望一致率', en: 'Preference match' })} value={invalidInput ? '—' : `${Math.round(evaluation.preferenceRate * 100)}%`} note={t({ ja: '割当された勤務のうち希望優先と一致', en: 'Assigned shifts matching preferred availability' })} icon="check" /></div>
-    {evaluation.issues.length ? <div className="workforce-error" role="alert"><strong>{t({ ja: '公開できない条件があります', en: 'Some constraints prevent publication' })}</strong><ul>{evaluation.issues.map((issue, index) => <li key={index}>{named(issue.employeeId)} {problem.slots.find((slot) => slot.id === issue.slotId)?.label} — {t(shiftReasons[issue.code])}</li>)}</ul></div> : null}
-    <div className="workforce-panel"><h2>{t({ ja: '3. 割当を確認・手修正', en: '3. Review and adjust assignments' })}</h2><p className="shift-muted">{t({ ja: '固定した割当は再推薦でも保持します。違反した固定は自動で解除されません。', en: 'Locked assignments survive a new recommendation. Invalid locks are reported, never silently removed.' })}</p>
-      <div className="shift-board" role="table" aria-label={t({ ja: '勤務枠ごとの割当', en: 'Assignments by shift slot' })}><div className="shift-board-heading" role="row"><span role="columnheader">{t({ ja: '勤務枠・必要人数', en: 'Shift slot and demand' })}</span><span role="columnheader">{t({ ja: '社員の割当・固定', en: 'Employee assignments and locks' })}</span></div>{problem.slots.map((slot) => { const coverage = evaluation.coverage.find((row) => row.slotId === slot.id), chosen = assignments.filter((row) => row.slotId === slot.id); return <article className="shift-assignment-card" role="row" key={slot.id}><header role="cell"><div><h3>{slot.date} · {slot.label || t({ ja: '無題', en: 'Untitled' })}</h3><p>{minuteTime(slot.startMinute)}–{minuteTime(slot.endMinute)} · {slot.breakMinutes}{t({ ja: '分休憩', en: ' min break' })}{slot.skill ? ` · ${slot.skill}` : ''}</p></div><strong className={coverage?.shortage || !coverage ? 'shift-shortage' : 'shift-complete'}>{t({ ja: '必要 / 割当 / 不足', en: 'Required / assigned / shortage' })}: {slot.required} / {chosen.length} / {invalidInput ? '—' : coverage?.shortage ?? slot.required}</strong></header>
-        <div className="shift-assignment-controls" role="cell">{chosen.map((assignment) => <div className="shift-assigned" key={assignment.employeeId}><span>{named(assignment.employeeId)}</span><label><input type="checkbox" disabled={disabled} checked={assignment.locked} onChange={(event) => onChange(assignments.map((row) => row === assignment ? { ...row, locked: event.target.checked } : row))} />{t({ ja: '固定', en: 'Lock' })}</label><button type="button" className="btn" disabled={disabled} onClick={() => onChange(assignments.filter((row) => row !== assignment))}>{t({ ja: '外す', en: 'Remove' })}</button></div>)}
-        <label>{t({ ja: '社員を割り当てる', en: 'Assign employee' })}<select className="input" aria-label={`${slot.date} ${slot.label} ${t({ ja: '社員を割り当てる', en: 'Assign employee' })}`} disabled={disabled || chosen.length >= slot.required} value="" onChange={(event) => { if (event.target.value) onChange([...assignments, { slotId: slot.id, employeeId: event.target.value, locked: false }]); }}><option value="">{t({ ja: '社員を選ぶ', en: 'Choose employee' })}</option>{problem.employees.filter((employee) => !chosen.some((row) => row.employeeId === employee.id)).map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
-        {coverage?.shortage ? <details><summary>{t({ ja: '候補を外れた理由', en: 'Why candidates were excluded' })}</summary><ul>{Object.entries(coverage.exclusions).map(([code, count]) => <li key={code}>{t(shiftReasons[code as keyof typeof shiftReasons])}: {count}</li>)}</ul></details> : null}</div>
-      </article>; })}</div>
-    </div>
-    <div className="workforce-panel"><h2>{t({ ja: '社員別の計画時間', en: 'Planned hours by employee' })}</h2><p className="shift-muted">{t({ ja: '時間は 時:分。勤務実績・給与ではありません。偏りは各自の目標に対して評価します。', en: 'Hours are h:mm. This is a plan, not attendance or payroll. Balance is assessed against individual targets.' })}</p><div className="shift-person-metrics">{evaluation.employees.map((row) => <article key={row.employeeId}><strong>{named(row.employeeId)}</strong><span>{shiftHours(row.minutes)} / {shiftHours(row.targetMinutes)}</span><small>{row.days}{t({ ja: '日', en: ' days' })} · {row.preferred}/{row.assignments} {t({ ja: '希望一致', en: 'preferred' })}</small></article>)}</div><p>{t({ ja: '目標からの偏り指標', en: 'Target deviation indicator' })}: {Math.round(evaluation.fairness * 100) / 100}</p></div>
-  </section>;
+  return (
+    <section className="shift-results">
+      <div className="workforce-metrics">
+        <WorkforceMetric
+          title={t({ ja: '必要人数（延べ）', en: 'Required assignments' })}
+          value={problem.slots.reduce((sum, slot) => sum + slot.required, 0)}
+          note={t({ ja: '勤務枠ごとの必要人数の合計', en: 'Sum of required people across slots' })}
+          icon="people"
+        />
+        <WorkforceMetric
+          title={t({ ja: '割当 / 不足', en: 'Assigned / shortage' })}
+          value={`${assignments.length} / ${invalidInput ? '—' : evaluation.shortage}`}
+          note={t(
+            invalidInput
+              ? { ja: '入力条件を修正すると不足を計算します', en: 'Fix invalid input to calculate shortage' }
+              : {
+                  ja: '不足を残した公開には確認と理由が必要',
+                  en: 'Publishing with shortages requires acknowledgment and a reason',
+                },
+          )}
+          icon="calendar"
+          tone={evaluation.shortage ? 'coral' : 'cyan'}
+        />
+        <WorkforceMetric
+          title={t({ ja: '希望一致率', en: 'Preference match' })}
+          value={invalidInput ? '—' : `${Math.round(evaluation.preferenceRate * 100)}%`}
+          note={t({ ja: '割当された勤務のうち希望優先と一致', en: 'Assigned shifts matching preferred availability' })}
+          icon="check"
+        />
+      </div>
+      {evaluation.issues.length ? (
+        <div className="workforce-error" role="alert">
+          <strong>{t({ ja: '公開できない条件があります', en: 'Some constraints prevent publication' })}</strong>
+          <ul>
+            {evaluation.issues.map((issue, index) => (
+              <li key={index}>
+                {named(issue.employeeId)} {problem.slots.find((slot) => slot.id === issue.slotId)?.label} —{' '}
+                {t(shiftReasons[issue.code])}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="workforce-panel">
+        <h2>{t({ ja: '3. 割当を確認・手修正', en: '3. Review and adjust assignments' })}</h2>
+        <p className="shift-muted">
+          {t({
+            ja: '固定した割当は再推薦でも保持します。違反した固定は自動で解除されません。',
+            en: 'Locked assignments survive a new recommendation. Invalid locks are reported, never silently removed.',
+          })}
+        </p>
+        <div
+          className="shift-board"
+          role="table"
+          aria-label={t({ ja: '勤務枠ごとの割当', en: 'Assignments by shift slot' })}
+        >
+          <div className="shift-board-heading" role="row">
+            <span role="columnheader">{t({ ja: '勤務枠・必要人数', en: 'Shift slot and demand' })}</span>
+            <span role="columnheader">{t({ ja: '社員の割当・固定', en: 'Employee assignments and locks' })}</span>
+          </div>
+          {problem.slots.map((slot) => {
+            const coverage = evaluation.coverage.find((row) => row.slotId === slot.id),
+              chosen = assignments.filter((row) => row.slotId === slot.id);
+            return (
+              <article className="shift-assignment-card" role="row" key={slot.id}>
+                <header role="cell">
+                  <div>
+                    <h3>
+                      {slot.date} · {slot.label || t({ ja: '無題', en: 'Untitled' })}
+                    </h3>
+                    <p>
+                      {minuteTime(slot.startMinute)}–{minuteTime(slot.endMinute)} · {slot.breakMinutes}
+                      {t({ ja: '分休憩', en: ' min break' })}
+                      {slot.skill ? ` · ${slot.skill}` : ''}
+                    </p>
+                  </div>
+                  <strong className={coverage?.shortage || !coverage ? 'shift-shortage' : 'shift-complete'}>
+                    {t({ ja: '必要 / 割当 / 不足', en: 'Required / assigned / shortage' })}: {slot.required} /{' '}
+                    {chosen.length} / {invalidInput ? '—' : (coverage?.shortage ?? slot.required)}
+                  </strong>
+                </header>
+                <div className="shift-assignment-controls" role="cell">
+                  {chosen.map((assignment) => (
+                    <div className="shift-assigned" key={assignment.employeeId}>
+                      <span>{named(assignment.employeeId)}</span>
+                      <label>
+                        <input
+                          type="checkbox"
+                          disabled={disabled}
+                          checked={assignment.locked}
+                          onChange={(event) =>
+                            onChange(
+                              assignments.map((row) =>
+                                row === assignment ? { ...row, locked: event.target.checked } : row,
+                              ),
+                            )
+                          }
+                        />
+                        {t({ ja: '固定', en: 'Lock' })}
+                      </label>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={disabled}
+                        onClick={() => onChange(assignments.filter((row) => row !== assignment))}
+                      >
+                        {t({ ja: '外す', en: 'Remove' })}
+                      </button>
+                    </div>
+                  ))}
+                  <label>
+                    {t({ ja: '社員を割り当てる', en: 'Assign employee' })}
+                    <select
+                      className="input"
+                      aria-label={`${slot.date} ${slot.label} ${t({ ja: '社員を割り当てる', en: 'Assign employee' })}`}
+                      disabled={disabled || chosen.length >= slot.required}
+                      value=""
+                      onChange={(event) => {
+                        if (event.target.value)
+                          onChange([
+                            ...assignments,
+                            { slotId: slot.id, employeeId: event.target.value, locked: false },
+                          ]);
+                      }}
+                    >
+                      <option value="">{t({ ja: '社員を選ぶ', en: 'Choose employee' })}</option>
+                      {problem.employees
+                        .filter((employee) => !chosen.some((row) => row.employeeId === employee.id))
+                        .map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            {employee.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {coverage?.shortage ? (
+                    <details>
+                      <summary>{t({ ja: '候補を外れた理由', en: 'Why candidates were excluded' })}</summary>
+                      <ul>
+                        {Object.entries(coverage.exclusions).map(([code, count]) => (
+                          <li key={code}>
+                            {t(shiftReasons[code as keyof typeof shiftReasons])}: {count}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+      <div className="workforce-panel">
+        <h2>{t({ ja: '社員別の計画時間', en: 'Planned hours by employee' })}</h2>
+        <p className="shift-muted">
+          {t({
+            ja: '時間は 時:分。勤務実績・給与ではありません。偏りは各自の目標に対して評価します。',
+            en: 'Hours are h:mm. This is a plan, not attendance or payroll. Balance is assessed against individual targets.',
+          })}
+        </p>
+        <div className="shift-person-metrics">
+          {evaluation.employees.map((row) => (
+            <article key={row.employeeId}>
+              <strong>{named(row.employeeId)}</strong>
+              <span>
+                {shiftHours(row.minutes)} / {shiftHours(row.targetMinutes)}
+              </span>
+              <small>
+                {row.days}
+                {t({ ja: '日', en: ' days' })} · {row.preferred}/{row.assignments}{' '}
+                {t({ ja: '希望一致', en: 'preferred' })}
+              </small>
+            </article>
+          ))}
+        </div>
+        <p>
+          {t({ ja: '目標からの偏り指標', en: 'Target deviation indicator' })}:{' '}
+          {Math.round(evaluation.fairness * 100) / 100}
+        </p>
+      </div>
+    </section>
+  );
 }

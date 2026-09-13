@@ -1,13 +1,7 @@
 // Error model (docs/conventions/errors.md). Every error carries a `hint`: what the caller should do next.
 
 export type ErrorCode =
-  | 'VALIDATION'
-  | 'PERMISSION_DENIED'
-  | 'NOT_FOUND'
-  | 'CONFLICT'
-  | 'INVALID_STATE'
-  | 'HAS_DEPENDENTS'
-  | 'INTERNAL';
+  'VALIDATION' | 'PERMISSION_DENIED' | 'NOT_FOUND' | 'CONFLICT' | 'INVALID_STATE' | 'HAS_DEPENDENTS' | 'INTERNAL';
 
 export interface ErrorBody {
   code: ErrorCode;
@@ -65,7 +59,13 @@ export class PermissionDenied extends DaifukuError {
 
 export class NotFound extends DaifukuError {
   constructor(entity: string, id: string) {
-    super('NOT_FOUND', `${entity} ${id} not found`, `Check the id, and that the current context (tenant/company/roles) may see this record.`, { entity, id }, 404);
+    super(
+      'NOT_FOUND',
+      `${entity} ${id} not found`,
+      `Check the id, and that the current context (tenant/company/roles) may see this record.`,
+      { entity, id },
+      404,
+    );
     this.name = 'NotFound';
   }
 }
@@ -86,7 +86,12 @@ export class StateError extends DaifukuError {
 
 export class DependencyError extends DaifukuError {
   /** `override` reuses the class for a missing definition-time dependency (e.g. registerExt on an unregistered entity). */
-  constructor(entity: string, id: string, dependents: Array<{ entity: string; id: string }>, override?: { message: string; hint: string }) {
+  constructor(
+    entity: string,
+    id: string,
+    dependents: Array<{ entity: string; id: string }>,
+    override?: { message: string; hint: string },
+  ) {
     super(
       'HAS_DEPENDENTS',
       override?.message ?? `${entity} ${id} has ${dependents.length} dependent submitted document(s)`,
@@ -103,7 +108,8 @@ export function safeErrorDiagnostics(err: unknown): { category: 'database' | 'un
   let current = err;
   for (let depth = 0; depth < 4 && current !== null && typeof current === 'object'; depth++) {
     const candidate = current as { code?: unknown; cause?: unknown };
-    if (typeof candidate.code === 'string' && /^[0-9][A-Z0-9]{4}$/.test(candidate.code)) return { category: 'database', sqlState: candidate.code };
+    if (typeof candidate.code === 'string' && /^[0-9][A-Z0-9]{4}$/.test(candidate.code))
+      return { category: 'database', sqlState: candidate.code };
     current = candidate.cause;
   }
   return { category: 'unexpected' };
@@ -111,6 +117,21 @@ export function safeErrorDiagnostics(err: unknown): { category: 'database' | 'un
 
 export function toErrorBody(err: unknown): { status: number; body: ErrorBody } {
   if (err instanceof DaifukuError) return { status: err.httpStatus, body: err.toBody() };
-  if (safeErrorDiagnostics(err).sqlState === '23505') return { status: 409, body: { code: 'CONFLICT', message: 'A record with the same unique value already exists.', hint: 'Choose a different value or reload the existing record.' } };
-  return { status: 500, body: { code: 'INTERNAL', message: 'An unexpected server error occurred.', hint: 'Report the request id to the operator so they can investigate.' } };
+  if (safeErrorDiagnostics(err).sqlState === '23505')
+    return {
+      status: 409,
+      body: {
+        code: 'CONFLICT',
+        message: 'A record with the same unique value already exists.',
+        hint: 'Choose a different value or reload the existing record.',
+      },
+    };
+  return {
+    status: 500,
+    body: {
+      code: 'INTERNAL',
+      message: 'An unexpected server error occurred.',
+      hint: 'Report the request id to the operator so they can investigate.',
+    },
+  };
 }

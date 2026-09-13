@@ -36,7 +36,12 @@ async function beforeUpdate(ctx: Context, { row }: HookArgs): Promise<void> {
 async function beforeDelete(ctx: Context, { row }: HookArgs): Promise<void> {
   const id = row.id as string;
   const bound = await repo(ctx, Contract).count({ 'ext.unitId': id, docstatus: { $ne: DOCSTATUS.cancelled } });
-  if (bound > 0) throw new StateError(`real_estate_unit ${String(row.code ?? id)} is bound to ${bound} contract(s)`, UNIT_IN_USE_HINT, { unitId: id, contracts: bound });
+  if (bound > 0)
+    throw new StateError(
+      `real_estate_unit ${String(row.code ?? id)} is bound to ${bound} contract(s)`,
+      UNIT_IN_USE_HINT,
+      { unitId: id, contracts: bound },
+    );
 }
 
 /** after_submit / after_update / after_cancel of a contract: refresh the unit(s) it is (or was) bound to. */
@@ -49,5 +54,6 @@ export function registerUnitStatusHooks(): void {
   registry.registerHook(RealEstateUnit.name, 'before_validate', beforeValidate);
   registry.registerHook(RealEstateUnit.name, 'before_update', beforeUpdate);
   registry.registerHook(RealEstateUnit.name, 'before_delete', beforeDelete);
-  for (const phase of ['after_submit', 'after_update', 'after_cancel'] as const) registry.registerHook(Contract.name, phase, refreshContractUnits);
+  for (const phase of ['after_submit', 'after_update', 'after_cancel'] as const)
+    registry.registerHook(Contract.name, phase, refreshContractUnits);
 }

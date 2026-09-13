@@ -9,7 +9,11 @@ export function packIsActive(ctx: Pick<Context, 'appliedPacks'>, source: string)
 /** Only applyPack uses this temporary activation while running the pack's transactional seed/sample. */
 export function packApplicationContext(ctx: Context, name: string): Context {
   const child = Object.create(Object.getPrototypeOf(ctx), Object.getOwnPropertyDescriptors(ctx)) as Context;
-  Object.defineProperty(child, 'appliedPacks', { value: [...new Set([...(ctx.appliedPacks ?? []), name])], enumerable: true, configurable: true });
+  Object.defineProperty(child, 'appliedPacks', {
+    value: [...new Set([...(ctx.appliedPacks ?? []), name])],
+    enumerable: true,
+    configurable: true,
+  });
   return inheritContext(ctx, child);
 }
 

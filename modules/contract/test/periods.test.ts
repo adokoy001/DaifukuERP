@@ -22,26 +22,60 @@ import {
   type DueTerms,
 } from '../src/services/periods.ts';
 
-const periodArb = fc.record({ y: fc.integer({ min: 1990, max: 2100 }), m: fc.integer({ min: 1, max: 12 }) }).map(({ y, m }) => formatPeriod(y, m));
+const periodArb = fc
+  .record({ y: fc.integer({ min: 1990, max: 2100 }), m: fc.integer({ min: 1, max: 12 }) })
+  .map(({ y, m }) => formatPeriod(y, m));
 const utcDaysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
-const terms = (over: Partial<DueTerms> = {}): DueTerms => ({ status: 'active', startDate: '2026-05-22', endDate: null, intervalMonths: 1, ...over });
+const terms = (over: Partial<DueTerms> = {}): DueTerms => ({
+  status: 'active',
+  startDate: '2026-05-22',
+  endDate: null,
+  intervalMonths: 1,
+  ...over,
+});
 
 describe('month arithmetic', () => {
   it('daysInMonth: leap years and the Date.UTC oracle', () => {
-    expect([daysInMonth(2026, 2), daysInMonth(2028, 2), daysInMonth(2000, 2), daysInMonth(1900, 2), daysInMonth(2026, 9), daysInMonth(2026, 12)]).toEqual([28, 29, 29, 28, 30, 31]);
-    fc.assert(fc.property(fc.integer({ min: 1900, max: 2400 }), fc.integer({ min: 1, max: 12 }), (y, m) => daysInMonth(y, m) === utcDaysInMonth(y, m)));
+    expect([
+      daysInMonth(2026, 2),
+      daysInMonth(2028, 2),
+      daysInMonth(2000, 2),
+      daysInMonth(1900, 2),
+      daysInMonth(2026, 9),
+      daysInMonth(2026, 12),
+    ]).toEqual([28, 29, 29, 28, 30, 31]);
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1900, max: 2400 }),
+        fc.integer({ min: 1, max: 12 }),
+        (y, m) => daysInMonth(y, m) === utcDaysInMonth(y, m),
+      ),
+    );
     expect(() => daysInMonth(2026, 13)).toThrow(ValidationError);
   });
 
   it('parse / format / start / end of a period; invalid periods are VALIDATION', () => {
     expect(parsePeriod('2026-09')).toEqual({ y: 2026, m: 9 });
-    expect([periodOf('2026-09-11'), periodStart('2026-02'), periodEnd('2026-02'), periodEnd('2028-02'), periodEnd('2026-12')]).toEqual(['2026-09', '2026-02-01', '2026-02-28', '2028-02-29', '2026-12-31']);
-    for (const bad of ['2026-13', '2026-9', '2026-00', '26-09', '2026-09-01']) expect(() => parsePeriod(bad)).toThrow(ValidationError);
+    expect([
+      periodOf('2026-09-11'),
+      periodStart('2026-02'),
+      periodEnd('2026-02'),
+      periodEnd('2028-02'),
+      periodEnd('2026-12'),
+    ]).toEqual(['2026-09', '2026-02-01', '2026-02-28', '2028-02-29', '2026-12-31']);
+    for (const bad of ['2026-13', '2026-9', '2026-00', '26-09', '2026-09-01'])
+      expect(() => parsePeriod(bad)).toThrow(ValidationError);
     expect(() => periodOf('2026-02-30')).toThrow(ValidationError);
   });
 
   it('addMonths / monthsBetween across year boundaries (property: inverse and associative)', () => {
-    expect([addMonths('2026-11', 3), addMonths('2026-01', -1), addMonths('2026-12', 1), addMonths('2026-05', 0), addMonths('2026-05', -17)]).toEqual(['2027-02', '2025-12', '2027-01', '2026-05', '2024-12']);
+    expect([
+      addMonths('2026-11', 3),
+      addMonths('2026-01', -1),
+      addMonths('2026-12', 1),
+      addMonths('2026-05', 0),
+      addMonths('2026-05', -17),
+    ]).toEqual(['2027-02', '2025-12', '2027-01', '2026-05', '2024-12']);
     expect([monthsBetween('2026-11', '2027-02'), monthsBetween('2027-02', '2026-11')]).toEqual([3, -3]);
     expect(coveredPeriods('2026-11', 3)).toEqual(['2026-11', '2026-12', '2027-01']);
     fc.assert(
@@ -69,11 +103,18 @@ describe('billing date (AC-3)', () => {
 
   it('property: the date lies in the target month on min(billingDay, month length)', () => {
     fc.assert(
-      fc.property(periodArb, fc.integer({ min: 1, max: 31 }), fc.constantFrom('advance' as const, 'arrears' as const), (p, day, timing) => {
-        const target = timing === 'arrears' ? addMonths(p, 1) : p;
-        const { y, m } = parsePeriod(target);
-        expect(billingDate(p, day, timing)).toBe(`${target}-${String(Math.min(day, utcDaysInMonth(y, m))).padStart(2, '0')}`);
-      }),
+      fc.property(
+        periodArb,
+        fc.integer({ min: 1, max: 31 }),
+        fc.constantFrom('advance' as const, 'arrears' as const),
+        (p, day, timing) => {
+          const target = timing === 'arrears' ? addMonths(p, 1) : p;
+          const { y, m } = parsePeriod(target);
+          expect(billingDate(p, day, timing)).toBe(
+            `${target}-${String(Math.min(day, utcDaysInMonth(y, m))).padStart(2, '0')}`,
+          );
+        },
+      ),
     );
   });
 });
@@ -99,7 +140,13 @@ describe('due check (AC-3)', () => {
     expect(dueReason(terms({ endDate: '2026-08-15' }), '2026-09', false)).toBe('ended');
     expect(dueReason(terms({ status: 'ended', endDate: '2026-08-15' }), '2026-08', false)).toBeNull();
     const quarterly = terms({ startDate: '2026-04-01', intervalMonths: 3 });
-    expect(['2026-04', '2026-05', '2026-06', '2026-07', '2027-01'].map((p) => dueReason(quarterly, p, false))).toEqual([null, 'not_aligned', 'not_aligned', null, null]);
+    expect(['2026-04', '2026-05', '2026-06', '2026-07', '2027-01'].map((p) => dueReason(quarterly, p, false))).toEqual([
+      null,
+      'not_aligned',
+      'not_aligned',
+      null,
+      null,
+    ]);
     expect(isAligned('2026-03', '2026-04', 3)).toBe(false);
     expect(() => dueReason(terms(), '2026-6', false)).toThrow(ValidationError);
   });
@@ -119,15 +166,22 @@ describe('nextPeriod (AC-2/AC-4)', () => {
 
   it('property: nextPeriod is aligned, unbilled, every earlier aligned period is billed, and every due period is >= nextPeriod', () => {
     fc.assert(
-      fc.property(periodArb, fc.integer({ min: 1, max: 12 }), fc.array(fc.integer({ min: 0, max: 40 }), { maxLength: 30 }), fc.integer({ min: 0, max: 40 }), (start, k, billedSteps, probeStep) => {
-        const billed = billedSteps.map((s) => addMonths(start, s * k));
-        const next = nextPeriodOf(`${start}-15`, k, billed);
-        expect(isAligned(next, start, k)).toBe(true);
-        expect(billed).not.toContain(next);
-        for (let p = start; p < next; p = addMonths(p, k)) expect(billed).toContain(p);
-        const probe = addMonths(start, probeStep * k);
-        if (dueReason(terms({ startDate: `${start}-15`, intervalMonths: k }), probe, billed.includes(probe)) === null) expect(next <= probe).toBe(true);
-      }),
+      fc.property(
+        periodArb,
+        fc.integer({ min: 1, max: 12 }),
+        fc.array(fc.integer({ min: 0, max: 40 }), { maxLength: 30 }),
+        fc.integer({ min: 0, max: 40 }),
+        (start, k, billedSteps, probeStep) => {
+          const billed = billedSteps.map((s) => addMonths(start, s * k));
+          const next = nextPeriodOf(`${start}-15`, k, billed);
+          expect(isAligned(next, start, k)).toBe(true);
+          expect(billed).not.toContain(next);
+          for (let p = start; p < next; p = addMonths(p, k)) expect(billed).toContain(p);
+          const probe = addMonths(start, probeStep * k);
+          if (dueReason(terms({ startDate: `${start}-15`, intervalMonths: k }), probe, billed.includes(probe)) === null)
+            expect(next <= probe).toBe(true);
+        },
+      ),
     );
   });
 });

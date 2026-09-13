@@ -20,14 +20,68 @@ export { StockEntryLine, LINE_SIGNS, type LineSign } from './entities/stock-entr
 export { StockCount } from './entities/stock-count.ts';
 export { StockCountLine } from './entities/stock-count-line.ts';
 
-export { stockOnHandAction, stockOnHand, stockOnHandInput, STOCK_ON_HAND_COLUMNS, type StockOnHandInput } from './actions/stock-on-hand.ts';
+export {
+  stockOnHandAction,
+  stockOnHand,
+  stockOnHandInput,
+  STOCK_ON_HAND_COLUMNS,
+  type StockOnHandInput,
+} from './actions/stock-on-hand.ts';
 export { ledgerAction, stockLedger, ledgerInput, LEDGER_COLUMNS, type LedgerInput } from './actions/ledger.ts';
-export { valuationAction, valuation, valuationInput, VALUATION_COLUMNS, type ValuationInput } from './actions/valuation.ts';
-export { countVarianceAction, countVariance, countVarianceInput, COUNT_VARIANCE_COLUMNS, type CountVarianceInput } from './actions/count-variance.ts';
+export {
+  valuationAction,
+  valuation,
+  valuationInput,
+  VALUATION_COLUMNS,
+  type ValuationInput,
+} from './actions/valuation.ts';
+export {
+  countVarianceAction,
+  countVariance,
+  countVarianceInput,
+  COUNT_VARIANCE_COLUMNS,
+  type CountVarianceInput,
+} from './actions/count-variance.ts';
 
-export { COST_SCALE, emptyState, inbound, outbound, replay, round6, fitsScale, type StockState, type Movement, type InboundCost, type OutboundCost, type Step } from './services/moving-average.ts';
-export { entryIssues, headIssues, lineIssues, lineDirection, needsUnitCost, roleAllowsEntry, ROLE_HINT, type EntryHead, type EntryLineInput, type Issue, type LineDirection, type ProductKind } from './services/entry-rules.ts';
-export { stockLines, netUnitPrice, ratesFromTaxSummary, receiptLinesFromPurchase, issueLinesFromSales, adjustmentLinesFromCount, type InvoiceLineLike, type EntryLineDraft, type CountLineLike } from './services/from-invoice.ts';
+export {
+  COST_SCALE,
+  emptyState,
+  inbound,
+  outbound,
+  replay,
+  round6,
+  fitsScale,
+  type StockState,
+  type Movement,
+  type InboundCost,
+  type OutboundCost,
+  type Step,
+} from './services/moving-average.ts';
+export {
+  entryIssues,
+  headIssues,
+  lineIssues,
+  lineDirection,
+  needsUnitCost,
+  roleAllowsEntry,
+  ROLE_HINT,
+  type EntryHead,
+  type EntryLineInput,
+  type Issue,
+  type LineDirection,
+  type ProductKind,
+} from './services/entry-rules.ts';
+export {
+  stockLines,
+  netUnitPrice,
+  ratesFromTaxSummary,
+  receiptLinesFromPurchase,
+  issueLinesFromSales,
+  adjustmentLinesFromCount,
+  type InvoiceLineLike,
+  type EntryLineDraft,
+  type CountLineLike,
+} from './services/from-invoice.ts';
 export { loadBalance, stateOf, NEGATIVE_STOCK_HINT, type StockKey, type BalanceRow, type LedgerRow } from './ledger.ts';
 
 export { LEDGER_WRITE_HINT } from './hooks/guard.ts';
@@ -62,7 +116,15 @@ export type StockCountRow = Infer<typeof StockCount>;
 export type StockCountInsert = InsertInput<typeof StockCount>;
 export type StockCountLineRow = Infer<typeof StockCountLine>;
 
-export { INVENTORY_SERIES_LOCK, InventoryPeriodClose, closeInventoryThrough, assertInventoryDate } from './period-close.ts';
+export {
+  INVENTORY_SERIES_LOCK,
+  InventoryPeriodClose,
+  closeInventoryThrough,
+  assertInventoryDate,
+} from './period-close.ts';
 
 export { registerStockDocumentSource, registerInvoiceStockOwner } from './source-documents.ts';
-export { createAndSubmitEntry as createSourceStockEntry, cancelLinkedEntries as cancelSourceStockEntries } from './hooks/invoices.ts';
+export {
+  createAndSubmitEntry as createSourceStockEntry,
+  cancelLinkedEntries as cancelSourceStockEntries,
+} from './hooks/invoices.ts';

@@ -7,7 +7,10 @@ import type { ActionMeta, EntityMeta } from '../api/types.ts';
 export const PRINT_ACTION_SUFFIX = 'render_invoice_html';
 
 /** The render action of an entity's module, when its input schema takes `{ id }`. */
-export function printActionFor(entity: Pick<EntityMeta, 'module'>, actions: readonly ActionMeta[]): ActionMeta | undefined {
+export function printActionFor(
+  entity: Pick<EntityMeta, 'module'>,
+  actions: readonly ActionMeta[],
+): ActionMeta | undefined {
   if (!entity.module) return undefined;
   const name = `${entity.module}.${PRINT_ACTION_SUFFIX}`;
   return actions.find((a) => a.name === name && a.inputSchema?.properties?.id !== undefined);

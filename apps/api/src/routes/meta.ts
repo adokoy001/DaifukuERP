@@ -1,6 +1,19 @@
 // Spec AC-3: metadata for generic UIs and agents. web-phase1 AC-3/AC-5: actions carry `inputSchema` (JSON Schema)
 // and `resultKind` so the web app can render report forms; settings routes are registered here too.
-import { appliedPacksOf, appMeta, assertOp, DaifukuError, entityMeta, findCompany, registry, type ActionDef, type AppMeta, type Context, type Database, type MetaOptions } from '@daifuku/kernel';
+import {
+  appliedPacksOf,
+  appMeta,
+  assertOp,
+  DaifukuError,
+  entityMeta,
+  findCompany,
+  registry,
+  type ActionDef,
+  type AppMeta,
+  type Context,
+  type Database,
+  type MetaOptions,
+} from '@daifuku/kernel';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parse, withRequestContext } from '../request-context.ts';
@@ -9,7 +22,13 @@ import { registerSettingsRoutes } from './settings.ts';
 const entityParams = z.object({ name: z.string().min(1).max(100) });
 
 export function unknownEntity(name: string): DaifukuError {
-  return new DaifukuError('NOT_FOUND', `entity "${name}" does not exist`, 'List entities with GET /meta.', { entity: name }, 404);
+  return new DaifukuError(
+    'NOT_FOUND',
+    `entity "${name}" does not exist`,
+    'List entities with GET /meta.',
+    { entity: name },
+    404,
+  );
 }
 
 // ---- action schemas ----------------------------------------------------------------------------
@@ -50,7 +69,10 @@ export function toJsonSchema(schema: z.ZodType, io: 'input' | 'output'): JsonSch
 }
 
 function propertyNames(schema: JsonSchema | undefined): Set<string> {
-  const props = schema?.type === 'object' && typeof schema.properties === 'object' && schema.properties !== null ? schema.properties : {};
+  const props =
+    schema?.type === 'object' && typeof schema.properties === 'object' && schema.properties !== null
+      ? schema.properties
+      : {};
   return new Set(Object.keys(props));
 }
 
@@ -97,15 +119,30 @@ async function metaOptions(ctx: Context): Promise<MetaOptions> {
 }
 
 export function registerMetaRoutes(app: FastifyInstance, opts: { db: Database }): void {
-  app.get('/meta', { schema: { tags: ['meta'], summary: 'Entities, modules, menus, actions (with inputSchema/resultKind) and roles visible to the caller' } }, async (req) =>
-    withRequestContext(opts.db, req, async (ctx) => withActionSchemas(appMeta(ctx, await metaOptions(ctx)))),
+  app.get(
+    '/meta',
+    {
+      schema: {
+        tags: ['meta'],
+        summary: 'Entities, modules, menus, actions (with inputSchema/resultKind) and roles visible to the caller',
+      },
+    },
+    async (req) =>
+      withRequestContext(opts.db, req, async (ctx) => withActionSchemas(appMeta(ctx, await metaOptions(ctx)))),
   );
 
-  app.get('/meta/entities/:name', { schema: { tags: ['meta'], summary: 'Field/view/permission metadata of one entity', params: entityParams } }, async (req) => {
-    const { name } = parse(entityParams, req.params, 'params');
-    if (!registry.hasEntity(name)) throw unknownEntity(name);
-    return withRequestContext(opts.db, req, async (ctx) => { assertOp(ctx, registry.entity(name), 'read'); return entityMeta(ctx, registry.entity(name), await metaOptions(ctx)); });
-  });
+  app.get(
+    '/meta/entities/:name',
+    { schema: { tags: ['meta'], summary: 'Field/view/permission metadata of one entity', params: entityParams } },
+    async (req) => {
+      const { name } = parse(entityParams, req.params, 'params');
+      if (!registry.hasEntity(name)) throw unknownEntity(name);
+      return withRequestContext(opts.db, req, async (ctx) => {
+        assertOp(ctx, registry.entity(name), 'read');
+        return entityMeta(ctx, registry.entity(name), await metaOptions(ctx));
+      });
+    },
+  );
 
   registerSettingsRoutes(app, { db: opts.db, toJsonSchema });
 }

@@ -63,17 +63,22 @@ export function isBalanced(lines: Iterable<LineAmounts>): boolean {
 /** Every rule the before_submit hook applies to the line set, as one list of field-addressed issues. */
 export function validateLines(lines: readonly LineCheck[]): LineValidation {
   const issues: Issue[] = [];
-  if (lines.length < MIN_LINES) issues.push({ path: 'lines', message: `a journal entry needs at least ${MIN_LINES} lines` });
+  if (lines.length < MIN_LINES)
+    issues.push({ path: 'lines', message: `a journal entry needs at least ${MIN_LINES} lines` });
   lines.forEach((l, i) => {
     const path = `lines[${i}]`;
     const xor = xorIssue(l, path);
     if (xor) issues.push(xor);
-    if (l.partnerRequired && !l.partnerId) issues.push({ path: `${path}.partnerId`, message: `line ${l.seq}: the account requires a partner` });
+    if (l.partnerRequired && !l.partnerId)
+      issues.push({ path: `${path}.partnerId`, message: `line ${l.seq}: the account requires a partner` });
   });
   const totals = sumLines(lines);
   const balanced = totals.totalDebit.eq(totals.totalCredit);
   if (!balanced) {
-    issues.push({ path: 'lines', message: `debits (${totals.totalDebit.toString()}) and credits (${totals.totalCredit.toString()}) differ by ${totals.totalDebit.minus(totals.totalCredit).toString()}` });
+    issues.push({
+      path: 'lines',
+      message: `debits (${totals.totalDebit.toString()}) and credits (${totals.totalCredit.toString()}) differ by ${totals.totalDebit.minus(totals.totalCredit).toString()}`,
+    });
   }
   return { ...totals, issues, balanced };
 }

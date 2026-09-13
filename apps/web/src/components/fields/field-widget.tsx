@@ -3,7 +3,17 @@ import type { FieldMeta } from '../../api/types.ts';
 import { useLocale } from '../../i18n.tsx';
 import { widgetFor, type FormValue, type Widget } from '../../lib/form.ts';
 import { S } from '../../strings.ts';
-import { BoolField, DateField, EnumField, JsonField, NumberField, TextAreaField, TextField, TimestampField, type WidgetProps } from './inputs.tsx';
+import {
+  BoolField,
+  DateField,
+  EnumField,
+  JsonField,
+  NumberField,
+  TextAreaField,
+  TextField,
+  TimestampField,
+  type WidgetProps,
+} from './inputs.tsx';
 import { RefField } from './ref-field.tsx';
 import { TaxSummary } from '../tax-summary.tsx';
 
@@ -64,9 +74,16 @@ export function FieldWidget({ field, value, onChange, disabled, error, idPrefix 
     );
   }
   return (
-    <div data-field={field.name} className={`flex flex-col gap-0.5 ${widgetSpan(field) === 'full' ? 'col-span-full' : ''}`}>
+    <div
+      data-field={field.name}
+      className={`flex flex-col gap-0.5 ${widgetSpan(field) === 'full' ? 'col-span-full' : ''}`}
+    >
       {label}
-      {widget === 'json' && field.name === 'taxSummary' && disabled ? <TaxSummary id={id} value={value} /> : <Widget id={id} field={field} value={value} onChange={onChange} disabled={disabled} invalid={invalid} />}
+      {widget === 'json' && field.name === 'taxSummary' && disabled ? (
+        <TaxSummary id={id} value={value} />
+      ) : (
+        <Widget id={id} field={field} value={value} onChange={onChange} disabled={disabled} invalid={invalid} />
+      )}
       {error ? (
         <span role="alert" data-testid={`error-${field.name}`} className="text-xs text-red-700">
           {error}

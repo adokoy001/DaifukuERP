@@ -1,5 +1,14 @@
 // AC-3: dense list table. TanStack Table v9 owns the column/header model; sorting and paging are server-side (manual*).
-import { createColumnHelper, functionalUpdate, rowSortingFeature, tableFeatures, useTable, type ColumnDef, type SortingState, type Updater } from '@tanstack/react-table';
+import {
+  createColumnHelper,
+  functionalUpdate,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+  type ColumnDef,
+  type SortingState,
+  type Updater,
+} from '@tanstack/react-table';
 import { useMemo } from 'react';
 import { useCurrencyScale } from '../api/company.tsx';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
@@ -57,7 +66,9 @@ function useColumns(entity: EntityMeta, fields: FieldMeta[], refLabel: DataTable
         }),
       );
     }
-    for (const f of fields.filter((f) => entity.kind !== 'document' || (f.name !== 'number' && f.name !== 'docstatus'))) {
+    for (const f of fields.filter(
+      (f) => entity.kind !== 'document' || (f.name !== 'number' && f.name !== 'docstatus'),
+    )) {
       cols.push(
         helper.accessor((row): unknown => fieldValue(row, f), {
           id: f.name,
@@ -67,8 +78,17 @@ function useColumns(entity: EntityMeta, fields: FieldMeta[], refLabel: DataTable
           meta: { align: f.kind === 'int' || f.kind === 'decimal' ? 'right' : 'left' },
           cell: (ctx) => {
             const v = ctx.getValue();
-            const fmt = formatValue(f, v, locale, { refLabel: f.kind === 'ref' && typeof v === 'string' ? refLabel(f, v) : undefined, currencyScale });
-            return <span className={`${fmt.mono ? 'font-mono tabular-nums' : ''} ${fmt.align === 'right' ? 'block text-right' : ''}`}>{fmt.text}</span>;
+            const fmt = formatValue(f, v, locale, {
+              refLabel: f.kind === 'ref' && typeof v === 'string' ? refLabel(f, v) : undefined,
+              currencyScale,
+            });
+            return (
+              <span
+                className={`${fmt.mono ? 'font-mono tabular-nums' : ''} ${fmt.align === 'right' ? 'block text-right' : ''}`}
+              >
+                {fmt.text}
+              </span>
+            );
           },
         }),
       );
@@ -95,12 +115,16 @@ export function DataTable(props: DataTableProps) {
     manualSorting: true,
     enableMultiSort: false,
     state: { sorting },
-    onSortingChange: (updater: Updater<SortingState>) => onSortChange(fromSortingState(functionalUpdate(updater, sorting))),
+    onSortingChange: (updater: Updater<SortingState>) =>
+      onSortChange(fromSortingState(functionalUpdate(updater, sorting))),
   });
   const headerGroups = table.getHeaderGroups();
   const bodyRows = table.getRowModel().rows;
   return (
-    <div className={`overflow-x-auto rounded border border-neutral-200 bg-white ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
+    <div
+      className={`overflow-x-auto rounded border border-neutral-200 bg-white ${loading ? 'opacity-60' : ''}`}
+      aria-busy={loading}
+    >
       <table className="w-full text-sm">
         <thead className="bg-neutral-50 text-left text-xs text-neutral-600 select-none">
           {headerGroups.map((hg) => (
@@ -109,9 +133,24 @@ export function DataTable(props: DataTableProps) {
                 const align = (h.column.columnDef.meta as { align?: 'left' | 'right' } | undefined)?.align ?? 'left';
                 const canSort = h.column.getCanSort();
                 return (
-                  <th key={h.id} scope="col" className={`border-b border-neutral-200 px-2 py-1.5 font-medium whitespace-nowrap ${align === 'right' ? 'text-right' : ''}`}>
+                  <th
+                    key={h.id}
+                    scope="col"
+                    className={`border-b border-neutral-200 px-2 py-1.5 font-medium whitespace-nowrap ${align === 'right' ? 'text-right' : ''}`}
+                  >
                     {h.isPlaceholder ? null : canSort ? (
-                      <button type="button" className="inline-flex items-center hover:text-neutral-900" onClick={h.column.getToggleSortingHandler()} aria-sort={h.column.getIsSorted() === 'asc' ? 'ascending' : h.column.getIsSorted() === 'desc' ? 'descending' : 'none'}>
+                      <button
+                        type="button"
+                        className="inline-flex items-center hover:text-neutral-900"
+                        onClick={h.column.getToggleSortingHandler()}
+                        aria-sort={
+                          h.column.getIsSorted() === 'asc'
+                            ? 'ascending'
+                            : h.column.getIsSorted() === 'desc'
+                              ? 'descending'
+                              : 'none'
+                        }
+                      >
                         <table.FlexRender header={h} />
                         <SortIcon dir={h.column.getIsSorted()} />
                       </button>

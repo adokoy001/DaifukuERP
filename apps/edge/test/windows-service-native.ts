@@ -102,15 +102,43 @@ try {
   if ($resolved.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()),[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved).StartsWith('daifuku-windows-test-')) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
 `;
-const scripts = ['inspect', 'administrator', 'prepareRoot', 'prepare', 'protect', 'register', 'start', 'stop', 'uninstall', 'durableReplace', 'durablePublish'].map((operation) => windowsSetupScript(operation as Parameters<typeof windowsSetupScript>[0]));
-const syntax = '\n$edgeScripts=[Console]::In.ReadToEnd()|ConvertFrom-Json;foreach($source in $edgeScripts){$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors);if($errors.Count -gt 0){throw "helper_syntax_invalid"}}\n';
-const packed = gzipSync(Buffer.from("$ProgressPreference='SilentlyContinue'\n" + pathsScript + serviceScript + syntax + tests)).toString('base64');
+const scripts = [
+  'inspect',
+  'administrator',
+  'prepareRoot',
+  'prepare',
+  'protect',
+  'register',
+  'start',
+  'stop',
+  'uninstall',
+  'durableReplace',
+  'durablePublish',
+].map((operation) => windowsSetupScript(operation as Parameters<typeof windowsSetupScript>[0]));
+const syntax =
+  '\n$edgeScripts=[Console]::In.ReadToEnd()|ConvertFrom-Json;foreach($source in $edgeScripts){$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors);if($errors.Count -gt 0){throw "helper_syntax_invalid"}}\n';
+const packed = gzipSync(
+  Buffer.from("$ProgressPreference='SilentlyContinue'\n" + pathsScript + serviceScript + syntax + tests),
+).toString('base64');
 const script = `$s=[IO.MemoryStream]::new([Convert]::FromBase64String('${packed}'));$r=[IO.StreamReader]::new([IO.Compression.GZipStream]::new($s,[IO.Compression.CompressionMode]::Decompress));try{$code=$r.ReadToEnd()}finally{$r.Dispose()};&([ScriptBlock]::Create($code))`;
-const executable = process.platform === 'win32' ? 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
-const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
-  stdio: ['pipe', 'inherit', 'inherit'], shell: false, windowsHide: true,
-  env: windowsPowerShellEnvironment(),
-});
+const executable =
+  process.platform === 'win32'
+    ? 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+    : '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+const child = spawn(
+  executable,
+  ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+  {
+    stdio: ['pipe', 'inherit', 'inherit'],
+    shell: false,
+    windowsHide: true,
+    env: windowsPowerShellEnvironment(),
+  },
+);
 child.stdin.end(JSON.stringify(scripts));
-child.on('error', () => { process.exitCode = 1; });
-child.on('close', (code) => { process.exitCode = code ?? 1; });
+child.on('error', () => {
+  process.exitCode = 1;
+});
+child.on('close', (code) => {
+  process.exitCode = code ?? 1;
+});

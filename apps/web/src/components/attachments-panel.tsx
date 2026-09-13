@@ -2,7 +2,14 @@
 // /api/attachments/upload with linkedEntity/linkedId, authenticated download. Field widgets/labels come from the
 // `attachment` entity meta so the panel follows the module's declaration (kinds, labels, masking).
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { ATTACHMENT_ENTITY, attachmentsAvailable, downloadAttachment, useAttachmentsFor, useUploadAttachment, type UploadInput } from '../api/attachments.ts';
+import {
+  ATTACHMENT_ENTITY,
+  attachmentsAvailable,
+  downloadAttachment,
+  useAttachmentsFor,
+  useUploadAttachment,
+  type UploadInput,
+} from '../api/attachments.ts';
 import { useCurrencyScale } from '../api/company.tsx';
 import { useMeta, useRefLabelMaps } from '../api/queries.ts';
 import type { AttachmentJson, EntityMeta, FieldMeta } from '../api/types.ts';
@@ -60,16 +67,37 @@ function UploadForm({ entity, id, att }: { entity: EntityMeta; id: string; att: 
   };
 
   return (
-    <form onSubmit={submit} noValidate aria-label={t(S.upload)} data-testid="attachment-upload" className="grid grid-cols-1 gap-x-4 gap-y-2 border-t border-neutral-200 px-3 py-2 md:grid-cols-3">
+    <form
+      onSubmit={submit}
+      noValidate
+      aria-label={t(S.upload)}
+      data-testid="attachment-upload"
+      className="grid grid-cols-1 gap-x-4 gap-y-2 border-t border-neutral-200 px-3 py-2 md:grid-cols-3"
+    >
       <div className="flex flex-col gap-0.5">
         <label htmlFor="att-file" className="text-xs font-medium text-neutral-700">
           {t(S.file)}
           <span className="ml-0.5 text-red-600">*</span>
         </label>
-        <input id="att-file" ref={fileInput} type="file" className="text-xs" disabled={upload.isPending} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input
+          id="att-file"
+          ref={fileInput}
+          type="file"
+          className="text-xs"
+          disabled={upload.isPending}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
       </div>
       {fields.map((f) => (
-        <FieldWidget key={f.name} idPrefix="att" field={f} value={values[f.name] ?? ''} onChange={(v) => setValue(f.name, v)} disabled={upload.isPending} error={errors[f.name]} />
+        <FieldWidget
+          key={f.name}
+          idPrefix="att"
+          field={f}
+          value={values[f.name] ?? ''}
+          onChange={(v) => setValue(f.name, v)}
+          disabled={upload.isPending}
+          error={errors[f.name]}
+        />
       ))}
       <div className="flex items-end">
         <button type="submit" className="btn btn-primary" disabled={upload.isPending}>
@@ -94,7 +122,10 @@ function AttachmentRows({ att, rows }: { att: EntityMeta; rows: AttachmentJson[]
         <tr>
           <th className="px-3 py-1 font-medium">{t(S.file)}</th>
           {columns.map((c) => (
-            <th key={c.name} className={`px-3 py-1 font-medium ${c.kind === 'decimal' || c.kind === 'int' ? 'text-right' : ''}`}>
+            <th
+              key={c.name}
+              className={`px-3 py-1 font-medium ${c.kind === 'decimal' || c.kind === 'int' ? 'text-right' : ''}`}
+            >
               {t(c.label)}
             </th>
           ))}
@@ -103,18 +134,33 @@ function AttachmentRows({ att, rows }: { att: EntityMeta; rows: AttachmentJson[]
       </thead>
       <tbody>
         {rows.map((a) => (
-          <tr key={a.id} data-testid="attachment-row" className={`border-t border-neutral-100 ${a.supersededById ? 'text-neutral-400 line-through' : ''}`}>
+          <tr
+            key={a.id}
+            data-testid="attachment-row"
+            className={`border-t border-neutral-100 ${a.supersededById ? 'text-neutral-400 line-through' : ''}`}
+          >
             <td className="px-3 py-1">
-              <button type="button" className="text-sky-700 hover:underline" onClick={() => void download(a)} title={t(S.download)}>
+              <button
+                type="button"
+                className="text-sky-700 hover:underline"
+                onClick={() => void download(a)}
+                title={t(S.download)}
+              >
                 {a.filename}
               </button>
               {a.supersededById ? <span className="ml-1 text-[10px] no-underline">({t(S.superseded)})</span> : null}
             </td>
             {columns.map((c) => {
               const v = a[c.name];
-              const fmt = formatValue(c, v, locale, { refLabel: c.kind === 'ref' && typeof v === 'string' ? refLabel(c, v) : undefined, currencyScale });
+              const fmt = formatValue(c, v, locale, {
+                refLabel: c.kind === 'ref' && typeof v === 'string' ? refLabel(c, v) : undefined,
+                currencyScale,
+              });
               return (
-                <td key={c.name} className={`px-3 py-1 whitespace-nowrap ${fmt.mono ? 'font-mono tabular-nums' : ''} ${fmt.align === 'right' ? 'text-right' : ''}`}>
+                <td
+                  key={c.name}
+                  className={`px-3 py-1 whitespace-nowrap ${fmt.mono ? 'font-mono tabular-nums' : ''} ${fmt.align === 'right' ? 'text-right' : ''}`}
+                >
                   {fmt.text}
                 </td>
               );
@@ -139,14 +185,20 @@ export function AttachmentsPanel({ entity, id }: { entity: EntityMeta; id: strin
   const list = useAttachmentsFor(entity.name, id, available);
   if (!available || !att) return null;
   return (
-    <section aria-label={t(S.attachments)} data-testid="attachments-panel" className="rounded border border-neutral-200 bg-white">
+    <section
+      aria-label={t(S.attachments)}
+      data-testid="attachments-panel"
+      className="rounded border border-neutral-200 bg-white"
+    >
       <h2 className="border-b border-neutral-200 px-3 py-1.5 text-sm font-semibold">
         {t(S.attachments)}
         {list.data ? <span className="ml-2 text-xs font-normal text-neutral-500">({list.data.length})</span> : null}
       </h2>
       {list.isPending ? <div className="px-3 py-2 text-xs text-neutral-500">{t(S.loading)}</div> : null}
       {list.isError ? <div className="px-3 py-2 text-xs text-red-700">{t(S.loadFailed)}</div> : null}
-      {list.data && list.data.length === 0 ? <div className="px-3 py-2 text-xs text-neutral-500">{t(S.attachmentsEmpty)}</div> : null}
+      {list.data && list.data.length === 0 ? (
+        <div className="px-3 py-2 text-xs text-neutral-500">{t(S.attachmentsEmpty)}</div>
+      ) : null}
       {list.data && list.data.length > 0 ? (
         <div className="overflow-x-auto">
           <AttachmentRows att={att} rows={list.data} />

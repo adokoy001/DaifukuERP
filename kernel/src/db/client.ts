@@ -33,18 +33,34 @@ export function connect(url: string, opts: { max?: number } = {}): Database {
  * readOnlySnapshot starts a repeatable-read, read-only transaction before any company/tenant lookup;
  * use it for bounded multi-page analytical reads whose totals must describe one database snapshot.
  */
-export async function withContext<T>(database: Database, params: ContextParams, fn: (ctx: Context) => Promise<T>, options: { readOnlySnapshot?: boolean } = {}): Promise<T> {
-  return database.drizzle.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config(${TENANT_SETTING}, ${params.tenantId}, true)`);
-    let appliedPacks: string[] = [];
-    if (params.companyId) {
-      const company = await tx.select({ id: companies.id, settings: companies.settings }).from(companies).where(and(eq(companies.id, params.companyId), eq(companies.tenantId, params.tenantId))).limit(1);
-      if (!company.length) throw new StateError('Company does not belong to the current tenant', 'Select a company within the authenticated tenant.');
-      appliedPacks = appliedPackNames(company[0]?.settings);
-    }
-    const ctx = makeContext(tx, { ...params, appliedPacks });
-    return fn(ctx);
-  }, options.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+export async function withContext<T>(
+  database: Database,
+  params: ContextParams,
+  fn: (ctx: Context) => Promise<T>,
+  options: { readOnlySnapshot?: boolean } = {},
+): Promise<T> {
+  return database.drizzle.transaction(
+    async (tx) => {
+      await tx.execute(sql`SELECT set_config(${TENANT_SETTING}, ${params.tenantId}, true)`);
+      let appliedPacks: string[] = [];
+      if (params.companyId) {
+        const company = await tx
+          .select({ id: companies.id, settings: companies.settings })
+          .from(companies)
+          .where(and(eq(companies.id, params.companyId), eq(companies.tenantId, params.tenantId)))
+          .limit(1);
+        if (!company.length)
+          throw new StateError(
+            'Company does not belong to the current tenant',
+            'Select a company within the authenticated tenant.',
+          );
+        appliedPacks = appliedPackNames(company[0]?.settings);
+      }
+      const ctx = makeContext(tx, { ...params, appliedPacks });
+      return fn(ctx);
+    },
+    options.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined,
+  );
 }
 
 export function makeContext(db: Db, params: ContextParams): Context {
@@ -76,6 +92,10 @@ export function makeContext(db: Db, params: ContextParams): Context {
 }
 
 /** Context for migrations, seeds and workers. Has the admin role; audit records actor.type='system'. */
-export function systemParams(tenantId: string, companyId: string | null, extra: Partial<ContextParams> = {}): ContextParams {
+export function systemParams(
+  tenantId: string,
+  companyId: string | null,
+  extra: Partial<ContextParams> = {},
+): ContextParams {
   return { tenantId, companyId, actor: { type: 'system', id: 'system' }, roles: ['admin'], ...extra };
 }

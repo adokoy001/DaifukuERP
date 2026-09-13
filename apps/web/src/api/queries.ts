@@ -1,5 +1,13 @@
 // TanStack Query hooks over the REST sugar (docs/specs/api-app.md AC-5). Query keys are namespaced per entity so a mutation invalidates only its own entity.
-import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { fieldValue } from '../lib/ext.ts';
 import { edgeEntityForUi } from '../lib/edge.ts';
@@ -17,17 +25,27 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
 
 export const keys = {
   meta: ['meta'] as const,
-  list: (entity: string, params?: string) => (params === undefined ? (['list', entity] as const) : (['list', entity, params] as const)),
+  list: (entity: string, params?: string) =>
+    params === undefined ? (['list', entity] as const) : (['list', entity, params] as const),
   record: (entity: string, id: string) => ['record', entity, id] as const,
   audit: (entity: string, id: string) => ['audit', entity, id] as const,
 };
 
 export function login(email: string, password: string, tenantId?: string): Promise<LoginResult> {
-  return request<LoginResult>('/auth/login', { method: 'POST', body: { email, password, ...(tenantId ? { tenantId } : {}) }, anonymous: true });
+  return request<LoginResult>('/auth/login', {
+    method: 'POST',
+    body: { email, password, ...(tenantId ? { tenantId } : {}) },
+    anonymous: true,
+  });
 }
 
 export function useMeta(): UseQueryResult<AppMeta> {
-  return useQuery({ queryKey: keys.meta, queryFn: () => request<AppMeta>('/meta'), staleTime: Number.POSITIVE_INFINITY, retry: false });
+  return useQuery({
+    queryKey: keys.meta,
+    queryFn: () => request<AppMeta>('/meta'),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
 }
 
 export function useEntityMeta(name: string): { meta: UseQueryResult<AppMeta>; entity: EntityMeta | undefined } {
@@ -43,7 +61,11 @@ export function useList(entity: string, state: ListState, enabled = true): UseQu
   const params = buildListQuery(state).toString();
   return useQuery({
     queryKey: keys.list(entity, params),
-    queryFn: ({ signal }) => request<ListResponse>(`/api/${entity}?${params}`, { signal, ...(entity.startsWith('workforce_') ? { cache: 'no-store' as const } : {}) }),
+    queryFn: ({ signal }) =>
+      request<ListResponse>(`/api/${entity}?${params}`, {
+        signal,
+        ...(entity.startsWith('workforce_') ? { cache: 'no-store' as const } : {}),
+      }),
     ...(entity.startsWith('workforce_') ? { gcTime: 0, staleTime: 0 } : {}),
     placeholderData: keepPreviousData,
     enabled,
@@ -51,7 +73,17 @@ export function useList(entity: string, state: ListState, enabled = true): UseQu
 }
 
 export function useRecord(entity: string, id: string | undefined): UseQueryResult<RecordJson> {
-  return useQuery({ queryKey: keys.record(entity, id ?? ''), queryFn: ({ signal }) => request<RecordJson>(`/api/${entity}/${id ?? ''}`, { signal, ...(entity.startsWith('workforce_') ? { cache: 'no-store' as const } : {}) }), ...(entity.startsWith('workforce_') ? { gcTime: 0, staleTime: 0 } : {}), enabled: id !== undefined, retry: false });
+  return useQuery({
+    queryKey: keys.record(entity, id ?? ''),
+    queryFn: ({ signal }) =>
+      request<RecordJson>(`/api/${entity}/${id ?? ''}`, {
+        signal,
+        ...(entity.startsWith('workforce_') ? { cache: 'no-store' as const } : {}),
+      }),
+    ...(entity.startsWith('workforce_') ? { gcTime: 0, staleTime: 0 } : {}),
+    enabled: id !== undefined,
+    retry: false,
+  });
 }
 
 function normalizeAudit(raw: unknown): AuditEntry[] {
@@ -74,7 +106,11 @@ export function useAudit(entity: string, id: string | undefined): UseQueryResult
 }
 
 /** Ref widget: search the target entity by its display field (server `search` uses views.search / displayField). */
-export function useRefSearch(refEntity: string | undefined, search: string, enabled: boolean): UseQueryResult<ListResponse> {
+export function useRefSearch(
+  refEntity: string | undefined,
+  search: string,
+  enabled: boolean,
+): UseQueryResult<ListResponse> {
   const params = buildListQuery({ search, page: 1 }, 20).toString();
   return useQuery({
     queryKey: keys.list(refEntity ?? '', `ref:${params}`),
@@ -88,7 +124,10 @@ export function useRefSearch(refEntity: string | undefined, search: string, enab
  * Resolves ref ids shown on a list page to display values: one `where: {id: {$in}}` query per ref column
  * (useQueries, because the number of ref columns depends on the entity).
  */
-export function useRefLabelMaps(refFields: readonly FieldMeta[], rows: readonly RecordJson[]): (field: FieldMeta, id: string) => string | undefined {
+export function useRefLabelMaps(
+  refFields: readonly FieldMeta[],
+  rows: readonly RecordJson[],
+): (field: FieldMeta, id: string) => string | undefined {
   const specs = refFields.map((f) => {
     const ids = [
       ...new Set(
@@ -113,7 +152,8 @@ export function useRefLabelMaps(refFields: readonly FieldMeta[], rows: readonly 
   specs.forEach((s, i) => {
     const m = new Map<string, string>();
     for (const row of results[i]?.data?.items ?? []) {
-      const v = (s.field.refDisplayField ? row[s.field.refDisplayField] : undefined) ?? row.name ?? row.number ?? row.code;
+      const v =
+        (s.field.refDisplayField ? row[s.field.refDisplayField] : undefined) ?? row.name ?? row.number ?? row.code;
       m.set(row.id, typeof v === 'string' && v ? v : row.id);
     }
     maps.set(s.field.name, m);
@@ -154,25 +194,46 @@ export interface UpdateInput {
 export function useUpdate({ entity }: MutationCtx): UseMutationResult<RecordJson, Error, UpdateInput> {
   const invalidate = useInvalidate(entity);
   return useMutation({
-    mutationFn: ({ id, patch, expectedVersion }: UpdateInput) => request<RecordJson>(`/api/${entity}/${id}`, { method: 'PATCH', body: { patch, expectedVersion } }),
+    mutationFn: ({ id, patch, expectedVersion }: UpdateInput) =>
+      request<RecordJson>(`/api/${entity}/${id}`, { method: 'PATCH', body: { patch, expectedVersion } }),
     onSuccess: (rec) => invalidate(rec.id),
   });
 }
 
-export function useDelete({ entity }: MutationCtx): UseMutationResult<unknown, Error, { id: string; expectedVersion: number }> {
+export function useDelete({
+  entity,
+}: MutationCtx): UseMutationResult<unknown, Error, { id: string; expectedVersion: number }> {
   const invalidate = useInvalidate(entity);
   return useMutation({
-    mutationFn: ({ id, expectedVersion }: { id: string; expectedVersion: number }) => request<unknown>(`/api/${entity}/${id}`, { method: 'DELETE', body: { expectedVersion } }),
+    mutationFn: ({ id, expectedVersion }: { id: string; expectedVersion: number }) =>
+      request<unknown>(`/api/${entity}/${id}`, { method: 'DELETE', body: { expectedVersion } }),
     onSuccess: (_r, { id }) => invalidate(id),
   });
 }
 
 export type DocOp = 'submit' | 'cancel' | 'amend';
 
-export function useDocAction({ entity }: MutationCtx): UseMutationResult<RecordJson, Error, { id: string; op: DocOp; expectedVersion?: number; correctionDate?: string }> {
+export function useDocAction({
+  entity,
+}: MutationCtx): UseMutationResult<
+  RecordJson,
+  Error,
+  { id: string; op: DocOp; expectedVersion?: number; correctionDate?: string }
+> {
   const invalidate = useInvalidate(entity);
   return useMutation({
-    mutationFn: ({ id, op, expectedVersion, correctionDate }: { id: string; op: DocOp; expectedVersion?: number; correctionDate?: string }) => request<RecordJson>(`/api/${entity}/${id}/${op}`, { method: 'POST', body: { expectedVersion, correctionDate } }),
+    mutationFn: ({
+      id,
+      op,
+      expectedVersion,
+      correctionDate,
+    }: {
+      id: string;
+      op: DocOp;
+      expectedVersion?: number;
+      correctionDate?: string;
+    }) =>
+      request<RecordJson>(`/api/${entity}/${id}/${op}`, { method: 'POST', body: { expectedVersion, correctionDate } }),
     onSuccess: async (rec, { id }) => {
       await invalidate(id);
       if (rec.id !== id) await invalidate(rec.id);

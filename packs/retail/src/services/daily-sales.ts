@@ -42,7 +42,8 @@ export function taxColumnsOf(closings: readonly ClosingForReport[]): TaxColumn[]
     for (const g of c.taxSummary) {
       if (Decimal.from(g.rate).isZero()) continue;
       const key = taxKey(g.category, g.rate);
-      if (!byKey.has(key)) byKey.set(key, { key, category: g.category, percent: ratePercentKey(g.rate), rate: Decimal.from(g.rate) });
+      if (!byKey.has(key))
+        byKey.set(key, { key, category: g.category, percent: ratePercentKey(g.rate), rate: Decimal.from(g.rate) });
     }
   }
   return [...byKey.values()].sort((a, b) => a.rate.cmp(b.rate) || a.category.localeCompare(b.category));
@@ -51,7 +52,15 @@ export function taxColumnsOf(closings: readonly ClosingForReport[]): TaxColumn[]
 type Sums = Record<AmountKey, Decimal> & { tax: Map<string, Decimal>; count: number };
 
 function emptySums(): Sums {
-  return { subtotal: Decimal.zero(), taxTotal: Decimal.zero(), total: Decimal.zero(), cashAmount: Decimal.zero(), cardAmount: Decimal.zero(), tax: new Map(), count: 0 };
+  return {
+    subtotal: Decimal.zero(),
+    taxTotal: Decimal.zero(),
+    total: Decimal.zero(),
+    cashAmount: Decimal.zero(),
+    cardAmount: Decimal.zero(),
+    tax: new Map(),
+    count: 0,
+  };
 }
 
 function add(s: Sums, c: ClosingForReport): void {
@@ -66,7 +75,13 @@ function add(s: Sums, c: ClosingForReport): void {
 function cells(s: Sums, columns: readonly TaxColumn[]): Record<string, string> {
   const out: Record<string, string> = { subtotal: s.subtotal.toString() };
   for (const col of columns) out[col.key] = (s.tax.get(col.key) ?? Decimal.zero()).toString();
-  return { ...out, taxTotal: s.taxTotal.toString(), total: s.total.toString(), cashAmount: s.cashAmount.toString(), cardAmount: s.cardAmount.toString() };
+  return {
+    ...out,
+    taxTotal: s.taxTotal.toString(),
+    total: s.total.toString(),
+    cashAmount: s.cashAmount.toString(),
+    cardAmount: s.cardAmount.toString(),
+  };
 }
 
 /** One row per date (ascending) and the period totals. */
@@ -80,6 +95,8 @@ export function aggregateDaily(closings: readonly ClosingForReport[]): DailyAggr
     byDate.set(c.date, s);
     add(all, c);
   }
-  const rows = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, s]) => ({ date, ...cells(s, taxColumns), count: s.count }));
+  const rows = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, s]) => ({ date, ...cells(s, taxColumns), count: s.count }));
   return { taxColumns, rows, totals: { ...cells(all, taxColumns), count: String(all.count) } };
 }

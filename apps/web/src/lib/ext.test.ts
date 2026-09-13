@@ -1,12 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
-import { extFieldsOf, extInitialValues, extKey, extPayload, fieldValue, isExtFieldEditable, isExtFieldName, listColumns } from './ext.ts';
+import {
+  extFieldsOf,
+  extInitialValues,
+  extKey,
+  extPayload,
+  fieldValue,
+  isExtFieldEditable,
+  isExtFieldName,
+  listColumns,
+} from './ext.ts';
 import { initialValues, issuesToFieldErrors } from './form.ts';
 import { planSave } from './save.ts';
 
 const L = (ja: string, en: string) => ({ ja, en });
 function field(name: string, kind: string, extra: Partial<FieldMeta> = {}): FieldMeta {
-  return { name, kind, label: L(name, name), required: false, hasDefault: false, hidden: false, immutable: false, ...extra };
+  return {
+    name,
+    kind,
+    label: L(name, name),
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    ...extra,
+  };
 }
 
 const extFields: FieldMeta[] = [
@@ -69,8 +87,18 @@ describe('AC-3 ext field names, values and list columns', () => {
 
 describe('AC-3 ext form mapping (values read/written at row.ext[key])', () => {
   it('initial values come from record.ext through the same conversions as entity fields', () => {
-    expect(extInitialValues(visibleExt, record)).toEqual({ 'ext.rank': 'a', 'ext.creditLimit': '100000.5', 'ext.jan': '4901234567894', 'ext.vip': true });
-    expect(extInitialValues(visibleExt)).toEqual({ 'ext.rank': '', 'ext.creditLimit': '', 'ext.jan': '', 'ext.vip': false });
+    expect(extInitialValues(visibleExt, record)).toEqual({
+      'ext.rank': 'a',
+      'ext.creditLimit': '100000.5',
+      'ext.jan': '4901234567894',
+      'ext.vip': true,
+    });
+    expect(extInitialValues(visibleExt)).toEqual({
+      'ext.rank': '',
+      'ext.creditLimit': '',
+      'ext.jan': '',
+      'ext.vip': false,
+    });
     expect(extInitialValues([], record)).toEqual({});
   });
 
@@ -79,14 +107,22 @@ describe('AC-3 ext form mapping (values read/written at row.ext[key])', () => {
     const r = extPayload({ values, fields: visibleExt, mode: 'create', requiredMessage: 'required' });
     expect(r.ext).toEqual({ rank: 'b', creditLimit: '2000.5', vip: false });
     expect(r.errors).toEqual({ 'ext.jan': 'required' });
-    const blank = extPayload({ values: { 'ext.rank': '', 'ext.creditLimit': '', 'ext.jan': '' }, fields: visibleExt, mode: 'create', requiredMessage: 'required' });
+    const blank = extPayload({
+      values: { 'ext.rank': '', 'ext.creditLimit': '', 'ext.jan': '' },
+      fields: visibleExt,
+      mode: 'create',
+      requiredMessage: 'required',
+    });
     expect(blank.ext).toBeUndefined();
     expect(blank.errors).toEqual({ 'ext.jan': 'required' });
   });
 
   it('update: untouched ext is not re-sent (decimals compared canonically)', () => {
     const values = { ...extInitialValues(visibleExt, record), 'ext.creditLimit': '100000.50' };
-    expect(extPayload({ values, fields: visibleExt, mode: 'update', record, requiredMessage: 'required' })).toEqual({ ext: undefined, errors: {} });
+    expect(extPayload({ values, fields: visibleExt, mode: 'update', record, requiredMessage: 'required' })).toEqual({
+      ext: undefined,
+      errors: {},
+    });
   });
 
   it('update: a change sends the whole ext, keeping unrendered keys and dropping emptied ones', () => {
@@ -94,12 +130,23 @@ describe('AC-3 ext form mapping (values read/written at row.ext[key])', () => {
     const r = extPayload({ values, fields: visibleExt, mode: 'update', record, requiredMessage: 'required' });
     expect(r.ext).toEqual({ creditLimit: '5', jan: '4901234567894', vip: true, legacyNote: 'free-form (ADR-0003)' });
     expect(r.errors).toEqual({});
-    const cleared = extPayload({ values: { ...values, 'ext.jan': ' ' }, fields: visibleExt, mode: 'update', record, requiredMessage: 'required' });
+    const cleared = extPayload({
+      values: { ...values, 'ext.jan': ' ' },
+      fields: visibleExt,
+      mode: 'update',
+      record,
+      requiredMessage: 'required',
+    });
     expect(cleared.errors).toEqual({ 'ext.jan': 'required' });
   });
 
   it('client conversion errors are reported on the ext field', () => {
-    const r = extPayload({ values: { 'ext.creditLimit': 'abc', 'ext.jan': 'x' }, fields: visibleExt, mode: 'create', requiredMessage: 'required' });
+    const r = extPayload({
+      values: { 'ext.creditLimit': 'abc', 'ext.jan': 'x' },
+      fields: visibleExt,
+      mode: 'create',
+      requiredMessage: 'required',
+    });
     expect(r.errors).toEqual({ 'ext.creditLimit': 'number expected' });
   });
 
@@ -129,7 +176,13 @@ describe('AC-3 ext form mapping (values read/written at row.ext[key])', () => {
 describe('AC-3 planSave carries ext in the same request', () => {
   const base = { entity: partner, specs: [], lines: {}, originalLines: {}, requiredMessage: 'required' };
   it('create body has ext next to the entity fields', () => {
-    const values = { ...initialValues(partner.fields), name: 'New', ...extInitialValues(visibleExt), 'ext.jan': '490', 'ext.rank': 'a' };
+    const values = {
+      ...initialValues(partner.fields),
+      name: 'New',
+      ...extInitialValues(visibleExt),
+      'ext.jan': '490',
+      'ext.rank': 'a',
+    };
     const plan = planSave({ ...base, mode: 'create', record: undefined, values });
     expect(plan.hasErrors).toBe(false);
     expect(plan.body).toEqual({ name: 'New', ext: { rank: 'a', jan: '490', vip: false } });
@@ -138,6 +191,17 @@ describe('AC-3 planSave carries ext in the same request', () => {
     const values = { ...initialValues(partner.fields, record), ...extInitialValues(visibleExt, record) };
     expect(planSave({ ...base, mode: 'update', record, values }).empty).toBe(true);
     const plan = planSave({ ...base, mode: 'update', record, values: { ...values, 'ext.vip': false } });
-    expect(plan.body).toEqual({ patch: { ext: { rank: 'a', creditLimit: '100000.5', jan: '4901234567894', vip: false, legacyNote: 'free-form (ADR-0003)' } }, expectedVersion: 2 });
+    expect(plan.body).toEqual({
+      patch: {
+        ext: {
+          rank: 'a',
+          creditLimit: '100000.5',
+          jan: '4901234567894',
+          vip: false,
+          legacyNote: 'free-form (ADR-0003)',
+        },
+      },
+      expectedVersion: 2,
+    });
   });
 });

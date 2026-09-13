@@ -50,8 +50,8 @@ function format({ y, m, d }: Ymd): LocalDate {
 }
 
 function addMonths(y: number, m: number, n: number): { y: number; m: number } {
-  const idx = (m - 1) + n;
-  return { y: y + Math.floor(idx / 12), m: ((idx % 12) + 12) % 12 + 1 };
+  const idx = m - 1 + n;
+  return { y: y + Math.floor(idx / 12), m: (((idx % 12) + 12) % 12) + 1 };
 }
 
 /** The given day-of-month in (y, m); 31 (or any day past the end) clamps to the month's last day. */
@@ -61,7 +61,8 @@ function clampDay(y: number, m: number, day: number): Ymd {
 
 function assertTerms(t: PaymentTerms): void {
   const int = (v: number, lo: number, hi: number, name: string) => {
-    if (!Number.isInteger(v) || v < lo || v > hi) throw new RangeError(`${name} must be an integer in ${lo}..${hi}, got ${v}`);
+    if (!Number.isInteger(v) || v < lo || v > hi)
+      throw new RangeError(`${name} must be an integer in ${lo}..${hi}, got ${v}`);
   };
   int(t.closingDay, 1, 31, 'closingDay');
   int(t.paymentMonthOffset, 0, 3, 'paymentMonthOffset');
@@ -87,7 +88,12 @@ export function closingDateOf(invoiceDate: LocalDate, closingDay: number): Local
  * If that lands before the closing date (e.g. offset 0 with paymentDay < closingDay) the payment
  * rolls to the following month, so the result is never earlier than the closing date.
  */
-export function computeDueDate(invoiceDate: LocalDate, closingDay: number, paymentMonthOffset: number, paymentDay: number): LocalDate {
+export function computeDueDate(
+  invoiceDate: LocalDate,
+  closingDay: number,
+  paymentMonthOffset: number,
+  paymentDay: number,
+): LocalDate {
   return resolveDueDate(invoiceDate, { closingDay, paymentMonthOffset, paymentDay }).dueDate;
 }
 

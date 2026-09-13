@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildListQuery, pageCount, parseListSearch, parseSort, toListState, toggleSort, updateSearch } from './query.ts';
+import {
+  buildListQuery,
+  pageCount,
+  parseListSearch,
+  parseSort,
+  toListState,
+  toggleSort,
+  updateSearch,
+} from './query.ts';
 
 describe('buildListQuery (AC-3)', () => {
   it('defaults to page 1 with limit 50 and no search/orderBy', () => {
@@ -49,7 +57,11 @@ describe('sort helpers', () => {
 
 describe('parseListSearch / toListState / updateSearch', () => {
   it('keeps only valid keys', () => {
-    expect(parseListSearch({ q: 'x', sort: 'name:asc', page: '2', junk: 1 })).toEqual({ q: 'x', sort: 'name:asc', page: 2 });
+    expect(parseListSearch({ q: 'x', sort: 'name:asc', page: '2', junk: 1 })).toEqual({
+      q: 'x',
+      sort: 'name:asc',
+      page: 2,
+    });
     expect(parseListSearch({ q: '', sort: 42, page: 'abc' })).toEqual({});
     expect(parseListSearch({ page: 1 })).toEqual({});
   });

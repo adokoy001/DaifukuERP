@@ -18,26 +18,27 @@ export interface EntitySchemas {
 }
 
 const decimalInput = (opts: DecimalOpts) =>
-  z
-    .union([z.string(), z.custom<Decimal>((v) => v instanceof Decimal, 'expected Decimal')])
-    .transform((v, ctx) => {
-      try {
-        const d = Decimal.from(v);
-        const scale = opts.scale ?? 6;
-        if (!d.roundDown(Math.min(scale, 6)).eq(d) || d.abs().gte('100000000000000')) {
-          ctx.addIssue({ code: 'custom', message: `must fit numeric(20,6) with at most ${Math.min(scale, 6)} fractional digits` });
-          return z.NEVER;
-        }
-        if (opts.min !== undefined && d.lt(opts.min)) {
-          ctx.addIssue({ code: 'custom', message: `must be >= ${opts.min}` });
-          return z.NEVER;
-        }
-        return d;
-      } catch (e) {
-        ctx.addIssue({ code: 'custom', message: e instanceof Error ? e.message : 'invalid decimal' });
+  z.union([z.string(), z.custom<Decimal>((v) => v instanceof Decimal, 'expected Decimal')]).transform((v, ctx) => {
+    try {
+      const d = Decimal.from(v);
+      const scale = opts.scale ?? 6;
+      if (!d.roundDown(Math.min(scale, 6)).eq(d) || d.abs().gte('100000000000000')) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `must fit numeric(20,6) with at most ${Math.min(scale, 6)} fractional digits`,
+        });
         return z.NEVER;
       }
-    });
+      if (opts.min !== undefined && d.lt(opts.min)) {
+        ctx.addIssue({ code: 'custom', message: `must be >= ${opts.min}` });
+        return z.NEVER;
+      }
+      return d;
+    } catch (e) {
+      ctx.addIssue({ code: 'custom', message: e instanceof Error ? e.message : 'invalid decimal' });
+      return z.NEVER;
+    }
+  });
 
 /** Value schema of one field (no nullability); also used for registered ext keys (ext.ts). */
 export function fieldInputSchema(fd: AnyField): z.ZodType {
@@ -98,7 +99,10 @@ function fieldJsonSchema(fd: AnyField): z.ZodType {
 
 const extSchema = z.record(z.string(), z.unknown());
 
-export function buildSchemas(fields: FieldMap, opts: { ext: boolean; document: boolean; maskable?: ReadonlySet<string> }): EntitySchemas {
+export function buildSchemas(
+  fields: FieldMap,
+  opts: { ext: boolean; document: boolean; maskable?: ReadonlySet<string> },
+): EntitySchemas {
   const insert: Record<string, z.ZodType> = {};
   const update: Record<string, z.ZodType> = {};
   const json: Record<string, z.ZodType> = {

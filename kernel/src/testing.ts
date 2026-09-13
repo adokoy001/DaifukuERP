@@ -9,7 +9,12 @@ import { createSchemaFromScratch } from './db/schema-sync.ts';
 import type { Context, ContextParams } from './context.ts';
 
 function loadEnv(): void {
-  for (const dir of [process.cwd(), resolve(process.cwd(), '..'), resolve(process.cwd(), '../..'), resolve(process.cwd(), '../../..')]) {
+  for (const dir of [
+    process.cwd(),
+    resolve(process.cwd(), '..'),
+    resolve(process.cwd(), '../..'),
+    resolve(process.cwd(), '../../..'),
+  ]) {
     const p = resolve(dir, '.env');
     if (existsSync(p)) {
       try {
@@ -23,7 +28,8 @@ function loadEnv(): void {
 }
 loadEnv();
 
-export const OWNER_URL = process.env.TEST_DATABASE_URL_OWNER ?? 'postgres://daifuku_owner:owner@localhost:5432/daifuku_test';
+export const OWNER_URL =
+  process.env.TEST_DATABASE_URL_OWNER ?? 'postgres://daifuku_owner:owner@localhost:5432/daifuku_test';
 export const APP_URL = process.env.TEST_DATABASE_URL ?? 'postgres://daifuku_app:app@localhost:5432/daifuku_test';
 
 export interface TestDb {

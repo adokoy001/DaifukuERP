@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
-import { diffPatch, formGroups, initialValues, isFieldEditable, issuesToFieldErrors, normalizeDecimalString, toPayload, widgetFor } from './form.ts';
+import {
+  diffPatch,
+  formGroups,
+  initialValues,
+  isFieldEditable,
+  issuesToFieldErrors,
+  normalizeDecimalString,
+  toPayload,
+  widgetFor,
+} from './form.ts';
 
 function field(over: Partial<FieldMeta> & { name: string; kind: string }): FieldMeta {
-  return { label: { ja: over.name, en: over.name }, required: false, hasDefault: false, hidden: false, immutable: false, ...over };
+  return {
+    label: { ja: over.name, en: over.name },
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    ...over,
+  };
 }
 
 const fields: FieldMeta[] = [
@@ -66,7 +82,17 @@ describe('widgetFor (AC-4)', () => {
 });
 
 describe('formGroups (AC-4)', () => {
-  const base = { name: 'x', kind: 'entity' as const, label: { ja: 'x', en: 'x' }, module: undefined, scope: 'company' as const, displayField: 'name', hasExt: true, fields, ops: ['read' as const] };
+  const base = {
+    name: 'x',
+    kind: 'entity' as const,
+    label: { ja: 'x', en: 'x' },
+    module: undefined,
+    scope: 'company' as const,
+    displayField: 'name',
+    hasExt: true,
+    fields,
+    ops: ['read' as const],
+  };
 
   it("'auto' is one group of all non-hidden fields", () => {
     const entity: EntityMeta = { ...base, views: { list: [], form: 'auto', search: [] } };
@@ -77,11 +103,24 @@ describe('formGroups (AC-4)', () => {
   });
 
   it('explicit groups keep order, skip unknown/hidden, and append leftovers', () => {
-    const entity: EntityMeta = { ...base, views: { list: [], form: [['name', 'code', 'nope', 'secret'], ['qty']], search: [] } };
+    const entity: EntityMeta = {
+      ...base,
+      views: { list: [], form: [['name', 'code', 'nope', 'secret'], ['qty']], search: [] },
+    };
     const names = formGroups(entity).map((g) => g.map((f) => f.name));
     expect(names[0]).toEqual(['name', 'code']);
     expect(names[1]).toEqual(['qty']);
-    expect(names[2]).toEqual(['notes', 'amount', 'active', 'since', 'seenAt', 'status', 'partnerId', 'attrs', 'externalId']);
+    expect(names[2]).toEqual([
+      'notes',
+      'amount',
+      'active',
+      'since',
+      'seenAt',
+      'status',
+      'partnerId',
+      'attrs',
+      'externalId',
+    ]);
   });
 });
 
@@ -116,7 +155,9 @@ describe('isFieldEditable (AC-4, AC-5)', () => {
   });
   it('submitted documents allow only allowOnSubmit; cancelled are frozen', () => {
     expect(isFieldEditable(name, { mode: 'update', docstatus: 1, allowOnSubmit: ['notes'] })).toBe(false);
-    expect(isFieldEditable(fields[2] as FieldMeta, { mode: 'update', docstatus: 1, allowOnSubmit: ['notes'] })).toBe(true);
+    expect(isFieldEditable(fields[2] as FieldMeta, { mode: 'update', docstatus: 1, allowOnSubmit: ['notes'] })).toBe(
+      true,
+    );
     expect(isFieldEditable(name, { mode: 'update', docstatus: 2 })).toBe(false);
     expect(isFieldEditable(name, { mode: 'update', docstatus: 0 })).toBe(true);
   });
@@ -124,7 +165,20 @@ describe('isFieldEditable (AC-4, AC-5)', () => {
 
 describe('toPayload (AC-4)', () => {
   it('create: omits empties, converts int, keeps decimal as string, parses json', () => {
-    const { payload, errors } = toPayload({ name: ' Acme ', qty: '12', amount: '1,5'.replace(',', '.'), active: true, attrs: '{"a":1}', notes: '', since: '', seenAt: 'x' }, fields, 'create');
+    const { payload, errors } = toPayload(
+      {
+        name: ' Acme ',
+        qty: '12',
+        amount: '1,5'.replace(',', '.'),
+        active: true,
+        attrs: '{"a":1}',
+        notes: '',
+        since: '',
+        seenAt: 'x',
+      },
+      fields,
+      'create',
+    );
     expect(errors).toEqual({});
     expect(payload).toEqual({ name: 'Acme', qty: 12, amount: '1.5', active: true, attrs: { a: 1 } });
     expect(typeof payload.amount).toBe('string');
@@ -160,7 +214,11 @@ describe('normalizeDecimalString', () => {
 
 describe('diffPatch (AC-7 keeps patches minimal)', () => {
   it('only changed fields; decimals compared canonically; immutable unchanged fields dropped', () => {
-    const { payload } = toPayload({ code: 'P-1', name: 'Acme Inc', amount: '10', qty: '2', active: true, attrs: '{"x":1}' }, fields, 'update');
+    const { payload } = toPayload(
+      { code: 'P-1', name: 'Acme Inc', amount: '10', qty: '2', active: true, attrs: '{"x":1}' },
+      fields,
+      'update',
+    );
     expect(diffPatch(payload, record, fields)).toEqual({ name: 'Acme Inc' });
   });
   it('null vs missing counts as unchanged', () => {

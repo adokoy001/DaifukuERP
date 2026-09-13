@@ -26,7 +26,10 @@ export interface MonthCloseAmounts {
   closing: DecimalInput;
 }
 
-export const MEMO = { opening: '期首商品棚卸高（前月末の商品を売上原価へ振替）', closing: '期末商品棚卸高（月末の商品を売上原価から控除）' } as const;
+export const MEMO = {
+  opening: '期首商品棚卸高（前月末の商品を売上原価へ振替）',
+  closing: '期末商品棚卸高（月末の商品を売上原価から控除）',
+} as const;
 
 /** Balanced journal lines in posting order; zero amounts produce no lines (an empty result means: post nothing). */
 export function monthCloseLines(amounts: MonthCloseAmounts, accounts: ClosingAccountIds): LineInput[] {
@@ -34,17 +37,25 @@ export function monthCloseLines(amounts: MonthCloseAmounts, accounts: ClosingAcc
   const closing = Decimal.from(amounts.closing);
   const out: LineInput[] = [];
   if (!opening.isZero()) {
-    out.push(signed(accounts.openingStock, opening, MEMO.opening), signed(accounts.inventory, opening.neg(), MEMO.opening));
+    out.push(
+      signed(accounts.openingStock, opening, MEMO.opening),
+      signed(accounts.inventory, opening.neg(), MEMO.opening),
+    );
   }
   if (!closing.isZero()) {
-    out.push(signed(accounts.inventory, closing, MEMO.closing), signed(accounts.closingStock, closing.neg(), MEMO.closing));
+    out.push(
+      signed(accounts.inventory, closing, MEMO.closing),
+      signed(accounts.closingStock, closing.neg(), MEMO.closing),
+    );
   }
   return out;
 }
 
 /** Positive = debit, negative = credit (a negative valuation under allow_negative_stock mirrors the entry). */
 function signed(accountId: string, amount: Decimal, memo: string): LineInput {
-  return amount.isNegative() ? { accountId, credit: amount.abs().toString(), memo } : { accountId, debit: amount.toString(), memo };
+  return amount.isNegative()
+    ? { accountId, credit: amount.abs().toString(), memo }
+    : { accountId, debit: amount.toString(), memo };
 }
 
 /** The latest close strictly before `period` (periods compare as text: YYYY-MM). */

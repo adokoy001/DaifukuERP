@@ -55,7 +55,11 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
   const submitBlocked = useSubmitBlock(entity, record);
   const [formStatus, setFormStatus] = useState({ dirty: false, saving: false });
   const [actionBusy, setActionBusy] = useState(false);
-  const blocked = formStatus.saving ? t(S.saving) : formStatus.dirty ? t({ ja: '変更を保存してから操作してください', en: 'Save your changes before continuing' }) : undefined;
+  const blocked = formStatus.saving
+    ? t(S.saving)
+    : formStatus.dirty
+      ? t({ ja: '変更を保存してから操作してください', en: 'Save your changes before continuing' })
+      : undefined;
   const toList = () => void navigate({ to: '/e/$entity', params: { entity: entity.name } });
   const toRecord = (id: string) => void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id } });
   const onSaved = (rec: RecordJson, mode: 'create' | 'update') => {
@@ -101,7 +105,15 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
       </header>
       {record ? <SystemInfo record={record} /> : null}
       <WorkforceWorkflowLink entity={entity.name} />
-      <RecordForm key={record?.id ?? 'new'} entity={entity} record={record} onSaved={onSaved} onCancel={toList} onStatus={setFormStatus} actionBusy={actionBusy} />
+      <RecordForm
+        key={record?.id ?? 'new'}
+        entity={entity}
+        record={record}
+        onSaved={onSaved}
+        onCancel={toList}
+        onStatus={setFormStatus}
+        actionBusy={actionBusy}
+      />
       {record && !isWorkforceManaged(entity.name) ? <AttachmentsPanel entity={entity} id={record.id} /> : null}
       {record ? <AuditPanel entity={entity} id={record.id} /> : null}
     </div>
@@ -117,11 +129,25 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
-  if (mode === 'new' && isWorkforceManaged(entity.name)) return <div className="p-3"><WorkforceWorkflowLink entity={entity.name} /></div>;
+  if (mode === 'new' && isWorkforceManaged(entity.name))
+    return (
+      <div className="p-3">
+        <WorkforceWorkflowLink entity={entity.name} />
+      </div>
+    );
   if (mode === 'edit') {
-    if (record.isError && !canRetainData(record)) return <MetaError error={record.error} retry={() => void record.refetch()} />;
+    if (record.isError && !canRetainData(record))
+      return <MetaError error={record.error} retry={() => void record.refetch()} />;
     if (record.isPending) return <LoadingView />;
-    return <ReadRecoveryProvider sources={[meta, record]}><RecordView entity={entity} record={record.data} /></ReadRecoveryProvider>;
+    return (
+      <ReadRecoveryProvider sources={[meta, record]}>
+        <RecordView entity={entity} record={record.data} />
+      </ReadRecoveryProvider>
+    );
   }
-  return <ReadRecoveryProvider sources={[meta]}><RecordView entity={entity} record={undefined} /></ReadRecoveryProvider>;
+  return (
+    <ReadRecoveryProvider sources={[meta]}>
+      <RecordView entity={entity} record={undefined} />
+    </ReadRecoveryProvider>
+  );
 }

@@ -22,7 +22,13 @@ export async function deliverPending(ctx: Context, limit = 100): Promise<Deliver
   const rows = await ctx.db
     .select()
     .from(outbox)
-    .where(and(eq(outbox.tenantId, ctx.tenantId), ctx.companyId ? eq(outbox.companyId, ctx.companyId) : undefined, isNull(outbox.publishedAt)))
+    .where(
+      and(
+        eq(outbox.tenantId, ctx.tenantId),
+        ctx.companyId ? eq(outbox.companyId, ctx.companyId) : undefined,
+        isNull(outbox.publishedAt),
+      ),
+    )
     .orderBy(asc(outbox.createdAt))
     .limit(Math.max(1, Math.min(limit, 500)))
     .for('update', { skipLocked: true });
@@ -31,15 +37,30 @@ export async function deliverPending(ctx: Context, limit = 100): Promise<Deliver
   for (const row of rows) {
     const handlers = registry.subscribersFor(row.topic);
     try {
-      const company = row.companyId ? await ctx.db.select({ settings: companies.settings }).from(companies).where(and(eq(companies.tenantId, ctx.tenantId), eq(companies.id, row.companyId))).limit(1) : [];
+      const company = row.companyId
+        ? await ctx.db
+            .select({ settings: companies.settings })
+            .from(companies)
+            .where(and(eq(companies.tenantId, ctx.tenantId), eq(companies.id, row.companyId)))
+            .limit(1)
+        : [];
       const eventCtx = makeContext(ctx.db, {
         appliedPacks: appliedPackNames(company[0]?.settings),
-        tenantId: ctx.tenantId, companyId: row.companyId, actor: ctx.actor, roles: ctx.roles,
-        requestId: ctx.requestId, locale: ctx.locale, log: ctx.log, now: ctx.now,
+        tenantId: ctx.tenantId,
+        companyId: row.companyId,
+        actor: ctx.actor,
+        roles: ctx.roles,
+        requestId: ctx.requestId,
+        locale: ctx.locale,
+        log: ctx.log,
+        now: ctx.now,
       });
       await withSavepoint(eventCtx, async (inner) => {
         for (const h of handlers) await h(inner, row.payload, { topic: row.topic, id: row.id });
-        await inner.db.update(outbox).set({ publishedAt: inner.now(), attempts: row.attempts + 1, lastError: null }).where(eq(outbox.id, row.id));
+        await inner.db
+          .update(outbox)
+          .set({ publishedAt: inner.now(), attempts: row.attempts + 1, lastError: null })
+          .where(eq(outbox.id, row.id));
       });
       delivered++;
     } catch (e) {

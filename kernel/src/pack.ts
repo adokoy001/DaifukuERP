@@ -28,7 +28,10 @@ export type AppliedPacks = z.output<typeof appliedPacksSchema>;
 const PACKS_APPLIED_SETTING: SettingDef<AppliedPacks> = {
   key: PACKS_APPLIED_KEY,
   label: label('適用済みパック', 'Applied packs'),
-  description: label('pack:apply が記録する（パック名 → 適用日時・バージョン）。エントリを消すと次の適用で設定と seed が再実行される', 'Written by pack:apply (pack name -> applied at, version). Removing an entry makes the next apply run settings and seed again'),
+  description: label(
+    'pack:apply が記録する（パック名 → 適用日時・バージョン）。エントリを消すと次の適用で設定と seed が再実行される',
+    'Written by pack:apply (pack name -> applied at, version). Removing an entry makes the next apply run settings and seed again',
+  ),
   schema: appliedPacksSchema,
 };
 
@@ -71,7 +74,13 @@ export interface ApplyPackResult {
 
 function packNotFound(name: string): DaifukuError {
   const known = registry.packs().map((p) => p.name);
-  return new DaifukuError('NOT_FOUND', `pack "${name}" is not registered`, `Known packs: ${known.join(', ') || '(none)'}. List them with the pack.list action; apps load packs in their packs.ts.`, { pack: name, known }, 404);
+  return new DaifukuError(
+    'NOT_FOUND',
+    `pack "${name}" is not registered`,
+    `Known packs: ${known.join(', ') || '(none)'}. List them with the pack.list action; apps load packs in their packs.ts.`,
+    { pack: name, known },
+    404,
+  );
 }
 
 /** Every default must be a registered setting whose schema accepts the value; checked before anything is written. */
@@ -86,15 +95,26 @@ function checkedSettings(pack: PackDef): { def: SettingDef; value: unknown }[] {
     const def = registry.setting(key);
     const parsed = def.schema.safeParse(value);
     if (parsed.success) out.push({ def, value });
-    else for (const i of parsed.error.issues) issues.push({ path: ['settings', key, ...i.path.map(String)].join('.'), message: i.message });
+    else
+      for (const i of parsed.error.issues)
+        issues.push({ path: ['settings', key, ...i.path.map(String)].join('.'), message: i.message });
   }
   if (issues.length > 0) {
-    throw new ValidationError(`pack "${pack.name}": invalid setting defaults`, issues, 'Pack setting keys must be declared with registry.registerSetting (by a module in depends or the pack hooks) and match their schema.');
+    throw new ValidationError(
+      `pack "${pack.name}": invalid setting defaults`,
+      issues,
+      'Pack setting keys must be declared with registry.registerSetting (by a module in depends or the pack hooks) and match their schema.',
+    );
   }
   return out;
 }
 
-async function applySettings(ctx: Context, pack: PackDef, stored: Readonly<Record<string, unknown>>, force: boolean): Promise<ApplyPackResult['settings']> {
+async function applySettings(
+  ctx: Context,
+  pack: PackDef,
+  stored: Readonly<Record<string, unknown>>,
+  force: boolean,
+): Promise<ApplyPackResult['settings']> {
   const result: ApplyPackResult['settings'] = { written: [], kept: [] };
   for (const { def, value } of checkedSettings(pack)) {
     // A value alone cannot tell whether the admin explicitly selected the module default. Preserve all stored values.
@@ -118,7 +138,8 @@ export async function applyPack(ctx: Context, name: string, opts: ApplyPackOptio
 }
 
 async function performApplyPack(ctx: Context, name: string, opts: ApplyPackOptions): Promise<ApplyPackResult> {
-  if (!isAdmin(ctx) || (ctx.accessScope && ctx.accessScope !== 'all')) throw new PermissionDenied(`pack:${name}`, 'apply', ctx.roles);
+  if (!isAdmin(ctx) || (ctx.accessScope && ctx.accessScope !== 'all'))
+    throw new PermissionDenied(`pack:${name}`, 'apply', ctx.roles);
   const pack = registry.pack(name);
   if (!pack) throw packNotFound(name);
   ensurePackSettings();
@@ -129,18 +150,32 @@ async function performApplyPack(ctx: Context, name: string, opts: ApplyPackOptio
   const previous = applied[name];
   const now = ctx.now().toISOString();
   const runBase = force || !previous;
-  const settings = runBase ? await applySettings(ctx, pack, company.settings, force) : { written: [], kept: Object.keys(pack.settings ?? {}) };
+  const settings = runBase
+    ? await applySettings(ctx, pack, company.settings, force)
+    : { written: [], kept: Object.keys(pack.settings ?? {}) };
   const applying = packApplicationContext(ctx, name);
   if (runBase) await pack.seed?.(applying);
   const runSample = opts.sample === true && pack.sample !== undefined && (force || previous?.sampledAt === undefined);
   if (runSample) await pack.sample?.(applying);
-  const base = runBase || !previous ? { at: now, version: pack.version } : { at: previous.at, version: previous.version };
+  const base =
+    runBase || !previous ? { at: now, version: pack.version } : { at: previous.at, version: previous.version };
   const sampledAt = runSample ? now : previous?.sampledAt;
   const record: AppliedPack = sampledAt === undefined ? base : { ...base, sampledAt };
   if (runBase || runSample) {
     const def = registry.setting(PACKS_APPLIED_KEY);
-    await setSetting(ctx, PACKS_APPLIED_KEY, def.schema, { ...appliedPacksOf((await getCompany(ctx)).settings), [name]: record });
+    await setSetting(ctx, PACKS_APPLIED_KEY, def.schema, {
+      ...appliedPacksOf((await getCompany(ctx)).settings),
+      [name]: record,
+    });
   }
   refreshPackScope(ctx, [...new Set([...Object.keys(applied), name])]);
-  return { name, version: pack.version, alreadyApplied: previous !== undefined, settings, seeded: runBase && pack.seed !== undefined, sampled: runSample, record };
+  return {
+    name,
+    version: pack.version,
+    alreadyApplied: previous !== undefined,
+    settings,
+    seeded: runBase && pack.seed !== undefined,
+    sampled: runSample,
+    record,
+  };
 }

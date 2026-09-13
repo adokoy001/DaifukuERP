@@ -2,11 +2,26 @@
 import { Decimal } from '@daifuku/kernel';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { isBalanced, netByKey, reverseLines, sumLines, validateLines, xorIssue, type LineCheck } from '../src/services/balance.ts';
+import {
+  isBalanced,
+  netByKey,
+  reverseLines,
+  sumLines,
+  validateLines,
+  xorIssue,
+  type LineCheck,
+} from '../src/services/balance.ts';
 import { runningBalances, splitOpening, trialBalanceRows, type Movement } from '../src/services/ledger.ts';
 
 const D = (s: string | number) => Decimal.from(s);
-const line = (debit: string, credit: string, extra: Partial<LineCheck> = {}): LineCheck => ({ seq: 1, debit: D(debit), credit: D(credit), partnerId: null, partnerRequired: false, ...extra });
+const line = (debit: string, credit: string, extra: Partial<LineCheck> = {}): LineCheck => ({
+  seq: 1,
+  debit: D(debit),
+  credit: D(credit),
+  partnerId: null,
+  partnerRequired: false,
+  ...extra,
+});
 
 /** Amounts as integer cents (JS integers are exact) rendered as decimal strings. */
 const cents = (c: number) => `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
@@ -25,21 +40,31 @@ function splitCents(total: number, weights: number[]): number[] {
 
 /** A balanced line set: 1..5 debit lines and 1..5 credit lines with equal totals (never more credit parts than cents). */
 const arbBalanced = fc
-  .record({ debits: fc.array(arbCents, { minLength: 1, maxLength: 5 }), weights: fc.array(fc.integer({ min: 1, max: 1000 }), { minLength: 1, maxLength: 5 }) })
+  .record({
+    debits: fc.array(arbCents, { minLength: 1, maxLength: 5 }),
+    weights: fc.array(fc.integer({ min: 1, max: 1000 }), { minLength: 1, maxLength: 5 }),
+  })
   .map(({ debits, weights }) => {
     const total = debits.reduce((a, b) => a + b, 0);
     const credits = splitCents(total, weights.slice(0, Math.min(weights.length, total)));
-    return [...debits.map((c) => line(cents(c), '0')), ...credits.map((c) => line('0', cents(c)))].map((l, i) => ({ ...l, seq: i + 1 }));
+    return [...debits.map((c) => line(cents(c), '0')), ...credits.map((c) => line('0', cents(c)))].map((l, i) => ({
+      ...l,
+      seq: i + 1,
+    }));
   });
 
 /** A balanced set with one line disturbed by a non-zero amount. */
-const arbUnbalanced = fc.tuple(arbBalanced, fc.integer({ min: 1, max: 100_000 }), fc.nat()).map(([lines, delta, pick]) => {
-  const i = pick % lines.length;
-  const target = lines[i] as LineCheck;
-  const bump = D(cents(delta));
-  const changed = target.debit.gt(0) ? { ...target, debit: target.debit.plus(bump) } : { ...target, credit: target.credit.plus(bump) };
-  return lines.map((l, j) => (j === i ? changed : l));
-});
+const arbUnbalanced = fc
+  .tuple(arbBalanced, fc.integer({ min: 1, max: 100_000 }), fc.nat())
+  .map(([lines, delta, pick]) => {
+    const i = pick % lines.length;
+    const target = lines[i] as LineCheck;
+    const bump = D(cents(delta));
+    const changed = target.debit.gt(0)
+      ? { ...target, debit: target.debit.plus(bump) }
+      : { ...target, credit: target.credit.plus(bump) };
+    return lines.map((l, j) => (j === i ? changed : l));
+  });
 
 describe('xorIssue / validateLines (AC-4) — examples', () => {
   it('accepts a line with exactly one positive side and rejects both/none/negative', () => {
@@ -56,8 +81,14 @@ describe('xorIssue / validateLines (AC-4) — examples', () => {
     expect(off.balanced).toBe(false);
     expect(off.issues).toEqual([{ path: 'lines', message: 'debits (100) and credits (99.999999) differ by 0.000001' }]);
     const noPartner = validateLines([line('100', '0', { partnerRequired: true }), line('0', '100')]);
-    expect(noPartner.issues).toEqual([{ path: 'lines[0].partnerId', message: 'line 1: the account requires a partner' }]);
-    const ok = validateLines([line('100', '0', { partnerRequired: true, partnerId: 'p' }), line('0', '60'), line('0', '40')]);
+    expect(noPartner.issues).toEqual([
+      { path: 'lines[0].partnerId', message: 'line 1: the account requires a partner' },
+    ]);
+    const ok = validateLines([
+      line('100', '0', { partnerRequired: true, partnerId: 'p' }),
+      line('0', '60'),
+      line('0', '40'),
+    ]);
     expect(ok.issues).toEqual([]);
     expect(ok.totalDebit.toString()).toBe('100');
     expect(ok.totalCredit.toString()).toBe('100');
@@ -96,12 +127,20 @@ describe('trial balance rows / running balance (AC-8, AC-9) — examples', () =>
       ['sales', { debit: D('0'), credit: D('100') }],
     ]);
     const { rows, totals } = trialBalanceRows(accounts, opening, period);
-    expect(rows.map((r) => [r.code, r.openingDebit, r.openingCredit, r.periodDebit, r.periodCredit, r.closingBalance])).toEqual([
+    expect(
+      rows.map((r) => [r.code, r.openingDebit, r.openingCredit, r.periodDebit, r.periodCredit, r.closingBalance]),
+    ).toEqual([
       ['1000', '300', '0', '100', '0', '400'],
       ['4000', '0', '300', '0', '100', '-400'],
       ['9000', '0', '0', '0', '0', '0'],
     ]);
-    expect(totals).toEqual({ openingDebit: '300', openingCredit: '300', periodDebit: '100', periodCredit: '100', closingBalance: '0' });
+    expect(totals).toEqual({
+      openingDebit: '300',
+      openingCredit: '300',
+      periodDebit: '100',
+      periodCredit: '100',
+      closingBalance: '0',
+    });
     expect(splitOpening({ debit: D('1'), credit: D('1') })).toEqual({ openingDebit: D('0'), openingCredit: D('0') });
   });
 
@@ -154,7 +193,10 @@ describe('properties (AC-12)', () => {
   });
 
   it('trial balance totals: closing sums to zero whenever opening and period movements are balanced', () => {
-    const arbMov = fc.array(fc.record({ id: fc.constantFrom('a', 'b', 'c', 'd'), lines: arbBalanced }), { minLength: 0, maxLength: 6 });
+    const arbMov = fc.array(fc.record({ id: fc.constantFrom('a', 'b', 'c', 'd'), lines: arbBalanced }), {
+      minLength: 0,
+      maxLength: 6,
+    });
     const toMap = (chunks: { id: string; lines: LineCheck[] }[]) => {
       const m = new Map<string, Movement>();
       for (const c of chunks) {

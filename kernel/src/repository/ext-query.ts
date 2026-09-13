@@ -28,7 +28,9 @@ export function extFieldOf(entity: EntityDef, path: string): ExtFieldDef {
   throw new ValidationError(
     `unknown ext field "${path}" on ${entity.name}`,
     [{ path: `where.${path}`, message: 'ext key is not registered' }],
-    known.length > 0 ? `Registered ext fields: ${known.join(', ')}` : `${entity.name} has no registered ext fields; register them with registry.registerExt to filter on them.`,
+    known.length > 0
+      ? `Registered ext fields: ${known.join(', ')}`
+      : `${entity.name} has no registered ext fields; register them with registry.registerExt to filter on them.`,
   );
 }
 
@@ -44,7 +46,12 @@ function asText(def: ExtFieldDef, v: DomainScalar): string | null {
 }
 
 /** Compiles one domain condition on `ext.<key>`. `resolve` substitutes `$ctx.*` tokens like entity conditions do. */
-export function compileExtCondition(entity: EntityDef, path: string, cond: DomainCondition, resolve: (v: DomainScalar) => DomainScalar): SQL {
+export function compileExtCondition(
+  entity: EntityDef,
+  path: string,
+  cond: DomainCondition,
+  resolve: (v: DomainScalar) => DomainScalar,
+): SQL {
   const def = extFieldOf(entity, path);
   const expr = extText(entity, def.key);
   const text = (v: DomainScalar) => asText(def, resolve(v));
@@ -79,7 +86,13 @@ export function extSearchConditions(entity: EntityDef, search: string): SQL[] {
   if (!entity.hasExt) return [];
   return registry
     .extFields(entity.name)
-    .filter((d) => d.field.kind === 'text' && !d.field.opts.outputHidden && (d.field.opts as TextOpts).searchable === true && SAFE_KEY.test(d.key))
+    .filter(
+      (d) =>
+        d.field.kind === 'text' &&
+        !d.field.opts.outputHidden &&
+        (d.field.opts as TextOpts).searchable === true &&
+        SAFE_KEY.test(d.key),
+    )
     .map((d) => {
       const mode = (d.field.opts as TextOpts).normalize;
       return ilike(extText(entity, d.key), `%${escapeLike(mode ? normalizeText(mode, search) : search)}%`);

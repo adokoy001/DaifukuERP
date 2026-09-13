@@ -77,7 +77,10 @@ export function toListState(s: ListSearch): ListState {
 }
 
 /** Applies a patch to the URL search; empty/undefined values remove the key, and changing q or sort resets the page. */
-export function updateSearch(prev: ListSearch, patch: { q?: string | undefined; sort?: string | undefined; page?: number | undefined }): ListSearch {
+export function updateSearch(
+  prev: ListSearch,
+  patch: { q?: string | undefined; sort?: string | undefined; page?: number | undefined },
+): ListSearch {
   const merged: Record<string, unknown> = { ...prev };
   for (const [k, v] of Object.entries(patch)) merged[k] = v;
   if (('q' in patch || 'sort' in patch) && !('page' in patch)) merged.page = undefined;

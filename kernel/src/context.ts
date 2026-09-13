@@ -20,7 +20,12 @@ export interface Logger {
   error(msg: string, data?: Record<string, unknown>): void;
 }
 
-export interface RelayBinding { credentialId: string; credentialVersion: number; gatewayId: string; siteId: string }
+export interface RelayBinding {
+  credentialId: string;
+  credentialVersion: number;
+  gatewayId: string;
+  siteId: string;
+}
 
 export interface Context {
   readonly relay?: RelayBinding;

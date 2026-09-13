@@ -8,7 +8,10 @@ export function reportActions(meta: AppMeta | undefined): ActionMeta[] {
 }
 
 export function useRunReport(name: string): UseMutationResult<TableResult, Error, Record<string, unknown>> {
-  return useMutation({ mutationFn: (input: Record<string, unknown>) => request<TableResult>(`/actions/${name}`, { method: 'POST', body: input }) });
+  return useMutation({
+    mutationFn: (input: Record<string, unknown>) =>
+      request<TableResult>(`/actions/${name}`, { method: 'POST', body: input }),
+  });
 }
 
 /**

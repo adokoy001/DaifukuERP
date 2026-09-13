@@ -7,7 +7,18 @@
 //   empty update) so its before_update hook re-derives the totals — one place computes, whichever path wrote the line.
 //   Inside the kernel's replace-all saveLines (generic create/update with `lines`, amend) these are no-ops: the header's
 //   `after_lines_saved` hook (hooks/recalc.ts) touches it once per save instead of once per line (kernel-phase15 AC-7).
-import { DOCSTATUS, isSavingLines, registry, repo, StateError, ValidationError, isUuid, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  isSavingLines,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  isUuid,
+  type Context,
+  type HookArgs,
+  type Infer,
+} from '@daifuku/kernel';
 import { Product, fillLineUom } from '@daifuku/mod-product';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
 import { SalesInvoiceLine } from '../entities/sales-invoice-line.ts';
@@ -19,7 +30,11 @@ type InvoiceRow = Infer<typeof SalesInvoice>;
 export const FROZEN_HINT = 'Cancel and amend the invoice to change its lines (ADR-0006).';
 
 function frozenError(parent: InvoiceRow): StateError {
-  return new StateError(`sales_invoice ${parent.number ?? parent.id} is not a draft; its lines are frozen`, FROZEN_HINT, { invoiceId: parent.id, docstatus: parent.docstatus });
+  return new StateError(
+    `sales_invoice ${parent.number ?? parent.id} is not a draft; its lines are frozen`,
+    FROZEN_HINT,
+    { invoiceId: parent.id, docstatus: parent.docstatus },
+  );
 }
 
 async function assertParentDraft(ctx: Context, invoiceId: unknown): Promise<void> {
@@ -45,7 +60,11 @@ async function applyProductDefaults(ctx: Context, row: Raw, previous: Raw | unde
   if (keys.includes('taxCategory')) row.taxCategory = product.taxCategory;
   if (keys.includes('unitPrice')) {
     if (product.salePrice === null) {
-      throw new ValidationError(`product ${product.code ?? product.name} has no sale price`, [{ path: 'unitPrice', message: 'required: the product has no salePrice' }], 'Pass unitPrice on the line or set salePrice on the product.');
+      throw new ValidationError(
+        `product ${product.code ?? product.name} has no sale price`,
+        [{ path: 'unitPrice', message: 'required: the product has no salePrice' }],
+        'Pass unitPrice on the line or set salePrice on the product.',
+      );
     }
     row.unitPrice = product.salePrice;
   }
@@ -72,12 +91,16 @@ async function touchInvoice(ctx: Context, invoiceId: unknown): Promise<void> {
 
 export function registerLineHooks(): void {
   registry.registerHook(SalesInvoiceLine.name, 'before_validate', beforeValidate);
-  registry.registerHook(SalesInvoiceLine.name, 'before_create', (ctx, { row }) => assertParentDraft(ctx, row.invoiceId));
+  registry.registerHook(SalesInvoiceLine.name, 'before_create', (ctx, { row }) =>
+    assertParentDraft(ctx, row.invoiceId),
+  );
   registry.registerHook(SalesInvoiceLine.name, 'before_update', async (ctx, { row, previous }) => {
     await assertParentDraft(ctx, previous?.invoiceId);
     if (row.invoiceId !== previous?.invoiceId) await assertParentDraft(ctx, row.invoiceId);
   });
-  registry.registerHook(SalesInvoiceLine.name, 'before_delete', (ctx, { row }) => assertParentDraft(ctx, row.invoiceId));
+  registry.registerHook(SalesInvoiceLine.name, 'before_delete', (ctx, { row }) =>
+    assertParentDraft(ctx, row.invoiceId),
+  );
   registry.registerHook(SalesInvoiceLine.name, 'after_create', (ctx, { row }) => touchInvoice(ctx, row.invoiceId));
   registry.registerHook(SalesInvoiceLine.name, 'after_update', async (ctx, { row, previous }) => {
     await touchInvoice(ctx, row.invoiceId);

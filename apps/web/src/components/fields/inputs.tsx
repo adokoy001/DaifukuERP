@@ -29,11 +29,38 @@ function cls(invalid: boolean, extra = ''): string {
 
 export function TextField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
   const mono = field.kind === 'uuid' || field.name === 'code';
-  return <input id={id} name={field.name} type="text" className={cls(invalid, mono ? 'font-mono' : '')} value={str(value)} disabled={disabled} required={field.required} aria-invalid={invalid} aria-label={ariaLabel} onChange={(e) => onChange(e.target.value)} autoComplete="off" />;
+  return (
+    <input
+      id={id}
+      name={field.name}
+      type="text"
+      className={cls(invalid, mono ? 'font-mono' : '')}
+      value={str(value)}
+      disabled={disabled}
+      required={field.required}
+      aria-invalid={invalid}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+      autoComplete="off"
+    />
+  );
 }
 
 export function TextAreaField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
-  return <textarea id={id} name={field.name} rows={3} className={cls(invalid)} value={str(value)} disabled={disabled} required={field.required} aria-invalid={invalid} aria-label={ariaLabel} onChange={(e) => onChange(e.target.value)} />;
+  return (
+    <textarea
+      id={id}
+      name={field.name}
+      rows={3}
+      className={cls(invalid)}
+      value={str(value)}
+      disabled={disabled}
+      required={field.required}
+      aria-invalid={invalid}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }
 
 /**
@@ -47,7 +74,8 @@ export function NumberField({ id, field, value, onChange, disabled, invalid, ari
   const [focused, setFocused] = useState(false);
   const currencyScale = useCurrencyScale();
   const raw = str(value);
-  const shown = focused || field.kind !== 'decimal' ? raw : formatDecimalInput(raw, decimalMinScale(field, currencyScale));
+  const shown =
+    focused || field.kind !== 'decimal' ? raw : formatDecimalInput(raw, decimalMinScale(field, currencyScale));
   const onFocus = (e: FocusEvent<HTMLInputElement>) => {
     const el = e.currentTarget;
     if (el.value !== raw) {
@@ -81,23 +109,69 @@ export function NumberField({ id, field, value, onChange, disabled, invalid, ari
 }
 
 export function BoolField({ id, field, value, onChange, disabled, ariaLabel }: WidgetProps) {
-  return <input id={id} name={field.name} type="checkbox" className="h-4 w-4 accent-sky-700" checked={value === true} disabled={disabled} aria-label={ariaLabel} onChange={(e) => onChange(e.target.checked)} />;
+  return (
+    <input
+      id={id}
+      name={field.name}
+      type="checkbox"
+      className="h-4 w-4 accent-sky-700"
+      checked={value === true}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+  );
 }
 
 export function DateField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
-  return <input id={id} name={field.name} type="date" className={cls(invalid, 'font-mono')} value={str(value)} disabled={disabled} required={field.required} aria-invalid={invalid} aria-label={ariaLabel} onChange={(e) => onChange(e.target.value)} />;
+  return (
+    <input
+      id={id}
+      name={field.name}
+      type="date"
+      className={cls(invalid, 'font-mono')}
+      value={str(value)}
+      disabled={disabled}
+      required={field.required}
+      aria-invalid={invalid}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }
 
 export function TimestampField({ id, field, value, ariaLabel }: WidgetProps) {
   const { locale, t } = useLocale();
   const s = str(value);
-  return <input id={id} name={field.name} type="text" className="input font-mono" value={s ? formatTimestamp(s, locale) : ''} readOnly disabled title={t(S.readonly)} aria-label={ariaLabel} />;
+  return (
+    <input
+      id={id}
+      name={field.name}
+      type="text"
+      className="input font-mono"
+      value={s ? formatTimestamp(s, locale) : ''}
+      readOnly
+      disabled
+      title={t(S.readonly)}
+      aria-label={ariaLabel}
+    />
+  );
 }
 
 export function EnumField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
   const { t } = useLocale();
   return (
-    <select id={id} name={field.name} className={cls(invalid)} value={str(value)} disabled={disabled} required={field.required} aria-invalid={invalid} aria-label={ariaLabel} onChange={(e) => onChange(e.target.value)}>
+    <select
+      id={id}
+      name={field.name}
+      className={cls(invalid)}
+      value={str(value)}
+      disabled={disabled}
+      required={field.required}
+      aria-invalid={invalid}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+    >
       <option value="">{t(S.selectNone)}</option>
       {(field.values ?? []).map((v) => (
         <option key={v} value={v}>
@@ -110,5 +184,19 @@ export function EnumField({ id, field, value, onChange, disabled, invalid, ariaL
 
 export function JsonField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
   const { t } = useLocale();
-  return <textarea id={id} name={field.name} rows={4} spellCheck={false} placeholder={t(S.jsonHint)} className={cls(invalid, 'font-mono text-xs')} value={str(value)} disabled={disabled} aria-invalid={invalid} aria-label={ariaLabel} onChange={(e) => onChange(e.target.value)} />;
+  return (
+    <textarea
+      id={id}
+      name={field.name}
+      rows={4}
+      spellCheck={false}
+      placeholder={t(S.jsonHint)}
+      className={cls(invalid, 'font-mono text-xs')}
+      value={str(value)}
+      disabled={disabled}
+      aria-invalid={invalid}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }

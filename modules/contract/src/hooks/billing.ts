@@ -5,7 +5,8 @@ import { registry, StateError, type Context } from '@daifuku/kernel';
 import { ContractBilling } from '../entities/contract-billing.ts';
 import { isBillingWrite } from '../ledger.ts';
 
-export const LEDGER_HINT = 'contract_billing rows are written by contract.generate_invoices; run it for the period instead (delete a draft generated invoice to make its period due again).';
+export const LEDGER_HINT =
+  'contract_billing rows are written by contract.generate_invoices; run it for the period instead (delete a draft generated invoice to make its period due again).';
 
 function guard(op: string) {
   return (ctx: Context): void => {

@@ -24,7 +24,12 @@ export const realEstateAccountsSchema = z.object({
 });
 export type RealEstateAccounts = z.output<typeof realEstateAccountsSchema>;
 
-export const REAL_ESTATE_ACCOUNTS_DEFAULT: RealEstateAccounts = { deposit: '2500', rentRevenue: '4200', bank: '1100', deduction: '4100' };
+export const REAL_ESTATE_ACCOUNTS_DEFAULT: RealEstateAccounts = {
+  deposit: '2500',
+  rentRevenue: '4200',
+  bank: '1100',
+  deduction: '4100',
+};
 
 export const REAL_ESTATE_ACCOUNTS_SETTING: SettingDef<RealEstateAccounts> = {
   key: REAL_ESTATE_ACCOUNTS_KEY,

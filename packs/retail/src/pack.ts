@@ -29,7 +29,17 @@ export const RetailPack = definePack({
   name: 'retail',
   label: label('小売', 'Retail'),
   version: '0.1.0',
-  depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name, PaymentModule.name, InventoryModule.name, JapanModule.name],
+  depends: [
+    PartnerModule.name,
+    ProductModule.name,
+    TaxModule.name,
+    AccountingModule.name,
+    SalesModule.name,
+    PurchaseModule.name,
+    PaymentModule.name,
+    InventoryModule.name,
+    JapanModule.name,
+  ],
   ext: {
     product: {
       jan: f.text({ label: label('JANコード', 'JAN code'), searchable: true, maxLength: 13 }),
@@ -39,7 +49,11 @@ export const RetailPack = definePack({
     partner: {
       retailKind: f.enum(RETAIL_KINDS, {
         label: label('小売区分', 'Retail kind'),
-        labels: { walk_in: label('店頭客', 'Walk-in customer'), card_company: label('カード会社', 'Card company'), wholesaler: label('仕入先（卸）', 'Wholesaler') },
+        labels: {
+          walk_in: label('店頭客', 'Walk-in customer'),
+          card_company: label('カード会社', 'Card company'),
+          wholesaler: label('仕入先（卸）', 'Wholesaler'),
+        },
       }),
     },
   },

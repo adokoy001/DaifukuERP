@@ -15,15 +15,38 @@ function codeForStatus(status: number): ErrorCode {
 export function mapError(err: unknown, requestId: string): { status: number; body: ErrorBody } {
   if (err instanceof DaifukuError) return toErrorBody(err);
   if (hasZodFastifySchemaValidationErrors(err)) {
-    const issues = err.validation.map((v) => ({ path: v.instancePath.replace(/^\//, '').replace(/\//g, '.'), message: v.message ?? 'invalid' }));
-    return { status: 400, body: { code: 'VALIDATION', message: 'invalid request', hint: 'Fix the listed fields and retry.', details: { issues } } };
+    const issues = err.validation.map((v) => ({
+      path: v.instancePath.replace(/^\//, '').replace(/\//g, '.'),
+      message: v.message ?? 'invalid',
+    }));
+    return {
+      status: 400,
+      body: {
+        code: 'VALIDATION',
+        message: 'invalid request',
+        hint: 'Fix the listed fields and retry.',
+        details: { issues },
+      },
+    };
   }
   const fe: Partial<FastifyError> = err !== null && typeof err === 'object' ? err : {};
   const status = typeof fe.statusCode === 'number' ? fe.statusCode : 500;
   if (status >= 400 && status < 500) {
     const code = codeForStatus(status);
-    const hint = status === 401 ? 'Log in with POST /auth/login and send `Authorization: Bearer <token>`.' : status === 400 ? 'Check the request body, query and headers.' : 'Check the request.';
-    const message = status === 401 ? 'Authentication required.' : status === 403 ? 'Operation not permitted.' : status === 404 ? 'Resource not found.' : 'Invalid request.';
+    const hint =
+      status === 401
+        ? 'Log in with POST /auth/login and send `Authorization: Bearer <token>`.'
+        : status === 400
+          ? 'Check the request body, query and headers.'
+          : 'Check the request.';
+    const message =
+      status === 401
+        ? 'Authentication required.'
+        : status === 403
+          ? 'Operation not permitted.'
+          : status === 404
+            ? 'Resource not found.'
+            : 'Invalid request.';
     const body: ErrorBody = { code, message, hint, details: { requestId } };
     return { status, body };
   }

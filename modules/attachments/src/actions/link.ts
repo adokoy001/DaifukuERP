@@ -13,5 +13,6 @@ export const linkAction = defineAction({
   input: z.object({ id: z.uuid(), entity: z.string().min(1).max(100), recordId: z.uuid() }),
   output: Attachment.schemas.json,
   permission: { entity: 'attachment', op: 'update' },
-  handler: async (ctx, { id, entity, recordId }) => attachmentJson(await repo(ctx, Attachment).update(id, { linkedEntity: entity, linkedId: recordId })),
+  handler: async (ctx, { id, entity, recordId }) =>
+    attachmentJson(await repo(ctx, Attachment).update(id, { linkedEntity: entity, linkedId: recordId })),
 });

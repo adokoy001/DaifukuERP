@@ -16,12 +16,22 @@ export const PaymentAllocation = defineEntity({
     seq: f.int({ label: label('行番号', 'Seq'), required: true, default: 1, min: 1 }),
     invoiceEntity: f.enum(INVOICE_ENTITIES, {
       label: label('請求書種別', 'Invoice entity'),
-      description: label('入金は sales_invoice、支払は purchase_invoice', 'receive -> sales_invoice, pay -> purchase_invoice'),
+      description: label(
+        '入金は sales_invoice、支払は purchase_invoice',
+        'receive -> sales_invoice, pay -> purchase_invoice',
+      ),
       required: true,
-      labels: { sales_invoice: label('売上請求書', 'Sales invoice'), purchase_invoice: label('仕入請求書', 'Purchase invoice') },
+      labels: {
+        sales_invoice: label('売上請求書', 'Sales invoice'),
+        purchase_invoice: label('仕入請求書', 'Purchase invoice'),
+      },
     }),
     invoiceId: f.uuid({ label: label('請求書', 'Invoice'), required: true, index: true }),
-    amount: f.money({ label: label('消込額', 'Amount'), description: label('0 より大きく、請求書残高以下', '> 0 and <= the invoice balance'), required: true }),
+    amount: f.money({
+      label: label('消込額', 'Amount'),
+      description: label('0 より大きく、請求書残高以下', '> 0 and <= the invoice balance'),
+      required: true,
+    }),
   },
   indexes: [['paymentId', 'seq']],
   permissions: {

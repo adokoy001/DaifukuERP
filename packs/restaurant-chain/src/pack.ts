@@ -31,11 +31,50 @@ import { seedRestaurantChain } from './seed.ts';
 import { sampleRestaurantChain } from './sample.ts';
 
 export const RestaurantChainPack = definePack({
-  name: 'restaurant_chain', label: label('飲食店（チェーン）', 'Restaurant chain'), version: '0.1.0',
-  depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name, PaymentModule.name, InventoryModule.name, JapanModule.name],
-  entities: [RestaurantDayPlan, RestaurantStore, RestaurantRecipe, RecipeIngredient, RestaurantClosing, RestaurantClosingLine, RestaurantWasteLine],
-  actions: [operationsSnapshotAction, operationsSourcesAction, settlementEvidenceAction, dailySummaryAction, submitForReviewAction, reviewClosingAction, finalizeClosingAction, planDaysAction, recordDayStatusAction],
-  hooks: () => { for (const name of ['product', 'uom', 'tax_rate']) registerStoreAccess(name, { kind: 'sharedRead' }); registerReviewFreeze(); registerDayPlanHooks(); registerRecipeHooks(); registerClosingLineHooks(); registerRecalcHooks(); registerSubmitHooks(); registerCancelHooks(); },
+  name: 'restaurant_chain',
+  label: label('飲食店（チェーン）', 'Restaurant chain'),
+  version: '0.1.0',
+  depends: [
+    PartnerModule.name,
+    ProductModule.name,
+    TaxModule.name,
+    AccountingModule.name,
+    SalesModule.name,
+    PurchaseModule.name,
+    PaymentModule.name,
+    InventoryModule.name,
+    JapanModule.name,
+  ],
+  entities: [
+    RestaurantDayPlan,
+    RestaurantStore,
+    RestaurantRecipe,
+    RecipeIngredient,
+    RestaurantClosing,
+    RestaurantClosingLine,
+    RestaurantWasteLine,
+  ],
+  actions: [
+    operationsSnapshotAction,
+    operationsSourcesAction,
+    settlementEvidenceAction,
+    dailySummaryAction,
+    submitForReviewAction,
+    reviewClosingAction,
+    finalizeClosingAction,
+    planDaysAction,
+    recordDayStatusAction,
+  ],
+  hooks: () => {
+    for (const name of ['product', 'uom', 'tax_rate']) registerStoreAccess(name, { kind: 'sharedRead' });
+    registerReviewFreeze();
+    registerDayPlanHooks();
+    registerRecipeHooks();
+    registerClosingLineHooks();
+    registerRecalcHooks();
+    registerSubmitHooks();
+    registerCancelHooks();
+  },
   menus: [
     { label: label('チェーン運営ボード', 'Chain operations'), route: '/operations', order: 48 },
     { label: label('営業予定・目標', 'Day plans and targets'), entity: RestaurantDayPlan.name, order: 49 },
@@ -44,5 +83,6 @@ export const RestaurantChainPack = definePack({
     { label: label('店舗の日次締め', 'Daily closings'), entity: RestaurantClosing.name, order: 52 },
     { label: label('店舗別日次集計', 'Daily restaurant summary'), route: `/r/${dailySummaryAction.name}`, order: 53 },
   ],
-  seed: seedRestaurantChain, sample: sampleRestaurantChain,
+  seed: seedRestaurantChain,
+  sample: sampleRestaurantChain,
 });

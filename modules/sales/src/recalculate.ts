@@ -22,7 +22,13 @@ export interface RecalculateResult {
 }
 
 export async function loadInvoiceLines(ctx: Context, invoiceId: string): Promise<SalesInvoiceLineRow[]> {
-  return (await repo(ctx, SalesInvoiceLine).list({ where: { invoiceId }, orderBy: [{ field: 'seq', dir: 'asc' }], limit: 500 })).items;
+  return (
+    await repo(ctx, SalesInvoiceLine).list({
+      where: { invoiceId },
+      orderBy: [{ field: 'seq', dir: 'asc' }],
+      limit: 500,
+    })
+  ).items;
 }
 
 export async function recalculateInvoice(ctx: Context, input: RecalculateInput): Promise<RecalculateResult> {

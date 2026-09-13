@@ -25,7 +25,16 @@ export const AccountingModule = defineModule({
   label: label('会計', 'Accounting'),
   depends: [PartnerModule.name],
   entities: [Account, FiscalYear, FiscalPeriod, JournalEntry, JournalLine],
-  actions: [openFiscalYearAction, postFromSourceAction, reverseEntryAction, trialBalanceAction, generalLedgerAction, taxPeriodSummaryAction, closePeriodAction, reopenPeriodAction],
+  actions: [
+    openFiscalYearAction,
+    postFromSourceAction,
+    reverseEntryAction,
+    trialBalanceAction,
+    generalLedgerAction,
+    taxPeriodSummaryAction,
+    closePeriodAction,
+    reopenPeriodAction,
+  ],
   hooks: () => {
     registerValidateEntryHook();
     registerNoCancelHook();

@@ -43,7 +43,11 @@ export interface SavePlan {
   empty: boolean;
 }
 
-function lineSets(input: SaveInput): { lines: Record<string, Record<string, unknown>[]>; errors: Record<string, GridErrors>; changed: boolean } {
+function lineSets(input: SaveInput): {
+  lines: Record<string, Record<string, unknown>[]>;
+  errors: Record<string, GridErrors>;
+  changed: boolean;
+} {
   const lines: Record<string, Record<string, unknown>[]> = {};
   const errors: Record<string, GridErrors> = {};
   let changed = false;
@@ -51,7 +55,10 @@ function lineSets(input: SaveInput): { lines: Record<string, Record<string, unkn
     const rows = input.lines[spec.line.name] ?? [];
     const { rows: payload, errors: rowErrors } = rowsToPayload(rows, spec.columns, input.requiredMessage);
     if (Object.keys(rowErrors).length > 0) errors[spec.line.name] = rowErrors;
-    const differs = input.mode === 'create' ? rows.length > 0 : linesChanged(rows, input.originalLines[spec.line.name] ?? [], spec.columns);
+    const differs =
+      input.mode === 'create'
+        ? rows.length > 0
+        : linesChanged(rows, input.originalLines[spec.line.name] ?? [], spec.columns);
     if (!differs) continue;
     changed = true;
     lines[spec.line.name] = payload;
@@ -63,7 +70,17 @@ export function planSave(input: SaveInput): SavePlan {
   const { entity, mode, record, values } = input;
   const { payload, errors } = toPayload(values, entity.fields, mode);
   for (const f of entity.fields) {
-    if (mode === 'create' && f.required && !f.hasDefault && !f.hidden && !f.serverOwned && !f.readOnly && payload[f.name] === undefined && f.kind !== 'timestamp') errors[f.name] = input.requiredMessage;
+    if (
+      mode === 'create' &&
+      f.required &&
+      !f.hasDefault &&
+      !f.hidden &&
+      !f.serverOwned &&
+      !f.readOnly &&
+      payload[f.name] === undefined &&
+      f.kind !== 'timestamp'
+    )
+      errors[f.name] = input.requiredMessage;
   }
   const ext = extPayload({ values, fields: extFieldsOf(entity), mode, record, requiredMessage: input.requiredMessage });
   Object.assign(errors, ext.errors);
@@ -78,5 +95,11 @@ export function planSave(input: SaveInput): SavePlan {
   if (ext.ext) patch.ext = ext.ext;
   if (sets.changed) patch.lines = sets.lines;
   const empty = Object.keys(patch).length === 0;
-  return { body: { patch, expectedVersion: record.version }, fieldErrors: errors, lineErrors: sets.errors, hasErrors, empty };
+  return {
+    body: { patch, expectedVersion: record.version },
+    fieldErrors: errors,
+    lineErrors: sets.errors,
+    hasErrors,
+    empty,
+  };
 }
