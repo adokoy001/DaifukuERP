@@ -148,7 +148,7 @@ describe('relay authentication and real websocket transport', () => {
       tenantId: db.tenantId,
       email: id + '@example.com',
       name: 'Device operator',
-      passwordHash: hashPassword('password'),
+      passwordHash: await hashPassword('password'),
       defaultCompanyId: db.companyId,
     });
     const assigned = await app.inject({

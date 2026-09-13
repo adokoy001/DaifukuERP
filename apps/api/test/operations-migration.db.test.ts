@@ -76,21 +76,21 @@ async function historicalFixture(): Promise<TenantFixture[]> {
         roles: ['admin'],
         active: 1,
         defaultCompany: companies[1] ?? null,
-        passwordHash: hashPassword('Original-AdminCredential9!'),
+        passwordHash: await hashPassword('Original-AdminCredential9!'),
       },
       {
         id: newId(),
         roles: ['sales_user'],
         active: 1,
         defaultCompany: null,
-        passwordHash: hashPassword('Original-SalesCredential9!'),
+        passwordHash: await hashPassword('Original-SalesCredential9!'),
       },
       {
         id: newId(),
         roles: [],
         active: 0,
         defaultCompany: companies[0] ?? null,
-        passwordHash: hashPassword('Original-InactiveCredential9!'),
+        passwordHash: await hashPassword('Original-InactiveCredential9!'),
       },
     ];
     const closings = await scope(owner, id, async (tx) => {

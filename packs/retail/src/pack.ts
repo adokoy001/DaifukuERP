@@ -42,7 +42,7 @@ export const RetailPack = definePack({
   ],
   ext: {
     product: {
-      jan: f.text({ label: label('JANコード', 'JAN code'), searchable: true, maxLength: 13 }),
+      jan: f.text({ label: label('JANコード', 'JAN code'), searchable: true, equalityIndex: true, maxLength: 13 }),
       supplierCode: f.text({ label: label('仕入先品番', 'Supplier item code'), maxLength: 50 }),
       shelf: f.text({ label: label('棚番', 'Shelf'), maxLength: 20 }),
     },

@@ -38,6 +38,8 @@ function validateConfig(cfg: EntityConfig): void {
       throw new Error(
         `entity ${cfg.name}: field "${key}" uses searchable, which is for ext fields only; list entity fields in views.search`,
       );
+    if ((fd.opts as { equalityIndex?: boolean }).equalityIndex)
+      throw new Error(`entity ${cfg.name}: field "${key}" uses equalityIndex, which is for ext text only; use index`);
   }
   for (const [role, ops] of Object.entries(cfg.permissions.roles)) {
     if (!/^[a-z][a-z0-9_]*$/.test(role)) throw new Error(`entity ${cfg.name}: role "${role}" must be snake_case`);

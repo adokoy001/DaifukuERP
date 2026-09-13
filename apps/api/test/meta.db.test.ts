@@ -118,7 +118,7 @@ beforeAll(async () => {
     tenantId: db.tenantId,
     email: 'sales@example.com',
     name: 'Sales',
-    passwordHash: hashPassword('sales-pw'),
+    passwordHash: await hashPassword('sales-pw'),
     roles: ['sales'],
     defaultCompanyId: db.companyId,
   });

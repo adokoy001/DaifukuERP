@@ -76,7 +76,7 @@ export async function stepUpIdentity(
   key: string,
 ) {
   const user = await lockIdentity(ctx, sessionVersion);
-  if (!verifyPassword(password, user.passwordHash))
+  if (!(await verifyPassword(password, user.passwordHash)))
     throw new ValidationError('The current password is incorrect.', [
       { path: 'currentPassword', message: 'Enter your current password.' },
     ]);

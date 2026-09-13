@@ -39,7 +39,7 @@ export async function fixture() {
       tenantId: db.tenantId,
       email: `${name}@example.com`,
       name,
-      passwordHash: hashPassword('test-password'),
+      passwordHash: await hashPassword('test-password'),
       roles: [role],
       defaultCompanyId: db.companyId,
     });

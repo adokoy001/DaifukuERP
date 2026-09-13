@@ -4,7 +4,7 @@
 - 出典: research/02 §3（inner-platform effect、JSONB vs EAV、Shopify metafield）
 
 ## 決定
-- コアエンティティのフィールドは通常列。テナント/パック固有の追加フィールドは `ext jsonb` 列に格納し、`ext_field_definitions`（エンティティ・キー・型・ラベル・所有パック・検索可否）で定義する。GIN インデックス。
+- コアエンティティのフィールドは通常列。テナント/パック固有の追加フィールドは `ext jsonb` 列に格納する。現在の型定義はコード登録で、`ext_field_definitions` は将来の DB 定義用に保持する（[ADR-0014](0014-ext-fields-internal-actions-lines-hook.md)）。索引は実際の演算子に合わせ、完全一致には宣言された内部計算列とスコープ付き B-tree を使用する（[ADR-0026](0026-ext-equality-indexes.md)）。全 ext への GIN は実装していない。
 - EAV（属性テーブル）は作らない。新しい「エンティティ」が必要なときはパックが `defineEntity` で通常テーブルを追加する。
 
 ## 最強の反論

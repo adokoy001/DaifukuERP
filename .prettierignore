@@ -8,3 +8,4 @@
 **/*.generated.ts
 **/test-results/**
 **/playwright-report/**
+/.runtime/

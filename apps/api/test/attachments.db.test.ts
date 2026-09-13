@@ -145,7 +145,7 @@ async function addUser(email: string, password: string, roles: string[]): Promis
     tenantId: db.tenantId,
     email,
     name: email,
-    passwordHash: hashPassword(password),
+    passwordHash: await hashPassword(password),
     roles,
     defaultCompanyId: db.companyId,
   });

@@ -47,7 +47,7 @@ beforeAll(async () => {
     await tx`select set_config('app.tenant_id',${tenant},true)`;
     await tx`insert into tenants(id,name) values(${tenant},'Existing finance tenant')`;
     await tx`insert into companies(id,tenant_id,code,name,settings) values(${company},${tenant},'KEEP','Existing finance company','{"preserve":"original"}')`;
-    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version,mfa_enabled) values(${user},${tenant},'finance-legacy@example.invalid','Existing accountant',${hashPassword('Synthetic-LegacyFinance-2026')},'[]',${company},9,1)`;
+    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version,mfa_enabled) values(${user},${tenant},'finance-legacy@example.invalid','Existing accountant',${await hashPassword('Synthetic-LegacyFinance-2026')},'[]',${company},9,1)`;
     await tx`insert into identity_factors(user_id,tenant_id,secret_cipher,recovery_hashes) values(${user},${tenant},'synthetic-sealed-existing','["synthetic-existing-hash"]')`;
     await tx`insert into user_company_memberships(tenant_id,user_id,company_id,roles,access_scope,version) values(${tenant},${user},${company},'["accounting"]','all',4)`;
     await tx`insert into partner(id,tenant_id,company_id,name) values(${partner},${tenant},${company},'Existing customer')`;

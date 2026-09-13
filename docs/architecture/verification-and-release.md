@@ -11,6 +11,7 @@
 | DB | RLS/所属/参照/確定/並行実行の実挙動 | `pnpm test:db`、破棄可能な専用DB |
 | 統合gate | 上記を一括で再現 | `pnpm gate` |
 | Web | 単体・型とproduction build | `pnpm --filter @daifuku/web test` / `typecheck` / `build` |
+| API成果物 | 型検査済みJS・固定依存・管理CLI | `pnpm build:api`、`pnpm test:deploy`、[配置の契約](compiled-api.md) |
 | E2E | 実画面の導線・失効・スマホ操作 | CONTRIBUTINGの空DB fixture + Playwright |
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
 | 配布・機器 | 固定graph・改変検知・agent journal/実通信 | `pnpm test:deploy`、`pnpm --filter @daifuku/edge build`、専用DBで実API/TLS試験 |

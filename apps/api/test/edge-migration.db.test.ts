@@ -22,7 +22,7 @@ beforeAll(async () => {
     await tx`select set_config('app.tenant_id',${tenant},true)`;
     await tx`insert into tenants(id,name) values(${tenant},'Existing enterprise')`;
     await tx`insert into companies(id,tenant_id,code,name,settings) values(${company},${tenant},'EXISTING','Existing company','{"keep":"settings"}')`;
-    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version,mfa_enabled) values(${user},${tenant},'existing@example.invalid','Existing user',${hashPassword('Synthetic-Existing-Credential')},'[]',${company},7,1)`;
+    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version,mfa_enabled) values(${user},${tenant},'existing@example.invalid','Existing user',${await hashPassword('Synthetic-Existing-Credential')},'[]',${company},7,1)`;
     await tx`insert into identity_factors(user_id,tenant_id,secret_cipher,recovery_hashes) values(${user},${tenant},'existing-sealed-fixture','["existing-hash"]')`;
     await tx`insert into user_company_memberships(tenant_id,user_id,company_id,roles,access_scope,version) values(${tenant},${user},${company},'["workforce_employee"]','all',3)`;
     await tx`insert into workforce_site(id,tenant_id,company_id,code,name) values(${site},${tenant},${company},'OLD','Existing site')`;

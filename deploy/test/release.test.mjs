@@ -77,6 +77,8 @@ test('plan makes no files; explicit rendering creates only its new profile and p
     await renderProfile({ ...f, execute: true });
     const unit = await readFile(join(f.output, 'daifuku-api.service'), 'utf8');
     assert.match(unit, /--env-file=/);
+    assert.match(unit, /dist\/main\.js/);
+    assert.doesNotMatch(unit, /--import tsx|src\/main\.ts/);
     assert.doesNotMatch(unit, /EnvironmentFile|synthetic-never/);
     assert.match(await readFile(join(f.output, 'Caddyfile'), 'utf8'), /handle_path \/api\/\*/);
     assert.equal(await readFile(f.config, 'utf8'), before);

@@ -205,7 +205,7 @@ describe('AC-3 tools/call runs the action in a context; errors are self-describi
       tenantId: db.tenantId,
       email: 'viewer@example.com',
       name: 'Viewer',
-      passwordHash: hashPassword('viewer-password'),
+      passwordHash: await hashPassword('viewer-password'),
       roles: ['viewer'],
       defaultCompanyId: db.companyId,
     });

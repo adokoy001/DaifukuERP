@@ -34,7 +34,7 @@ export async function createManagedUser(ctx: Context, raw: unknown) {
       tenantId: ctx.tenantId,
       email,
       name: input.name,
-      passwordHash: hashPassword(input.password),
+      passwordHash: await hashPassword(input.password),
       tenantAdmin: input.tenantAdmin ? 1 : 0,
       roles: [],
     })
@@ -79,7 +79,7 @@ export async function updateManagedUser(ctx: Context, id: string, raw: unknown) 
       tenantAdmin,
       version: before.version + 1,
       sessionVersion: before.sessionVersion + (sessionChanged ? 1 : 0),
-      ...(input.password ? { passwordHash: hashPassword(input.password) } : {}),
+      ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
     })
     .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, id), eq(users.version, before.version)))
     .returning();

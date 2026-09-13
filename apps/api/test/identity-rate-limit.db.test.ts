@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
@@ -52,12 +52,19 @@ describe('authentication budgets for shared networks', () => {
     expect((await app.inject({ url: '/auth/oidc/providers', remoteAddress: '192.0.2.99' })).statusCode).toBe(200);
   });
   it('limits password spraying per IP without disabling other networks or provider discovery', async () => {
-    for (let index = 0; index < 100; index++)
-      expect((await login('wrong', `spray-${index}@example.com`, '192.0.2.200')).statusCode).toBe(401);
-    expect((await login('password', 'admin@example.com', '192.0.2.200')).statusCode).toBe(429);
-    expect((await login('password', 'admin@example.com', '192.0.2.201')).statusCode).toBe(200);
-    expect((await app.inject({ url: '/auth/oidc/providers', remoteAddress: '192.0.2.200' })).statusCode).toBe(200);
-  });
+    // Keep every attempt in one quota window; real scrypt and its callback timers remain asynchronous.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      for (let index = 0; index < 100; index++)
+        expect((await login('wrong', `spray-${index}@example.com`, '192.0.2.200')).statusCode).toBe(401);
+      expect((await login('password', 'admin@example.com', '192.0.2.200')).statusCode).toBe(429);
+      expect((await login('password', 'admin@example.com', '192.0.2.201')).statusCode).toBe(200);
+      expect((await app.inject({ url: '/auth/oidc/providers', remoteAddress: '192.0.2.200' })).statusCode).toBe(200);
+      // Keep all 100 real KDF verifications: the stronger profile intentionally costs more than the old default.
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 120000);
   it('bounds administrator invitation issuance separately from successful authentication', async () => {
     const token = (await login()).json<{ token: string }>().token;
     const headers = { authorization: `Bearer ${token}` };

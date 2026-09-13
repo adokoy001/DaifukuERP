@@ -1,4 +1,4 @@
-// Real API snapshots and a real browser Worker. Only the explicitly named revocation/report-table cases inject responses.
+// Real API snapshots and a real browser Worker. Explicit fault cases delay or replace responses to test UI boundaries.
 // Run against the standard isolated E2E fixture; no private files, production credentials or deployment data are required.
 import { expect, test, type Page } from '@playwright/test';
 import type { AnalyticsSnapshot } from '../src/api/analytics.ts';
@@ -80,6 +80,15 @@ async function ownPeriod(page: Page) {
   );
 }
 const grandAmount = (page: Page) => page.getByTestId('pivot-grand-total').locator('td').last();
+const applySource = (page: Page) => page.getByRole('button', { name: '条件を適用・最新データで集計', exact: true });
+const savedAnalyses = (page: Page) => page.getByRole('combobox', { name: '保存した分析', exact: true });
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 test('実データとWorkerで初期表示し、対象・初期状態と日付条件の変更を反映する', async ({ page }) => {
   const workers: string[] = [];
@@ -299,6 +308,216 @@ test('390px幅で操作でき、カタログ権限失効の障害注入で保持
   await page.clock.fastForward(31_000);
   await expect(page.getByRole('alert').filter({ hasText: 'E2E simulated catalog revocation' })).toBeVisible();
   await expect(page.getByTestId('pivot-result')).toHaveCount(0);
+  await page.unroute('**/analytics/catalog');
+  await snapshotAfter(page, () => page.getByRole('button', { name: '再試行', exact: true }).click());
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('取得中に実UIで会社を切り替えると旧取得を中止し、結果と保存設定を会社間で混在させない', async ({ page }) => {
+  const original = await openAnalytics(page);
+  await page.getByLabel('分析の名前', { exact: true }).fill('E2E A社だけの分析');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('分析設定を保存しました。', { exact: true })).toBeVisible();
+  const savedId = await savedAnalyses(page).inputValue();
+  const received = deferred(),
+    release = deferred(),
+    finished = deferred();
+  await page.route(
+    '**/analytics/snapshot',
+    async (route) => {
+      const response = await route.fetch();
+      received.resolve();
+      await release.promise;
+      await route.fulfill({ response });
+      finished.resolve();
+    },
+    { times: 1 },
+  );
+  try {
+    await applySource(page).click();
+    await received.promise;
+    const aborted = page.waitForEvent('requestfailed', (request) => request.url().endsWith('/analytics/snapshot'));
+    await page.getByRole('link', { name: '会社を切り替え', exact: true }).click();
+    expect((await aborted).failure()?.errorText).toContain('ERR_ABORTED');
+    await expect(page.getByTestId('pivot-result')).toHaveCount(0);
+    release.resolve();
+    await finished.promise;
+    const picker = page.getByLabel('対象の会社', { exact: true });
+    await expect(picker).toBeEnabled();
+    const companyA = await picker.inputValue();
+    const companyB = await picker
+      .locator('option')
+      .evaluateAll(
+        (options, current) =>
+          options.map((option) => (option as HTMLOptionElement).value).find((value) => value && value !== current),
+        companyA,
+      );
+    if (!companyB) throw new Error('Company-switch test requires the standard multi-company E2E fixture');
+    await picker.selectOption(companyB);
+    await expect(page.getByLabel('対象の会社', { exact: true })).toHaveValue(companyB);
+    const switched = await snapshotAfter(page, () => page.goto('/analytics'));
+    expect(switched.scopeKey).not.toBe(original.scopeKey);
+    await expect(savedAnalyses(page).locator('option')).toHaveCount(1);
+    await page.getByLabel('分析の名前', { exact: true }).fill('E2E B社だけの分析');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByText('分析設定を保存しました。', { exact: true })).toBeVisible();
+    await page.getByRole('link', { name: '会社を切り替え', exact: true }).click();
+    await page.getByLabel('対象の会社', { exact: true }).selectOption(companyA);
+    await expect(page.getByLabel('対象の会社', { exact: true })).toHaveValue(companyA);
+    const returned = await snapshotAfter(page, () => page.goto('/analytics'));
+    expect(returned.scopeKey).toBe(original.scopeKey);
+    await expect(savedAnalyses(page).locator('option')).toHaveCount(2);
+    await expect(savedAnalyses(page).locator(`option[value="${savedId}"]`)).toHaveText('E2E A社だけの分析');
+    await expect(savedAnalyses(page)).not.toContainText('E2E B社だけの分析');
+  } finally {
+    release.resolve();
+  }
+});
+
+test('HTTP応答が逆順でも新しい対象の結果を保ち、遅れた旧snapshotを反映しない', async ({ page }) => {
+  await openAnalytics(page);
+  // Fault injection: emulate a buffered HTTP response that can no longer be cancelled by AbortSignal.
+  // The page must still reject its stale completion; the normal abort path is covered by the company-switch case.
+  await page.evaluate(() => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (input, options) =>
+      String(input).endsWith('/analytics/snapshot')
+        ? original(input, { ...options, signal: null })
+        : original(input, options);
+  });
+  const received = deferred(),
+    release = deferred();
+  await page.route(
+    '**/analytics/snapshot',
+    async (route) => {
+      const response = await route.fetch();
+      received.resolve();
+      await release.promise;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  try {
+    await applySource(page).click();
+    await received.promise;
+    const latest = await snapshotAfter(page, () =>
+      page.getByRole('combobox', { name: '集計対象', exact: true }).selectOption('workforce_expense'),
+    );
+    expect(latest.dataset).toBe('workforce_expense');
+    const total = await grandAmount(page).textContent();
+    const late = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/analytics/snapshot') && response.request().postDataJSON().dataset === 'sales_invoice',
+    );
+    release.resolve();
+    await (await late).finished();
+    // Flush rendering after the late response, instead of asserting while its continuation is still pending.
+    await page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+    );
+    await expect(page.getByTestId('pivot-result')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: '集計対象', exact: true })).toHaveValue('workforce_expense');
+    await expect(grandAmount(page)).toHaveText(total ?? '');
+    await expect(page.getByText('取得条件が変わりました。', { exact: false })).toHaveCount(0);
+    await expect(applySource(page)).toBeEnabled();
+  } finally {
+    release.resolve();
+  }
+});
+
+test('取得失敗とscope不一致では結果を表示せず、同じ画面から最新データを再取得できる', async ({ page }) => {
+  await openAnalytics(page);
+  await page.route(
+    '**/analytics/snapshot',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'INTERNAL', message: 'E2E snapshot unavailable', hint: 'Retry this read.' },
+        }),
+      }),
+    { times: 1 },
+  );
+  await applySource(page).click();
+  await expect(page.getByRole('alert')).toContainText('E2E snapshot unavailable');
+  await expect(page.getByTestId('pivot-result')).toHaveCount(0);
+  await expect(applySource(page)).toBeEnabled();
+  await snapshotAfter(page, () => applySource(page).click());
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.route(
+    '**/analytics/snapshot',
+    async (route) => {
+      const response = await route.fetch();
+      const snapshot = (await response.json()) as AnalyticsSnapshot;
+      await route.fulfill({ response, json: { ...snapshot, scopeKey: 'E2E-different-access-scope' } });
+    },
+    { times: 1 },
+  );
+  await applySource(page).click();
+  await expect(page.getByRole('alert')).toContainText('閲覧条件が変わりました。');
+  await expect(page.getByTestId('pivot-result')).toHaveCount(0);
+  await expect(applySource(page)).toBeEnabled();
+  await snapshotAfter(page, () => applySource(page).click());
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('Web Lock待機中に別の保存分析を選んでも、保存完了が現在の選択と編集内容を戻さない', async ({ page }) => {
+  await openAnalytics(page);
+  const name = page.getByLabel('分析の名前', { exact: true });
+  await name.fill('E2E 保存待機A');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('分析設定を保存しました。', { exact: true })).toBeVisible();
+  const idA = await savedAnalyses(page).inputValue();
+  await page.getByRole('combobox', { name: '期間', exact: true }).selectOption('previous-month');
+  await snapshotAfter(page, () => applySource(page).click());
+  await name.fill('E2E 選択維持B');
+  await page.getByRole('button', { name: '別名で保存', exact: true }).click();
+  await expect(page.getByText('分析設定を保存しました。', { exact: true })).toBeVisible();
+  await expect(savedAnalyses(page).locator('option')).toHaveCount(3);
+  const idB = await savedAnalyses(page).inputValue();
+  expect(idB).not.toBe(idA);
+  await snapshotAfter(page, () => savedAnalyses(page).selectOption(idA));
+  await name.fill('E2E 保存完了A');
+  // Hold the real, scoped browser Web Lock; the application save must queue behind it.
+  const held = await page.evaluateHandle(async () => {
+    const key = Object.keys(localStorage).find((key) => key.startsWith('daifuku.analytics.v1.'));
+    if (!key) throw new Error('Saved analysis scope missing');
+    let release!: () => void, acquired!: () => void;
+    const wait = new Promise<void>((done) => {
+      release = done;
+    });
+    const entered = new Promise<void>((done) => {
+      acquired = done;
+    });
+    const finished = navigator.locks.request(key, () => {
+      acquired();
+      return wait;
+    });
+    await entered;
+    return { release, finished };
+  });
+  try {
+    await page.getByRole('button', { name: '上書き保存', exact: true }).click();
+    await expect(page.getByRole('button', { name: '上書き保存', exact: true })).toBeDisabled();
+    await snapshotAfter(page, () => savedAnalyses(page).selectOption(idB));
+    await name.fill('E2E 選択維持B 未保存');
+    await held.evaluate(async (lock) => {
+      lock.release();
+      await lock.finished;
+    });
+    await expect(page.getByRole('button', { name: '上書き保存', exact: true })).toBeEnabled();
+    await expect(savedAnalyses(page)).toHaveValue(idB);
+    await expect(name).toHaveValue('E2E 選択維持B 未保存');
+    await expect(page.getByText('未保存の変更', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: '期間', exact: true })).toHaveValue('previous-month');
+    await expect(savedAnalyses(page).locator(`option[value="${idA}"]`)).toHaveText('E2E 保存完了A');
+    await expect(savedAnalyses(page).locator(`option[value="${idB}"]`)).toHaveText('E2E 選択維持B');
+    await expect(page.getByText('分析設定を保存しました。', { exact: true })).toHaveCount(0);
+  } finally {
+    await held.evaluate((lock) => lock.release());
+    await held.dispose();
+  }
 });
 
 test('実際の試算表と期間初期値を確認し、合成レスポンスで帳票の検索・並替え・ページングを検証する', async ({ page }) => {

@@ -1,4 +1,5 @@
-import { bootstrapTenant, connect, createSchemaFromScratch, type Database } from '@daifuku/kernel';
+import { bootstrapTenant, connect, type Database } from '@daifuku/kernel';
+import { createSchemaFromScratch } from '@daifuku/kernel/schema-tooling';
 import { loadRuntime } from '@daifuku/runtime';
 const fail = (): never => {
   throw new Error('Identity fixture requires distinct safe roles and an empty loopback enterprise E2E database.');

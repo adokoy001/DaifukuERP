@@ -102,7 +102,6 @@ export {
   extFieldDefinitions,
 } from './db/system-tables.ts';
 export { runMigrations, enforcePolicies, dropAll } from './db/migrate.ts';
-export { currentSnapshot, emptySnapshot, diffSql, createSchemaFromScratch, type Snapshot } from './db/schema-sync.ts';
 export { APP_ROLE, TENANT_SETTING, toSnake } from './db/table.ts';
 
 export { repo, Repository, type ListResult } from './repository/repository.ts';

@@ -18,7 +18,7 @@ function hostName(value) {
   return value;
 }
 function service({ release, state, config, node, user }) {
-  return `[Unit]\nDescription=Daifuku ERP API\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\nType=exec\nUser=${user}\nWorkingDirectory=${release}/runtime/apps/api\nExecStart=${node} --env-file=${config} --import tsx src/main.ts\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=30\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=${state}/evidence\n\n[Install]\nWantedBy=multi-user.target\n`;
+  return `[Unit]\nDescription=Daifuku ERP API\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\nType=exec\nUser=${user}\nWorkingDirectory=${release}/runtime/apps/api\nExecStart=${node} --env-file=${config} dist/main.js\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=30\nKillMode=control-group\nUMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=${state}/evidence\n\n[Install]\nWantedBy=multi-user.target\n`;
 }
 function proxy({ release, hostname, profile, cert, key, port }) {
   const tls = profile === 'onprem' ? `\n  tls ${cert} ${key}` : '';

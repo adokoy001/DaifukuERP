@@ -72,11 +72,11 @@ password は保護されたエディターや password manager で扱ってく�
 
 既存 `runtime.env` の必須設定が不足している場合も停止し、JWT を生成し直して埋めません。改行なしの秘密について Node の env 読み取りと同じ値になる表現を確認して保存します。
 
-API の起動例です。既存 shell に同名環境変数がある場合は先に除去し、保存済み設定を選択してください。
+ソースからは先に `pnpm build:api` を実行します。API の起動例です。既存 shell に同名環境変数がある場合は先に除去し、保存済み設定を選択してください。
 
 ```bash
 node --env-file=/home/operator/daifuku-ops/runtime.env \
-  --import tsx apps/api/src/main.ts
+  .runtime/api/apps/api/dist/main.js
 ```
 
 `runtime.env` は Node の env ファイルとして読みます。`source runtime.env` は使いません。既定は `127.0.0.1:3000` です。Web 配布、常駐化、TLS reverse proxy、外部公開は別途構成し、管理者ログインと会社選択を確認してから運用を開始します。production の CORS は既定で同一originのみです。別originのWebを使う場合は、保護した設定に `CORS_ORIGINS=https://erp.example.invalid` のように実際のWebのoriginを明示します。ワイルドカード、URLのpath、query、資格情報は指定できません。

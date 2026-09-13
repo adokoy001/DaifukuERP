@@ -3,6 +3,7 @@ import { cp, link, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { copyRuntime } from './runtime.mjs';
+import { compileApiRuntime, loadCompiler } from './compile-api.mjs';
 import { writeWebNotices } from './web-notices.mjs';
 import { digest, inventory, restrictedSource, safePath, verifyRelease } from './files.mjs';
 function run(command, args, cwd, env) {
@@ -72,7 +73,9 @@ export async function buildRelease({ source, output, candidate = false, progress
     await writeWebNotices(stage, join(stage, 'apps/web/dist'));
     await cp(join(stage, 'apps/web/dist'), join(bundle, 'web'), { recursive: true });
     progress('api-runtime');
-    await copyRuntime(stage, join(bundle, 'runtime'));
+    run('pnpm', ['typecheck'], stage, env);
+    const packages = await copyRuntime(stage, join(bundle, 'runtime'));
+    await compileApiRuntime(join(bundle, 'runtime'), packages, await loadCompiler(stage));
     progress('edge');
     run('pnpm', ['--filter', '@daifuku/edge', 'build'], stage, env);
     await mkdir(join(bundle, 'edge'));
@@ -93,7 +96,7 @@ export async function buildRelease({ source, output, candidate = false, progress
     await writeFile(join(bundle, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
     const verified = await verifyRelease(bundle);
     progress('verify-runtime');
-    run(process.execPath, ['--import', 'tsx', 'src/setup/cli.ts', '--help'], join(bundle, 'runtime/apps/api'), env);
+    run(process.execPath, ['dist/setup/cli.js', '--help'], join(bundle, 'runtime/apps/api'), env);
     const packed = join(temporary, 'release.tar.gz');
     run('tar', ['-czf', packed, '-C', temporary, 'bundle'], temporary, env);
     await mkdir(output, { mode: 0o700 });

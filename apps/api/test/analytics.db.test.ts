@@ -61,7 +61,7 @@ beforeAll(async () => {
       tenantId: db.tenantId,
       email,
       name: `Analytics ${index}`,
-      passwordHash: hashPassword('password'),
+      passwordHash: await hashPassword('password'),
       roles: [role],
       defaultCompanyId: db.companyId,
     });

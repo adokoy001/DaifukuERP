@@ -23,7 +23,9 @@ import {
   type PgTable,
 } from 'drizzle-orm/pg-core';
 import type { AnyField } from '../dsl/fields.ts';
+import type { ExtFieldDef } from '../dsl/ext.ts';
 import type { EntityConfig, DocumentConfig } from '../dsl/types.ts';
+import { extEqualityColumnName, extEqualityIndexName, extEqualityPrefix, extTextExpression } from './ext-index.ts';
 
 export type RefResolver = (entityName: string, column?: string) => AnyPgColumn | undefined;
 
@@ -114,6 +116,7 @@ export function buildTable(
   cfg: EntityConfig | DocumentConfig,
   kind: 'entity' | 'document',
   resolveRef: RefResolver,
+  extFields: readonly ExtFieldDef[] = [],
 ): BuiltTable {
   const scope = cfg.scope ?? 'company';
   const columnNames: Record<string, string> = {};
@@ -141,6 +144,17 @@ export function buildTable(
     columnNames[name] = col;
     cols[name] = columnFor(name, col, fd, resolveRef);
   }
+  const equalityFields = extFields
+    .filter(
+      (def) => def.field.kind === 'text' && (def.field.opts as { equalityIndex?: boolean }).equalityIndex === true,
+    )
+    .sort((a, b) => a.key.localeCompare(b.key, 'en'));
+  for (const def of equalityFields) {
+    const name = extEqualityColumnName(def.key);
+    cols[name] = text(name).generatedAlwaysAs(
+      extEqualityPrefix(extTextExpression(sql`${sql.identifier('ext')}`, def.key)),
+    );
+  }
 
   const table = pgTable(cfg.name, cols, (t) => {
     const tt = t as Record<string, AnyPgColumn>;
@@ -159,6 +173,14 @@ export function buildTable(
         withCheck: TENANT_POLICY_SQL,
       }),
     ];
+    for (const def of equalityFields) {
+      defs.push(
+        index(extEqualityIndexName(cfg.name, def.key)).on(
+          ...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]),
+          tt[extEqualityColumnName(def.key)] as AnyPgColumn,
+        ),
+      );
+    }
     if (scope === 'company')
       defs.push(
         foreignKey({

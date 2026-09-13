@@ -84,6 +84,7 @@ module.exports = {
           '^node_modules/',
           '/src/index\\.ts$',
           '^kernel/src/testing\\.ts$',
+          '^kernel/src/db/schema-sync\\.ts$',
           '^modules/workforce/src/contract\\.ts$',
           '^modules/workforce/src/shift-contract\\.ts$',
           '^modules/workforce/src/fiscal-contract\\.ts$',

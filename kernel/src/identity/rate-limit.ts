@@ -64,7 +64,13 @@ export async function withIdentityAttempt<T>(
     await release(owner, reservations);
     throw error;
   }
-  const result = await work();
-  await release(owner, reservations);
-  return result;
+  try {
+    const result = await work();
+    await release(owner, reservations);
+    return result;
+  } catch (error) {
+    // Resource exhaustion is not a bad credential: do not lock out accounts behind a busy process.
+    if (error instanceof DaifukuError && error.httpStatus === 503) await release(owner, reservations);
+    throw error;
+  }
 }

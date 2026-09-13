@@ -57,7 +57,7 @@ export async function seedLegacyDemo(owner: Database): Promise<SeedResult> {
     await tx`select set_config('app.tenant_id', ${tenantId}, true)`;
     await tx`insert into tenants (id, name) values (${tenantId}, ${DEMO_TENANT.tenantName})`;
     await tx`insert into companies (id, tenant_id, code, name) values (${companyId}, ${tenantId}, ${DEMO_TENANT.companyCode}, ${DEMO_TENANT.companyName})`;
-    await tx`insert into users (id, tenant_id, email, name, password_hash, roles, default_company_id) values (${userId}, ${tenantId}, ${DEMO_TENANT.adminEmail}, ${DEMO_TENANT.adminName}, ${hashPassword(DEMO_TENANT.adminPassword)}, '["admin"]'::jsonb, ${companyId})`;
+    await tx`insert into users (id, tenant_id, email, name, password_hash, roles, default_company_id) values (${userId}, ${tenantId}, ${DEMO_TENANT.adminEmail}, ${DEMO_TENANT.adminName}, ${await hashPassword(DEMO_TENANT.adminPassword)}, '["admin"]'::jsonb, ${companyId})`;
   });
   const seededModules: string[] = [];
   // Only modules that existed in the historical fixture may seed its pre-workforce schema.

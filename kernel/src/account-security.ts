@@ -38,7 +38,7 @@ async function lockedSelf(ctx: Context, sessionVersion: number) {
 export async function changeOwnPassword(ctx: Context, sessionVersion: number, raw: unknown): Promise<{ ok: true }> {
   const input = parseAccess(changeOwnPasswordSchema, raw);
   const user = await lockedSelf(ctx, sessionVersion);
-  if (!verifyPassword(input.currentPassword, user.passwordHash))
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash)))
     throw new ValidationError('The current password is incorrect.', [
       { path: 'currentPassword', message: 'Enter your current password.' },
     ]);
@@ -49,7 +49,7 @@ export async function changeOwnPassword(ctx: Context, sessionVersion: number, ra
   await ctx.db
     .update(users)
     .set({
-      passwordHash: hashPassword(input.newPassword),
+      passwordHash: await hashPassword(input.newPassword),
       version: user.version + 1,
       sessionVersion: user.sessionVersion + 1,
     })

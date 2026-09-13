@@ -50,7 +50,7 @@ async function person(name: string, role: string) {
     tenantId: db.tenantId,
     email,
     name,
-    passwordHash: hashPassword('shift-test-password'),
+    passwordHash: await hashPassword('shift-test-password'),
     roles: [],
     defaultCompanyId: db.companyId,
   });

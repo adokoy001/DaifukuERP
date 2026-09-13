@@ -33,6 +33,8 @@ export interface TextOpts extends CommonOpts {
   multiline?: boolean;
   /** Ext fields only (registry.registerExt): include in the generic `search` term. Entity fields use `views.search`. */
   searchable?: boolean;
+  /** Ext text only: scoped B-tree candidate lookup for equality/IN, followed by the full text comparison. */
+  equalityIndex?: boolean;
 }
 export interface IntOpts extends CommonOpts {
   default?: number;

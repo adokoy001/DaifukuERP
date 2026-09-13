@@ -1,6 +1,6 @@
 # 共通 Linux 配布と店舗中継の境界
 
-対応仕様: [deployment-edge](../specs/deployment-edge.md)。実操作は [配備手順](../operations/deployment.md)。
+対応仕様: [deployment-edge](../specs/deployment-edge.md)。実操作は [配備手順](../operations/deployment.md)。APIは[ビルド済みJSと管理ツールの分離](compiled-api.md)に従って配布する。
 
 同じ Linux CPU architecture のクラウド VM とオンプレミスに、同一 SHA256 の release bundle を配置する。Node.js 22、PostgreSQL 16、Caddy、systemd はホスト側の前提で、bundle は OS や DB を作成しない。異なる OS・architecture 間の実行互換性、コンテナ、HA、自動フェイルオーバーは今回の対応に含まない。
 

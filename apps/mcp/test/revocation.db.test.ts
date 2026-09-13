@@ -64,7 +64,7 @@ describe('foundation-refresh MCP identity and current authorization', () => {
       tenantId: db.tenantId,
       name: 'Site scoped employee',
       email: 'site-scope@example.com',
-      passwordHash: hashPassword('password'),
+      passwordHash: await hashPassword('password'),
       roles: ['workforce_employee'],
       defaultCompanyId: db.companyId,
     });
@@ -143,7 +143,7 @@ describe('foundation-refresh MCP identity and current authorization', () => {
       tenantId: db.tenantId,
       name: 'Revocation test',
       email: 'revoke@example.com',
-      passwordHash: hashPassword('password'),
+      passwordHash: await hashPassword('password'),
       roles: ['admin'],
       defaultCompanyId: db.companyId,
     });
@@ -220,7 +220,7 @@ describe('foundation-refresh MCP identity and current authorization', () => {
         tenantId: db.tenantId,
         name: 'Account security',
         email,
-        passwordHash: hashPassword('current-password'),
+        passwordHash: await hashPassword('current-password'),
         roles: [],
         defaultCompanyId: db.companyId,
       });

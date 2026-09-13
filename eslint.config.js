@@ -15,6 +15,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/drizzle/migrations/**',
       '**/*.generated.ts',
+      '.runtime/**',
     ],
   },
   js.configs.recommended,
