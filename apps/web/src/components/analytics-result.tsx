@@ -13,6 +13,10 @@ function chartAxisLabel(node: PivotNode): string {
   const characters = Array.from(label);
   return characters.length > 10 ? `${characters.slice(0, 9).join('')}…` : label;
 }
+function chartScaleLabel(value: number): string {
+  const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  return compact.length <= 8 ? compact : new Intl.NumberFormat('en', { notation: 'scientific', maximumFractionDigits: 1 }).format(value);
+}
 function Paging({ page, pages, onChange, label }: { page: number; pages: number; onChange(value: number): void; label: string }) {
   const { t } = useLocale();
   return <div className="analytics-paging" aria-label={label}><span>{label} {page + 1} / {pages}</span><button className="btn" disabled={page <= 0} type="button" onClick={() => onChange(page - 1)}>{t({ ja: '前へ', en: 'Previous' })}</button><button className="btn" disabled={page >= pages - 1} type="button" onClick={() => onChange(page + 1)}>{t({ ja: '次へ', en: 'Next' })}</button></div>;
@@ -56,8 +60,8 @@ export function AnalyticsChart({ result, settings, dataset }: { result: PivotRes
   const y = (value: number) => 220 - ((value - low) / span) * 180;
   const x = (at: number) => 65 + at * (560 / Math.max(shown.length, 1));
   const title = measure.op === 'rows' ? t(OP_LABELS.rows) : `${t(dataset.measures.find((field) => field.key === measure.field)?.label)} / ${t(OP_LABELS[measure.op])}`;
-  return <section className="analytics-chart" aria-label={title}><div className="panel-heading"><h3>{title}</h3><span className="status-pill">{t({ ja: '行の最下層・全列を対象に集計', en: 'Leaf rows across all columns' })}</span></div>{shown.length ? <><svg viewBox="0 0 800 400" role="img" aria-label={`${title} · ${shown.length} ${t({ ja: 'グループ', en: 'groups' })}`}>
-    {[low, (high + low) / 2, high].map((value, index) => <g key={index}><line x1="58" x2="770" y1={y(value)} y2={y(value)} stroke="#dce4ee" /><text x="52" y={y(value) + 4} textAnchor="end" fontSize="10" fill="#64748b">{new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}</text></g>)}
+  return <section className="analytics-chart" aria-label={title}><div className="panel-heading"><h3>{title}</h3><span className="status-pill">{t({ ja: '行の最下層・全列を対象に集計', en: 'Leaf rows across all columns' })}</span></div>{shown.length ? <><svg viewBox="-80 0 880 400" role="img" aria-label={`${title} · ${shown.length} ${t({ ja: 'グループ', en: 'groups' })}`}>
+    {[low, (high + low) / 2, high].map((value, index) => <g key={index}><line x1="58" x2="770" y1={y(value)} y2={y(value)} stroke="#dce4ee" /><text x="52" y={y(value) + 4} textAnchor="end" fontSize="10" fill="#64748b">{chartScaleLabel(value)}</text></g>)}
     {shown.map((point, at) => { const numeric = values[at]; if (numeric === null || numeric === undefined || !Number.isFinite(numeric)) return null; const prior = values[at - 1]; return <g key={point.node.key}><title>{point.node.path.join(' / ')}: {point.exact}</title>{settings.chart === 'bar' ? <rect x={x(at)} y={Math.min(y(0), y(numeric))} width={Math.max(4, 520 / Math.max(shown.length, 1))} height={Math.max(1, Math.abs(y(numeric) - y(0)))} rx="3" fill={numeric < 0 ? '#ed708a' : '#6366f1'} /> : <>{at > 0 && prior !== null && prior !== undefined && Number.isFinite(prior) ? <line x1={x(at - 1) + 8} y1={y(prior)} x2={x(at) + 8} y2={y(numeric)} stroke="#6366f1" strokeWidth="3" /> : null}<circle cx={x(at) + 8} cy={y(numeric)} r="4" fill="#0ea5a0" /></>}<text transform={`translate(${x(at) + 5},240) rotate(40)`} className="analytics-point-label" data-mobile-hidden={at % Math.ceil(shown.length / 6) !== 0} fontSize="10" fill="#475569">{chartAxisLabel(point.node)}</text></g>; })}
   </svg><p className="muted analytics-footnote">{t({ ja: `軸の順序で先頭${shown.length} / ${leaves.length}グループを表示。省略分はグラフに含みません。数値の詳細は集計表で確認できます。`, en: `Showing the first ${shown.length} of ${leaves.length} groups in axis order. Omitted groups are not charted. Exact values are in the table.` })}</p></> : <p className="muted">{t({ ja: '行の軸を選ぶとグラフを表示します。', en: 'Choose a row dimension to display a chart.' })}</p>}</section>;
 }
