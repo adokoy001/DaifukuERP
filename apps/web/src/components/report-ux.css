@@ -1,0 +1,27 @@
+.report-browse { min-width: 0; }
+.report-browse-toolbar, .report-browse-pages, .report-period-buttons { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem; }
+.report-browse-toolbar label { display: flex; flex-direction: column; gap: .3rem; color: #475569; font-size: .75rem; font-weight: 600; }
+.report-browse-toolbar label:first-child { flex: 1 1 16rem; max-width: 34rem; }
+.report-browse-toolbar select { min-width: 5rem; }
+.report-browse-note { margin: 0; color: #64748b; font-size: .75rem; line-height: 1.6; }
+.report-browse-grid { max-height: min(65vh, 42rem); overscroll-behavior: contain; }
+.report-browse-grid thead { position: sticky; top: 0; z-index: 1; }
+.report-browse-grid th { background: #f0f5fa; }
+.report-sort-button { min-height: 2rem; cursor: pointer; text-align: inherit; color: inherit; }
+.report-sort-button span { margin-left: .3rem; color: #0369a1; }
+.report-sort-button:focus-visible { outline: 2px solid #0284c7; outline-offset: 3px; border-radius: 3px; }
+.report-browse-pages { justify-content: flex-end; align-items: center; padding-top: .3rem; }
+.report-browse-pages label { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: #475569; }
+.report-browse-pages .report-page-number { width: 5rem; }
+.report-period-controls { display: grid; gap: .5rem; padding: .8rem; border: 1px solid #dce8f5; border-radius: .8rem; background: #f5f9ff; }
+@media (max-width: 640px) {
+  .report-browse-pages { justify-content: flex-start; }
+  .report-browse-pages .btn { padding-inline: .65rem; }
+  .report-browse-toolbar label:first-child { max-width: none; }
+  .report-browse-grid { max-height: 65vh; }
+}
+@media print {
+  .report-browse-toolbar, .report-browse-pages, .report-period-controls { display: none; }
+  .report-browse-grid { max-height: none; overflow: visible; }
+  .report-browse-grid thead { position: static; }
+}

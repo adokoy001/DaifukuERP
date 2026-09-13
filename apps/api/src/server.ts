@@ -18,6 +18,7 @@ import { registerAccessAdminRoutes } from './routes/access-admin.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
 import { registerSquarePosRoutes } from './routes/square-pos.ts';
 import { registerWorkforceEvidenceRoutes } from './routes/workforce-evidence.ts';
+import { registerAnalyticsRoutes } from './analytics/routes.ts';
 
 export interface ServerOptions {
   /** Owner connection: login lookups and principal reloads only (ADR-0004). */
@@ -62,6 +63,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerAttachmentRoutes(server, { db: opts.app });
   registerAccessAdminRoutes(server, { db: opts.app });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
+  registerAnalyticsRoutes(server, { db: opts.app });
   await registerSquarePosRoutes(server, { app: opts.app, owner: opts.owner, ...(opts.squarePosConnections ? { connections: opts.squarePosConnections } : {}) });
   return server;
 }

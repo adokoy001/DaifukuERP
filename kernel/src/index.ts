@@ -52,7 +52,7 @@ export { submitDocument, cancelDocument, amendDocument, transitionDocument, find
 export { nextNumber } from './numbering.ts';
 export { writeAudit, auditTrail, type AuditEntry } from './audit.ts';
 export { deliverPending, type DeliveryResult } from './events.ts';
-export { can, assertOp, allowedOps, rowFilter, compileDomain, maskedFields, grantedRoles } from './permissions.ts';
+export { can, assertOp, assertReadableFields, allowedOps, rowFilter, compileDomain, maskedFields, grantedRoles } from './permissions.ts';
 export { registerCrudActions } from './actions/crud.ts';
 export { registerPackActions } from './actions/pack.ts';
 export { applyPack, readAppliedPacks, appliedPacksOf, ensurePackSettings, PACKS_APPLIED_KEY, appliedPacksSchema, type ApplyPackOptions, type ApplyPackResult, type AppliedPack, type AppliedPacks } from './pack.ts';

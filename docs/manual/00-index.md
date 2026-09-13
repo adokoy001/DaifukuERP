@@ -1,4 +1,4 @@
-# 大福帳 ユーザーマニュアル（2026-09-13 商流・銀行・申告準備版）
+# 大福帳 ユーザーマニュアル（2026-09-13 商流・銀行・申告準備・分析版）
 
 **現行の導入は [README](../../README.md)、会社・店舗の権限と本部運営・BIは [付録 E](appendix-e-operations-control.md) を参照してください。** 画面全体の変更は [付録 C](appendix-c-ui-refresh.md)、3業界の操作は [付録 D](appendix-d-industry-templates.md) にあります。付録C/D/E/F/G/H/I/J以外の既存スクリーンショットは旧版のデモ画面です。配置・配色・一部の入力欄は現在と異なります。
 
@@ -8,6 +8,8 @@ Windows/Linux/macOS端末への常駐サービス導入と更新は [エッジ�
 企業向けの認証・POS・連結・FCは [付録H](appendix-h-enterprise-operations.md)、給与税保険・年調・勤務制度は [付録I](appendix-i-fiscal-and-work-systems.md) を参照してください。
 
 見積・受発注・分納・分割請求、銀行明細の確認消込と振込ファイル、財務諸表と給与の申告準備は [付録L](appendix-l-commerce-bank-filing.md) を参照してください。銀行出力は送金ではなく、申告資料の確認は行政への提出ではありません。
+
+レポートの期間入力・検索・ページ移動と、9対象・最大18テンプレートのブラウザ・ピボット分析は [付録M](appendix-m-analytics.md) を参照してください。階層軸・指標・グラフの切替、分析設定の保存と呼出しを説明しています。
 
 新しい従業員・スマホ機能は [付録F](appendix-f-workforce.md)、15業界の業務操作は [付録G](appendix-g-industry-catalog.md)、開発者向けの構造は [AI_INDEX](../../AI_INDEX.md) を参照してください。
 
@@ -73,6 +75,7 @@ Windows/Linux/macOS端末への常駐サービス導入と更新は [エッジ�
 | [付録 J 店舗・機器連携](appendix-j-store-devices.md) | 中継登録、印刷・模擬釣銭、結果確認、クラウド・オンプレ配備 |
 | [付録 K エッジサービスのセットアップ](edge-service-setup.md) | OS別導入・更新・登録解除、ペアリング、監視 |
 | [付録 L 商流・銀行・申告準備](appendix-l-commerce-bank-filing.md) | 分納・分割請求、銀行明細の確認消込、振込出力、BS/PL・給与の準備資料 |
+| [付録 M ピボット分析とレポート](appendix-m-analytics.md) | 対象・期間・階層・指標・グラフ、ブラウザ内の設定保存、帳票の検索・並替え・ページ移動 |
 
 ---
 

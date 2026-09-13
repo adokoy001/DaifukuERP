@@ -62,6 +62,7 @@ function Navigation({ meta }: { meta: AppMeta | undefined }) {
     {meta?.actions.some((a) => a.name === 'edge.board') ? <Link to="/operations/devices" className={LINK} activeProps={ACTIVE}><Icon name="building" size={18} />{t({ ja: '店舗・機器連携', en: 'Store and device links' })}</Link> : null}
     <Link to="/templates" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: '業界テンプレート', en: 'Industry templates' })}</Link>
     {meta?.actions.some((a) => a.name === 'restaurant_chain.operations_snapshot') ? <Link to="/operations" className={LINK} activeProps={ACTIVE} activeOptions={{ exact: true }}><Icon name="building" size={18} />{t({ ja: 'チェーン運営', en: 'Chain operations' })}</Link> : null}
+    <Link to="/analytics" className={LINK} activeProps={ACTIVE}><Icon name="spark" size={18} />{t({ ja: 'ピボット分析', en: 'Pivot analytics' })}</Link>
     {reports.length ? <Link to="/reports" className={LINK} activeProps={ACTIVE}><Icon name="chart" size={18} />{t({ ja: 'BI・レポート', en: 'BI and reports' })}</Link> : null}
     {me.data?.user.tenantAdmin ? <Link to="/admin/users" className={LINK} activeProps={ACTIVE}><Icon name="people" size={18} />{t({ ja: '利用者と権限', en: 'Users and access' })}</Link> : null}
     <div className="nav-caption">{t({ ja: '業務メニュー', en: 'Your business' })}</div>

@@ -9,9 +9,10 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 規約 | meta / 出力の形 | UI がすること | 実装 |
 |---|---|---|---|
 | レポート | アクションの `resultKind: 'table'`（出力が TableResult、docs/conventions/reports.md） | サイドバー「レポート」と `/r/<action>`。入力フォームは `inputSchema` から | `api/reports.ts`, `pages/report-page.tsx` |
-| レポートの入力 | `inputSchema` のプロパティ名 | `from`/`to`/`date`/`…Date` は日付入力、`<entity>Id`（snake_case にしたエンティティが /meta にある）は ref 検索 | `lib/schema.ts` |
+| レポートの入力 | `inputSchema` のプロパティ名 | `from`/`to`/`date`/`…Date` は日付入力、`<entity>Id`（snake_case にしたエンティティが /meta にある）は ref 検索。レポート画面は明示default/titleを保持し、認識できる日付・年月・年を補完する | `lib/schema.ts`、`lib/report.ts` |
 | レポートの題名 | `description` の最初の文 | `試算表を返します。…` → 「試算表」 | `lib/report.ts reportTitle` |
 | レポートの合計 | `totals` のキー | 列 key と一致 → 表の合計行。一致しない（`output_tax_total` など）→ 表の下に「合計」のキー・値リスト（キーはそのまま、値は小数の表示規則）。CSV も同じ順で末尾に `key,value` 行 | `lib/report.ts columnTotals / extraTotals`, `lib/csv.ts`（web-phase15 AC-7） |
+| レポート結果の操作 | 受信した `TableResult.rows` | 結果内検索・小数の正確な並替え・25/50行ページング。合計は再計算せず、元の帳票全体の集計値として表示 | `lib/report.ts reportRowsPage`、`components/report-table.tsx` |
 | 明細グリッド | document の `lines: [{ entity, parentField }]` | ヘッダの下に明細ごとのグリッド。列は明細エンティティの `views.list`。ただし kernel 既定（非 hidden の先頭 6 項目）と同じ並びは「未宣言」とみなし全項目。親 ref と `seq` は出さない。必須かつ既定値なしの項目は必ず列に足す | `lib/lines.ts gridColumns` |
 | 多相参照（明細セル） | 明細の uuid/text 項目 `<x>Id` と、同じ明細の enum 項目 `<x>Entity`（値が /meta のエンティティ名） | id 入力の下に参照先の `number`（無ければ displayField）をリンクで表示（例: `payment_allocation.invoiceId` + `invoiceEntity` → INV-2026-000006） | `lib/lines.ts polymorphicTarget`, `components/line-grid.tsx`（web-phase15） |
 | ext フィールド | `EntityMeta.extFields[]`（`name: 'ext.<key>'`、ADR-0014） | フォームの「追加項目」fieldset に同じウィジェットで描画。値は `row.ext[key]`。保存時は `ext` を丸ごと送る（kernel が置換するため、フォームに無いキーは記録の値を残す。空欄はキー削除）。update は ext の値が変わったときだけ `patch.ext` を付ける | `lib/ext.ts`, `components/record-form.tsx`（web-phase15 AC-3） |
@@ -33,6 +34,16 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 取消確認の任意 `correctionDate` | 送信時の実入力を取得。空欄はキーを省略して元日付、指定時は訂正日で取消を依頼する | `components/action-confirm.tsx` |
 
 操作の変更点はユーザーマニュアルの [新UI補遺](../manual/appendix-c-ui-refresh.md) を参照。小数の表示桁と利用可能な業務通貨は別の契約であり、現在の請求・決済フローは JPY のみ。
+
+## レポートとピボットの入力・表示
+
+既存の `/r/<action>` ではスキーマの明示defaultを優先し、未指定の `date` 型 `from` を当月1日、`to` / `asOf` / `date` を今日へ補完する。`text` 型 `period` / `month` は `YYYY-MM`、数値型 `year` は西暦年。日本時間を使い、会社の会計年度・参照UUID・業務設定を作らない。生成された項目名だけを日本語ラベルへ置き換え、明示title・descriptionを保持する。初期補完は画面が送る入力であり、未指定の場合にサーバーが解決する会計年度の既定値とは別。
+
+日付範囲には今月・先月・直近12か月、年月には今月・先月、基準日だけなら今日・先月末、年だけなら今年・前年の簡単入力を出す。12か月は当月を含む月初から今日まで。送信前に認識できる日付の実在性と `from <= to` を検証し、API側の検証も維持する。
+
+結果内検索・並替え・ページングは追加取得しない。金額と整数の比較は十進文字列で行い、同値は受信した行のindexで安定させ、空値は昇順・降順とも最後に置く。受信行数・一致行数・表示範囲を示す。新しい結果では検索・並替え・ページを初期化し、検索・並替え・ページサイズ変更でも先頭へ戻す。`totals` と参照リンクは保持する。入力条件の変更は前回結果との不一致を表示し、再実行までCSV出力を止める。結果内検索はCSVの対象条件を変更しない。
+
+ピボットは `/analytics` の専用画面で、既存の `TableResult` の合計を再集計する機能ではない。APIの許可対象・項目・初期状態を使い、対象切替で軸と指標を初期化する。行列各3階層・指標3個、Workerでの十進集計、最大5万行と10万集計状態、相対期間と保存設定の分離を保つ。表は行50・列12グループずつ、グラフは行の最下層を軸順に先頭24個まで表示する。保存は同じブラウザの利用者・tenant・会社ごとの設定のみで、端末間共有ではない。詳細は [分析の構造](../architecture/reporting-pivot.md)、操作は [付録M](../manual/appendix-m-analytics.md) を参照。
 
 ## 消込（allocation）
 
