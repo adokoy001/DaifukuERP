@@ -71,7 +71,7 @@ describe('MFA and one-use identity state', () => {
     );
     codes = result.recoveryCodes;
     expect((await user())?.sessionVersion).toBe(identity.sessionVersion + 1);
-    expect((await user())?.mfaEnabled).toBe(1);
+    expect((await user())?.mfaEnabled).toBe(true);
     const [factor] = await db.owner.drizzle.select().from(identityFactors);
     expect(factor?.secretCipher).not.toContain(secret);
     expect(factor?.recoveryHashes).toEqual(codes.map(tokenHash));
@@ -119,7 +119,7 @@ describe('MFA and one-use identity state', () => {
     await expect(completeMfaLogin(db.owner, challenge.challengeToken, codes[2] ?? '', key, now)).rejects.toMatchObject({
       httpStatus: 401,
     });
-    expect((await user())?.mfaEnabled).toBe(0);
+    expect((await user())?.mfaEnabled).toBe(false);
     const audit = JSON.stringify(await db.owner.drizzle.select().from(auditLog));
     for (const value of [secret, ...codes]) expect(audit).not.toContain(value);
   });

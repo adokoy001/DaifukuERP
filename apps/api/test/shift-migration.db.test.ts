@@ -1,14 +1,14 @@
 // Upgrade real 0010 facts before loading current workforce hooks.
 import { rmSync } from 'node:fs';
-import { connect, dropAll, newId, runMigrations, type Database } from '@daifuku/kernel';
+import { connect, dropAll, newId, type Database } from '@daifuku/kernel';
 import { APP_URL, OWNER_URL } from '@daifuku/kernel/testing';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import '../src/modules.ts';
-import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
-import { legacyMigrationFolder } from './legacy-fixture.ts';
-const owner = connect(OWNER_URL, { max: 1 });
+import { readJournal } from '../src/db/migrations.ts';
+import { expectedBooleanUserFacts, legacyMigrationFolder, upgradeLegacyConnection } from './legacy-fixture.ts';
+let owner = connect(OWNER_URL, { max: 1 });
 const app = connect(APP_URL, { max: 1 });
 const previous = legacyMigrationFolder(10);
 const tables = [
@@ -55,15 +55,16 @@ const facts = () =>
       await tx`select id,tenant_id,email,name,password_hash,roles,default_company_id,active,tenant_admin,version,session_version,created_at from users order by id`,
   }));
 it('preserves populated 0010 employee, approved attendance and leave facts; adds empty protected shift tables idempotently', async () => {
-  const before = await facts();
-  await runMigrations(owner, MIGRATIONS_DIR);
+  const original = await facts();
+  const before = { ...original, users: expectedBooleanUserFacts(original.users) };
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   for (const name of tables) {
     expect((await scoped(app, tenant, (tx) => tx`select count(*)::int n from ${tx(name)}`))[0]?.n).toBe(0);
     const [policy] = await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where relname=${name}`;
     expect(policy).toMatchObject({ relrowsecurity: true, relforcerowsecurity: true });
   }
-  await runMigrations(owner, MIGRATIONS_DIR);
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
     readJournal().entries.length,

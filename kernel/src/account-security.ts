@@ -31,7 +31,7 @@ async function lockedSelf(ctx: Context, sessionVersion: number) {
     .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, actorUser(ctx))))
     .limit(1)
     .for('update');
-  if (!user || user.active !== 1 || user.sessionVersion !== sessionVersion) throw expiredSession();
+  if (!user || !user.active || user.sessionVersion !== sessionVersion) throw expiredSession();
   return user;
 }
 

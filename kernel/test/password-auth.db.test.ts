@@ -69,7 +69,7 @@ describe('password hash upgrade under real database concurrency', () => {
     const malformed = await account(legacy + '$extra');
     expect(await authenticate(db.owner, malformed.email, password, db.tenantId)).toBeNull();
     expect((await stored(malformed.id)).passwordHash).toBe(legacy + '$extra');
-    await db.owner.drizzle.update(users).set({ active: 0 }).where(eq(users.id, user.id));
+    await db.owner.drizzle.update(users).set({ active: false }).where(eq(users.id, user.id));
     expect(await authenticate(db.owner, user.email, password, db.tenantId)).toBeNull();
     expect((await stored(user.id)).passwordHash).toBe(legacy);
   });
@@ -100,7 +100,7 @@ describe('password hash upgrade under real database concurrency', () => {
         const replacement = mutation === 'reset' ? await original('Synthetic-reset-replacement') : legacy;
         await db.owner.drizzle
           .update(users)
-          .set({ passwordHash: replacement, active: mutation === 'deactivate' ? 0 : 1, version: 8, sessionVersion: 5 })
+          .set({ passwordHash: replacement, active: mutation !== 'deactivate', version: 8, sessionVersion: 5 })
           .where(eq(users.id, user.id));
         const protectedRow = await stored(user.id);
         resume.resolve();

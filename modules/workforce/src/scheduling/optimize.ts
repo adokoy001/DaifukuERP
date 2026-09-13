@@ -1,3 +1,6 @@
+// Pure, seeded and bounded shift recommendation for browser execution; this is a heuristic, not an optimality proof.
+// Locked assignments are preserved; invalid locked input is reported, and search rejects hard-rule violations.
+// Contract: docs/specs/employee-shift-planner.md; evidence: modules/workforce/test/shift-oracle.test.ts.
 import {
   DEFAULT_ITERATIONS,
   MAX_ITERATIONS,

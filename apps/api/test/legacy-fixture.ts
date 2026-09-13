@@ -2,7 +2,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hashPassword, newId, systemParams, withContext, type Database } from '@daifuku/kernel';
+import { connect, hashPassword, newId, runMigrations, systemParams, withContext, type Database } from '@daifuku/kernel';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { modules } from '../src/modules.ts';
 import { DEMO_TENANT, type SeedResult } from '../src/db/reset.ts';
@@ -68,4 +68,25 @@ export async function seedLegacyDemo(owner: Database): Promise<SeedResult> {
       seededModules.push(module.name);
     }
   return { tenantId, companyId, userId, seededModules };
+}
+
+/** Expected representation after 0017 only. Never normalize actual rows or other historical facts. */
+export function expectedBooleanUserFacts(rows: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const expected = { ...row };
+    for (const key of ['active', 'tenant_admin', 'mfa_enabled']) {
+      if (!(key in row)) continue;
+      const value = row[key];
+      if (value !== 0 && value !== 1) throw new Error(`Historical user flag ${key} must be 0 or 1`);
+      expected[key] = value === 1;
+    }
+    return expected;
+  });
+}
+
+/** ALTER TYPE invalidates prepared result types. Reconnect like the stopped-application upgrade procedure. */
+export async function upgradeLegacyConnection(owner: Database, ownerUrl: string): Promise<Database> {
+  await runMigrations(owner, MIGRATIONS_DIR);
+  await owner.close();
+  return connect(ownerUrl, { max: 1 });
 }

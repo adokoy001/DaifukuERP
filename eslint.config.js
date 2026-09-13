@@ -21,6 +21,9 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    rules: { 'one-var': ['error', 'never'] },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       // --- type discipline ---

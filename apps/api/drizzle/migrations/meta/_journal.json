@@ -120,6 +120,13 @@
       "when": 1789314423769,
       "tag": "0016_ext_equality_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789318695565,
+      "tag": "0017_system_boolean_flags",
+      "breakpoints": true
     }
   ]
 }

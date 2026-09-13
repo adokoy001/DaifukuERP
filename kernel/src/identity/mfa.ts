@@ -42,7 +42,7 @@ export async function verifyFactor(
     .where(and(eq(identityFactors.tenantId, ctx.tenantId), eq(identityFactors.userId, user.id)))
     .limit(1)
     .for('update');
-  if (!factor || user.mfaEnabled !== 1) throw identityDenied();
+  if (!factor || !user.mfaEnabled) throw identityDenied();
   const hash = tokenHash(code);
   const recovery = factor.recoveryHashes.includes(hash);
   const step = recovery
@@ -66,7 +66,7 @@ export async function identitySecurity(ctx: Context, sessionVersion: number) {
     .select({ providerId: identityLinks.providerId, issuer: identityLinks.issuer })
     .from(identityLinks)
     .where(and(eq(identityLinks.tenantId, ctx.tenantId), eq(identityLinks.userId, user.id)));
-  return { mfaEnabled: user.mfaEnabled === 1, recoveryCodesRemaining: factor?.recoveryHashes.length ?? 0, identities };
+  return { mfaEnabled: user.mfaEnabled, recoveryCodesRemaining: factor?.recoveryHashes.length ?? 0, identities };
 }
 export async function stepUpIdentity(
   ctx: Context,
@@ -80,13 +80,13 @@ export async function stepUpIdentity(
     throw new ValidationError('The current password is incorrect.', [
       { path: 'currentPassword', message: 'Enter your current password.' },
     ]);
-  if (user.mfaEnabled === 1) await verifyFactor(ctx, user, code ?? '', key);
+  if (user.mfaEnabled) await verifyFactor(ctx, user, code ?? '', key);
   return { stepUpToken: await issueChallenge(ctx, 'stepup', user.id, { sessionVersion }, 300), expiresIn: 300 };
 }
 export async function beginMfa(ctx: Context, sessionVersion: number, stepUpToken: string, key: string) {
   const user = await lockIdentity(ctx, sessionVersion);
   await consumeStepUp(ctx, stepUpToken, sessionVersion);
-  if (user.mfaEnabled === 1)
+  if (user.mfaEnabled)
     throw new StateError(
       'MFA is already enabled.',
       'Keep the existing authenticator or disable it with current verification first.',
@@ -122,7 +122,7 @@ export async function confirmMfa(
       )
         throw identityDenied();
       const user = await lockIdentity(ctx, current.sessionVersion);
-      if (user.mfaEnabled === 1 || typeof challenge.payload.secretCipher !== 'string') throw identityDenied();
+      if (user.mfaEnabled || typeof challenge.payload.secretCipher !== 'string') throw identityDenied();
       const secret = unseal(challenge.payload.secretCipher, key, aad(ctx.tenantId, user.id, 'setup'));
       const step = matchingTotpStep(secret, code, ctx.now());
       if (step === null) throw invalidCode();
@@ -134,7 +134,7 @@ export async function confirmMfa(
         lastStep: step,
         recoveryHashes: codes.map(tokenHash),
       });
-      await ctx.db.update(users).set({ mfaEnabled: 1 }).where(eq(users.id, user.id));
+      await ctx.db.update(users).set({ mfaEnabled: true }).where(eq(users.id, user.id));
       await revokeIdentity(ctx, user);
       await authAudit(ctx, user.id, 'mfa_enabled');
       return { ok: true as const, recoveryCodes: codes };
@@ -150,11 +150,11 @@ export async function changeMfa(
 ) {
   const user = await lockIdentity(ctx, sessionVersion);
   await consumeStepUp(ctx, stepUpToken, sessionVersion);
-  if (user.mfaEnabled !== 1) throw identityDenied();
+  if (!user.mfaEnabled) throw identityDenied();
   const codes = mode === 'recovery' ? recoveryCodes() : [];
   if (mode === 'disable') {
     await ctx.db.delete(identityFactors).where(eq(identityFactors.userId, user.id));
-    await ctx.db.update(users).set({ mfaEnabled: 0 }).where(eq(users.id, user.id));
+    await ctx.db.update(users).set({ mfaEnabled: false }).where(eq(users.id, user.id));
   } else
     await ctx.db
       .update(identityFactors)
@@ -166,7 +166,7 @@ export async function changeMfa(
 }
 export async function beginMfaLogin(ctx: Context, identity: IdentitySession) {
   const user = await lockIdentity(ctx, identity.sessionVersion, identity.userId);
-  if (user.mfaEnabled !== 1) throw identityDenied();
+  if (!user.mfaEnabled) throw identityDenied();
   return {
     mfaRequired: true as const,
     challengeToken: await issueChallenge(ctx, 'mfa_login', user.id, { sessionVersion: user.sessionVersion }, 300),

@@ -115,8 +115,8 @@ describe('signed Square API delivery', () => {
     const invalidMoney = await post(body('zero', 'MERCHANT', 0));
     expect(invalidMoney.statusCode, invalidMoney.body).toBe(202);
     expect(invalidMoney.json().status).toBe('blocked');
-    await db.owner.sql`update users set active=0 where id=${db.adminUserId}`;
+    await db.owner.sql`update users set active = false where id=${db.adminUserId}`;
     expect((await post(body('revoked'))).statusCode).toBe(403);
-    await db.owner.sql`update users set active=1 where id=${db.adminUserId}`;
+    await db.owner.sql`update users set active = true where id=${db.adminUserId}`;
   });
 });

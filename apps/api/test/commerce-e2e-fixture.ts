@@ -42,7 +42,7 @@ async function main() {
       await owner.sql`select pg_get_userbyid(datdba)=current_user as owner from pg_database where datname=current_database()`;
     if (!database?.owner || !role || role.rolsuper || role.rolbypassrls) fail();
     const [user] = await owner.sql`select tenant_admin,active from users where id=${userId} and tenant_id=${tenantId}`;
-    if (user?.tenant_admin !== 1 || user.active !== 1) fail();
+    if (user?.tenant_admin !== true || user.active !== true) fail();
     const companies = await owner.sql.begin(async (sql) => {
       const rows = [];
       for (const suffix of ['A', 'B']) {

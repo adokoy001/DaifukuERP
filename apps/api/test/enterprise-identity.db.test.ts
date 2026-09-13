@@ -173,7 +173,7 @@ describe('MFA, invitation and reset HTTP boundaries', () => {
       (await post('password-reset/complete', { token: resetToken, newPassword: 'other-password-value' })).statusCode,
     ).toBe(401);
     expect((await security(token)).statusCode).toBe(401);
-    expect((await db.owner.drizzle.select().from(users).where(eq(users.id, db.adminUserId)))[0]?.mfaEnabled).toBe(1);
+    expect((await db.owner.drizzle.select().from(users).where(eq(users.id, db.adminUserId)))[0]?.mfaEnabled).toBe(true);
     expect((await post('login', { email: 'admin@example.com', password: 'new-password-value' })).json()).toMatchObject({
       mfaRequired: true,
     });

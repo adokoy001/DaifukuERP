@@ -1,3 +1,6 @@
+// Process-local budget for password derivation; active work holds its slot until the promise settles.
+// Waiting jobs that time out are removed before starting, so rejected requests cannot consume crypto work later.
+// Contract: docs/specs/review-hardening.md; evidence: kernel/test/password-work-queue.test.ts.
 import { DaifukuError } from './errors.ts';
 
 export function passwordWorkUnavailable(): DaifukuError {

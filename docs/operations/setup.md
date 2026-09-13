@@ -87,7 +87,7 @@ node --env-file=/home/operator/daifuku-ops/runtime.env \
 
 API 等を止め、レビューした新しい配布版へ切り替えます。migration SQL の既存ファイルを書き換えず、既存の `JWT_SECRET` と同じ接続情報を持つ新しい0600入力 env を作ります。`RESTORE_CHECK_URL` は今回用に管理者が新規作成した空 DB に変更します。入力 env 自体は CLI が上書きしません。
 
-現在の移行先は `0015_payroll_rule_versions.sql` です。給与制度の導入確認を保持する表を追加し、旧制度行・給与・年調・申告準備資料を再計算しません。更新後は給与本部で制度の出典と適用期間を確認し、会社ごとに導入記録を追加できます。既存の2026制度は内容一致を検査してそのまま利用できます。[給与構造](../architecture/payroll-automation.md) と [操作](../manual/appendix-i-fiscal-and-work-systems.md) を参照してください。
+最新の移行内容と適用前の条件は [基盤のboolean移行](#基盤のboolean移行) を確認してください。先行する `0015_payroll_rule_versions.sql` は給与制度の導入確認を保持する表を追加し、旧制度行・給与・年調・申告準備資料を再計算しません。更新後は給与本部で制度の出典と適用期間を確認し、会社ごとに導入記録を追加できます。既存の2026制度は内容一致を検査してそのまま利用できます。[給与構造](../architecture/payroll-automation.md) と [操作](../manual/appendix-i-fiscal-and-work-systems.md) を参照してください。
 
 先行する `0014_commerce_finance.sql` は商流・銀行・申告準備の19表を追加します。既存の伝票を新しい商流や銀行照合へ自動変換しません。更新後はロール、元の残高・伝票、新しい画面の初期設定を確認します。[構造と操作の入口](../architecture/commerce-finance.md)。
 
@@ -110,6 +110,14 @@ pnpm run setup upgrade \
 | `STATE_TARGET` / `IDENTITY_CHANGED` | 正しい対象・初回指定・state-dir を選択。state の別 DB 流用は禁止 |
 | `STATE_MODE` | 未完了の `install` は `install`、`upgrade` は `upgrade` で再開。初回管理者作成を飛ばして更新へ進めない |
 | `RUNTIME_CONFIG_CHANGED` / `RUNTIME_CONFIG_MISSING` / `RUNTIME_CONFIG_INVALID` | 保管済みの実設定を確認・復元。JWT を再生成して上書きしない |
+
+### 基盤のboolean移行
+
+[`0017_system_boolean_flags.sql`](../../apps/api/drizzle/migrations/0017_system_boolean_flags.sql) は、利用者の有効・テナント管理者・MFA有効、拡張項目の必須、リレー資格情報の有効という5列を整数の0/1からPostgreSQL booleanへ変更します。外部APIの真偽値や業務Entityのboolean項目はそのままです。既存行がある前提で、テーブルをロックして全行が0/1であることを検査し、想定外の値は変換せず失敗させます。既定値とリレーの有効資格情報の一意性を保持し、業務レコードやパスワードを作り直しません。仕様は [一貫性調整](../specs/source-consistency.md) を参照してください。
+
+旧版のSQLと新しいboolean列は互換ではありません。API・メールworker・MCP等のDB利用元を停止し、現行版と秘密・添付・DBのbackupを保全して別DBへの復元を確認した後、新版のsetupで更新し、同じ新版のAPI等を起動します。旧版と新版を同時に動かすrolling updateは行いません。先行する `0016_ext_equality_indexes.sql` のJAN生成列・索引追加も含め、テーブルの大きさに応じた保守時間と空き容量を用意します。
+
+更新後は管理者・一般利用者のログイン、会社と権限の分離、MFA、失効済み資格情報の拒否を確認します。不正な既存値が原因なら元の値と監査記録を調べ、migration履歴の書換えや全行の一括true化で回避しません。旧版へ戻す場合は旧版と検証済み旧DBを組み合わせ、更新後の変更を失う範囲を確認して別DBへ復元します。新形式のパスワードハッシュに関する互換条件も [認証運用](enterprise-identity.md#パスワードハッシュの強度と更新) に従います。
 
 ## 4. 復元した DB で回復を確認する
 

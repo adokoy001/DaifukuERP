@@ -2,6 +2,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   foreignKey,
   index,
   integer,
@@ -72,11 +73,11 @@ export const users = pgTable(
       .default(sql`'[]'::jsonb`)
       .$type<string[]>(),
     defaultCompanyId: uuid('default_company_id'),
-    active: integer('active').notNull().default(1),
-    tenantAdmin: integer('tenant_admin').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    tenantAdmin: boolean('tenant_admin').notNull().default(false),
     version: integer('version').notNull().default(1),
     sessionVersion: integer('session_version').notNull().default(1),
-    mfaEnabled: integer('mfa_enabled').notNull().default(0),
+    mfaEnabled: boolean('mfa_enabled').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (t) => [
@@ -195,7 +196,7 @@ export const extFieldDefinitions = pgTable(
     kind: text('kind').notNull(),
     label: jsonb('label').notNull(),
     owner: text('owner').notNull(),
-    required: integer('required').notNull().default(0),
+    required: boolean('required').notNull().default(false),
     options: jsonb('options'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },

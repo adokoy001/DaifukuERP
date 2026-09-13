@@ -33,7 +33,7 @@ beforeAll(async () => {
   await db.owner
     .sql`insert into companies (id, tenant_id, code, name) values (${other}, ${db.tenantId}, 'T2', 'Second company')`;
   await db.owner
-    .sql`insert into users (id, tenant_id, name, email, tenant_admin) values (${userId}, ${db.tenantId}, 'Member', 'member@example.invalid', 0)`;
+    .sql`insert into users (id, tenant_id, name, email, tenant_admin) values (${userId}, ${db.tenantId}, 'Member', 'member@example.invalid', false)`;
   await db.owner
     .sql`insert into user_company_memberships (tenant_id, user_id, company_id, roles) values (${db.tenantId}, ${userId}, ${db.companyId}, '["writer"]'), (${db.tenantId}, ${userId}, ${other}, '["reader"]')`;
   foreign = (
@@ -120,21 +120,21 @@ describe('company authorization port', () => {
     });
   });
   it('requires the current MFA state even when a copied password-only Context has a valid session generation', async () => {
-    await db.owner.sql`update users set mfa_enabled = 1 where id = ${userId}`;
+    await db.owner.sql`update users set mfa_enabled = true where id = ${userId}`;
     await expect(db.run(asUser(), authorizedCompanies)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     await db.run({ ...asUser(), mfaVerified: true }, (ctx) =>
       withAuthorizedCompany(ctx, db.companyId, async (child) => {
         expect(child.mfaVerified).toBe(true);
       }),
     );
-    await db.owner.sql`update users set mfa_enabled = 0 where id = ${userId}`;
+    await db.owner.sql`update users set mfa_enabled = false where id = ${userId}`;
   });
   it('rejects inactive users and stale sessions despite a copied admin role', async () => {
     await db.owner.sql`update users set session_version = 2 where id = ${userId}`;
     await expect(db.run(asUser(), authorizedCompanies)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await db.owner.sql`update users set session_version = 1, active = 0 where id = ${userId}`;
+    await db.owner.sql`update users set session_version = 1, active = false where id = ${userId}`;
     await expect(db.run(asUser(), authorizedCompanies)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await db.owner.sql`update users set active = 1 where id = ${userId}`;
+    await db.owner.sql`update users set active = true where id = ${userId}`;
   });
   it('loads current tenant administrator and rolls child writes back with the parent', async () => {
     await db.run({ tenantAdmin: false, roles: [] }, async (ctx) => {

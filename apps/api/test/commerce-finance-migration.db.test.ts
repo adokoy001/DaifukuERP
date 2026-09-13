@@ -1,13 +1,13 @@
 import { rmSync } from 'node:fs';
-import { connect, dropAll, hashPassword, newId, runMigrations } from '@daifuku/kernel';
+import { connect, dropAll, hashPassword, newId } from '@daifuku/kernel';
 import { APP_URL, OWNER_URL } from '@daifuku/kernel/testing';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import '../src/modules.ts';
-import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
-import { legacyMigrationFolder } from './legacy-fixture.ts';
+import { readJournal } from '../src/db/migrations.ts';
+import { expectedBooleanUserFacts, legacyMigrationFolder, upgradeLegacyConnection } from './legacy-fixture.ts';
 
-const owner = connect(OWNER_URL, { max: 1 });
+let owner = connect(OWNER_URL, { max: 1 });
 const app = connect(APP_URL, { max: 1 });
 const previous = legacyMigrationFolder(13);
 const tenant = newId();
@@ -77,8 +77,9 @@ const facts = () =>
     };
   });
 it('upgrades populated 0013 without changing invoices, payment facts, MFA or registered relays', async () => {
-  const before = await facts();
-  await runMigrations(owner, MIGRATIONS_DIR);
+  const original = await facts();
+  const before = { ...original, users: expectedBooleanUserFacts(original.users) };
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   for (const table of newTables) {
     expect(
@@ -93,7 +94,7 @@ it('upgrades populated 0013 without changing invoices, payment facts, MFA or reg
       )[0]?.n,
     ).toBe(0);
   }
-  await runMigrations(owner, MIGRATIONS_DIR);
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
     readJournal().entries.length,

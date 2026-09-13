@@ -43,8 +43,8 @@ export function publicManagedUser(user: typeof users.$inferSelect) {
     id: user.id,
     email: user.email,
     name: user.name,
-    active: user.active === 1,
-    tenantAdmin: user.tenantAdmin === 1,
+    active: user.active,
+    tenantAdmin: user.tenantAdmin,
     defaultCompanyId: user.defaultCompanyId,
     version: user.version,
   };
@@ -62,7 +62,7 @@ export async function assertAccessAdmin(ctx: Context, lock = false): Promise<voi
     .from(users)
     .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, actorUser(ctx))))
     .limit(1);
-  if (!actor || actor.active !== 1 || actor.admin !== 1 || (ctx.accessScope && ctx.accessScope !== 'all'))
+  if (!actor || !actor.active || !actor.admin || (ctx.accessScope && ctx.accessScope !== 'all'))
     throw new PermissionDenied('access_admin', 'manage', ctx.roles);
 }
 export async function managedUser(ctx: Context, id: string) {

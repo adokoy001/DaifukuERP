@@ -7,6 +7,10 @@ import type { Database } from './client.ts';
 import { NON_TENANT_TABLES } from './system-tables.ts';
 import { APP_ROLE } from './table.ts';
 
+/**
+ * Use a dedicated owner connection while application writers are stopped; the caller owns and closes it.
+ * After column type changes, reopen data connections instead of reusing prepared queries from the old schema.
+ */
 export async function runMigrations(owner: Database, migrationsFolder: string): Promise<void> {
   await drizzleMigrate(owner.drizzle, { migrationsFolder });
   await enforcePolicies(owner);
