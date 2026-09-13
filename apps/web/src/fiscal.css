@@ -40,6 +40,13 @@
 .fiscal-evidence dd {
   margin: 0;
 }
+.payroll-rule-period {
+  display: contents;
+}
+.payroll-rule-details code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .work-system-calendar .input {
   min-width: 82px;
 }

@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getUser } from '../api/client.ts';
-import { useFiscalBoard, type FiscalBoard } from '../api/fiscal.ts';
+import { useFiscalBoard, usePayrollRuleCatalog, type FiscalBoard } from '../api/fiscal.ts';
 import { useMeta } from '../api/queries.ts';
 import { useManagementPortal, type PayrollSummary } from '../api/workforce.ts';
-import { useWorkforceTask } from '../api/workforce-query.ts';
 import { FiscalConditions } from '../components/fiscal-conditions.tsx';
 import { FiscalPayrollCalculate, FiscalPayrollEvidence } from '../components/fiscal-payroll.tsx';
 import { FiscalYearEnd } from '../components/fiscal-year-end.tsx';
+import { PayrollRuleManager } from '../components/payroll-rule-manager.tsx';
 import { WorkforcePayroll } from '../components/workforce-payroll.tsx';
 import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
 import { WorkforceHero, WorkforceTabs } from '../components/workforce-shell.tsx';
@@ -15,6 +15,7 @@ import { WorkforceEmpty, WorkforceError, WorkforcePanel } from '../components/wo
 import { useLocale } from '../i18n.tsx';
 import { businessToday } from '../lib/operations.ts';
 import { canRetainData } from '../lib/read-recovery.ts';
+import { supportedPayrollBundle, supportedYearEndBundle } from '../lib/payroll-rules.ts';
 import { LoadingView } from './status-views.tsx';
 import '../fiscal.css';
 const lastMonth = () => {
@@ -31,9 +32,9 @@ const tabs = [
 ];
 export function FiscalPage() {
   const { t } = useLocale(),
-    meta = useMeta(),
-    task = useWorkforceTask();
+    meta = useMeta();
   const [tab, setTab] = useState('conditions'),
+    [taxYear, setTaxYear] = useState<number>(),
     [period, setPeriod] = useState(lastMonth),
     [employeeId, setEmployeeId] = useState('');
   const [calculate, setCalculate] = useState<{
@@ -43,10 +44,17 @@ export function FiscalPage() {
     [evidence, setEvidence] = useState<PayrollSummary>();
   const actions = meta.data?.actions.map((action) => action.name) ?? [],
     allowed = actions.includes('workforce.fiscal_board'),
-    fiscal = useFiscalBoard(allowed),
+    canViewRules = actions.includes('workforce.payroll_rule_catalog'),
+    catalog = usePayrollRuleCatalog(canViewRules),
+    fiscal = useFiscalBoard(allowed, taxYear),
     payroll = useManagementPortal(period, allowed);
+  useEffect(() => {
+    if (taxYear === undefined && fiscal.data) setTaxYear(fiscal.data.taxYear);
+  }, [fiscal.data, taxYear]);
   if (!meta.data && !meta.isError) return <LoadingView />;
-  const failed = [meta, fiscal, payroll].find((source) => source.isError && !canRetainData(source));
+  const requiredSources = [meta, fiscal, payroll],
+    sources = [...requiredSources, ...(canViewRules ? [catalog] : [])];
+  const failed = requiredSources.find((source) => source.isError && !canRetainData(source));
   if (failed)
     return (
       <div className="workspace-page workforce-page">
@@ -56,6 +64,7 @@ export function FiscalPage() {
             void meta.refetch();
             void fiscal.refetch();
             void payroll.refetch();
+            if (canViewRules) void catalog.refetch();
           }}
         />
       </div>
@@ -77,11 +86,18 @@ export function FiscalPage() {
     selected = data.employees.find((employee) => employee.id === employeeId),
     visible = payrolls.filter((row) => !selected || row.employeeId === selected.id),
     selfEmployeeId = payroll.data.employees.find((employee) => employee.userId === getUser()?.id)?.id;
+  const selectedYear = data.taxYear,
+    bundles = canViewRules && !catalog.isError ? (catalog.data?.bundles ?? []) : [],
+    payrollRule = supportedPayrollBundle(bundles, selectedYear, period),
+    yearEndRule = supportedYearEndBundle(bundles, selectedYear),
+    years = [...new Set([selectedYear, ...data.availableTaxYears, ...bundles.map((bundle) => bundle.taxYear)])].sort(
+      (a, b) => b - a,
+    );
   const prior = selected
     ? payrolls.find((row) => row.employeeId === selected.id && row.status !== 'cancelled')
     : undefined;
   return (
-    <ReadRecoveryProvider sources={[meta, fiscal, payroll]}>
+    <ReadRecoveryProvider sources={sources}>
       <div className="workspace-page workforce-page" data-testid="fiscal-management">
         <ReadRefreshNotice />
         <WorkforceHero
@@ -93,12 +109,27 @@ export function FiscalPage() {
           management
           side={
             <>
-              <strong>2026</strong>
+              <strong>{selectedYear}</strong>
               <span>{t({ ja: '国内給与・年末調整', en: 'Japanese payroll and year-end' })}</span>
             </>
           }
         />
         <div className="fiscal-toolbar">
+          <label>
+            {t({ ja: '税年', en: 'Tax year' })}
+            <select
+              className="input"
+              aria-label={t({ ja: '税年', en: 'Tax year' })}
+              value={selectedYear}
+              onChange={(event) => setTaxYear(Number(event.target.value))}
+            >
+              {years.map((year) => (
+                <option value={year} key={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             {t({ ja: '従業員', en: 'Employee' })}
             <select
@@ -124,48 +155,29 @@ export function FiscalPage() {
             </Link>
           ) : null}
         </div>
-        {!data.rules.length ? (
-          <WorkforcePanel title={t({ ja: '給与制度資料の準備', en: 'Prepare payroll rule data' })} icon="document">
+        {canViewRules && catalog.isError ? (
+          <WorkforcePanel title={t({ ja: '制度の版と出典', en: 'Rule versions and sources' })} icon="document">
             <p>
               {t({
-                ja: '2026年の一次資料に基づく税・保険の制度値と参照元をこの会社に登録します。',
-                en: 'Register 2026 tax and insurance values and their primary sources for this company.',
+                ja: '制度情報を確認できないため、新しい自動算定と導入を停止しています。保存済みの記録は引き続き閲覧できます。',
+                en: 'Rule information is unavailable, so new automatic calculations and installation are paused. Saved records remain readable.',
               })}
             </p>
-            {task.error ? <WorkforceError error={task.error} /> : null}
-            <button
-              className="btn btn-primary"
-              disabled={task.isPending}
-              onClick={() => task.mutate({ action: 'workforce.initialize_payroll_rules', input: {} })}
-            >
-              {t({ ja: '2026年の制度資料を準備', en: 'Initialize 2026 rule sources' })}
-            </button>
+            <WorkforceError error={catalog.error} onRetry={() => void catalog.refetch()} />
           </WorkforcePanel>
-        ) : (
-          <details className="workforce-notice">
-            <summary>{t({ ja: '適用する制度資料と出典', en: 'Rule versions and primary sources' })}</summary>
-            {data.rules.map((rule) => (
-              <div key={rule.id}>
-                <strong>{rule.code}</strong>
-                <ul>
-                  {rule.sources
-                    .filter((url) => url.startsWith('https://'))
-                    .map((url) => (
-                      <li key={url}>
-                        <a href={url} target="_blank" rel="noreferrer">
-                          {url}
-                        </a>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            ))}
-          </details>
-        )}
+        ) : canViewRules && catalog.data ? (
+          <PayrollRuleManager key={selectedYear} catalog={catalog.data} taxYear={selectedYear} actions={actions} />
+        ) : null}
         <WorkforceTabs tabs={tabs} selected={tab} onSelect={setTab} />
         {tab === 'conditions' ? <FiscalConditions data={data} employeeId={selected?.id ?? ''} /> : null}
         {tab === 'year-end' ? (
-          <FiscalYearEnd data={data} employeeId={selected?.id ?? ''} {...(selfEmployeeId ? { selfEmployeeId } : {})} />
+          <FiscalYearEnd
+            key={selectedYear}
+            data={data}
+            rule={yearEndRule}
+            employeeId={selected?.id ?? ''}
+            {...(selfEmployeeId ? { selfEmployeeId } : {})}
+          />
         ) : null}
         {['payroll', 'evidence'].includes(tab) ? (
           <>
@@ -184,7 +196,7 @@ export function FiscalPage() {
               {tab === 'payroll' ? (
                 <button
                   className="btn btn-primary"
-                  disabled={!selected || !data.rules.length || prior?.status === 'confirmed'}
+                  disabled={!selected || !payrollRule || prior?.status === 'confirmed'}
                   onClick={() => {
                     if (selected) setCalculate({ employee: selected, ...(prior ? { original: prior } : {}) });
                   }}
@@ -196,6 +208,14 @@ export function FiscalPage() {
                 </button>
               ) : null}
             </div>
+            {tab === 'payroll' && !payrollRule ? (
+              <p className="workforce-notice" role="status">
+                {t({
+                  ja: 'この給与対象月と税年を計算できる導入済み制度がありません。制度の対応期間と導入状況を確認してください。保存済みの給与は閲覧できます。',
+                  en: 'No installed package supports this payroll month and tax year. Review package periods and installation status. Saved payroll remains readable.',
+                })}
+              </p>
+            ) : null}
             {tab === 'payroll' ? (
               <WorkforcePayroll rows={visible} actions={actions} {...(selfEmployeeId ? { selfEmployeeId } : {})} />
             ) : (
@@ -246,6 +266,7 @@ export function FiscalPage() {
             period={period}
             original={calculate.original}
             current={payrolls.find((row) => row.employeeId === calculate.employee.id && row.status !== 'cancelled')}
+            rule={payrollRule}
             onClose={() => setCalculate(undefined)}
           />
         ) : null}

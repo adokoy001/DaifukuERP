@@ -23,12 +23,14 @@ import {
 } from '../common.ts';
 import { internalWrite } from '../internal.ts';
 import { assertYearOpen } from '../fiscal-source.ts';
-import { yearEndSource } from '../year-end-source.ts';
+import { yearEndSnapshotSchema, yearEndSource } from '../year-end-source.ts';
 import { jstDate } from '../services/time.ts';
+import { supportedPayrollTaxYears } from '../payroll-rules/resolver.ts';
+import { stableJson } from '../services/json.ts';
 import { workflowAction } from './define.ts';
 export const submitYearEndDeclarationAction = workflowAction(
   'submit_year_end_declaration',
-  '自分の2026年末調整申告を提出',
+  '自分の年末調整申告を提出',
   submitYearEndDeclarationInput,
   [E, M, H, P],
   async (ctx, input) => {
@@ -37,6 +39,11 @@ export const submitYearEndDeclarationAction = workflowAction(
       const employee = await repo(ctx, WorkforceEmployee).get(initial.id);
       requireSelf(ctx, employee);
       await assertYearOpen(ctx, employee.id, input.taxYear);
+      if (!(await supportedPayrollTaxYears(ctx)).includes(input.taxYear))
+        throw new StateError(
+          'この税年の制度資料が導入されていません',
+          '給与本部で対応する制度版の導入を確認してください。',
+        );
       const prior = (
         await allRows(ctx, WorkforceYearEndDeclaration, { employeeId: employee.id, taxYear: input.taxYear })
       )[0];
@@ -114,7 +121,7 @@ export const calculateYearEndAction = workflowAction(
           throw new StateError('年末調整下書きが重複しています', '給与本部で下書きの状態を確認してください。');
         const prior = existing[0];
         expectVersion(prior?.version ?? 0, input.expectedVersion);
-        const source = await yearEndSource(ctx, input.employeeId, input.adjustedOn),
+        const source = await yearEndSource(ctx, input.employeeId, input.taxYear, input.adjustedOn),
           value = source.result;
         const values = {
           declarationId: source.declaration.id,
@@ -160,10 +167,24 @@ export const confirmYearEndAction = workflowAction(
         if (row.docstatus !== 0)
           throw new StateError('年末調整は下書きではありません', '現在の状態を再読込してください。');
         await assertYearOpen(ctx, row.employeeId, row.taxYear);
-        const source = await yearEndSource(ctx, row.employeeId, row.adjustedOn);
-        if (source.fingerprint !== row.sourceFingerprint)
+        const source = await yearEndSource(
+          ctx,
+          row.employeeId,
+          row.taxYear,
+          row.adjustedOn,
+          yearEndSnapshotSchema(row.calculation),
+        );
+        if (
+          source.fingerprint !== row.sourceFingerprint ||
+          stableJson(source.calculation) !== stableJson(row.calculation) ||
+          !source.result.taxablePay.eq(row.taxablePay) ||
+          !source.result.annualTax.eq(row.annualTax) ||
+          !source.result.withheldTax.eq(row.withheldTax) ||
+          !source.result.refund.eq(row.refund) ||
+          !source.result.additionalTax.eq(row.additionalTax)
+        )
           throw new StateError(
-            '年末調整の元資料が変更されています',
+            '年末調整の元資料または保存された算定結果が変更されています',
             '本人申告・給与・証跡を再確認し、再計算してください。',
           );
         return internalWrite(ctx, WorkforceYearEndAdjustment, async (write) => {

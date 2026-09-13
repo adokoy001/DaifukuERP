@@ -24,6 +24,7 @@
     "@daifuku/mod-accounting": "workspace:*",
     "@daifuku/mod-tax": "workspace:*",
     "@daifuku/mod-tax-filing": "workspace:*",
+    "@daifuku/mod-workforce": "workspace:*",
     "iconv-lite": "0.7.3"
   }
 }

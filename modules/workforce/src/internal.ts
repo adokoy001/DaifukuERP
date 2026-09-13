@@ -25,6 +25,7 @@ const managed: EntityDef[] = [
   entities.WorkforceShiftPlan,
   entities.WorkforceShiftAssignment,
   entities.WorkforcePayrollRules,
+  entities.WorkforcePayrollRuleRelease,
   entities.WorkforcePayrollCondition,
   entities.WorkforcePayrollTaxEvidence,
   entities.WorkforceYearEndDeclaration,
@@ -71,6 +72,7 @@ export function registerWorkflowGuards(): void {
     entities.WorkforceLeaveGrant,
     entities.WorkforceLeaveUsage,
     entities.WorkforcePayrollRules,
+    entities.WorkforcePayrollRuleRelease,
     entities.WorkforcePayrollTaxEvidence,
   ])
     registry.registerHook(entity.name, 'before_update', () => {

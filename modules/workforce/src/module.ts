@@ -1,4 +1,9 @@
 import {
+  payrollRuleCatalogAction,
+  previewPayrollRuleAction,
+  installPayrollRuleAction,
+} from './payroll-rules/actions.ts';
+import {
   saveWorkSystemAction,
   confirmWorkSystemAction,
   cancelWorkSystemAction,
@@ -48,6 +53,9 @@ export const WorkforceModule = defineModule({
   depends: [],
   entities: Object.values(entities),
   actions: [
+    payrollRuleCatalogAction,
+    previewPayrollRuleAction,
+    installPayrollRuleAction,
     saveWorkSystemAction,
     confirmWorkSystemAction,
     cancelWorkSystemAction,

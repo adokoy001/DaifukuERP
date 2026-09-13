@@ -1,32 +1,9 @@
 import { repo, StateError, type Context, type Infer } from '@daifuku/kernel';
-import {
-  type WorkforcePayroll,
-  WorkforcePayrollCondition,
-  WorkforcePayrollRules,
-  WorkforceYearEndAdjustment,
-} from './entities/index.ts';
+import { type WorkforcePayroll, WorkforcePayrollCondition, WorkforceYearEndAdjustment } from './entities/index.ts';
 import { allRows, D } from './common.ts';
 import { payrollConditionData, statutoryPayrollInput, type StatutoryPayrollInput } from './fiscal-contract.ts';
-import { FISCAL_CODE, FISCAL_DATA, FISCAL_SOURCES } from './services/fiscal-data.ts';
-import { stableJson } from './services/json.ts';
-import { monthlyWithholding } from './services/monthly-tax.ts';
-import { socialInsurance } from './services/social-insurance.ts';
 import { addDays, periodBounds } from './services/time.ts';
-export async function fiscalRules(ctx: Context) {
-  const rows = await allRows(ctx, WorkforcePayrollRules, { code: FISCAL_CODE });
-  const row = rows[0];
-  if (
-    rows.length !== 1 ||
-    !row ||
-    stableJson(row.data) !== stableJson(FISCAL_DATA) ||
-    stableJson(row.sources) !== stableJson(FISCAL_SOURCES)
-  )
-    throw new StateError(
-      '給与の制度資料が未準備、または対応する版と一致しません',
-      '給与本部で「2026年の制度資料を準備」を実行してください。',
-    );
-  return row;
-}
+import { resolveMonthlyRules } from './payroll-rules/resolver.ts';
 export async function conditionOn(ctx: Context, employeeId: string, date: string) {
   const rows = await allRows(ctx, WorkforcePayrollCondition, {
     employeeId,
@@ -52,16 +29,13 @@ export async function statutorySource(
   ctx: Context,
   input: StatutoryPayrollInput,
   payroll: Infer<typeof WorkforcePayroll>,
+  snapshotSchema: 1 | 2 = 2,
 ) {
   const bounds = periodBounds(input.period);
-  if (
-    !input.paymentDate.startsWith('2026-') ||
-    input.paymentDate < bounds.end ||
-    input.paymentDate.slice(0, 7) > addDays(bounds.end, 1).slice(0, 7)
-  )
+  if (input.paymentDate < bounds.end || input.paymentDate.slice(0, 7) > addDays(bounds.end, 1).slice(0, 7))
     throw new StateError(
       '給与の支払日が対応範囲外です',
-      '完了した給与月の末日以降で、2026年内の通常給与支払日を指定してください。',
+      '完了した給与月の末日以降で、導入済み制度の対応期間内の通常給与支払日を指定してください。',
     );
   if (
     input.insurancePeriod > input.paymentDate.slice(0, 7) ||
@@ -71,7 +45,17 @@ export async function statutorySource(
       '保険対象月が通常の控除範囲外です',
       '支払月またはその前月を指定してください。遡及・複数月分控除はこの自動計算の対象外です。',
     );
-  const rules = await fiscalRules(ctx),
+  const selected = await resolveMonthlyRules(ctx, {
+    paymentDate: input.paymentDate,
+    insurancePeriod: input.insurancePeriod,
+    wagePeriod: input.period,
+  });
+  if (snapshotSchema === 1 && !selected.legacyCompatible)
+    throw new StateError(
+      '旧形式給与の制度版が変更されています',
+      '現在の制度と元資料を確認して給与を再計算してください。',
+    );
+  const rules = selected.row,
     tax = await conditionOn(ctx, input.employeeId, input.paymentDate),
     insurance = await conditionOn(ctx, input.employeeId, periodBounds(input.insurancePeriod).end),
     employment = await conditionOn(ctx, input.employeeId, bounds.end);
@@ -79,7 +63,8 @@ export async function statutorySource(
     .plus(payroll.premiumPay)
     .plus(input.taxableAllowances.reduce((sum, row) => sum.plus(row.amount), D(0)));
   const grossPay = taxablePay.plus(input.nonTaxableAllowances.reduce((sum, row) => sum.plus(row.amount), D(0)));
-  const social = socialInsurance(
+  const social = selected.provider.insurance(
+    selected.bundle,
     {
       ...insurance.facts,
       employmentMembership: employment.facts.employmentMembership,
@@ -89,8 +74,13 @@ export async function statutorySource(
     bounds.end,
     grossPay,
   );
-  const withholding = monthlyWithholding(taxablePay, social.total, tax.facts.sourceDependentCount);
-  const basis = `${FISCAL_CODE} / 支払 ${input.paymentDate} / 保険 ${input.insurancePeriod} / 賃金締切 ${bounds.end}`;
+  const withholding = selected.provider.monthly(
+    selected.bundle,
+    taxablePay,
+    social.total,
+    tax.facts.sourceDependentCount,
+  );
+  const basis = `${rules.code} / 支払 ${input.paymentDate} / 保険 ${input.insurancePeriod} / 賃金締切 ${bounds.end}`;
   const amounts = {
     income_tax: withholding.incomeTax,
     resident_tax: D(tax.facts.residentTaxAmount),
@@ -128,13 +118,23 @@ export async function statutorySource(
     withholding,
     deductions,
     allowances,
+    ...(snapshotSchema === 2 ? { ruleSelection: selected.selection } : {}),
   };
-  return { grossPay, deductionTotal, netPay, deductions, allowances, evidence };
+  return { grossPay, deductionTotal, netPay, deductions, allowances, evidence, snapshotSchema };
 }
-export function statutoryEnvelope(calculation: unknown): { input: StatutoryPayrollInput; evidence: unknown } | null {
+export function statutoryEnvelope(calculation: unknown): {
+  input: StatutoryPayrollInput;
+  evidence: unknown;
+  snapshotSchema: 1 | 2;
+} | null {
   if (!calculation || typeof calculation !== 'object' || !('statutory' in calculation)) return null;
   const statutory = calculation.statutory;
   if (!statutory || typeof statutory !== 'object' || !('input' in statutory) || !('evidence' in statutory))
     throw new StateError('自動給与の算定根拠が不正です', '給与を再計算してください。');
-  return { input: statutoryPayrollInput.parse(statutory.input), evidence: statutory.evidence };
+  const schema = 'snapshotSchema' in statutory ? statutory.snapshotSchema : 1;
+  if (schema !== 1 && schema !== 2)
+    throw new StateError('自動給与の証跡形式に対応していません', '対応する版のアプリで確認してください。');
+  if (schema === 1 && 'snapshotSchema' in statutory)
+    throw new StateError('旧形式給与の証跡が不正です', '保存済み根拠を確認し、給与を再計算してください。');
+  return { input: statutoryPayrollInput.parse(statutory.input), evidence: statutory.evidence, snapshotSchema: schema };
 }

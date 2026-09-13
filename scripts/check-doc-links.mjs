@@ -85,6 +85,12 @@ documents.push(
   'docs/conventions/lint.md',
   'docs/conventions/code-style.md',
 );
+documents.push(
+  'docs/specs/payroll-rule-versions.md',
+  'docs/adr/0024-payroll-rule-releases.md',
+  'docs/log/2026-09-13-payroll-rule-versions.md',
+  'docs/specs/l10n-jp.md',
+);
 let checked = 0;
 const failures = [];
 for (const document of documents) {

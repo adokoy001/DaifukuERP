@@ -2,6 +2,7 @@ import type { FiscalBoard, YearEndDeclaration } from '../api/fiscal.ts';
 import { useLocale } from '../i18n.tsx';
 import { WorkforceMoney } from './workforce-shared.tsx';
 import type { FiscalLabel } from './fiscal-fields.tsx';
+import { FiscalRuleEvidence } from './fiscal-rule-evidence.tsx';
 const amountLabels: Record<string, FiscalLabel> = {
   taxablePay: { ja: '年間課税支給額', en: 'Annual taxable pay' },
   salaryBeforeAdjustment: { ja: '給与所得金額（調整前）', en: 'Salary income before adjustment' },
@@ -35,6 +36,8 @@ export function FiscalCalculation({ row }: { row: FiscalBoard['adjustments'][num
     typeof calculation.deductions === 'object' && calculation.deductions !== null
       ? (calculation.deductions as Record<string, unknown>)
       : {};
+  const source =
+    calculation.source && typeof calculation.source === 'object' ? (calculation.source as Record<string, unknown>) : {};
   const values = (source: Record<string, unknown>) =>
     Object.entries(source)
       .filter(([key, value]) => amountLabels[key] && typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value))
@@ -50,10 +53,11 @@ export function FiscalCalculation({ row }: { row: FiscalBoard['adjustments'][num
     <div className="fiscal-evidence">
       <p>
         {t({
-          ja: '2026年12月改正対応の年末調整。確定給与・本人申告・源泉徴収票の保存資料に基づく計算です。',
-          en: 'Year-end adjustment under the December 2026 rules, using saved confirmed payroll, declarations and withholding statements.',
+          ja: `${row.taxYear}年分の年末調整。確定給与・本人申告・源泉徴収票と、計算時に保存した制度資料に基づく結果です。`,
+          en: `Year-end adjustment for ${row.taxYear}, using saved confirmed payroll, declarations, withholding statements and the rules saved at calculation time.`,
         })}
       </p>
+      <FiscalRuleEvidence selection={source.ruleSelection} savedRule={source.rules} annual />
       <dl className="workforce-definition">{values(calculation)}</dl>
       <h4>{t({ ja: '所得控除の内訳', en: 'Income deduction breakdown' })}</h4>
       <dl className="workforce-definition">{values(deductions)}</dl>

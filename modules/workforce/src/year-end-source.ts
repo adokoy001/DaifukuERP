@@ -7,19 +7,25 @@ import {
 } from './entities/index.ts';
 import { allRows, D } from './common.ts';
 import { yearEndDeclarationData } from './fiscal-contract.ts';
-import { fiscalRules } from './fiscal-source.ts';
-import { annualAdjustment } from './services/annual-tax.ts';
-import { ANNUAL_TAX_2026 } from './services/fiscal-data.ts';
 import { stableJson } from './services/json.ts';
-export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn: string) {
-  if (adjustedOn < ANNUAL_TAX_2026.applicableFrom || adjustedOn > ANNUAL_TAX_2026.regularAdjustmentThrough)
+import { resolveYearEndRules } from './payroll-rules/resolver.ts';
+export async function yearEndSource(
+  ctx: Context,
+  employeeId: string,
+  taxYear: number,
+  adjustedOn: string,
+  snapshotSchema: 1 | 2 = 2,
+) {
+  const selected = await resolveYearEndRules(ctx, { taxYear, adjustedOn });
+  if (snapshotSchema === 1 && !selected.legacyCompatible)
     throw new StateError(
-      '2026年末調整の適用日が範囲外です',
-      '2026年12月から翌年1月の通常の年末調整・再調整を指定してください。',
+      '旧形式年末調整の制度版が変更されています',
+      '現在の制度と元資料を確認して年末調整を再計算してください。',
     );
   const employee = await repo(ctx, WorkforceEmployee).get(employeeId),
-    rules = await fiscalRules(ctx);
-  const declarations = await allRows(ctx, WorkforceYearEndDeclaration, { employeeId, taxYear: 2026 }),
+    rules = selected.row;
+  const applicability = selected.bundle.manifest.applicability;
+  const declarations = await allRows(ctx, WorkforceYearEndDeclaration, { employeeId, taxYear }),
     declaration = declarations[0];
   if (declarations.length !== 1 || !declaration || declaration.status !== 'accepted')
     throw new StateError(
@@ -29,7 +35,7 @@ export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn
   const facts = yearEndDeclarationData.parse(declaration.declaration);
   const payrolls = await allRows(ctx, WorkforcePayroll, {
     employeeId,
-    period: { $gte: '2025-12', $lte: '2026-12' },
+    period: { $gte: `${taxYear - 1}-12`, $lte: `${taxYear}-12` },
     docstatus: { $in: [0, 1] },
   });
   const allEvidence = await allRows(ctx, WorkforcePayrollTaxEvidence, {
@@ -38,11 +44,11 @@ export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn
   });
   const evidence = allEvidence.filter(
     (row) =>
-      row.paymentDate >= '2026-01-01' &&
-      row.paymentDate <= '2026-12-31' &&
+      row.paymentDate >= `${taxYear}-01-01` &&
+      row.paymentDate <= `${taxYear}-12-31` &&
       payrolls.some((payroll) => payroll.id === row.payrollId && payroll.docstatus === 1),
   );
-  if (payrolls.some((row) => row.docstatus === 0 && row.period.startsWith('2026-')))
+  if (payrolls.some((row) => row.docstatus === 0 && row.period.startsWith(`${taxYear}-`)))
     throw new StateError(
       '年内の給与下書きが残っています',
       '確定または取り消しを整理し、年間給与の完了を確認してください。',
@@ -54,16 +60,16 @@ export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn
     );
   if (evidence.some((row) => row.paymentDate > adjustedOn))
     throw new StateError('調整日後の給与支払が含まれています', '最後の年内支払日以降に年末調整を実施してください。');
-  if (!evidence.some((row) => row.paymentDate >= '2026-12-01'))
+  if (!evidence.some((row) => row.paymentDate >= applicability.requiredFinalPaymentFrom))
     throw new StateError(
       '通常の12月年末調整に必要な給与支払がありません',
       '死亡・非居住者・年途中退職等の例外年調はこの版の対象外です。',
     );
   const unpaid = new Set(facts.unpaidMonths.map((row) => row.period));
-  if (unpaid.size !== facts.unpaidMonths.length || [...unpaid].some((month) => !month.startsWith('2026-')))
-    throw new StateError('無支払月の申告が不正です', '2026年の各無支払月を理由付きで一度ずつ記録してください。');
+  if (unpaid.size !== facts.unpaidMonths.length || [...unpaid].some((month) => !month.startsWith(`${taxYear}-`)))
+    throw new StateError('無支払月の申告が不正です', `${taxYear}年の各無支払月を理由付きで一度ずつ記録してください。`);
   for (let month = 1; month <= 12; month++) {
-    const key = `2026-${String(month).padStart(2, '0')}`;
+    const key = `${taxYear}-${String(month).padStart(2, '0')}`;
     if (key < employee.hiredOn.slice(0, 7) || (employee.terminatedOn && key > employee.terminatedOn.slice(0, 7)))
       continue;
     const hasPay = evidence.some((row) => row.paymentDate.startsWith(key));
@@ -79,7 +85,7 @@ export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn
   const taxablePay = evidence.reduce((sum, row) => sum.plus(row.taxablePay), previousPay),
     socialPremium = evidence.reduce((sum, row) => sum.plus(row.socialPremium), previousSocial),
     withheldTax = evidence.reduce((sum, row) => sum.plus(row.incomeTax), previousTax);
-  const result = annualAdjustment(facts, taxablePay, socialPremium, withheldTax);
+  const result = selected.provider.annual(selected.bundle, facts, taxablePay, socialPremium, withheldTax);
   const snapshot = {
     employee,
     rules,
@@ -89,12 +95,22 @@ export async function yearEndSource(ctx: Context, employeeId: string, adjustedOn
       .sort((a, b) => a.id.localeCompare(b.id)),
     evidence: evidence.sort((a, b) => a.id.localeCompare(b.id)),
     adjustedOn,
+    ...(snapshotSchema === 2 ? { ruleSelection: selected.selection } : {}),
   };
   return {
     employee,
     declaration,
     result,
     fingerprint: stableJson(snapshot),
-    calculation: { ...result, source: snapshot },
+    calculation: { ...result, source: snapshot, ...(snapshotSchema === 2 ? { fiscalSnapshotSchema: 2 } : {}) },
   };
+}
+
+export function yearEndSnapshotSchema(calculation: unknown): 1 | 2 {
+  if (!calculation || typeof calculation !== 'object' || Array.isArray(calculation))
+    throw new StateError('年末調整の算定根拠が不正です', '元資料を確認して再計算してください。');
+  if (!('fiscalSnapshotSchema' in calculation)) return 1;
+  if (calculation.fiscalSnapshotSchema !== 2)
+    throw new StateError('年末調整の証跡形式に対応していません', '対応する版のアプリで確認してください。');
+  return 2;
 }

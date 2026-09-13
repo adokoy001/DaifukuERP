@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import type { FiscalBoard } from '../api/fiscal.ts';
+import type { FiscalBoard, PayrollRuleSummary } from '../api/fiscal.ts';
 import { formText } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { businessToday } from '../lib/operations.ts';
+import { dateInRuleRange, withinRuleRange } from '../lib/payroll-rules.ts';
 import { FiscalCheck } from './fiscal-fields.tsx';
 import { FiscalCalculation, FiscalDeclarationSummary } from './fiscal-summary.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
@@ -114,31 +115,42 @@ function YearEndDecision({
   );
 }
 function YearEndCalculate({
+  taxYear,
+  rule,
   employee,
   prior,
   current,
   onClose,
 }: {
+  taxYear: number;
+  rule: PayrollRuleSummary | undefined;
   employee: FiscalBoard['employees'][number];
   prior: Adjustment | undefined;
   current: Adjustment | undefined;
   onClose: () => void;
 }) {
   const { t } = useLocale(),
-    task = useWorkforceTask();
+    task = useWorkforceTask(),
+    [reviewedRule] = useState(rule);
+  const range = reviewedRule?.manifest.applicability.adjustmentDates;
+  const [adjustedOn, setAdjustedOn] = useState(range ? dateInRuleRange(businessToday(), range) : '');
+  const ruleChanged =
+    !rule || rule.manifestHash !== reviewedRule?.manifestHash || rule.payloadHash !== reviewedRule?.payloadHash;
+  const supported = Boolean(range && withinRuleRange(adjustedOn, range) && adjustedOn <= businessToday());
   return (
     <WorkforceDialog
-      title={t({ ja: '2026年末調整を計算', en: 'Calculate 2026 year-end adjustment' })}
+      title={t({ ja: `${taxYear}年末調整を計算`, en: `Calculate ${taxYear} year-end adjustment` })}
       description={employee.name}
       submitLabel={t({ ja: '年間資料から計算', en: 'Calculate from annual evidence' })}
       onClose={onClose}
-      stale={(prior?.version ?? 0) !== (current?.version ?? 0)}
+      stale={(prior?.version ?? 0) !== (current?.version ?? 0) || ruleChanged}
+      readOnly={!supported || ruleChanged}
       onSubmit={async (data) => {
         await task.mutateAsync({
           action: 'workforce.calculate_year_end_adjustment',
           input: {
             employeeId: employee.id,
-            taxYear: 2026,
+            taxYear,
             expectedVersion: prior?.version ?? 0,
             adjustedOn: formText(data, 'adjustedOn'),
             annualPayrollCompleteConfirmed: data.get('annualPayrollCompleteConfirmed') === 'on',
@@ -148,19 +160,33 @@ function YearEndCalculate({
     >
       <p>
         {t({
-          ja: '2026年12月の通常の年末調整と翌年1月の再調整に対応します。確定給与の支払証跡、前職資料、無支払月と受付済み申告が必要です。未来日・年途中退職等の例外年調は計算できません。',
-          en: 'Supports ordinary December 2026 adjustment and January re-adjustment. Confirmed payment evidence, previous-employer statements, unpaid months and an accepted declaration are required. Future-dated or exceptional mid-year adjustments are unavailable.',
+          ja: '通常の年末調整と制度版の対応期間内の再調整を計算します。確定給与の支払証跡、前職資料、無支払月と受付済み申告が必要です。未来日・年途中退職等の例外年調は対象外です。源泉徴収票の交付状況も確認してください。',
+          en: 'Calculate ordinary year-end adjustments within the supported dates. Confirmed payment evidence, previous-employer statements, unpaid months and accepted declarations are required. Future dates and exceptional mid-year adjustments are excluded. Check withholding-statement issuance too.',
         })}
       </p>
+      {reviewedRule && range ? (
+        <p className="account-help">
+          {reviewedRule.packageCode} · {range.from} → {range.to}
+        </p>
+      ) : null}
+      {!supported ? (
+        <p className="workforce-notice" role="status">
+          {t({
+            ja: '制度版の対応期間内で、今日以前の年末調整日を指定してください。',
+            en: 'Choose an adjustment date within the package’s supported dates and no later than today.',
+          })}
+        </p>
+      ) : null}
       <label>
         {t({ ja: '年末調整日', en: 'Adjustment date' })}
         <input
           className="input"
           type="date"
           name="adjustedOn"
-          min="2026-12-01"
-          max={businessToday() < '2027-01-31' ? businessToday() : '2027-01-31'}
-          defaultValue={businessToday() < '2026-12-01' ? '2026-12-01' : businessToday()}
+          min={range?.from}
+          max={range ? (businessToday() < range.to ? businessToday() : range.to) : businessToday()}
+          value={adjustedOn}
+          onChange={(event) => setAdjustedOn(event.target.value)}
           required
         />
       </label>
@@ -177,10 +203,12 @@ function YearEndCalculate({
 }
 export function FiscalYearEnd({
   data,
+  rule,
   employeeId,
   selfEmployeeId,
 }: {
   data: FiscalBoard;
+  rule: PayrollRuleSummary | undefined;
   employeeId: string;
   selfEmployeeId?: string;
 }) {
@@ -188,6 +216,7 @@ export function FiscalYearEnd({
     [decision, setDecision] = useState<Decision>(),
     [calculate, setCalculate] = useState<{ employee: FiscalBoard['employees'][number]; prior?: Adjustment }>();
   const employees = data.employees.filter((employee) => !employeeId || employee.id === employeeId);
+  const availableFrom = rule?.manifest.applicability.adjustmentDates.from;
   return (
     <WorkforcePanel
       title={t({ ja: '申告受付・年末調整・精算', en: 'Declarations, year-end calculation and settlement' })}
@@ -236,18 +265,23 @@ export function FiscalYearEnd({
                     declaration?.status !== 'accepted' ||
                     frozen ||
                     employee.id === selfEmployeeId ||
-                    businessToday() < '2026-12-01'
+                    !availableFrom ||
+                    businessToday() < availableFrom
                   }
                   onClick={() => setCalculate({ employee, ...(prior ? { prior } : {}) })}
                 >
                   {t({ ja: '年末調整を計算', en: 'Calculate year-end adjustment' })}
                 </button>
               </div>
-              {businessToday() < '2026-12-01' ? (
+              {!availableFrom || businessToday() < availableFrom ? (
                 <p className="account-help">
                   {t({
-                    ja: '年末調整の計算は2026年12月1日以降に利用できます。申告と条件の準備は先に進められます。',
-                    en: 'Year-end calculation opens on December 1, 2026. Declarations and conditions can be prepared now.',
+                    ja: availableFrom
+                      ? `年末調整の計算は${availableFrom}以降に利用できます。申告と条件の準備は先に進められます。`
+                      : 'この税年を計算できる導入済み制度がありません。制度の対応期間と導入状況を確認してください。',
+                    en: availableFrom
+                      ? `Year-end calculation opens on ${availableFrom}. Declarations and conditions can be prepared now.`
+                      : 'No installed package supports this tax year. Check package periods and installation status.',
                   })}
                 </p>
               ) : null}
@@ -322,6 +356,8 @@ export function FiscalYearEnd({
       ) : null}
       {calculate ? (
         <YearEndCalculate
+          taxYear={data.taxYear}
+          rule={rule}
           employee={calculate.employee}
           prior={calculate.prior}
           current={data.adjustments.find((row) => row.employeeId === calculate.employee.id && row.status === 'draft')}

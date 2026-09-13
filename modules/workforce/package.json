@@ -20,6 +20,10 @@
       "types": "./src/scheduling/index.ts",
       "import": "./src/scheduling/index.ts"
     },
+    "./payroll-rules-contract": {
+      "types": "./src/payroll-rules/contract.ts",
+      "import": "./src/payroll-rules/contract.ts"
+    },
     "./fiscal-contract": {
       "types": "./src/fiscal-contract.ts",
       "import": "./src/fiscal-contract.ts"

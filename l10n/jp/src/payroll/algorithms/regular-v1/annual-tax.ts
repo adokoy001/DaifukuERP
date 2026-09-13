@@ -1,16 +1,17 @@
 import { Decimal, ValidationError } from '@daifuku/kernel';
-import type { YearEndDeclaration } from '../fiscal-contract.ts';
+import type { YearEndDeclaration } from '@daifuku/mod-workforce';
+import type { JapanPayrollRules } from '../../schema.ts';
 import { annualBasic, declarationDeductions, qualifiesIncomeAdjustment } from './annual-deductions.ts';
-import { ANNUAL_TAX_2026 as rule } from './fiscal-data.ts';
 import { positive } from './monthly-tax.ts';
 const D = Decimal.from;
 export { annualBasic };
-export function annualSalaryIncome(pay: Decimal): Decimal {
+export function annualSalaryIncome(rules: JapanPayrollRules, pay: Decimal): Decimal {
+  const rule = rules.data.annualTax;
   if (pay.gt(rule.salaryLimit))
     throw new ValidationError('Annual salary exceeds the year-end adjustment limit', [
       {
         path: 'taxablePay',
-        message: 'Salary above 20 million yen requires a tax return instead of this year-end workflow.',
+        message: `Salary above ${rule.salaryLimit} yen requires a tax return instead of this year-end workflow.`,
       },
     ]);
   const band = rule.salary.find((row) => pay.lte(row.to));
@@ -19,13 +20,19 @@ export function annualSalaryIncome(pay: Decimal): Decimal {
   return amount.times(band.rate).plus(band.offset).roundDown(0);
 }
 export function annualAdjustment(
+  rules: JapanPayrollRules,
   input: YearEndDeclaration,
   taxablePay: Decimal,
   socialPremium: Decimal,
   withheldTax: Decimal,
 ) {
-  const salaryBeforeAdjustment = annualSalaryIncome(taxablePay);
-  if (input.incomeAdjustmentEligible && !qualifiesIncomeAdjustment(input))
+  const rule = rules.data.annualTax;
+  if (input.taxYear !== rules.manifest.taxYear)
+    throw new ValidationError('Year-end declaration does not match the selected tax year', [
+      { path: 'taxYear', message: 'Select the installed rules for the declaration tax year.' },
+    ]);
+  const salaryBeforeAdjustment = annualSalaryIncome(rules, taxablePay);
+  if (input.incomeAdjustmentEligible && !qualifiesIncomeAdjustment(rules, input))
     throw new ValidationError('Income adjustment eligibility is not supported by the declaration', [
       {
         path: 'incomeAdjustmentEligible',
@@ -41,7 +48,7 @@ export function annualAdjustment(
       : D(0);
   const salaryIncome = salaryBeforeAdjustment.minus(incomeAdjustment),
     totalIncome = salaryIncome.plus(input.otherIncome);
-  const deductions = declarationDeductions(input, totalIncome, socialPremium),
+  const deductions = declarationDeductions(rules, input, totalIncome, socialPremium),
     taxableIncome = positive(salaryIncome.minus(deductions.total))
       .div(rule.taxableRoundUnit)
       .roundDown(0)
@@ -74,7 +81,7 @@ export function annualAdjustment(
     annualTax,
     refund: positive(withheldTax.minus(annualTax)),
     additionalTax: positive(annualTax.minus(withheldTax)),
-    method: '2026-december-amendment',
+    method: rules.data.annualMethod,
     facts: input,
   };
 }

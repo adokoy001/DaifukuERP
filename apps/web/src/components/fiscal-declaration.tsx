@@ -108,10 +108,14 @@ function PreviousEmployers({ count, previous }: { count: number; previous: YearE
 }
 
 export function FiscalDeclaration({
+  taxYear,
+  readOnly,
   original,
   current,
   onClose,
 }: {
+  taxYear: number;
+  readOnly: boolean;
   original: MyFiscal['declaration'];
   current: MyFiscal['declaration'];
   onClose: () => void;
@@ -125,24 +129,33 @@ export function FiscalDeclaration({
     [unpaidMonths, setUnpaidMonths] = useState(previous?.unpaidMonths.length ?? 0);
   return (
     <WorkforceDialog
-      title={t({ ja: '2026年 年末調整の申告', en: '2026 year-end declaration' })}
+      title={t({ ja: `${taxYear}年 年末調整の申告`, en: `${taxYear} year-end declaration` })}
       description={t({
         ja: '証明書を手元に、12月31日時点の対象となる事実を入力してください。金額は円単位、該当しない項目は0です。所得金額は収入から必要経費・給与所得控除などを引いた金額です。',
         en: 'Use supporting certificates and eligible facts as of December 31. Enter whole yen, or 0 where not applicable. Income means income after applicable expenses or salary deductions.',
       })}
       submitLabel={t({ ja: '確認して本部へ提出', en: 'Submit to payroll for review' })}
       stale={(original?.version ?? 0) !== (current?.version ?? 0)}
+      readOnly={readOnly}
       onClose={onClose}
       onSubmit={async (data) => {
         await task.mutateAsync({
           action: 'workforce.submit_year_end_declaration',
           input: {
-            ...declarationFromForm(data, { spouse, relatives, previousEmployers, unpaidMonths }),
+            ...declarationFromForm(data, { spouse, relatives, previousEmployers, unpaidMonths }, taxYear),
             expectedVersion: original?.version ?? 0,
           },
         });
       }}
     >
+      {readOnly ? (
+        <p className="workforce-notice" role="status">
+          {t({
+            ja: 'この税年の制度の利用状況が変わりました。入力を確認して閉じ、制度の準備後に開き直してください。',
+            en: 'Rule availability for this tax year has changed. Review your input, close this dialog and reopen it after the rules are ready.',
+          })}
+        </p>
+      ) : null}
       <FiscalSection title={{ ja: '1. 本人の申告条件', en: '1. Personal eligibility' }}>
         <FiscalCheck name="resident" label={{ ja: '日本の居住者です', en: 'I am a Japanese tax resident' }} required />
         <FiscalCheck
@@ -254,8 +267,8 @@ export function FiscalDeclaration({
                 className="input"
                 name={`unpaid${i}.period`}
                 type="month"
-                min="2026-01"
-                max="2026-12"
+                min={`${taxYear}-01`}
+                max={`${taxYear}-12`}
                 defaultValue={previous?.unpaidMonths[i]?.period}
                 required
               />

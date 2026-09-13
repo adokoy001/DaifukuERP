@@ -31,6 +31,7 @@
 | 新packが出ない | runtimeに登録、DAIFUKU_PACKS、選択会社で適用済みか、roleを順に確認 |
 | schemaに変更がない | schema用runtimeが全packを読んでいるか、entityがregistryに登録されたか |
 | 給与/申請が会社切替後も残る | query keyのcompany/user、abort/invalidate、権限エラー時の前データ表示 |
+| 給与制度の適用年・料率・計算方式を変える | [給与構造](payroll-automation.md)、workforceの公開 `payroll-rules/port.ts` と `resolver.ts`、l10n/jpの `payroll/`。制度データと方式版を一致させ、保存済み結果を上書きしない |
 | 出荷後の請求で在庫がもう一度動く | `modules/trade/src/posting.ts` とinventoryの `source-documents.ts`。既存の請求単独処理も回帰する |
 | 銀行の再取込・消込・出力で重複する | bankingの `imports.ts` / `reconcile.ts` / `transfers.ts`、同一キーと内容、原明細の不変性 |
 | 申告資料の根拠が古い・形式が違う | tax-filingの `workflow.ts` / `profile.ts`、l10n/jpの `filing/`。保存根拠と現行根拠を区別する |

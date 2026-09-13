@@ -42,3 +42,4 @@ export {
 } from './services/invoice-html.ts';
 
 export { JAPAN_FILING_PROFILES, registerJapanFilingProfiles } from './filing/profiles.ts';
+export { JAPAN_PAYROLL_PROVIDER, registerJapanPayrollProvider } from './payroll/provider.ts';

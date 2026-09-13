@@ -1,6 +1,7 @@
 import { useLocale } from '../i18n.tsx';
 import { minutesLabel } from '../lib/workforce.ts';
 import { WorkforceMoney } from './workforce-shared.tsx';
+import { FiscalRuleEvidence } from './fiscal-rule-evidence.tsx';
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 const text = (value: unknown) => (typeof value === 'string' ? value : '—');
@@ -38,6 +39,7 @@ export function FiscalCalculationEvidence({ calculation }: { calculation: Record
       {calculation.statutory ? (
         <section className="workforce-record">
           <h3>{t({ ja: '税・保険料の算定根拠', en: 'Tax and insurance calculation evidence' })}</h3>
+          <FiscalRuleEvidence selection={evidence.ruleSelection} savedRule={evidence.rule} />
           <dl className="workforce-definition">
             <div>
               <dt>{t({ ja: '給与支払日 / 保険対象月', en: 'Payment date / insurance month' })}</dt>

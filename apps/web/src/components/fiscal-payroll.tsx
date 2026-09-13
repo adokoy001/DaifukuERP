@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import type { FiscalBoard, StatutoryPayrollInput } from '../api/fiscal.ts';
+import type { FiscalBoard, PayrollRuleSummary, StatutoryPayrollInput } from '../api/fiscal.ts';
 import type { PayrollSummary } from '../api/workforce.ts';
 import { formText } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { businessToday } from '../lib/operations.ts';
+import { dateInRuleRange, monthEnd, payrollPaymentRange, withinRuleRange } from '../lib/payroll-rules.ts';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import { FiscalCheck, FiscalMoneyField, FiscalSection } from './fiscal-fields.tsx';
 import { FiscalArrayButtons } from './fiscal-declaration.tsx';
@@ -58,25 +59,47 @@ export function FiscalPayrollCalculate({
   period,
   original,
   current,
+  rule,
   onClose,
 }: {
   employee: FiscalBoard['employees'][number];
   period: string;
   original: PayrollSummary | undefined;
   current: PayrollSummary | undefined;
+  rule: PayrollRuleSummary | undefined;
   onClose: () => void;
 }) {
   const prior = (original?.calculation.statutory as { input?: StatutoryPayrollInput } | undefined)?.input;
   const { t } = useLocale(),
     task = useWorkforceTask(),
     [taxable, setTaxable] = useState(prior?.taxableAllowances.length ?? 0),
-    [nonTaxable, setNonTaxable] = useState(prior?.nonTaxableAllowances.length ?? 0);
+    [nonTaxable, setNonTaxable] = useState(prior?.nonTaxableAllowances.length ?? 0),
+    [reviewedRule] = useState(rule);
+  const range = reviewedRule && payrollPaymentRange(period, reviewedRule);
+  const [paymentDate, setPaymentDate] = useState(
+      prior?.paymentDate ?? (range ? dateInRuleRange(businessToday(), range) : ''),
+    ),
+    [insurancePeriod, setInsurancePeriod] = useState(prior?.insurancePeriod ?? period);
+  const previousMonth = new Date(paymentDate.slice(0, 7) + '-01T00:00:00Z');
+  previousMonth.setUTCDate(0);
+  const datesSupported = Boolean(
+    range &&
+    reviewedRule &&
+    withinRuleRange(paymentDate, range) &&
+    withinRuleRange(insurancePeriod, reviewedRule.manifest.applicability.insuranceMonths) &&
+    !Number.isNaN(previousMonth.getTime()) &&
+    insurancePeriod >= previousMonth.toISOString().slice(0, 7) &&
+    insurancePeriod <= paymentDate.slice(0, 7),
+  );
+  const ruleChanged =
+    !rule || rule.manifestHash !== reviewedRule?.manifestHash || rule.payloadHash !== reviewedRule?.payloadHash;
   return (
     <WorkforceDialog
       title={t({ ja: '給与・税・保険料を自動算定', en: 'Calculate payroll, tax and insurance' })}
       description={employee.name + ' · ' + period}
       submitLabel={t({ ja: '根拠を確認して算定', en: 'Calculate with verified inputs' })}
-      stale={(original?.version ?? 0) !== (current?.version ?? 0)}
+      stale={(original?.version ?? 0) !== (current?.version ?? 0) || ruleChanged}
+      readOnly={!datesSupported || ruleChanged}
       onClose={onClose}
       onSubmit={async (data) => {
         const allowances = (prefix: string, count: number) =>
@@ -107,6 +130,20 @@ export function FiscalPayrollCalculate({
           en: 'Supported: regular monthly pay, resident category Ko, and Kyokai Kenpo. Bonuses, category Otsu and multi-month insurance deductions are excluded. Recalculation replaces allowances and other deductions with these inputs.',
         })}
       </p>
+      {reviewedRule ? (
+        <p className="account-help">
+          {t({ ja: '使用する制度版', en: 'Rule package used' })}: {reviewedRule.packageCode} ·{' '}
+          {t({ ja: '賃金締日は給与対象月の末日です。', en: 'The wage cutoff is the final day of the payroll month.' })}
+        </p>
+      ) : null}
+      {!datesSupported ? (
+        <p className="workforce-notice" role="status">
+          {t({
+            ja: '支払日または保険対象月がこの制度版の対応期間外です。対象日を確認してください。保険対象月は支払月かその前月を指定します。',
+            en: 'The payment date or insurance month is outside this package’s supported periods. Use the payment month or its preceding month for insurance.',
+          })}
+        </p>
+      ) : null}
       <div className="workforce-form-row">
         <label>
           {t({ ja: '給与支払日', en: 'Payment date' })}
@@ -114,9 +151,10 @@ export function FiscalPayrollCalculate({
             className="input"
             name="paymentDate"
             type="date"
-            min="2026-01-01"
-            max="2026-12-31"
-            defaultValue={prior?.paymentDate ?? businessToday()}
+            min={range?.from}
+            max={range?.to}
+            value={paymentDate}
+            onChange={(event) => setPaymentDate(event.target.value)}
             required
           />
         </label>
@@ -126,7 +164,10 @@ export function FiscalPayrollCalculate({
             className="input"
             name="insurancePeriod"
             type="month"
-            defaultValue={prior?.insurancePeriod ?? period}
+            value={insurancePeriod}
+            min={reviewedRule?.manifest.applicability.insuranceMonths.from}
+            max={reviewedRule?.manifest.applicability.insuranceMonths.to}
+            onChange={(event) => setInsurancePeriod(event.target.value)}
             required
           />
         </label>
@@ -261,7 +302,7 @@ export function FiscalPayrollEvidence({ row, onClose }: { row: PayrollSummary; o
       </p>
       <label>
         {t({ ja: '実際の支払日', en: 'Actual payment date' })}
-        <input className="input" type="date" name="paymentDate" min="2026-01-01" max="2027-01-31" required />
+        <input className="input" type="date" name="paymentDate" min={monthEnd(row.period)} required />
       </label>
       <FiscalMoneyField name="taxablePay" label={{ ja: '課税支給額', en: 'Taxable pay' }} value={row.grossPay} />
       <label>

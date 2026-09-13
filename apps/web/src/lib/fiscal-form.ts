@@ -19,6 +19,7 @@ export const yearEndMoneyFields = [
 export function declarationFromForm(
   data: FormData,
   counts: { spouse: boolean; relatives: number; previousEmployers: number; unpaidMonths: number },
+  taxYear: number,
 ): Record<string, unknown> {
   const relative = (prefix: string) => ({
     birthDate: formText(data, prefix + '.birthDate'),
@@ -28,7 +29,7 @@ export function declarationFromForm(
     eligibilityConfirmed: checked(data, prefix + '.eligibilityConfirmed'),
   });
   return {
-    taxYear: 2026,
+    taxYear,
     resident: checked(data, 'resident'),
     mainEmployer: checked(data, 'mainEmployer'),
     factsConfirmed: checked(data, 'factsConfirmed'),

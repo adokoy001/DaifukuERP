@@ -499,6 +499,9 @@ importers:
       '@daifuku/mod-tax-filing':
         specifier: workspace:*
         version: link:../../modules/tax-filing
+      '@daifuku/mod-workforce':
+        specifier: workspace:*
+        version: link:../../modules/workforce
       iconv-lite:
         specifier: 0.7.3
         version: 0.7.3

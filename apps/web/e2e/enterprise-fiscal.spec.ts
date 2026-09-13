@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { api, API } from './operations-helpers.ts';
 import {
-  fiscalAction,
   fiscalChecks,
   fiscalDialogAction,
   fiscalFixture,
@@ -20,12 +19,19 @@ test('enterprise payroll: verified conditions, automatic deductions, mobile decl
   await fiscalSignIn(page, f.payroll.email);
   await page.goto('/workforce/payroll');
   await expect(page.getByTestId('fiscal-management')).toBeVisible();
-  await fiscalAction(page, 'initialize_payroll_rules', () =>
-    page.getByRole('button', { name: '2026年の制度資料を準備', exact: true }).click(),
-  );
+  await page.getByRole('button', { name: '制度の詳細・導入', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('2026-01-01 → 2026-12-31', { exact: true })).toBeVisible();
+  await dialog
+    .getByLabel('導入の確認記録', { exact: true })
+    .fill('Synthetic primary sources and company applicability review');
+  await dialog
+    .getByRole('checkbox', { name: '出典・対応期間・計算方式と、この会社への適用を確認しました', exact: true })
+    .check();
+  await fiscalDialogAction(page, 'install_payroll_rule', '確認した制度版をこの会社に導入');
   await page.getByLabel('従業員', { exact: true }).selectOption(f.employee.id);
   await page.getByRole('button', { name: '適用期間を追加', exact: true }).click();
-  let dialog = page.getByRole('dialog');
+  dialog = page.getByRole('dialog');
   await dialog.getByLabel('生年月日', { exact: true }).fill('1993-04-10');
   await dialog.getByLabel('健康保険の標準報酬月額（加入時必須）', { exact: true }).fill('300000');
   await dialog.getByLabel('厚生年金の標準報酬月額（加入時必須）', { exact: true }).fill('300000');

@@ -18,3 +18,5 @@ export {
   WorkforceYearEndAdjustment,
 } from './fiscal.ts';
 export { WorkforceWorkSystemPeriod } from './work-system.ts';
+
+export { WorkforcePayrollRuleRelease } from './payroll-rule-release.ts';

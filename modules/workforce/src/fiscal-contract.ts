@@ -2,7 +2,7 @@
 import { z } from 'zod';
 const id = z.uuid(),
   date = z.iso.date(),
-  year = z.literal(2026),
+  year = z.number().int().min(1900).max(9999),
   version = z.number().int().min(1),
   editVersion = z.number().int().min(0);
 export const fiscalMoney = z.string().regex(/^\d{1,12}$/),
@@ -142,7 +142,7 @@ export const cancelYearEndInput = z.object({ adjustmentId: id, expectedVersion: 
 export const settleYearEndInput = z
   .object({ adjustmentId: id, expectedVersion: version, settledOn: date, reference: reason })
   .strict();
-export const fiscalBoardInput = z.object({ taxYear: year }).strict();
+export const fiscalBoardInput = z.object({ taxYear: year.optional() }).strict();
 export const fiscalConditionSummary = payrollConditionData.extend({ id, employeeId: id, version });
 export const declarationSummary = z.object({
   id,
@@ -171,6 +171,8 @@ export const adjustmentSummary = z.object({
 });
 export const fiscalBoardOutput = z.object({
   taxYear: year,
+  supportedTaxYears: z.array(year),
+  availableTaxYears: z.array(year),
   employees: z.array(z.object({ id, name: z.string(), code: z.string(), siteId: id })),
   rules: z.array(z.object({ id, code: z.string(), taxYear: year, sources: z.array(z.string()) })),
   conditions: z.array(fiscalConditionSummary),
@@ -190,6 +192,8 @@ export const fiscalBoardOutput = z.object({
 });
 export const myFiscalOutput = z.object({
   taxYear: year,
+  supportedTaxYears: z.array(year),
+  availableTaxYears: z.array(year),
   employeeId: id.nullable(),
   declaration: declarationSummary.nullable(),
   adjustments: z.array(adjustmentSummary),

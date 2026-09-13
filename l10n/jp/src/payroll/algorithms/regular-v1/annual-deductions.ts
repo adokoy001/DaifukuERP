@@ -1,31 +1,35 @@
 import { Decimal, ValidationError } from '@daifuku/kernel';
-import type { YearEndDeclaration } from '../fiscal-contract.ts';
-import { ANNUAL_TAX_2026, DEDUCTIONS_2026 as rule } from './fiscal-data.ts';
+import type { YearEndDeclaration } from '@daifuku/mod-workforce';
+import type { JapanPayrollRules, JapanPayrollData } from '../../schema.ts';
 import { attainedAge } from './social-insurance.ts';
-const D = Decimal.from,
-  age = (birth: string) => attainedAge(birth, '2026-12-31');
+const D = Decimal.from;
+const age = (rules: JapanPayrollRules, birth: string) =>
+  attainedAge(birth, rules.manifest.applicability.yearEndFactsOn);
 const min = (amount: Decimal, cap: number): Decimal => (amount.gt(cap) ? D(cap) : amount);
 function invalid(path: string, message: string): never {
   throw new ValidationError('Year-end declaration is inconsistent', [{ path, message }]);
 }
-export function annualBasic(income: Decimal): Decimal {
-  return D(ANNUAL_TAX_2026.basic.find(([upper]) => income.lte(upper))?.[1] ?? 0);
+export function annualBasic(rules: JapanPayrollRules, income: Decimal): Decimal {
+  return D(rules.data.annualTax.basic.find(([upper]) => income.lte(upper))?.[1] ?? 0);
 }
-function disability(kind: keyof typeof rule.disability): Decimal {
+function disability(rules: JapanPayrollRules, kind: keyof JapanPayrollData['deductions']['disability']): Decimal {
+  const rule = rules.data.deductions;
   return D(rule.disability[kind]);
 }
-function spouseDeduction(input: YearEndDeclaration, income: Decimal): Decimal {
+function spouseDeduction(rules: JapanPayrollRules, input: YearEndDeclaration, income: Decimal): Decimal {
+  const rule = rules.data.deductions;
   const spouse = input.spouse,
     column = rule.spouseTaxpayerBands.findIndex((upper) => income.lte(upper));
   if (!spouse || column < 0) return D(0);
   const amount = D(spouse.income);
   if (amount.lte(rule.dependentIncomeLimit))
-    return D((age(spouse.birthDate) >= rule.elderlyAge ? rule.spouseElderly : rule.spouseOrdinary)[column] ?? 0);
+    return D((age(rules, spouse.birthDate) >= rule.elderlyAge ? rule.spouseElderly : rule.spouseOrdinary)[column] ?? 0);
   return D(rule.spouseSpecial.find((row) => amount.lte(row[0]))?.[column + 1] ?? 0);
 }
 
-function relativeDeduction(relative: YearEndDeclaration['relatives'][number]): Decimal {
-  const years = age(relative.birthDate),
+function relativeDeduction(rules: JapanPayrollRules, relative: YearEndDeclaration['relatives'][number]): Decimal {
+  const rule = rules.data.deductions;
+  const years = age(rules, relative.birthDate),
     income = D(relative.income);
   if (income.lte(rule.dependentIncomeLimit))
     return D(
@@ -45,32 +49,43 @@ function relativeDeduction(relative: YearEndDeclaration['relatives'][number]): D
   return D(rule.relativeSpecial.find((row) => income.lte(row[0]))?.[1] ?? 0);
 }
 
-function life(premium: string, old = false, child = false): Decimal {
+function life(rules: JapanPayrollRules, premium: string, old = false, child = false): Decimal {
+  const rule = rules.data.deductions;
   const a = D(premium),
     unit = old ? rule.life.oldUnit : child ? rule.life.childUnit : rule.life.modernUnit;
+  const parameters = rules.manifest.parameters.life;
   return (
-    a.lte(unit) ? a : a.lte(unit * 2) ? a.div(2).plus(unit / 2) : a.lte(unit * 4) ? a.div(4).plus(unit) : D(unit * 2)
+    a.lte(unit)
+      ? a
+      : a.lte(D(unit).times(parameters.secondBandMultiple))
+        ? a.div(parameters.secondDivisor).plus(D(unit).div(parameters.secondOffsetDivisor))
+        : a.lte(D(unit).times(parameters.thirdBandMultiple))
+          ? a.div(parameters.thirdDivisor).plus(unit)
+          : D(unit).times(parameters.capMultiple)
   ).roundUp(0);
 }
-function combinedLife(newPremium: string, oldPremium: string, child = false): Decimal {
-  const modern = life(newPremium, false, child),
-    old = life(oldPremium, true),
+function combinedLife(rules: JapanPayrollRules, newPremium: string, oldPremium: string, child = false): Decimal {
+  const rule = rules.data.deductions;
+  const modern = life(rules, newPremium, false, child),
+    old = life(rules, oldPremium, true),
     combined = min(modern.plus(old), child ? rule.life.childCombinedCap : rule.life.modernCombinedCap);
   return old.gt(combined) ? old : combined;
 }
-function insuranceDeduction(input: YearEndDeclaration) {
+function insuranceDeduction(rules: JapanPayrollRules, input: YearEndDeclaration) {
+  const rule = rules.data.deductions;
   const child = input.relatives.some(
-    (person) => age(person.birthDate) < rule.childLifeAgeLimit && D(person.income).lte(rule.dependentIncomeLimit),
+    (person) =>
+      age(rules, person.birthDate) < rule.childLifeAgeLimit && D(person.income).lte(rule.dependentIncomeLimit),
   );
-  const general = combinedLife(input.lifeNew, input.lifeOld, child),
-    nursing = life(input.nursingLife),
-    pension = combinedLife(input.pensionLifeNew, input.pensionLifeOld);
+  const general = combinedLife(rules, input.lifeNew, input.lifeOld, child),
+    nursing = life(rules, input.nursingLife),
+    pension = combinedLife(rules, input.pensionLifeNew, input.pensionLifeOld);
   const earthquake = min(D(input.earthquakePremium), rule.earthquake.cap),
     old = D(input.oldLongTermPremium);
   const oldDeduction = old.lte(rule.earthquake.oldFirst)
     ? old
     : old.lte(rule.earthquake.oldSecond)
-      ? old.div(2).plus(rule.earthquake.oldOffset).roundUp(0)
+      ? old.div(rules.manifest.parameters.oldEarthquakeDivisor).plus(rule.earthquake.oldOffset).roundUp(0)
       : D(rule.earthquake.oldCap);
   return {
     generalLife: general,
@@ -81,7 +96,13 @@ function insuranceDeduction(input: YearEndDeclaration) {
     under23Dependent: child,
   };
 }
-export function declarationDeductions(input: YearEndDeclaration, income: Decimal, payrollSocial: Decimal) {
+export function declarationDeductions(
+  rules: JapanPayrollRules,
+  input: YearEndDeclaration,
+  income: Decimal,
+  payrollSocial: Decimal,
+) {
+  const rule = rules.data.deductions;
   if (new Set(input.relatives.map((row) => row.code)).size !== input.relatives.length)
     invalid('relatives', 'Each relative must be declared once.');
   if ((input.widow && input.singleParent) || ((input.widow || input.singleParent) && input.spouse))
@@ -89,35 +110,42 @@ export function declarationDeductions(input: YearEndDeclaration, income: Decimal
   if ((input.widow || input.singleParent) && income.gt(rule.singleIncomeLimit))
     invalid(
       'singleParent',
-      'This deduction requires total income of no more than 5 million yen and confirmed eligibility.',
+      `This deduction requires total income of no more than ${rule.singleIncomeLimit} yen and confirmed eligibility.`,
     );
   if (
     input.student &&
     (income.gt(rule.studentIncomeLimit) || D(input.studentNonSalaryIncome).gt(rule.studentNonWorkLimit))
   )
-    invalid('student', '2026 student deduction requires income <=890,000 and non-work income <=100,000 yen.');
+    invalid(
+      'student',
+      `Student deduction requires income <=${rule.studentIncomeLimit} and non-work income <=${rule.studentNonWorkLimit} yen.`,
+    );
   if (
     input.relatives.some(
-      (row) => row.birthDate > '2026-12-31' || (row.cohabitingElderlyParent && age(row.birthDate) < rule.elderlyAge),
+      (row) =>
+        row.birthDate > rules.manifest.applicability.yearEndFactsOn ||
+        (row.cohabitingElderlyParent && age(rules, row.birthDate) < rule.elderlyAge),
     ) ||
-    (input.spouse && input.spouse.birthDate > '2026-12-31')
+    (input.spouse && input.spouse.birthDate > rules.manifest.applicability.yearEndFactsOn)
   )
     invalid('relatives', 'Check the year-end birth dates and elderly-parent classification.');
   const relatives = input.relatives
     .filter((row) => row.claimDependentDeduction)
-    .reduce((sum, row) => sum.plus(relativeDeduction(row)), D(0));
+    .reduce((sum, row) => sum.plus(relativeDeduction(rules, row)), D(0));
   const disabledRelatives = input.relatives
     .filter((row) => row.claimDependentDeduction && D(row.income).lte(rule.dependentIncomeLimit))
-    .reduce((sum, row) => sum.plus(disability(row.disability)), D(0));
+    .reduce((sum, row) => sum.plus(disability(rules, row.disability)), D(0));
   const spouseDisability =
-    input.spouse && D(input.spouse.income).lte(rule.dependentIncomeLimit) ? disability(input.spouse.disability) : D(0);
-  const insurance = insuranceDeduction(input),
+    input.spouse && D(input.spouse.income).lte(rule.dependentIncomeLimit)
+      ? disability(rules, input.spouse.disability)
+      : D(0);
+  const insurance = insuranceDeduction(rules, input),
     social = payrollSocial.plus(input.personalSocialPremium);
   const amounts = {
-    basic: annualBasic(income),
-    spouse: spouseDeduction(input, income),
+    basic: annualBasic(rules, income),
+    spouse: spouseDeduction(rules, input, income),
     relatives,
-    disability: disability(input.taxpayerDisability).plus(disabledRelatives).plus(spouseDisability),
+    disability: disability(rules, input.taxpayerDisability).plus(disabledRelatives).plus(spouseDisability),
     widowOrSingleParent: D(input.singleParent ? rule.singleParent : input.widow ? rule.widow : 0),
     student: D(input.student ? rule.student : 0),
     social,
@@ -127,7 +155,8 @@ export function declarationDeductions(input: YearEndDeclaration, income: Decimal
   };
   return { ...amounts, insurance, total: Object.values(amounts).reduce((sum, amount) => sum.plus(amount), D(0)) };
 }
-export function qualifiesIncomeAdjustment(input: YearEndDeclaration): boolean {
+export function qualifiesIncomeAdjustment(rules: JapanPayrollRules, input: YearEndDeclaration): boolean {
+  const rule = rules.data.deductions;
   return (
     input.taxpayerDisability === 'special' ||
     !!(
@@ -138,7 +167,8 @@ export function qualifiesIncomeAdjustment(input: YearEndDeclaration): boolean {
     input.relatives.some(
       (row) =>
         D(row.income).lte(rule.dependentIncomeLimit) &&
-        (age(row.birthDate) < rule.childLifeAgeLimit || ['special', 'cohabiting_special'].includes(row.disability)),
+        (age(rules, row.birthDate) < rule.childLifeAgeLimit ||
+          ['special', 'cohabiting_special'].includes(row.disability)),
     )
   );
 }

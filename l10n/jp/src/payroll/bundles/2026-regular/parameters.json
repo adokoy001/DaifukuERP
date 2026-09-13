@@ -1,0 +1,30 @@
+{
+  "legacySnapshotSchema": 1,
+  "insurance": {
+    "nursingAgeFrom": 40,
+    "nursingAgeToExclusive": 65,
+    "healthAgeToExclusive": 75,
+    "pensionAgeToExclusive": 70,
+    "employeePercentDivisor": "200",
+    "roundingThreshold": "0.5"
+  },
+  "life": {
+    "secondBandMultiple": "2",
+    "thirdBandMultiple": "4",
+    "secondDivisor": "2",
+    "thirdDivisor": "4",
+    "secondOffsetDivisor": "2",
+    "capMultiple": "2"
+  },
+  "oldEarthquakeDivisor": "2",
+  "rounding": {
+    "insurance": "fraction-strictly-above-threshold-v1",
+    "monthlySalary": "ceil-yen-v1",
+    "monthlyTax": "half-up-unit-v1",
+    "annualSalary": "floor-yen-v1",
+    "annualIncomeAdjustment": "ceil-yen-v1",
+    "annualDeductions": "ceil-yen-v1",
+    "annualTaxableIncome": "floor-unit-v1",
+    "annualTax": "floor-unit-v1"
+  }
+}

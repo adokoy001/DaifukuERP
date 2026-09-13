@@ -3,12 +3,16 @@ import { declarationFromForm } from './fiscal-form.ts';
 import { monthDays, timeInput, timeMinute, weekdayTemplate } from './work-system-form.ts';
 describe('annual declaration wire input', () => {
   it('does not silently assert legal eligibility when confirmations are unchecked', () => {
-    const result = declarationFromForm(new FormData(), {
-      spouse: false,
-      relatives: 0,
-      previousEmployers: 0,
-      unpaidMonths: 0,
-    });
+    const result = declarationFromForm(
+      new FormData(),
+      {
+        spouse: false,
+        relatives: 0,
+        previousEmployers: 0,
+        unpaidMonths: 0,
+      },
+      2026,
+    );
     expect(result.resident).toBe(false);
     expect(result.mainEmployer).toBe(false);
     expect(result.factsConfirmed).toBe(false);
@@ -33,7 +37,11 @@ describe('annual declaration wire input', () => {
       'unpaid0.reason': 'Before joining',
     }))
       data.set(key, value);
-    const result = declarationFromForm(data, { spouse: true, relatives: 1, previousEmployers: 1, unpaidMonths: 1 });
+    const result = declarationFromForm(
+      data,
+      { spouse: true, relatives: 1, previousEmployers: 1, unpaidMonths: 1 },
+      2026,
+    );
     expect(result.otherIncome).toBe('999999999999');
     expect(result.resident).toBe(true);
     expect(result.mainEmployer).toBe(false);
@@ -49,11 +57,23 @@ describe('annual declaration wire input', () => {
     ]);
     data.set('relative0.claimDependentDeduction', 'on');
     expect(
-      declarationFromForm(data, { spouse: false, relatives: 1, previousEmployers: 0, unpaidMonths: 0 }).relatives,
+      declarationFromForm(data, { spouse: false, relatives: 1, previousEmployers: 0, unpaidMonths: 0 }, 2026).relatives,
     ).toEqual([expect.objectContaining({ claimDependentDeduction: true })]);
     expect(result.spouse).toMatchObject({ specialDeductionNotDuplicated: false });
     expect(result.previousEmployers).toEqual([expect.objectContaining({ taxablePay: '1234567' })]);
     expect(result.unpaidMonths).toEqual([{ period: '2026-01', reason: 'Before joining' }]);
+  });
+  it('uses the selected tax year without deriving it from the device date or rewriting recorded months', () => {
+    const data = new FormData();
+    data.set('unpaid0.period', '2097-01');
+    data.set('unpaid0.reason', 'Synthetic test-only year');
+    const result = declarationFromForm(
+      data,
+      { spouse: false, relatives: 0, previousEmployers: 0, unpaidMonths: 1 },
+      2097,
+    );
+    expect(result.taxYear).toBe(2097);
+    expect(result.unpaidMonths).toEqual([{ period: '2097-01', reason: 'Synthetic test-only year' }]);
   });
 });
 describe('working-time calendar input', () => {
