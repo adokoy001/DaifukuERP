@@ -83,8 +83,11 @@ function companySelectionKey(): string | undefined {
 /** Company selection is per tab and user; another tab must never change the target of an open form. */
 export function getCompanyId(): string | null {
   const key = companySelectionKey();
-  try { return (key ? globalThis.sessionStorage?.getItem(key) : null) ?? getUser()?.defaultCompanyId ?? null; }
-  catch { return getUser()?.defaultCompanyId ?? null; }
+  try {
+    return (key ? globalThis.sessionStorage?.getItem(key) : null) ?? getUser()?.defaultCompanyId ?? null;
+  } catch {
+    return getUser()?.defaultCompanyId ?? null;
+  }
 }
 
 export function setActiveCompany(id: string): void {
@@ -95,7 +98,11 @@ export function setActiveCompany(id: string): void {
 
 function clearCompanySelection(): void {
   const key = companySelectionKey();
-  try { if (key) globalThis.sessionStorage?.removeItem(key); } catch { /* Storage can be unavailable in private sessions. */ }
+  try {
+    if (key) globalThis.sessionStorage?.removeItem(key);
+  } catch {
+    /* Storage can be unavailable in private sessions. */
+  }
 }
 
 let unauthorizedHandler: (() => void) | null = null;
@@ -111,11 +118,19 @@ function parseErrorBody(status: number, raw: unknown): ErrorBody {
   const err = typeof raw === 'object' && raw !== null ? (raw as { error?: unknown }).error : undefined;
   if (typeof err === 'object' && err !== null) {
     const e = err as Partial<ErrorBody>;
-    const body: ErrorBody = { code: e.code ?? 'INTERNAL', message: e.message ?? `HTTP ${status}`, hint: e.hint ?? 'Retry, or check the server logs.' };
+    const body: ErrorBody = {
+      code: e.code ?? 'INTERNAL',
+      message: e.message ?? `HTTP ${status}`,
+      hint: e.hint ?? 'Retry, or check the server logs.',
+    };
     if (e.details) body.details = e.details;
     return body;
   }
-  return { code: status === 401 ? 'PERMISSION_DENIED' : 'INTERNAL', message: `HTTP ${status}`, hint: status === 401 ? 'Log in again.' : 'The server returned a non-JSON error; check its logs.' };
+  return {
+    code: status === 401 ? 'PERMISSION_DENIED' : 'INTERNAL',
+    message: `HTTP ${status}`,
+    hint: status === 401 ? 'Log in again.' : 'The server returned a non-JSON error; check its logs.',
+  };
 }
 
 export interface RequestOptions {
@@ -144,7 +159,11 @@ async function send(path: string, init: RequestInit, anonymous: boolean | undefi
     res = await fetch(`${API_URL}${path}`, init);
   } catch (e) {
     if (init.signal?.aborted) throw e;
-    throw new ApiError(0, { code: 'INTERNAL', message: e instanceof Error ? e.message : 'network error', hint: `Cannot reach the API at ${API_URL}. Is it running?` });
+    throw new ApiError(0, {
+      code: 'INTERNAL',
+      message: e instanceof Error ? e.message : 'network error',
+      hint: `Cannot reach the API at ${API_URL}. Is it running?`,
+    });
   }
   if (res.ok) return res;
   const text = await res.text();
@@ -178,7 +197,12 @@ async function jsonOf<T>(res: Response): Promise<T> {
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json', ...authHeaders(opts.anonymous) };
   if (opts.body !== undefined) headers['content-type'] = 'application/json';
-  const init: RequestInit = { method: opts.method ?? 'GET', headers, ...(opts.signal ? { signal: opts.signal } : {}), ...(opts.cache ? { cache: opts.cache } : {}) };
+  const init: RequestInit = {
+    method: opts.method ?? 'GET',
+    headers,
+    ...(opts.signal ? { signal: opts.signal } : {}),
+    ...(opts.cache ? { cache: opts.cache } : {}),
+  };
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
   return jsonOf<T>(await send(path, init, opts.anonymous));
 }
@@ -198,5 +222,9 @@ export interface Downloaded {
 /** Authenticated binary GET (attachment download). */
 export async function download(path: string): Promise<Downloaded> {
   const res = await send(path, { method: 'GET', headers: authHeaders(false), cache: 'no-store' }, false);
-  return { blob: await res.blob(), contentDisposition: res.headers.get('content-disposition'), contentType: res.headers.get('content-type') };
+  return {
+    blob: await res.blob(),
+    contentDisposition: res.headers.get('content-disposition'),
+    contentType: res.headers.get('content-type'),
+  };
 }

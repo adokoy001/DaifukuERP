@@ -5,7 +5,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TAX_CATEGORIES, type TaxCategory } from '../src/services/categories.ts';
-import { computeLineTax, resolveRate, summarizeTax, taxScaleForCurrency, type LineTaxInput, type RateRow } from '../src/services/compute.ts';
+import {
+  computeLineTax,
+  resolveRate,
+  summarizeTax,
+  taxScaleForCurrency,
+  type LineTaxInput,
+  type RateRow,
+} from '../src/services/compute.ts';
 
 const RATES: readonly RateRow[] = [
   { code: 'STD8', category: 'standard', rate: '0.08', validFrom: '2014-04-01', validTo: '2019-09-30', label: '標準8%' },
@@ -15,12 +22,17 @@ const RATES: readonly RateRow[] = [
 ];
 
 const line = (amount: string, category: TaxCategory, rate: string): LineTaxInput => ({ amount, category, rate });
-const strings = (s: { groups: { category: string; rate: Decimal; taxable: Decimal; tax: Decimal; gross: Decimal }[] }) =>
-  s.groups.map((g) => [g.category, g.rate.toString(), g.taxable.toString(), g.tax.toString(), g.gross.toString()]);
+const strings = (s: {
+  groups: { category: string; rate: Decimal; taxable: Decimal; tax: Decimal; gross: Decimal }[];
+}) => s.groups.map((g) => [g.category, g.rate.toString(), g.taxable.toString(), g.tax.toString(), g.gross.toString()]);
 
 describe('resolveRate (AC-2)', () => {
   it('returns the row whose period contains the date; both period ends are inclusive', () => {
-    expect(resolveRate(RATES, 'standard', '2019-09-30')).toMatchObject({ code: 'STD8', category: 'standard', label: '標準8%' });
+    expect(resolveRate(RATES, 'standard', '2019-09-30')).toMatchObject({
+      code: 'STD8',
+      category: 'standard',
+      label: '標準8%',
+    });
     expect(resolveRate(RATES, 'standard', '2019-10-01').code).toBe('STD10');
     expect(resolveRate(RATES, 'standard', '2014-04-01').code).toBe('STD8');
     expect(resolveRate(RATES, 'standard', '2026-09-10').rate.eq('0.10')).toBe(true);
@@ -28,9 +40,17 @@ describe('resolveRate (AC-2)', () => {
   });
 
   it('exempt/non_taxable/out_of_scope resolve to rate 0 with the category preserved, with or without a row', () => {
-    expect(resolveRate(RATES, 'exempt', '2026-01-01')).toMatchObject({ category: 'exempt', code: 'EXEMPT', label: '免税' });
+    expect(resolveRate(RATES, 'exempt', '2026-01-01')).toMatchObject({
+      category: 'exempt',
+      code: 'EXEMPT',
+      label: '免税',
+    });
     expect(resolveRate(RATES, 'exempt', '2026-01-01').rate.isZero()).toBe(true);
-    expect(resolveRate(RATES, 'exempt', '2010-01-01')).toMatchObject({ category: 'exempt', code: 'EXEMPT', label: '免税' });
+    expect(resolveRate(RATES, 'exempt', '2010-01-01')).toMatchObject({
+      category: 'exempt',
+      code: 'EXEMPT',
+      label: '免税',
+    });
     expect(resolveRate(RATES, 'non_taxable', '2026-01-01')).toMatchObject({ category: 'non_taxable', code: 'NONTAX' });
     expect(resolveRate([], 'out_of_scope', '2026-01-01')).toMatchObject({ category: 'out_of_scope', code: 'OOS' });
     expect(resolveRate([], 'out_of_scope', '2026-01-01').rate.toString()).toBe('0');
@@ -55,13 +75,22 @@ describe('resolveRate (AC-2)', () => {
   it('AC-9 golden: adding RED1 (reduced 1% from 2027-04-01, 2 years) is a data change only', () => {
     const withRed1: RateRow[] = [
       ...RATES.map((r) => (r.code === 'RED8' ? { ...r, validTo: '2027-03-31' } : r)),
-      { code: 'RED1', category: 'reduced', rate: '0.01', validFrom: '2027-04-01', validTo: '2029-03-31', label: '軽減1%（飲食料品）' },
+      {
+        code: 'RED1',
+        category: 'reduced',
+        rate: '0.01',
+        validFrom: '2027-04-01',
+        validTo: '2029-03-31',
+        label: '軽減1%（飲食料品）',
+      },
     ];
     expect(resolveRate(withRed1, 'reduced', '2027-03-31').rate.toString()).toBe('0.08');
     expect(resolveRate(withRed1, 'reduced', '2027-04-01').rate.toString()).toBe('0.01');
     expect(resolveRate(withRed1, 'reduced', '2027-04-01').code).toBe('RED1');
     expect(resolveRate(withRed1, 'reduced', '2029-03-31').code).toBe('RED1');
-    expect(() => resolveRate(withRed1, 'reduced', '2029-04-01')).toThrow(expect.objectContaining({ code: 'VALIDATION', hint: 'add a tax_rate row for reduced covering 2029-04-01' }));
+    expect(() => resolveRate(withRed1, 'reduced', '2029-04-01')).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', hint: 'add a tax_rate row for reduced covering 2029-04-01' }),
+    );
     expect(resolveRate(withRed1, 'standard', '2027-04-01').code).toBe('STD10');
   });
 });
@@ -102,7 +131,10 @@ describe('summarizeTax (AC-4)', () => {
   });
 
   it('two rates of the same category (historical mix) are separate groups; order = first appearance', () => {
-    const s = summarizeTax([line('100', 'reduced', '0.08'), line('1000', 'standard', '0.10'), line('1000', 'standard', '0.08')], { roundingMode: 'down', scale: 0 });
+    const s = summarizeTax(
+      [line('100', 'reduced', '0.08'), line('1000', 'standard', '0.10'), line('1000', 'standard', '0.08')],
+      { roundingMode: 'down', scale: 0 },
+    );
     expect(strings(s)).toEqual([
       ['reduced', '0.08', '100', '8', '108'],
       ['standard', '0.1', '1000', '100', '1100'],
@@ -116,15 +148,24 @@ describe('summarizeTax (AC-4)', () => {
   it('rounding modes: 106.64 -> 106 (down) / 107 (half_up) / 107 (up); 123.5 -> 123 / 124 / 124', () => {
     const l8 = [line('1000', 'reduced', '0.08'), line('333', 'reduced', '0.08')];
     const l10 = [line('1235', 'standard', '0.10')];
-    const tax = (lines: LineTaxInput[], mode: RoundingMode) => summarizeTax(lines, { roundingMode: mode, scale: 0 }).groups[0]?.tax.toString();
+    const tax = (lines: LineTaxInput[], mode: RoundingMode) =>
+      summarizeTax(lines, { roundingMode: mode, scale: 0 }).groups[0]?.tax.toString();
     expect([tax(l8, 'down'), tax(l8, 'half_up'), tax(l8, 'up')]).toEqual(['106', '107', '107']);
     expect([tax(l10, 'down'), tax(l10, 'half_up'), tax(l10, 'up')]).toEqual(['123', '124', '124']);
   });
 
   it('税込 mode: tax = Σgross × rate ÷ (1 + rate) rounded once; taxable = gross − tax (exact for 1,100)', () => {
-    const s = summarizeTax([line('100', 'standard', '0.10'), line('1000', 'standard', '0.10')], { roundingMode: 'down', scale: 0, priceIncludesTax: true });
+    const s = summarizeTax([line('100', 'standard', '0.10'), line('1000', 'standard', '0.10')], {
+      roundingMode: 'down',
+      scale: 0,
+      priceIncludesTax: true,
+    });
     expect(strings(s)).toEqual([['standard', '0.1', '1000', '100', '1100']]);
-    const odd = summarizeTax([line('3284', 'standard', '0.10')], { roundingMode: 'half_up', scale: 0, priceIncludesTax: true });
+    const odd = summarizeTax([line('3284', 'standard', '0.10')], {
+      roundingMode: 'half_up',
+      scale: 0,
+      priceIncludesTax: true,
+    });
     expect(strings(odd)).toEqual([['standard', '0.1', '2985', '299', '3284']]);
   });
 
@@ -142,22 +183,35 @@ describe('summarizeTax (AC-4)', () => {
     expect(taxScaleForCurrency('usd')).toBe(2);
     const s = summarizeTax([line('12.345', 'standard', '0.10')], { roundingMode: 'half_up', scale: 2 });
     expect(s.groups[0]?.tax.toString()).toBe('1.23');
-    expect(summarizeTax([line('12.345', 'standard', '0.10')], { roundingMode: 'up', scale: 2 }).groups[0]?.tax.toString()).toBe('1.24');
+    expect(
+      summarizeTax([line('12.345', 'standard', '0.10')], { roundingMode: 'up', scale: 2 }).groups[0]?.tax.toString(),
+    ).toBe('1.24');
     const empty = summarizeTax([], { roundingMode: 'down', scale: 0 });
     expect(empty.groups).toEqual([]);
     expect(empty.totals.tax.toString()).toBe('0');
     expect(() => summarizeTax([], { roundingMode: 'down', scale: -1 })).toThrow(ValidationError);
-    expect(() => summarizeTax([line('1', 'exempt', '0.1')], { roundingMode: 'down', scale: 0 })).toThrow(ValidationError);
+    expect(() => summarizeTax([line('1', 'exempt', '0.1')], { roundingMode: 'down', scale: 0 })).toThrow(
+      ValidationError,
+    );
   });
 });
 
 // ---- properties (AC-9) ----------------------------------------------------------------------------
 
 const arbCategory = fc.constantFrom(...TAX_CATEGORIES);
-const rateFor = (c: TaxCategory) => (c === 'standard' ? fc.constantFrom('0.10', '0.08', '0.05') : c === 'reduced' ? fc.constantFrom('0.08', '0.01') : fc.constant('0'));
+const rateFor = (c: TaxCategory) =>
+  c === 'standard'
+    ? fc.constantFrom('0.10', '0.08', '0.05')
+    : c === 'reduced'
+      ? fc.constantFrom('0.08', '0.01')
+      : fc.constant('0');
 /** Money with up to 2 decimals, either sign, as a decimal string. */
-const arbAmount = fc.integer({ min: -100_000_000, max: 100_000_000 }).map((cents) => Decimal.from(cents).div(100).toString());
-const arbLine: fc.Arbitrary<LineTaxInput> = arbCategory.chain((category) => fc.record({ amount: arbAmount, category: fc.constant(category), rate: rateFor(category) }));
+const arbAmount = fc
+  .integer({ min: -100_000_000, max: 100_000_000 })
+  .map((cents) => Decimal.from(cents).div(100).toString());
+const arbLine: fc.Arbitrary<LineTaxInput> = arbCategory.chain((category) =>
+  fc.record({ amount: arbAmount, category: fc.constant(category), rate: rateFor(category) }),
+);
 const arbLines = fc.array(arbLine, { minLength: 0, maxLength: 30 });
 const arbMode = fc.constantFrom(...ROUNDING_MODES);
 const arbScale = fc.constantFrom(0, 2);
@@ -192,7 +246,11 @@ describe('summarizeTax — properties (AC-9)', () => {
         const s = summarizeTax(lines, { roundingMode, scale, priceIncludesTax });
         const unit = Decimal.from(1).div(Decimal.from(10 ** scale));
         for (const g of s.groups) {
-          const sum = Decimal.sum(lines.filter((l) => l.category === g.category && Decimal.from(l.rate).eq(g.rate)).map((l) => Decimal.from(l.amount)));
+          const sum = Decimal.sum(
+            lines
+              .filter((l) => l.category === g.category && Decimal.from(l.rate).eq(g.rate))
+              .map((l) => Decimal.from(l.amount)),
+          );
           const unrounded = priceIncludesTax ? sum.times(g.rate).div(Decimal.from(1).plus(g.rate)) : sum.times(g.rate);
           expect(g.tax.isZero() || g.tax.cmp(0) === unrounded.cmp(0)).toBe(true);
           expect(g.tax.minus(unrounded).abs().lt(unit)).toBe(true);
@@ -218,25 +276,45 @@ describe('summarizeTax — properties (AC-9)', () => {
 const groupExpectation = z.object({ taxable: z.string(), tax: z.string() });
 const goldenSchema = z.object({
   date: z.string(),
-  rates: z.array(z.object({ code: z.string(), category: z.enum(TAX_CATEGORIES), rate: z.string(), validFrom: z.string(), validTo: z.string().nullable(), label: z.string() })),
+  rates: z.array(
+    z.object({
+      code: z.string(),
+      category: z.enum(TAX_CATEGORIES),
+      rate: z.string(),
+      validFrom: z.string(),
+      validTo: z.string().nullable(),
+      label: z.string(),
+    }),
+  ),
   invoices: z.array(
     z.object({
       name: z.string(),
       priceIncludesTax: z.boolean(),
       lines: z.array(z.object({ amount: z.string(), category: z.enum(TAX_CATEGORIES) })),
-      expected: z.record(z.enum(ROUNDING_MODES), z.object({ totals: z.object({ taxable: z.string(), tax: z.string(), gross: z.string() }) }).catchall(groupExpectation)),
+      expected: z.record(
+        z.enum(ROUNDING_MODES),
+        z
+          .object({ totals: z.object({ taxable: z.string(), tax: z.string(), gross: z.string() }) })
+          .catchall(groupExpectation),
+      ),
     }),
   ),
 });
 
-const golden = goldenSchema.parse(JSON.parse(readFileSync(new URL('./golden/invoice-rounding.json', import.meta.url), 'utf8')));
+const golden = goldenSchema.parse(
+  JSON.parse(readFileSync(new URL('./golden/invoice-rounding.json', import.meta.url), 'utf8')),
+);
 
 describe('golden test/golden/invoice-rounding.json (AC-10, 問57)', () => {
   for (const inv of golden.invoices) {
     for (const mode of ROUNDING_MODES) {
       it(`${inv.name} — ${mode}`, () => {
         const expected = inv.expected[mode];
-        const lines = inv.lines.map((l) => ({ amount: l.amount, category: l.category, rate: resolveRate(golden.rates, l.category, golden.date).rate }));
+        const lines = inv.lines.map((l) => ({
+          amount: l.amount,
+          category: l.category,
+          rate: resolveRate(golden.rates, l.category, golden.date).rate,
+        }));
         const s = summarizeTax(lines, { roundingMode: mode, scale: 0, priceIncludesTax: inv.priceIncludesTax });
         const { totals, ...groups } = expected;
         expect(s.groups.map((g) => g.category)).toEqual(Object.keys(groups));
@@ -246,7 +324,11 @@ describe('golden test/golden/invoice-rounding.json (AC-10, 問57)', () => {
           expect(g.tax.toString()).toBe(e.tax);
           expect(g.gross.toString()).toBe(Decimal.from(e.taxable).plus(e.tax).toString());
         }
-        expect([s.totals.taxable.toString(), s.totals.tax.toString(), s.totals.gross.toString()]).toEqual([totals.taxable, totals.tax, totals.gross]);
+        expect([s.totals.taxable.toString(), s.totals.tax.toString(), s.totals.gross.toString()]).toEqual([
+          totals.taxable,
+          totals.tax,
+          totals.gross,
+        ]);
       });
     }
   }

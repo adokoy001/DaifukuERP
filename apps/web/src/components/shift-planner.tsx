@@ -13,31 +13,305 @@ import { ShiftResults } from './shift-results.tsx';
 import { ShiftSubmissions } from './shift-submissions.tsx';
 import { ShiftPlanConfirm } from './shift-plan-confirm.tsx';
 import { WorkforceError } from './workforce-shared.tsx';
-export function ShiftPlanner({ board, scopeKey, actions, refresh, onGuard }: { board: ShiftBoard; scopeKey: string; actions: string[]; refresh: () => Promise<ShiftBoard | undefined>; onGuard: (guarded: boolean, busy: boolean) => void }) {
-  const { t } = useLocale(), task = useWorkforceTask();
-  const [draft, setDraft] = useState(() => draftFromBoard(board)), [editing, setEditing] = useState(Boolean(board.draft) || !board.published), [dirty, setDirty] = useState(false), [error, setError] = useState<unknown>(), [confirm, setConfirm] = useState<{ plan: ShiftPlanSummary; mode: 'publish' | 'cancel' }>();
-  useEffect(() => { if (!editing && !dirty) { setDraft(draftFromBoard(board)); setEditing(Boolean(board.draft) || !board.published); } }, [board, editing, dirty]);
+export function ShiftPlanner({
+  board,
+  scopeKey,
+  actions,
+  refresh,
+  onGuard,
+}: {
+  board: ShiftBoard;
+  scopeKey: string;
+  actions: string[];
+  refresh: () => Promise<ShiftBoard | undefined>;
+  onGuard: (guarded: boolean, busy: boolean) => void;
+}) {
+  const { t } = useLocale(),
+    task = useWorkforceTask();
+  const [draft, setDraft] = useState(() => draftFromBoard(board)),
+    [editing, setEditing] = useState(Boolean(board.draft) || !board.published),
+    [dirty, setDirty] = useState(false),
+    [error, setError] = useState<unknown>(),
+    [confirm, setConfirm] = useState<{ plan: ShiftPlanSummary; mode: 'publish' | 'cancel' }>();
+  useEffect(() => {
+    if (!editing && !dirty) {
+      setDraft(draftFromBoard(board));
+      setEditing(Boolean(board.draft) || !board.published);
+    }
+  }, [board, editing, dirty]);
   const problem = useMemo(() => ({ ...board.problem, slots: draft.slots }), [board.problem, draft.slots]);
   const worker = useShiftRecommendation(scopeKey, problem);
   const evaluation = useMemo(() => evaluateShift(problem, draft.assignments), [problem, draft.assignments]);
-  const change = (patch: Partial<ShiftDraft>) => { worker.clear(); setDraft((value) => ({ ...value, ...patch })); setDirty(true); };
-  useEffect(() => { if (worker.result) { setDraft((value) => ({ ...value, assignments: worker.result?.assignments ?? value.assignments })); setDirty(true); } }, [worker.result]);
-  useEffect(() => { onGuard(dirty || worker.running || task.isPending, task.isPending); return () => onGuard(false, false); }, [dirty, worker.running, task.isPending, onGuard]);
-  useBlocker({ shouldBlockFn: () => Boolean(getToken()) && (task.isPending || ((dirty || worker.running) && !globalThis.confirm(t({ ja: '未保存のシフト案・実行中の推薦を破棄して移動しますか？', en: 'Discard the unsaved plan or running recommendation and leave?' })))), enableBeforeUnload: dirty || worker.running || task.isPending });
-  const sourceChanged = editing && draft.sourceRevision !== board.sourceRevision, planChanged = draftWasReplaced(draft, board, editing);
-  const canSave = actions.includes('workforce.save_shift_plan'), disabled = !editing || !canSave || worker.running || task.isPending;
-  const saved = async () => { const latest = await refresh(); if (latest) { worker.clear(); setDraft(draftFromBoard(latest)); setEditing(Boolean(latest.draft) || !latest.published); setDirty(false); } };
-  const save = async () => { setError(undefined); try { await task.mutateAsync({ action: 'workforce.save_shift_plan', input: { siteId: board.site.id, weekStart: board.weekStart, ...draft } }); await saved(); } catch (failure) { setError(failure); } };
-  return <div className="workforce-stack" data-testid="shift-planner"><p className="shift-notice">{t({ ja: '勤務計画の推薦です。勤怠・給与は更新しません。100社員・7日・42枠まで。最適解や法令適合を保証するものではありません。', en: 'Planning recommendations do not change attendance or payroll. Up to 100 employees, seven days and 42 slots. Optimality and regulatory compliance are not guaranteed.' })}</p>
-    {board.published ? <section className="shift-published"><div><strong>{t({ ja: '現在の公開版', en: 'Current published version' })} · v{board.published.version}</strong><p>{board.published.publishedAt} · {board.published.assignments.length} {t({ ja: '勤務', en: 'assignments' })}</p></div>{!editing && canSave ? <button className="btn btn-primary" onClick={() => { worker.clear(); if (board.published) setDraft(revisePublished(board.published, board.sourceRevision)); setEditing(true); setDirty(true); }}>{t({ ja: '公開版から改訂案を作る', en: 'Start a revision' })}</button> : null}{actions.includes('workforce.cancel_shift_plan') ? <button className="btn" disabled={dirty || task.isPending} onClick={() => { if (board.published) setConfirm({ plan: board.published, mode: 'cancel' }); }}>{t({ ja: '公開を取り消す', en: 'Cancel publication' })}</button> : null}
-      {board.publishedEvaluation?.issues.length ? <div className="workforce-error" role="alert"><strong>{t({ ja: '公開後の変更により要調整', en: 'Published plan requires adjustment' })}</strong><ul>{board.publishedEvaluation.issues.map((issue, index) => <li key={index}>{board.problem.employees.find((employee) => employee.id === issue.employeeId)?.name} {t(shiftReasons[issue.code])}</li>)}</ul></div> : null}</section> : null}
-    {sourceChanged || planChanged ? <div className="workforce-notice" role="status"><strong>{t({ ja: '元情報または下書きが更新されました', en: 'Source information or draft changed' })}</strong><p>{t({ ja: '編集中の案を保持しています。最新情報の確認後に保存してください。', en: 'Your draft is preserved. Review current information before saving.' })}</p><button className="btn" disabled={task.isPending || worker.running} onClick={() => { if (planChanged) { if (globalThis.confirm(t({ ja: '編集中の案を破棄して最新の下書きを読み込みますか？', en: 'Discard your edits and load the current draft?' }))) void saved(); } else change({ sourceRevision: board.sourceRevision }); }}>{t(planChanged ? { ja: '最新の下書きを読み込む', en: 'Load current draft' } : { ja: '最新資料で再評価', en: 'Re-evaluate current sources' })}</button></div> : null}
-    <ShiftSlots weekStart={board.weekStart} slots={draft.slots} disabled={disabled} onChange={(slots) => change({ slots })} onRemove={(id) => change(removeShiftSlot(draft.slots, draft.assignments, id))} />
-    <ShiftSubmissions board={board} canEdit={actions.includes('workforce.save_shift_profile') && !worker.running && !task.isPending} />
-    <section className="shift-recommend-controls"><div><h2>{t({ ja: 'ブラウザー内で推薦', en: 'Recommend in this browser' })}</h2><p>{t({ ja: '固定した勤務は保持。停止して手動で調整することもできます。', en: 'Locks are preserved. You may stop and adjust assignments manually.' })}</p></div><label>{t({ ja: '再現用シード', en: 'Reproducible seed' })}<input className="input" type="number" step={1} min={0} max={2147483647} value={draft.seed} disabled={disabled} onChange={(event) => change({ seed: Number(event.target.value) })} /></label>{worker.running ? <button className="btn" onClick={worker.cancel}>{t({ ja: '推薦を停止', en: 'Stop recommendation' })}</button> : <button className="btn btn-primary" disabled={disabled || !draft.slots.length || sourceChanged || planChanged} onClick={() => worker.recommend(draft.assignments, draft.seed)}>{t({ ja: '推薦案を作る', en: 'Recommend assignments' })}</button>}<p role="status">{worker.running ? t({ ja: '計算中…画面の操作は続けられます', en: 'Calculating… the page remains responsive' }) : worker.result ? `${worker.result.iterations} ${t({ ja: '反復で計算済み', en: 'iterations completed' })}` : ''}</p>{worker.error ? <p className="workforce-error" role="alert">{worker.error}</p> : null}</section>
-    <ShiftResults problem={problem} assignments={draft.assignments} evaluation={evaluation} disabled={disabled} onChange={(assignments) => change({ assignments })} />
-    {error ? <WorkforceError error={error} /> : null}
-    <footer className="shift-savebar"><span>{t(dirty ? { ja: '未保存の変更', en: 'Unsaved changes' } : editing ? { ja: '下書き', en: 'Draft' } : { ja: '公開版を表示中', en: 'Viewing published version' })}</span>{editing && canSave ? <button className="btn" disabled={disabled || sourceChanged || planChanged || evaluation.issues.length > 0} onClick={() => void save()}>{t({ ja: '下書きを保存', en: 'Save draft' })}</button> : null}{editing && board.draft && actions.includes('workforce.cancel_shift_plan') ? <button className="btn" disabled={disabled || dirty || planChanged} onClick={() => { if (board.draft) setConfirm({ plan: board.draft, mode: 'cancel' }); }}>{t({ ja: '下書きを取り消す', en: 'Cancel draft' })}</button> : null}{editing && board.draft && actions.includes('workforce.publish_shift_plan') ? <button className="btn btn-primary" disabled={disabled || dirty || sourceChanged || planChanged || evaluation.issues.length > 0} onClick={() => { if (board.draft) setConfirm({ plan: board.draft, mode: 'publish' }); }}>{t({ ja: '内容を確認して公開へ', en: 'Review before publishing' })}</button> : null}</footer>
-    {confirm ? <ShiftPlanConfirm plan={confirm.plan} mode={confirm.mode} sourceRevision={draft.sourceRevision} shortage={evaluation.shortage} stale={confirm.plan.version !== (confirm.plan.status === 'draft' ? board.draft?.version : board.published?.version) || (confirm.mode === 'publish' && sourceChanged)} onClose={() => setConfirm(undefined)} onSaved={saved} /> : null}
-  </div>;
+  const change = (patch: Partial<ShiftDraft>) => {
+    worker.clear();
+    setDraft((value) => ({ ...value, ...patch }));
+    setDirty(true);
+  };
+  useEffect(() => {
+    if (worker.result) {
+      setDraft((value) => ({ ...value, assignments: worker.result?.assignments ?? value.assignments }));
+      setDirty(true);
+    }
+  }, [worker.result]);
+  useEffect(() => {
+    onGuard(dirty || worker.running || task.isPending, task.isPending);
+    return () => onGuard(false, false);
+  }, [dirty, worker.running, task.isPending, onGuard]);
+  useBlocker({
+    shouldBlockFn: () =>
+      Boolean(getToken()) &&
+      (task.isPending ||
+        ((dirty || worker.running) &&
+          !globalThis.confirm(
+            t({
+              ja: '未保存のシフト案・実行中の推薦を破棄して移動しますか？',
+              en: 'Discard the unsaved plan or running recommendation and leave?',
+            }),
+          ))),
+    enableBeforeUnload: dirty || worker.running || task.isPending,
+  });
+  const sourceChanged = editing && draft.sourceRevision !== board.sourceRevision,
+    planChanged = draftWasReplaced(draft, board, editing);
+  const canSave = actions.includes('workforce.save_shift_plan'),
+    disabled = !editing || !canSave || worker.running || task.isPending;
+  const saved = async () => {
+    const latest = await refresh();
+    if (latest) {
+      worker.clear();
+      setDraft(draftFromBoard(latest));
+      setEditing(Boolean(latest.draft) || !latest.published);
+      setDirty(false);
+    }
+  };
+  const save = async () => {
+    setError(undefined);
+    try {
+      await task.mutateAsync({
+        action: 'workforce.save_shift_plan',
+        input: { siteId: board.site.id, weekStart: board.weekStart, ...draft },
+      });
+      await saved();
+    } catch (failure) {
+      setError(failure);
+    }
+  };
+  return (
+    <div className="workforce-stack" data-testid="shift-planner">
+      <p className="shift-notice">
+        {t({
+          ja: '勤務計画の推薦です。勤怠・給与は更新しません。100社員・7日・42枠まで。最適解や法令適合を保証するものではありません。',
+          en: 'Planning recommendations do not change attendance or payroll. Up to 100 employees, seven days and 42 slots. Optimality and regulatory compliance are not guaranteed.',
+        })}
+      </p>
+      {board.published ? (
+        <section className="shift-published">
+          <div>
+            <strong>
+              {t({ ja: '現在の公開版', en: 'Current published version' })} · v{board.published.version}
+            </strong>
+            <p>
+              {board.published.publishedAt} · {board.published.assignments.length}{' '}
+              {t({ ja: '勤務', en: 'assignments' })}
+            </p>
+          </div>
+          {!editing && canSave ? (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                worker.clear();
+                if (board.published) setDraft(revisePublished(board.published, board.sourceRevision));
+                setEditing(true);
+                setDirty(true);
+              }}
+            >
+              {t({ ja: '公開版から改訂案を作る', en: 'Start a revision' })}
+            </button>
+          ) : null}
+          {actions.includes('workforce.cancel_shift_plan') ? (
+            <button
+              className="btn"
+              disabled={dirty || task.isPending}
+              onClick={() => {
+                if (board.published) setConfirm({ plan: board.published, mode: 'cancel' });
+              }}
+            >
+              {t({ ja: '公開を取り消す', en: 'Cancel publication' })}
+            </button>
+          ) : null}
+          {board.publishedEvaluation?.issues.length ? (
+            <div className="workforce-error" role="alert">
+              <strong>{t({ ja: '公開後の変更により要調整', en: 'Published plan requires adjustment' })}</strong>
+              <ul>
+                {board.publishedEvaluation.issues.map((issue, index) => (
+                  <li key={index}>
+                    {board.problem.employees.find((employee) => employee.id === issue.employeeId)?.name}{' '}
+                    {t(shiftReasons[issue.code])}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {sourceChanged || planChanged ? (
+        <div className="workforce-notice" role="status">
+          <strong>{t({ ja: '元情報または下書きが更新されました', en: 'Source information or draft changed' })}</strong>
+          <p>
+            {t({
+              ja: '編集中の案を保持しています。最新情報の確認後に保存してください。',
+              en: 'Your draft is preserved. Review current information before saving.',
+            })}
+          </p>
+          <button
+            className="btn"
+            disabled={task.isPending || worker.running}
+            onClick={() => {
+              if (planChanged) {
+                if (
+                  globalThis.confirm(
+                    t({
+                      ja: '編集中の案を破棄して最新の下書きを読み込みますか？',
+                      en: 'Discard your edits and load the current draft?',
+                    }),
+                  )
+                )
+                  void saved();
+              } else change({ sourceRevision: board.sourceRevision });
+            }}
+          >
+            {t(
+              planChanged
+                ? { ja: '最新の下書きを読み込む', en: 'Load current draft' }
+                : { ja: '最新資料で再評価', en: 'Re-evaluate current sources' },
+            )}
+          </button>
+        </div>
+      ) : null}
+      <ShiftSlots
+        weekStart={board.weekStart}
+        slots={draft.slots}
+        disabled={disabled}
+        onChange={(slots) => change({ slots })}
+        onRemove={(id) => change(removeShiftSlot(draft.slots, draft.assignments, id))}
+      />
+      <ShiftSubmissions
+        board={board}
+        canEdit={actions.includes('workforce.save_shift_profile') && !worker.running && !task.isPending}
+      />
+      <section className="shift-recommend-controls">
+        <div>
+          <h2>{t({ ja: 'ブラウザー内で推薦', en: 'Recommend in this browser' })}</h2>
+          <p>
+            {t({
+              ja: '固定した勤務は保持。停止して手動で調整することもできます。',
+              en: 'Locks are preserved. You may stop and adjust assignments manually.',
+            })}
+          </p>
+        </div>
+        <label>
+          {t({ ja: '再現用シード', en: 'Reproducible seed' })}
+          <input
+            className="input"
+            type="number"
+            step={1}
+            min={0}
+            max={2147483647}
+            value={draft.seed}
+            disabled={disabled}
+            onChange={(event) => change({ seed: Number(event.target.value) })}
+          />
+        </label>
+        {worker.running ? (
+          <button className="btn" onClick={worker.cancel}>
+            {t({ ja: '推薦を停止', en: 'Stop recommendation' })}
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary"
+            disabled={disabled || !draft.slots.length || sourceChanged || planChanged}
+            onClick={() => worker.recommend(draft.assignments, draft.seed)}
+          >
+            {t({ ja: '推薦案を作る', en: 'Recommend assignments' })}
+          </button>
+        )}
+        <p role="status">
+          {worker.running
+            ? t({ ja: '計算中…画面の操作は続けられます', en: 'Calculating… the page remains responsive' })
+            : worker.result
+              ? `${worker.result.iterations} ${t({ ja: '反復で計算済み', en: 'iterations completed' })}`
+              : ''}
+        </p>
+        {worker.error ? (
+          <p className="workforce-error" role="alert">
+            {worker.error}
+          </p>
+        ) : null}
+      </section>
+      <ShiftResults
+        problem={problem}
+        assignments={draft.assignments}
+        evaluation={evaluation}
+        disabled={disabled}
+        onChange={(assignments) => change({ assignments })}
+      />
+      {error ? <WorkforceError error={error} /> : null}
+      <footer className="shift-savebar">
+        <span>
+          {t(
+            dirty
+              ? { ja: '未保存の変更', en: 'Unsaved changes' }
+              : editing
+                ? { ja: '下書き', en: 'Draft' }
+                : { ja: '公開版を表示中', en: 'Viewing published version' },
+          )}
+        </span>
+        {editing && canSave ? (
+          <button
+            className="btn"
+            disabled={disabled || sourceChanged || planChanged || evaluation.issues.length > 0}
+            onClick={() => void save()}
+          >
+            {t({ ja: '下書きを保存', en: 'Save draft' })}
+          </button>
+        ) : null}
+        {editing && board.draft && actions.includes('workforce.cancel_shift_plan') ? (
+          <button
+            className="btn"
+            disabled={disabled || dirty || planChanged}
+            onClick={() => {
+              if (board.draft) setConfirm({ plan: board.draft, mode: 'cancel' });
+            }}
+          >
+            {t({ ja: '下書きを取り消す', en: 'Cancel draft' })}
+          </button>
+        ) : null}
+        {editing && board.draft && actions.includes('workforce.publish_shift_plan') ? (
+          <button
+            className="btn btn-primary"
+            disabled={disabled || dirty || sourceChanged || planChanged || evaluation.issues.length > 0}
+            onClick={() => {
+              if (board.draft) setConfirm({ plan: board.draft, mode: 'publish' });
+            }}
+          >
+            {t({ ja: '内容を確認して公開へ', en: 'Review before publishing' })}
+          </button>
+        ) : null}
+      </footer>
+      {confirm ? (
+        <ShiftPlanConfirm
+          plan={confirm.plan}
+          mode={confirm.mode}
+          sourceRevision={draft.sourceRevision}
+          shortage={evaluation.shortage}
+          stale={
+            confirm.plan.version !==
+              (confirm.plan.status === 'draft' ? board.draft?.version : board.published?.version) ||
+            (confirm.mode === 'publish' && sourceChanged)
+          }
+          onClose={() => setConfirm(undefined)}
+          onSaved={saved}
+        />
+      ) : null}
+    </div>
+  );
 }

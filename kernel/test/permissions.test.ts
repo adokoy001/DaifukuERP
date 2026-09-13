@@ -15,9 +15,15 @@ import { compileDomain, rowFilter } from '../src/permissions.ts';
 import { TPartner } from './fixtures/entities.ts';
 
 const dialect = new PgDialect();
-const rendered = (s: SQL | undefined) => (s === undefined ? undefined : (({ sql, params }) => ({ sql, params }))(dialect.sqlToQuery(s)));
+const rendered = (s: SQL | undefined) =>
+  s === undefined ? undefined : (({ sql, params }) => ({ sql, params }))(dialect.sqlToQuery(s));
 const ctxOf = (roles: string[], companyId: string | null = null): Context =>
-  makeContext({} as unknown as Db, { tenantId: '00000000-0000-0000-0000-000000000001', companyId, actor: { type: 'user', id: 'u-1' }, roles });
+  makeContext({} as unknown as Db, {
+    tenantId: '00000000-0000-0000-0000-000000000001',
+    companyId,
+    actor: { type: 'user', id: 'u-1' },
+    roles,
+  });
 const compile = (domain: Domain, ctx: Context = ctxOf(['admin'])) => rendered(compileDomain(ctx, TPartner, domain));
 
 const OWNER = '"test_partner"."owner_id"';
@@ -51,29 +57,56 @@ describe('compileDomain operators (phase15-cleanup AC-3)', () => {
   });
 
   it('$in with a null element -> (col IN (non-null values) OR col IS NULL); only nulls -> col IS NULL', () => {
-    expect(compile({ kind: { $in: ['customer', null] } })).toEqual({ sql: `(${KIND} in ($1) or ${KIND} is null)`, params: ['customer'] });
-    expect(compile({ kind: { $in: [null, 'customer', 'both'] } })).toEqual({ sql: `(${KIND} in ($1, $2) or ${KIND} is null)`, params: ['customer', 'both'] });
+    expect(compile({ kind: { $in: ['customer', null] } })).toEqual({
+      sql: `(${KIND} in ($1) or ${KIND} is null)`,
+      params: ['customer'],
+    });
+    expect(compile({ kind: { $in: [null, 'customer', 'both'] } })).toEqual({
+      sql: `(${KIND} in ($1, $2) or ${KIND} is null)`,
+      params: ['customer', 'both'],
+    });
     expect(compile({ kind: { $in: [null] } })).toEqual({ sql: `${KIND} is null`, params: [] });
     expect(compile({ kind: { $in: [null, null] } })).toEqual({ sql: `${KIND} is null`, params: [] });
   });
 
   it('$ctx tokens that resolve to null follow the same rules as a literal null', () => {
     const noCompany = ctxOf(['admin'], null);
-    expect(compile({ ownerId: { $ne: '$ctx.companyId' } }, noCompany)).toEqual({ sql: `${OWNER} is not null`, params: [] });
-    expect(compile({ ownerId: { $in: ['$ctx.companyId'] } }, noCompany)).toEqual({ sql: `${OWNER} is null`, params: [] });
-    expect(compile({ ownerId: { $in: ['$ctx.userId', '$ctx.companyId'] } }, noCompany)).toEqual({ sql: `(${OWNER} in ($1) or ${OWNER} is null)`, params: ['u-1'] });
+    expect(compile({ ownerId: { $ne: '$ctx.companyId' } }, noCompany)).toEqual({
+      sql: `${OWNER} is not null`,
+      params: [],
+    });
+    expect(compile({ ownerId: { $in: ['$ctx.companyId'] } }, noCompany)).toEqual({
+      sql: `${OWNER} is null`,
+      params: [],
+    });
+    expect(compile({ ownerId: { $in: ['$ctx.userId', '$ctx.companyId'] } }, noCompany)).toEqual({
+      sql: `(${OWNER} in ($1) or ${OWNER} is null)`,
+      params: ['u-1'],
+    });
     const withCompany = ctxOf(['admin'], 'c-1');
-    expect(compile({ ownerId: { $ne: '$ctx.companyId' } }, withCompany)).toEqual({ sql: `${OWNER} <> $1`, params: ['c-1'] });
+    expect(compile({ ownerId: { $ne: '$ctx.companyId' } }, withCompany)).toEqual({
+      sql: `${OWNER} <> $1`,
+      params: ['c-1'],
+    });
   });
 
   it('unchanged operators: equality, null, $in without nulls, $ne with a value, ranges, $like, $or', () => {
     expect(compile({ kind: 'customer' })).toEqual({ sql: `${KIND} = $1`, params: ['customer'] });
     expect(compile({ ownerId: null })).toEqual({ sql: `${OWNER} is null`, params: [] });
-    expect(compile({ kind: { $in: ['customer', 'both'] } })).toEqual({ sql: `${KIND} in ($1, $2)`, params: ['customer', 'both'] });
+    expect(compile({ kind: { $in: ['customer', 'both'] } })).toEqual({
+      sql: `${KIND} in ($1, $2)`,
+      params: ['customer', 'both'],
+    });
     expect(compile({ kind: { $ne: 'customer' } })).toEqual({ sql: `${KIND} <> $1`, params: ['customer'] });
-    expect(compile({ since: { $gte: '2026-01-01' } })).toEqual({ sql: '"test_partner"."since" >= $1', params: ['2026-01-01'] });
+    expect(compile({ since: { $gte: '2026-01-01' } })).toEqual({
+      sql: '"test_partner"."since" >= $1',
+      params: ['2026-01-01'],
+    });
     expect(compile({ name: { $like: 'A%' } })).toEqual({ sql: '"test_partner"."name" like $1', params: ['A%'] });
-    expect(compile({ $or: [{ ownerId: '$ctx.userId' }, { ownerId: null }] })).toEqual({ sql: `(${OWNER} = $1 or ${OWNER} is null)`, params: ['u-1'] });
+    expect(compile({ $or: [{ ownerId: '$ctx.userId' }, { ownerId: null }] })).toEqual({
+      sql: `(${OWNER} = $1 or ${OWNER} is null)`,
+      params: ['u-1'],
+    });
     expect(compile({})).toBeUndefined();
   });
 });
@@ -92,7 +125,10 @@ describe('rowFilter with the fixed operators (phase15-cleanup AC-3)', () => {
   });
 
   it('restricted roles OR their rules; an unrestricted role or admin removes the filter', () => {
-    expect(filterOf(['none_rule', 'region_rule'])).toEqual({ sql: `(false or (${REGION} in ($1) or ${REGION} is null))`, params: ['east'] });
+    expect(filterOf(['none_rule', 'region_rule'])).toEqual({
+      sql: `(false or (${REGION} in ($1) or ${REGION} is null))`,
+      params: ['east'],
+    });
     expect(filterOf(['none_rule', 'free'])).toBeUndefined();
     expect(filterOf(['admin'])).toBeUndefined();
   });

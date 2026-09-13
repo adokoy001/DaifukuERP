@@ -49,7 +49,10 @@ interface Bucket {
 const ONE = Decimal.from(1);
 
 /** Expense lines use their account; product lines fall back to the purchases account. An explicit account wins. */
-export function lineAccount(line: Pick<PostingLine, 'accountId' | 'productId'>, accounts: Pick<PostingAccounts, 'purchases'>): string {
+export function lineAccount(
+  line: Pick<PostingLine, 'accountId' | 'productId'>,
+  accounts: Pick<PostingAccounts, 'purchases'>,
+): string {
   return line.accountId ?? accounts.purchases;
 }
 
@@ -81,7 +84,8 @@ function taxableByBucket(buckets: Bucket[], group: CreditGroup, input: PostingIn
   const allocated: Decimal[] = [];
   let remaining = group.tax;
   buckets.forEach((b, i) => {
-    const share = i === buckets.length - 1 ? remaining : b.sum.times(group.rate).div(ONE.plus(group.rate)).round(mode, scale);
+    const share =
+      i === buckets.length - 1 ? remaining : b.sum.times(group.rate).div(ONE.plus(group.rate)).round(mode, scale);
     allocated.push(share);
     remaining = remaining.minus(share);
   });
@@ -89,10 +93,18 @@ function taxableByBucket(buckets: Bucket[], group: CreditGroup, input: PostingIn
 }
 
 /** A signed amount becomes a debit when positive and a credit when negative (credit notes post mirrored). */
-function debitLine(accountId: string, amount: Decimal, extra: Omit<LineInput, 'accountId' | 'debit' | 'credit'> = {}): LineInput {
+function debitLine(
+  accountId: string,
+  amount: Decimal,
+  extra: Omit<LineInput, 'accountId' | 'debit' | 'credit'> = {},
+): LineInput {
   return amount.isNegative() ? { accountId, credit: amount.abs(), ...extra } : { accountId, debit: amount, ...extra };
 }
-function creditLine(accountId: string, amount: Decimal, extra: Omit<LineInput, 'accountId' | 'debit' | 'credit'> = {}): LineInput {
+function creditLine(
+  accountId: string,
+  amount: Decimal,
+  extra: Omit<LineInput, 'accountId' | 'debit' | 'credit'> = {},
+): LineInput {
   return debitLine(accountId, amount.neg(), extra);
 }
 
@@ -105,14 +117,23 @@ export function buildJournalLines(input: PostingInput): LineInput[] {
     const taxable = taxableByBucket(own, group, input);
     own.forEach((b, i) => {
       const amount = taxable[i] ?? Decimal.zero();
-      if (!amount.isZero()) out.push(debitLine(b.accountId, amount, { taxCategory: b.category, taxRate: b.rate, ext: b.ext }));
+      if (!amount.isZero())
+        out.push(debitLine(b.accountId, amount, { taxCategory: b.category, taxRate: b.rate, ext: b.ext }));
     });
     if (!group.deductibleTax.isZero()) {
-      out.push(debitLine(input.accounts.taxReceivable, group.deductibleTax, { taxCategory: group.category, taxRate: group.rate, memo: `${INPUT_TAX_MEMO} ${group.label}`.trim() }));
+      out.push(
+        debitLine(input.accounts.taxReceivable, group.deductibleTax, {
+          taxCategory: group.category,
+          taxRate: group.rate,
+          memo: `${INPUT_TAX_MEMO} ${group.label}`.trim(),
+        }),
+      );
     }
   }
   const first = buckets[0];
-  if (!input.totals.nonDeductibleTax.isZero() && first) out.push(debitLine(first.accountId, input.totals.nonDeductibleTax, { memo: NON_DEDUCTIBLE_MEMO, ext: first.ext }));
-  if (!input.totals.total.isZero()) out.push(creditLine(input.accounts.payable, input.totals.total, { partnerId: input.partnerId }));
+  if (!input.totals.nonDeductibleTax.isZero() && first)
+    out.push(debitLine(first.accountId, input.totals.nonDeductibleTax, { memo: NON_DEDUCTIBLE_MEMO, ext: first.ext }));
+  if (!input.totals.total.isZero())
+    out.push(creditLine(input.accounts.payable, input.totals.total, { partnerId: input.partnerId }));
   return out;
 }

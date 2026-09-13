@@ -6,17 +6,175 @@ import { Account, FiscalPeriod, JournalEntry, JournalLine, openFiscalYear } from
 import { PosLocation, PosInbox, PosTransaction, receivePosEvent, type NormalizedPosEvent } from '../src/index.ts';
 let db: TestDb, location: string, asset: string, suspense: string;
 const run = <T>(fn: (ctx: Context) => Promise<T>) => db.run({ now: () => new Date('2026-09-12T03:00:00Z') }, fn);
-function event(id: string, extra: Partial<NormalizedPosEvent> = {}): NormalizedPosEvent { return { provider: 'square', eventId: 'event-' + id, merchantId: 'MERCHANT', locationId: 'STORE', kind: 'payment', externalId: id, paymentId: null, state: 'COMPLETED', occurredAt: '2026-08-31T03:00:00Z', updatedAt: '2026-08-31T03:00:00Z', amount: '1000', currency: 'JPY', rawHash: 'a'.repeat(64), unsupportedReason: null, ...extra }; }
+function event(id: string, extra: Partial<NormalizedPosEvent> = {}): NormalizedPosEvent {
+  return {
+    provider: 'square',
+    eventId: 'event-' + id,
+    merchantId: 'MERCHANT',
+    locationId: 'STORE',
+    kind: 'payment',
+    externalId: id,
+    paymentId: null,
+    state: 'COMPLETED',
+    occurredAt: '2026-08-31T03:00:00Z',
+    updatedAt: '2026-08-31T03:00:00Z',
+    amount: '1000',
+    currency: 'JPY',
+    rawHash: 'a'.repeat(64),
+    unsupportedReason: null,
+    ...extra,
+  };
+}
 const receive = (e: NormalizedPosEvent) => run((ctx) => receivePosEvent(ctx, location, e));
-beforeAll(async () => { registerCrudActions(); db = await freshDb(); await run(async (ctx) => { await openFiscalYear(ctx, { startDate: '2026-01-01' }); asset = (await repo(ctx, Account).create({ code: 'POS-A', name: 'Square未収', type: 'asset' })).id; suspense = (await repo(ctx, Account).create({ code: 'POS-L', name: '売上未分類', type: 'liability' })).id; location = (await repo(ctx, PosLocation).create({ code: 'SQUARE', name: '本店', merchantId: 'MERCHANT', externalLocationId: 'STORE', settlementAccountId: asset, suspenseAccountId: suspense })).id; }); });
-afterAll(async () => { await db.close(); });
+beforeAll(async () => {
+  registerCrudActions();
+  db = await freshDb();
+  await run(async (ctx) => {
+    await openFiscalYear(ctx, { startDate: '2026-01-01' });
+    asset = (await repo(ctx, Account).create({ code: 'POS-A', name: 'Square未収', type: 'asset' })).id;
+    suspense = (await repo(ctx, Account).create({ code: 'POS-L', name: '売上未分類', type: 'liability' })).id;
+    location = (
+      await repo(ctx, PosLocation).create({
+        code: 'SQUARE',
+        name: '本店',
+        merchantId: 'MERCHANT',
+        externalLocationId: 'STORE',
+        settlementAccountId: asset,
+        suspenseAccountId: suspense,
+      })
+    ).id;
+  });
+});
+afterAll(async () => {
+  await db.close();
+});
 describe('POS durable inbox', () => {
- it('deduplicates both event delivery and concurrent distinct updates for one transaction', async () => { const input = event('dedup'); const results = await Promise.all([receive(input), receive(input), receive({ ...input, eventId: 'another-update' })]); expect(new Set(results.map((r) => r.transactionId)).size).toBe(1); expect(results.every((r) => r.status === 'posted')).toBe(true); await run(async (ctx) => { expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'dedup' } })).items).toHaveLength(1); const tx = await repo(ctx, PosTransaction).get(required(required(results[0]).transactionId)); const lines = (await repo(ctx, JournalLine).list({ where: { entryId: required(tx.journalEntryId) } })).items; expect(lines.map((l) => [l.accountId, l.debit.toString(), l.credit.toString()])).toEqual([[asset, '1000', '0'], [suspense, '0', '1000']]); }); await expect(receive({ ...input, rawHash: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'CONFLICT' }); });
- it('defers an early refund and resumes it once the payment arrives; over-refund has no partial posting', async () => { const refund = await receive(event('refund-first', { kind: 'refund', paymentId: 'late-payment', amount: '400' })); expect(refund.status).toBe('deferred'); const payment = await receive(event('late-payment')); expect(payment.status).toBe('posted'); await run(async (ctx) => { expect((await repo(ctx, PosInbox).get(refund.id)).status).toBe('posted'); expect((await repo(ctx, PosTransaction).get(required(payment.transactionId))).refunded.toString()).toBe('400'); }); const bad = await receive(event('over-refund', { kind: 'refund', paymentId: 'late-payment', amount: '700' })); expect(bad.status).toBe('blocked'); await run(async (ctx) => { expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'over-refund' } })).items).toHaveLength(0); expect((await repo(ctx, PosTransaction).get(required(payment.transactionId))).refunded.toString()).toBe('400'); }); });
- it('refunds use original accounts after a mapping change and reject a refund identity retarget', async () => { const payment = await receive(event('snapshot-payment')); const newAsset = await run(async (ctx) => (await repo(ctx, Account).create({ code: 'POS-A2', name: '新決済仮勘定', type: 'asset' })).id); await run((ctx) => repo(ctx, PosLocation).update(location, { settlementAccountId: newAsset })); const refund = await receive(event('snapshot-refund', { kind: 'refund', paymentId: 'snapshot-payment', amount: '100' })); await run(async (ctx) => { expect((await repo(ctx, PosTransaction).get(required(refund.transactionId))).settlementAccountId).toBe(asset); }); const other = await receive(event('another-payment')); expect(other.status).toBe('posted'); expect((await receive(event('snapshot-refund', { eventId: 'retarget-refund', kind: 'refund', paymentId: 'another-payment', amount: '100' }))).status).toBe('blocked'); await run((ctx) => repo(ctx, PosLocation).update(location, { settlementAccountId: asset })); const original = await run((ctx) => repo(ctx, PosTransaction).get(required(payment.transactionId))); await expect(run((ctx) => runAction(ctx, 'pos_integration.correct', { transactionId: original.id, expectedVersion: original.version, date: '2026-09-01', reason: '返金残存' }))).rejects.toThrow(); });
- it('stores unsupported money/status without guessing sales, tax or inventory', async () => { expect((await receive(event('usd', { currency: 'USD' }))).status).toBe('blocked'); expect((await receive(event('unknown', { kind: 'unsupported', unsupportedReason: 'Unsupported future state' }))).status).toBe('blocked'); expect((await receive(event('pending', { state: 'PENDING' }))).status).toBe('ignored'); await expect(receive(event('wrong-location', { locationId: 'OTHER' }))).rejects.toThrow(); await expect(run((ctx) => repo(ctx, PosTransaction).create({ amount: '1000' }))).rejects.toThrow(); });
- it('rolls back failed posting while retaining a retryable inbox', async () => { const period = required(await run(async (ctx) => (await repo(ctx, FiscalPeriod).list({ where: { code: '2026-08' } })).items[0])); await run((ctx) => runAction(ctx, 'accounting.close_period', { periodId: period.id })); const blocked = await receive(event('closed-period')); expect(blocked.status).toBe('blocked'); await run(async (ctx) => { expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'closed-period' } })).items).toHaveLength(0); }); await run((ctx) => runAction(ctx, 'accounting.reopen_period', { periodId: period.id })); const retried = await run((ctx) => runAction(ctx, 'pos_integration.retry', { inboxId: blocked.id, expectedVersion: blocked.version })); expect(retried).toMatchObject({ status: 'posted' }); });
- it('rejects direct reversal and corrects an owned source once, retaining traceable journals', async () => { const posted = await receive(event('correction')); const tx = await run((ctx) => repo(ctx, PosTransaction).get(required(posted.transactionId))); await expect(run((ctx) => runAction(ctx, 'accounting.reverse_entry', { id: tx.journalEntryId, date: '2026-09-01' }))).rejects.toThrow(); const corrected = await run((ctx) => runAction(ctx, 'pos_integration.correct', { transactionId: tx.id, expectedVersion: tx.version, date: '2026-09-01', reason: 'Reviewed duplicate provider source' })); expect(corrected).toMatchObject({ status: 'cancelled' }); expect((await receive({ ...event('correction'), eventId: newId() })).status).toBe('blocked'); await run(async (ctx) => { const entries = (await repo(ctx, JournalEntry).list({ where: { reversalOf: required(tx.journalEntryId) } })).items; expect(entries).toHaveLength(1); expect((await repo(ctx, JournalEntry).get(required(tx.journalEntryId))).sourceId).toBe(tx.id); }); });
+  it('deduplicates both event delivery and concurrent distinct updates for one transaction', async () => {
+    const input = event('dedup');
+    const results = await Promise.all([
+      receive(input),
+      receive(input),
+      receive({ ...input, eventId: 'another-update' }),
+    ]);
+    expect(new Set(results.map((r) => r.transactionId)).size).toBe(1);
+    expect(results.every((r) => r.status === 'posted')).toBe(true);
+    await run(async (ctx) => {
+      expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'dedup' } })).items).toHaveLength(1);
+      const tx = await repo(ctx, PosTransaction).get(required(required(results[0]).transactionId));
+      const lines = (await repo(ctx, JournalLine).list({ where: { entryId: required(tx.journalEntryId) } })).items;
+      expect(lines.map((l) => [l.accountId, l.debit.toString(), l.credit.toString()])).toEqual([
+        [asset, '1000', '0'],
+        [suspense, '0', '1000'],
+      ]);
+    });
+    await expect(receive({ ...input, rawHash: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+  it('defers an early refund and resumes it once the payment arrives; over-refund has no partial posting', async () => {
+    const refund = await receive(event('refund-first', { kind: 'refund', paymentId: 'late-payment', amount: '400' }));
+    expect(refund.status).toBe('deferred');
+    const payment = await receive(event('late-payment'));
+    expect(payment.status).toBe('posted');
+    await run(async (ctx) => {
+      expect((await repo(ctx, PosInbox).get(refund.id)).status).toBe('posted');
+      expect((await repo(ctx, PosTransaction).get(required(payment.transactionId))).refunded.toString()).toBe('400');
+    });
+    const bad = await receive(event('over-refund', { kind: 'refund', paymentId: 'late-payment', amount: '700' }));
+    expect(bad.status).toBe('blocked');
+    await run(async (ctx) => {
+      expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'over-refund' } })).items).toHaveLength(0);
+      expect((await repo(ctx, PosTransaction).get(required(payment.transactionId))).refunded.toString()).toBe('400');
+    });
+  });
+  it('refunds use original accounts after a mapping change and reject a refund identity retarget', async () => {
+    const payment = await receive(event('snapshot-payment'));
+    const newAsset = await run(
+      async (ctx) => (await repo(ctx, Account).create({ code: 'POS-A2', name: '新決済仮勘定', type: 'asset' })).id,
+    );
+    await run((ctx) => repo(ctx, PosLocation).update(location, { settlementAccountId: newAsset }));
+    const refund = await receive(
+      event('snapshot-refund', { kind: 'refund', paymentId: 'snapshot-payment', amount: '100' }),
+    );
+    await run(async (ctx) => {
+      expect((await repo(ctx, PosTransaction).get(required(refund.transactionId))).settlementAccountId).toBe(asset);
+    });
+    const other = await receive(event('another-payment'));
+    expect(other.status).toBe('posted');
+    expect(
+      (
+        await receive(
+          event('snapshot-refund', {
+            eventId: 'retarget-refund',
+            kind: 'refund',
+            paymentId: 'another-payment',
+            amount: '100',
+          }),
+        )
+      ).status,
+    ).toBe('blocked');
+    await run((ctx) => repo(ctx, PosLocation).update(location, { settlementAccountId: asset }));
+    const original = await run((ctx) => repo(ctx, PosTransaction).get(required(payment.transactionId)));
+    await expect(
+      run((ctx) =>
+        runAction(ctx, 'pos_integration.correct', {
+          transactionId: original.id,
+          expectedVersion: original.version,
+          date: '2026-09-01',
+          reason: '返金残存',
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+  it('stores unsupported money/status without guessing sales, tax or inventory', async () => {
+    expect((await receive(event('usd', { currency: 'USD' }))).status).toBe('blocked');
+    expect(
+      (await receive(event('unknown', { kind: 'unsupported', unsupportedReason: 'Unsupported future state' }))).status,
+    ).toBe('blocked');
+    expect((await receive(event('pending', { state: 'PENDING' }))).status).toBe('ignored');
+    await expect(receive(event('wrong-location', { locationId: 'OTHER' }))).rejects.toThrow();
+    await expect(run((ctx) => repo(ctx, PosTransaction).create({ amount: '1000' }))).rejects.toThrow();
+  });
+  it('rolls back failed posting while retaining a retryable inbox', async () => {
+    const period = required(
+      await run(async (ctx) => (await repo(ctx, FiscalPeriod).list({ where: { code: '2026-08' } })).items[0]),
+    );
+    await run((ctx) => runAction(ctx, 'accounting.close_period', { periodId: period.id }));
+    const blocked = await receive(event('closed-period'));
+    expect(blocked.status).toBe('blocked');
+    await run(async (ctx) => {
+      expect((await repo(ctx, PosTransaction).list({ where: { externalId: 'closed-period' } })).items).toHaveLength(0);
+    });
+    await run((ctx) => runAction(ctx, 'accounting.reopen_period', { periodId: period.id }));
+    const retried = await run((ctx) =>
+      runAction(ctx, 'pos_integration.retry', { inboxId: blocked.id, expectedVersion: blocked.version }),
+    );
+    expect(retried).toMatchObject({ status: 'posted' });
+  });
+  it('rejects direct reversal and corrects an owned source once, retaining traceable journals', async () => {
+    const posted = await receive(event('correction'));
+    const tx = await run((ctx) => repo(ctx, PosTransaction).get(required(posted.transactionId)));
+    await expect(
+      run((ctx) => runAction(ctx, 'accounting.reverse_entry', { id: tx.journalEntryId, date: '2026-09-01' })),
+    ).rejects.toThrow();
+    const corrected = await run((ctx) =>
+      runAction(ctx, 'pos_integration.correct', {
+        transactionId: tx.id,
+        expectedVersion: tx.version,
+        date: '2026-09-01',
+        reason: 'Reviewed duplicate provider source',
+      }),
+    );
+    expect(corrected).toMatchObject({ status: 'cancelled' });
+    expect((await receive({ ...event('correction'), eventId: newId() })).status).toBe('blocked');
+    await run(async (ctx) => {
+      const entries = (await repo(ctx, JournalEntry).list({ where: { reversalOf: required(tx.journalEntryId) } }))
+        .items;
+      expect(entries).toHaveLength(1);
+      expect((await repo(ctx, JournalEntry).get(required(tx.journalEntryId))).sourceId).toBe(tx.id);
+    });
+  });
 });
 
-function required<T>(value: T | null | undefined): T { assert(value !== null && value !== undefined); return value; }
+function required<T>(value: T | null | undefined): T {
+  assert(value !== null && value !== undefined);
+  return value;
+}

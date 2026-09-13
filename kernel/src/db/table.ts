@@ -39,7 +39,10 @@ export const TENANT_SETTING = 'app.tenant_id';
 export const TENANT_POLICY_SQL = sql.raw(`tenant_id = NULLIF(current_setting('${TENANT_SETTING}', true), '')::uuid`);
 
 export function toSnake(s: string): string {
-  return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').toLowerCase();
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
 }
 
 function columnFor(name: string, col: string, fd: AnyField, resolveRef: RefResolver): PgColumnBuilderBase {
@@ -82,7 +85,11 @@ function columnFor(name: string, col: string, fd: AnyField, resolveRef: RefResol
     }
   }
   // Builders share a common shape; the chained calls below exist on every concrete builder.
-  const builder = b as unknown as { notNull(): PgColumnBuilderBase; default(v: unknown): PgColumnBuilderBase; defaultNow?(): PgColumnBuilderBase };
+  const builder = b as unknown as {
+    notNull(): PgColumnBuilderBase;
+    default(v: unknown): PgColumnBuilderBase;
+    defaultNow?(): PgColumnBuilderBase;
+  };
   if (fd.required) b = builder.notNull();
   if (fd.hasDefault) b = applyDefault(b, fd);
   return b;
@@ -90,7 +97,11 @@ function columnFor(name: string, col: string, fd: AnyField, resolveRef: RefResol
 
 function applyDefault(b: PgColumnBuilderBase, fd: AnyField): PgColumnBuilderBase {
   const d = (fd.opts as { default?: unknown }).default;
-  const builder = b as unknown as { default(v: unknown): PgColumnBuilderBase; defaultNow(): PgColumnBuilderBase; defaultRandom(): PgColumnBuilderBase };
+  const builder = b as unknown as {
+    default(v: unknown): PgColumnBuilderBase;
+    defaultNow(): PgColumnBuilderBase;
+    defaultRandom(): PgColumnBuilderBase;
+  };
   if (fd.kind === 'timestamp' && d === 'now') return builder.defaultNow();
   if (fd.kind === 'date' && d === 'today') return builder.default(sql`CURRENT_DATE`);
   if (fd.kind === 'uuid' && d === 'new') return builder.defaultRandom();
@@ -99,7 +110,11 @@ function applyDefault(b: PgColumnBuilderBase, fd: AnyField): PgColumnBuilderBase
 }
 
 /** Builds the Drizzle table for an entity or document definition. */
-export function buildTable(cfg: EntityConfig | DocumentConfig, kind: 'entity' | 'document', resolveRef: RefResolver): BuiltTable {
+export function buildTable(
+  cfg: EntityConfig | DocumentConfig,
+  kind: 'entity' | 'document',
+  resolveRef: RefResolver,
+): BuiltTable {
   const scope = cfg.scope ?? 'company';
   const columnNames: Record<string, string> = {};
   const cols: Record<string, PgColumnBuilderBase> = {
@@ -127,50 +142,94 @@ export function buildTable(cfg: EntityConfig | DocumentConfig, kind: 'entity' | 
     cols[name] = columnFor(name, col, fd, resolveRef);
   }
 
-  const table = pgTable(
-    cfg.name,
-    cols,
-    (t) => {
-      const tt = t as Record<string, AnyPgColumn>;
-      const scopeCols = scope === 'company' ? [tt.tenantId, tt.companyId] : [tt.tenantId];
-      const defs: unknown[] = [
-        index(`${cfg.name}_tenant_idx`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]])),
-        unique(`${cfg.name}_scope_id_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), tt.id as AnyPgColumn),
-        ...(scope === 'company' ? [unique(`${cfg.name}_tenant_id_uq`).on(tt.tenantId as AnyPgColumn, tt.id as AnyPgColumn)] : []),
-        pgPolicy(`${cfg.name}_tenant_isolation`, { as: 'permissive', for: 'all', to: 'public', using: TENANT_POLICY_SQL, withCheck: TENANT_POLICY_SQL }),
-      ];
-      if (scope === 'company') defs.push(foreignKey({ name: `${cfg.name}_company_scope_fk`, columns: [tt.tenantId as AnyPgColumn, tt.companyId as AnyPgColumn], foreignColumns: [resolveRef('@company', 'tenantId') as AnyPgColumn, resolveRef('@company') as AnyPgColumn] }));
-      for (const [name, fd] of Object.entries(cfg.fields)) {
-        const c = tt[name];
-        if (!c) continue;
-        if (fd.kind === 'ref' && fd.ref) {
-          const targetTenant = resolveRef(fd.ref, 'tenantId') as AnyPgColumn;
-          const targetCompany = resolveRef(fd.ref, 'companyId');
-          const targetId = resolveRef(fd.ref) as AnyPgColumn;
-          const local = scope === 'company' && targetCompany ? [tt.tenantId as AnyPgColumn, tt.companyId as AnyPgColumn, c] : [tt.tenantId as AnyPgColumn, c];
-          const foreign = scope === 'company' && targetCompany ? [targetTenant, targetCompany, targetId] : [targetTenant, targetId];
-          defs.push(foreignKey({ name: `${cfg.name}_${toSnake(name)}_scope_fk`, columns: local as [AnyPgColumn, ...AnyPgColumn[]], foreignColumns: foreign as [AnyPgColumn, ...AnyPgColumn[]] }));
-        }
-        if (fd.opts.unique) defs.push(uniqueIndex(`${cfg.name}_${toSnake(name)}_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), c));
-        else if (fd.opts.index || fd.kind === 'ref') defs.push(index(`${cfg.name}_${toSnake(name)}_idx`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), c));
-        if (fd.kind === 'enum' && fd.values) {
-          const list = fd.values.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
-          defs.push(check(`${cfg.name}_${toSnake(name)}_chk`, sql.raw(`${toSnake(name)} IN (${list})`)));
-        }
+  const table = pgTable(cfg.name, cols, (t) => {
+    const tt = t as Record<string, AnyPgColumn>;
+    const scopeCols = scope === 'company' ? [tt.tenantId, tt.companyId] : [tt.tenantId];
+    const defs: unknown[] = [
+      index(`${cfg.name}_tenant_idx`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]])),
+      unique(`${cfg.name}_scope_id_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), tt.id as AnyPgColumn),
+      ...(scope === 'company'
+        ? [unique(`${cfg.name}_tenant_id_uq`).on(tt.tenantId as AnyPgColumn, tt.id as AnyPgColumn)]
+        : []),
+      pgPolicy(`${cfg.name}_tenant_isolation`, {
+        as: 'permissive',
+        for: 'all',
+        to: 'public',
+        using: TENANT_POLICY_SQL,
+        withCheck: TENANT_POLICY_SQL,
+      }),
+    ];
+    if (scope === 'company')
+      defs.push(
+        foreignKey({
+          name: `${cfg.name}_company_scope_fk`,
+          columns: [tt.tenantId as AnyPgColumn, tt.companyId as AnyPgColumn],
+          foreignColumns: [resolveRef('@company', 'tenantId') as AnyPgColumn, resolveRef('@company') as AnyPgColumn],
+        }),
+      );
+    for (const [name, fd] of Object.entries(cfg.fields)) {
+      const c = tt[name];
+      if (!c) continue;
+      if (fd.kind === 'ref' && fd.ref) {
+        const targetTenant = resolveRef(fd.ref, 'tenantId') as AnyPgColumn;
+        const targetCompany = resolveRef(fd.ref, 'companyId');
+        const targetId = resolveRef(fd.ref) as AnyPgColumn;
+        const local =
+          scope === 'company' && targetCompany
+            ? [tt.tenantId as AnyPgColumn, tt.companyId as AnyPgColumn, c]
+            : [tt.tenantId as AnyPgColumn, c];
+        const foreign =
+          scope === 'company' && targetCompany ? [targetTenant, targetCompany, targetId] : [targetTenant, targetId];
+        defs.push(
+          foreignKey({
+            name: `${cfg.name}_${toSnake(name)}_scope_fk`,
+            columns: local as [AnyPgColumn, ...AnyPgColumn[]],
+            foreignColumns: foreign as [AnyPgColumn, ...AnyPgColumn[]],
+          }),
+        );
       }
-      for (const u of cfg.unique ?? []) {
-        defs.push(uniqueIndex(`${cfg.name}_${u.map(toSnake).join('_')}_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), ...u.map((n) => tt[n] as AnyPgColumn)));
+      if (fd.opts.unique)
+        defs.push(
+          uniqueIndex(`${cfg.name}_${toSnake(name)}_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), c),
+        );
+      else if (fd.opts.index || fd.kind === 'ref')
+        defs.push(index(`${cfg.name}_${toSnake(name)}_idx`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), c));
+      if (fd.kind === 'enum' && fd.values) {
+        const list = fd.values.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
+        defs.push(check(`${cfg.name}_${toSnake(name)}_chk`, sql.raw(`${toSnake(name)} IN (${list})`)));
       }
-      for (const ix of cfg.indexes ?? []) {
-        defs.push(index(`${cfg.name}_${ix.map(toSnake).join('_')}_idx`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), ...ix.map((n) => tt[n] as AnyPgColumn)));
-      }
-      if (kind === 'document') {
-        defs.push(uniqueIndex(`${cfg.name}_number_uq`).on(...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]), tt.number as AnyPgColumn));
-        defs.push(check(`${cfg.name}_docstatus_chk`, sql.raw('docstatus IN (0, 1, 2)')));
-      }
-      return defs as never;
-    },
-  ).enableRLS();
+    }
+    for (const u of cfg.unique ?? []) {
+      defs.push(
+        uniqueIndex(`${cfg.name}_${u.map(toSnake).join('_')}_uq`).on(
+          ...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]),
+          ...u.map((n) => tt[n] as AnyPgColumn),
+        ),
+      );
+    }
+    for (const ix of cfg.indexes ?? []) {
+      defs.push(
+        index(`${cfg.name}_${ix.map(toSnake).join('_')}_idx`).on(
+          ...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]),
+          ...ix.map((n) => tt[n] as AnyPgColumn),
+        ),
+      );
+    }
+    if (kind === 'document') {
+      defs.push(
+        uniqueIndex(`${cfg.name}_number_uq`).on(
+          ...(scopeCols as [AnyPgColumn, ...AnyPgColumn[]]),
+          tt.number as AnyPgColumn,
+        ),
+      );
+      defs.push(check(`${cfg.name}_docstatus_chk`, sql.raw('docstatus IN (0, 1, 2)')));
+    }
+    return defs as never;
+  }).enableRLS();
 
-  return { table: table as unknown as PgTable, columns: getTableColumns(table as unknown as PgTable) as Record<string, PgColumn>, columnNames };
+  return {
+    table: table as unknown as PgTable,
+    columns: getTableColumns(table as unknown as PgTable) as Record<string, PgColumn>,
+    columnNames,
+  };
 }

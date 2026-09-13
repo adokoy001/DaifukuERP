@@ -43,14 +43,20 @@ export function toolInputSchema(actionName: string, input: z.ZodType, log: Logge
   try {
     const json = z.toJSONSchema(input, { io: 'input', unrepresentable: 'any', override });
     if (!isObjectSchema(json)) {
-      log.warn('action input is not an object schema; exposing a permissive tool schema', { action: actionName, type: String(json.type) });
+      log.warn('action input is not an object schema; exposing a permissive tool schema', {
+        action: actionName,
+        type: String(json.type),
+      });
       return FALLBACK_INPUT_SCHEMA;
     }
     // Clients that compile inputSchema with a draft-07 validator reject an unknown `$schema` id.
     const { $schema: _omitted, ...rest } = json;
     return rest as ToolInputSchema;
   } catch (e) {
-    log.warn('cannot convert action input to JSON Schema; exposing a permissive tool schema', { action: actionName, ...safeErrorDiagnostics(e) });
+    log.warn('cannot convert action input to JSON Schema; exposing a permissive tool schema', {
+      action: actionName,
+      ...safeErrorDiagnostics(e),
+    });
     return FALLBACK_INPUT_SCHEMA;
   }
 }

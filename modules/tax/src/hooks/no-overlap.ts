@@ -1,7 +1,16 @@
 // Spec AC-1: for one category, validity periods must not overlap, so resolveRate is unambiguous for any date.
 // Runs in before_validate on create and update; the merged (previous + patch) row is checked against every
 // other row of the same category in the company. Also guards validTo >= validFrom and rate 0 for zero-rate categories.
-import { Decimal, ValidationError, isLocalDate, registry, repo, withLock, type Context, type LocalDate } from '@daifuku/kernel';
+import {
+  Decimal,
+  ValidationError,
+  isLocalDate,
+  registry,
+  repo,
+  withLock,
+  type Context,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { TaxRate } from '../entities/tax-rate.ts';
 import { isTaxCategory, isZeroRateCategory, type TaxCategory } from '../services/categories.ts';
 
@@ -22,7 +31,13 @@ function effective(row: Raw, previous: Raw | undefined): Period | null {
   const { category, validFrom, validTo, code } = merged;
   if (!isTaxCategory(category) || typeof validFrom !== 'string' || !isLocalDate(validFrom)) return null;
   if (validTo !== null && validTo !== undefined && (typeof validTo !== 'string' || !isLocalDate(validTo))) return null;
-  return { id: typeof merged.id === 'string' ? merged.id : null, code: typeof code === 'string' ? code : '', category, validFrom, validTo: typeof validTo === 'string' ? validTo : null };
+  return {
+    id: typeof merged.id === 'string' ? merged.id : null,
+    code: typeof code === 'string' ? code : '',
+    category,
+    validFrom,
+    validTo: typeof validTo === 'string' ? validTo : null,
+  };
 }
 
 function overlaps(a: Period, b: Period): boolean {
@@ -40,7 +55,11 @@ function assertRateForCategory(row: Raw, previous: Raw | undefined): void {
     return; // zod reports the malformed decimal
   }
   if (!rate.isZero()) {
-    throw new ValidationError(`tax_rate: category ${category} must have rate 0`, [{ path: 'rate', message: `must be 0 for ${category}` }], '免税/非課税/不課税 are always rate 0; use category standard or reduced for a taxed rate.');
+    throw new ValidationError(
+      `tax_rate: category ${category} must have rate 0`,
+      [{ path: 'rate', message: `must be 0 for ${category}` }],
+      '免税/非課税/不課税 are always rate 0; use category standard or reduced for a taxed rate.',
+    );
   }
 }
 
@@ -49,9 +68,21 @@ async function assertNoOverlap(ctx: Context, row: Raw, previous: Raw | undefined
   const me = effective(row, previous);
   if (!me) return;
   if (me.validTo !== null && me.validTo < me.validFrom) {
-    throw new ValidationError(`tax_rate ${me.code}: validTo ${me.validTo} is before validFrom ${me.validFrom}`, [{ path: 'validTo', message: 'must be on or after validFrom' }]);
+    throw new ValidationError(`tax_rate ${me.code}: validTo ${me.validTo} is before validFrom ${me.validFrom}`, [
+      { path: 'validTo', message: 'must be on or after validFrom' },
+    ]);
   }
-  const others = await repo(ctx, TaxRate).list({ where: { $and: [{ category: me.category }, { validFrom: { $lte: me.validTo ?? '9999-12-31' } }, { $or: [{ validTo: null }, { validTo: { $gte: me.validFrom } }] }, ...(me.id ? [{ id: { $ne: me.id } }] : [])] }, limit: 1 });
+  const others = await repo(ctx, TaxRate).list({
+    where: {
+      $and: [
+        { category: me.category },
+        { validFrom: { $lte: me.validTo ?? '9999-12-31' } },
+        { $or: [{ validTo: null }, { validTo: { $gte: me.validFrom } }] },
+        ...(me.id ? [{ id: { $ne: me.id } }] : []),
+      ],
+    },
+    limit: 1,
+  });
   for (const o of others.items) {
     if (o.id === me.id) continue;
     const other: Period = { id: o.id, code: o.code, category: o.category, validFrom: o.validFrom, validTo: o.validTo };

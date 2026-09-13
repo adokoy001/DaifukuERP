@@ -1,86 +1,241 @@
 import { newId, repo, runAction } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WorkforceAttendance, WorkforceEmployee, WorkforcePayroll, WorkforceShiftAssignment, WorkforceShiftAvailability, WorkforceShiftPlan, WorkforceShiftProfile } from '../src/index.ts';
+import {
+  WorkforceAttendance,
+  WorkforceEmployee,
+  WorkforcePayroll,
+  WorkforceShiftAssignment,
+  WorkforceShiftAvailability,
+  WorkforceShiftPlan,
+  WorkforceShiftProfile,
+} from '../src/index.ts';
 import { call, fixture, type Fixture } from './helpers.ts';
-import { assignment, availability, board, conditions, defined, draft, mine, profile, publish, ready, slot } from './shift-helpers.ts';
+import {
+  assignment,
+  availability,
+  board,
+  conditions,
+  defined,
+  draft,
+  mine,
+  profile,
+  publish,
+  ready,
+  slot,
+} from './shift-helpers.ts';
 let f: Fixture;
-beforeAll(async () => { f = await fixture(); await conditions(f); });
-afterAll(async () => { await f?.db.close(); });
+beforeAll(async () => {
+  f = await fixture();
+  await conditions(f);
+});
+afterAll(async () => {
+  await f?.db.close();
+});
 describe('shift planner permissions, snapshots and revisions', () => {
   it('keeps self records private and requires workflow authority for generic changes', async () => {
-    const weekStart = '2026-09-14'; await ready(f, weekStart);
+    const weekStart = '2026-09-14';
+    await ready(f, weekStart);
     expect((await mine(f, weekStart)).profile?.employeeId).toBe(f.employee.id);
     expect((await f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftProfile).list())).items).toHaveLength(1);
-    expect((await f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftAvailability).list())).items.map((row) => row.employeeId)).toEqual([f.employee.id]);
-    await expect(f.db.run(f.alice.params, (ctx) => runAction(ctx, 'workforce.shift_board', { siteId: f.siteId, weekStart }))).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await expect(f.db.run(f.remote.params, (ctx) => runAction(ctx, 'workforce.shift_board', { siteId: f.siteId, weekStart }))).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await expect(call(f.db, f.alice.params, 'save_shift_profile', { employeeId: f.employee.id, expectedVersion: 1, profile })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await expect(call(f.db, f.manager.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days: availability(weekStart), employeeId: f.employee.id })).rejects.toMatchObject({ code: 'VALIDATION' });
-    const awaitOwn = await mine(f, weekStart), own = defined(awaitOwn.availability);
-    await expect(f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftAvailability).update(own.id, { days: [] }, { expectedVersion: own.version }))).rejects.toBeDefined();
-    await expect(f.db.run({}, (ctx) => repo(ctx, WorkforceShiftPlan).create({ siteId: f.siteId, weekStart, slots: [], assignments: [], sourceRevision: '' }))).rejects.toBeDefined();
-    await expect(f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceShiftProfile).delete(defined(awaitOwn.profile).id))).rejects.toBeDefined();
+    expect(
+      (await f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftAvailability).list())).items.map(
+        (row) => row.employeeId,
+      ),
+    ).toEqual([f.employee.id]);
+    await expect(
+      f.db.run(f.alice.params, (ctx) => runAction(ctx, 'workforce.shift_board', { siteId: f.siteId, weekStart })),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(
+      f.db.run(f.remote.params, (ctx) => runAction(ctx, 'workforce.shift_board', { siteId: f.siteId, weekStart })),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      call(f.db, f.alice.params, 'save_shift_profile', { employeeId: f.employee.id, expectedVersion: 1, profile }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(
+      call(f.db, f.manager.params, 'save_shift_availability', {
+        weekStart,
+        expectedVersion: 0,
+        days: availability(weekStart),
+        employeeId: f.employee.id,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    const awaitOwn = await mine(f, weekStart),
+      own = defined(awaitOwn.availability);
+    await expect(
+      f.db.run(f.alice.params, (ctx) =>
+        repo(ctx, WorkforceShiftAvailability).update(own.id, { days: [] }, { expectedVersion: own.version }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      f.db.run({}, (ctx) =>
+        repo(ctx, WorkforceShiftPlan).create({
+          siteId: f.siteId,
+          weekStart,
+          slots: [],
+          assignments: [],
+          sourceRevision: '',
+        }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceShiftProfile).delete(defined(awaitOwn.profile).id)),
+    ).rejects.toBeDefined();
   });
   it('validates weekly preferences and versions without accepting duplicate dates or unknown owners', async () => {
-    const weekStart = '2026-10-12', days = availability(weekStart); days[1] = { ...defined(days[0]) };
-    await expect(call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days })).rejects.toMatchObject({ code: 'VALIDATION' });
-    const valid = availability(weekStart); valid[1] = { ...defined(valid[1]), preference: 'unavailable', startMinute: 0, endMinute: 0 };
-    const row = await call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days: valid });
-    await expect(call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days: valid })).rejects.toMatchObject({ code: 'CONFLICT' });
+    const weekStart = '2026-10-12',
+      days = availability(weekStart);
+    days[1] = { ...defined(days[0]) };
+    await expect(
+      call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days }),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    const valid = availability(weekStart);
+    valid[1] = { ...defined(valid[1]), preference: 'unavailable', startMinute: 0, endMinute: 0 };
+    const row = await call(f.db, f.alice.params, 'save_shift_availability', {
+      weekStart,
+      expectedVersion: 0,
+      days: valid,
+    });
+    await expect(
+      call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days: valid }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect((await mine(f, weekStart)).availability?.version).toBe(row.version);
     const source = await board(f, weekStart);
-    await expect(call(f.db, f.manager.params, 'save_shift_plan', { siteId: f.siteId, weekStart, expectedVersion: 0, sourceRevision: source.sourceRevision, slots: [slot(weekStart)], assignments: [assignment(newId())] })).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(
+      call(f.db, f.manager.params, 'save_shift_plan', {
+        siteId: f.siteId,
+        weekStart,
+        expectedVersion: 0,
+        sourceRevision: source.sourceRevision,
+        slots: [slot(weekStart)],
+        assignments: [assignment(newId())],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
   it('requires explicit shortage acknowledgement and publishes only self assignments', async () => {
-    const weekStart = '2026-11-09', row = await draft(f, weekStart, 2);
+    const weekStart = '2026-11-09',
+      row = await draft(f, weekStart, 2);
     expect((await mine(f, weekStart)).assignments).toEqual([]);
     await expect(publish(f, row)).rejects.toMatchObject({ code: 'INVALID_STATE' });
     expect((await board(f, weekStart)).draft?.version).toBe(row.version);
-    const result = await publish(f, row, true); expect(result.status).toBe('published');
-    expect((await mine(f, weekStart)).assignments).toHaveLength(1); expect((await mine(f, weekStart, f.bob)).assignments).toHaveLength(0);
+    const result = await publish(f, row, true);
+    expect(result.status).toBe('published');
+    expect((await mine(f, weekStart)).assignments).toHaveLength(1);
+    expect((await mine(f, weekStart, f.bob)).assignments).toHaveLength(0);
     expect((await board(f, weekStart)).publishedEvaluation?.shortage).toBe(1);
     expect(await f.db.run({}, (ctx) => repo(ctx, WorkforceAttendance).count())).toBe(0);
     expect(await f.db.run({}, (ctx) => repo(ctx, WorkforcePayroll).count())).toBe(0);
-    await expect(f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftPlan).count())).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await expect(f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(row.id))).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftPlan).count())).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
+    await expect(f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(row.id))).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
   });
   it('appends revision history and deactivates only replaced assignments atomically', async () => {
-    const weekStart = '2026-12-07', first = await draft(f, weekStart); await publish(f, first);
-    const source = await board(f, weekStart), published = defined(source.published);
-    await expect(call(f.db, f.manager.params, 'save_shift_plan', { siteId: f.siteId, weekStart, planId: published.id, expectedVersion: published.version, sourceRevision: source.sourceRevision, slots: published.slots, assignments: [] })).rejects.toMatchObject({ code: 'INVALID_STATE' });
-    const revision = await call(f.db, f.manager.params, 'save_shift_plan', { siteId: f.siteId, weekStart, expectedVersion: 0, sourceRevision: source.sourceRevision, slots: published.slots, assignments: [assignment(f.otherEmployee.id)] });
+    const weekStart = '2026-12-07',
+      first = await draft(f, weekStart);
+    await publish(f, first);
+    const source = await board(f, weekStart),
+      published = defined(source.published);
+    await expect(
+      call(f.db, f.manager.params, 'save_shift_plan', {
+        siteId: f.siteId,
+        weekStart,
+        planId: published.id,
+        expectedVersion: published.version,
+        sourceRevision: source.sourceRevision,
+        slots: published.slots,
+        assignments: [],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    const revision = await call(f.db, f.manager.params, 'save_shift_plan', {
+      siteId: f.siteId,
+      weekStart,
+      expectedVersion: 0,
+      sourceRevision: source.sourceRevision,
+      slots: published.slots,
+      assignments: [assignment(f.otherEmployee.id)],
+    });
     const final = await publish(f, { ...revision, sourceRevision: source.sourceRevision });
-    const history = await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftAssignment).list({ where: { date: weekStart } }));
-    expect(history.items).toHaveLength(2); expect(history.items.filter((row) => row.active).map((row) => row.employeeId)).toEqual([f.otherEmployee.id]);
-    expect((await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(first.id))).status).toBe('superseded');
-    expect((await mine(f, weekStart)).assignments).toEqual([]); expect((await mine(f, weekStart, f.bob)).assignments).toHaveLength(1);
-    expect(await f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftAssignment).count({ date: weekStart }))).toBe(0);
-    await call(f.db, f.manager.params, 'cancel_shift_plan', { planId: final.id, expectedVersion: final.version, reason: '営業休止のため' });
+    const history = await f.db.run(f.manager.params, (ctx) =>
+      repo(ctx, WorkforceShiftAssignment).list({ where: { date: weekStart } }),
+    );
+    expect(history.items).toHaveLength(2);
+    expect(history.items.filter((row) => row.active).map((row) => row.employeeId)).toEqual([f.otherEmployee.id]);
+    expect((await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(first.id))).status).toBe(
+      'superseded',
+    );
+    expect((await mine(f, weekStart)).assignments).toEqual([]);
+    expect((await mine(f, weekStart, f.bob)).assignments).toHaveLength(1);
+    expect(
+      await f.db.run(f.alice.params, (ctx) => repo(ctx, WorkforceShiftAssignment).count({ date: weekStart })),
+    ).toBe(0);
+    await call(f.db, f.manager.params, 'cancel_shift_plan', {
+      planId: final.id,
+      expectedVersion: final.version,
+      reason: '営業休止のため',
+    });
     expect((await mine(f, weekStart, f.bob)).assignments).toEqual([]);
-    expect(await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftAssignment).count({ date: weekStart }))).toBe(2);
+    expect(
+      await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftAssignment).count({ date: weekStart })),
+    ).toBe(2);
   });
   it('persists the maximum signed integer seed and rejects larger values before database writes', async () => {
-    const weekStart = '2027-03-01', source = await ready(f, weekStart);
-    const input = { siteId: f.siteId, weekStart, expectedVersion: 0, sourceRevision: source.sourceRevision, slots: [], assignments: [], seed: 2147483647 };
+    const weekStart = '2027-03-01',
+      source = await ready(f, weekStart);
+    const input = {
+      siteId: f.siteId,
+      weekStart,
+      expectedVersion: 0,
+      sourceRevision: source.sourceRevision,
+      slots: [],
+      assignments: [],
+      seed: 2147483647,
+    };
     const row = await call(f.db, f.manager.params, 'save_shift_plan', input);
-    expect((await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(row.id))).seed).toBe(2147483647);
-    await expect(call(f.db, f.manager.params, 'save_shift_plan', { ...input, seed: 2147483648 })).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect((await f.db.run(f.manager.params, (ctx) => repo(ctx, WorkforceShiftPlan).get(row.id))).seed).toBe(
+      2147483647,
+    );
+    await expect(call(f.db, f.manager.params, 'save_shift_plan', { ...input, seed: 2147483648 })).rejects.toMatchObject(
+      { code: 'VALIDATION' },
+    );
     expect((await board(f, weekStart)).draft?.version).toBe(row.version);
   });
   it('blocks stale source saves, stale publish and duplicate concurrent drafts', async () => {
-    const weekStart = '2027-01-04', source = await ready(f, weekStart);
+    const weekStart = '2027-01-04',
+      source = await ready(f, weekStart);
     const mineBefore = await mine(f, weekStart);
-    await call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: defined(mineBefore.availability).version, days: availability(weekStart) });
-    const input = { siteId: f.siteId, weekStart, expectedVersion: 0, sourceRevision: source.sourceRevision, slots: [slot(weekStart)], assignments: [assignment(f.employee.id)] };
+    await call(f.db, f.alice.params, 'save_shift_availability', {
+      weekStart,
+      expectedVersion: defined(mineBefore.availability).version,
+      days: availability(weekStart),
+    });
+    const input = {
+      siteId: f.siteId,
+      weekStart,
+      expectedVersion: 0,
+      sourceRevision: source.sourceRevision,
+      slots: [slot(weekStart)],
+      assignments: [assignment(f.employee.id)],
+    };
     await expect(call(f.db, f.manager.params, 'save_shift_plan', input)).rejects.toMatchObject({ code: 'CONFLICT' });
     input.sourceRevision = (await board(f, weekStart)).sourceRevision;
-    const attempts = await Promise.allSettled([call(f.db, f.manager.params, 'save_shift_plan', input), call(f.db, f.manager.params, 'save_shift_plan', input)]);
+    const attempts = await Promise.allSettled([
+      call(f.db, f.manager.params, 'save_shift_plan', input),
+      call(f.db, f.manager.params, 'save_shift_plan', input),
+    ]);
     expect(attempts.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     const current = defined((await board(f, weekStart)).draft);
     const person = await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceEmployee).get(f.employee.id));
-    await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceEmployee).update(person.id, { name: 'Alice Updated' }, { expectedVersion: person.version }));
-    await expect(publish(f, { ...current, sourceRevision: input.sourceRevision })).rejects.toMatchObject({ code: 'CONFLICT' });
-    await expect(publish(f, { ...current, sourceRevision: (await board(f, weekStart)).sourceRevision })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await f.db.run(f.hr.params, (ctx) =>
+      repo(ctx, WorkforceEmployee).update(person.id, { name: 'Alice Updated' }, { expectedVersion: person.version }),
+    );
+    await expect(publish(f, { ...current, sourceRevision: input.sourceRevision })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    await expect(
+      publish(f, { ...current, sourceRevision: (await board(f, weekStart)).sourceRevision }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
     expect((await mine(f, weekStart)).assignments).toEqual([]);
   });
 });

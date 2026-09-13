@@ -21,7 +21,9 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   row.valuationAmount = decimal(row.quantity).times(decimal(row.valuationUnitCost)).roundHalfUp(6);
 }
 async function afterSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
-  await createStock(ctx, FarmHarvest, row, 'receipt', [{ productId: String(row.productId), quantity: decimal(row.quantity), unitCost: decimal(row.valuationUnitCost) }]);
+  await createStock(ctx, FarmHarvest, row, 'receipt', [
+    { productId: String(row.productId), quantity: decimal(row.quantity), unitCost: decimal(row.valuationUnitCost) },
+  ]);
 }
 export function registerHarvestHooks(): void {
   registry.registerHook(FarmHarvest.name, 'before_validate', draft);

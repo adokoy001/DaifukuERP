@@ -21,9 +21,22 @@ export const supersedeAction = defineAction({
     const r = repo(ctx, Attachment);
     const before = await r.lock(id);
     const replacement = await r.get(newAttachmentId);
-    assertSupersedable({ id: before.id, supersededById: before.supersededById }, { id: replacement.id, supersededById: replacement.supersededById });
-    const updated = await withSupersede(ctx, (internal) => repo(internal, Attachment).update(id, { supersededById: newAttachmentId }, { expectedVersion: before.version }));
-    await writeAudit(ctx, 'attachment', id, 'supersede', { supersededById: before.supersededById }, { supersededById: newAttachmentId, reason }, 'attachment.supersede');
+    assertSupersedable(
+      { id: before.id, supersededById: before.supersededById },
+      { id: replacement.id, supersededById: replacement.supersededById },
+    );
+    const updated = await withSupersede(ctx, (internal) =>
+      repo(internal, Attachment).update(id, { supersededById: newAttachmentId }, { expectedVersion: before.version }),
+    );
+    await writeAudit(
+      ctx,
+      'attachment',
+      id,
+      'supersede',
+      { supersededById: before.supersededById },
+      { supersededById: newAttachmentId, reason },
+      'attachment.supersede',
+    );
     return attachmentJson(updated);
   },
 });

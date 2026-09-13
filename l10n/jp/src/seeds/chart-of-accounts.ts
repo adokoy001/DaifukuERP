@@ -16,11 +16,35 @@ export interface SeedAccount {
   taxRole?: TaxRole;
 }
 
-const asset = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({ code, name, type: 'asset', subtype, ...extra });
-const liability = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({ code, name, type: 'liability', subtype, ...extra });
+const asset = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({
+  code,
+  name,
+  type: 'asset',
+  subtype,
+  ...extra,
+});
+const liability = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({
+  code,
+  name,
+  type: 'liability',
+  subtype,
+  ...extra,
+});
 const equity = (code: string, name: string, subtype: string): SeedAccount => ({ code, name, type: 'equity', subtype });
-const revenue = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({ code, name, type: 'revenue', subtype, ...extra });
-const expense = (code: string, name: string, subtype: string, taxCategoryDefault: TaxCategory): SeedAccount => ({ code, name, type: 'expense', subtype, taxCategoryDefault });
+const revenue = (code: string, name: string, subtype: string, extra: Partial<SeedAccount> = {}): SeedAccount => ({
+  code,
+  name,
+  type: 'revenue',
+  subtype,
+  ...extra,
+});
+const expense = (code: string, name: string, subtype: string, taxCategoryDefault: TaxCategory): SeedAccount => ({
+  code,
+  name,
+  type: 'expense',
+  subtype,
+  taxCategoryDefault,
+});
 
 const SGA = '販売費及び一般管理費';
 
@@ -71,7 +95,10 @@ function toInsert(a: SeedAccount): AccountInsert {
 }
 
 /** Idempotent per company: codes that already exist are left untouched (no overwrite, no audit churn). Returns the number created. */
-export async function seedChartOfAccounts(ctx: Context, chart: readonly SeedAccount[] = JP_CHART_OF_ACCOUNTS): Promise<number> {
+export async function seedChartOfAccounts(
+  ctx: Context,
+  chart: readonly SeedAccount[] = JP_CHART_OF_ACCOUNTS,
+): Promise<number> {
   const r = repo(ctx, Account);
   const codes = chart.map((a) => a.code);
   const existing = await r.list({ where: { code: { $in: codes } }, limit: codes.length });

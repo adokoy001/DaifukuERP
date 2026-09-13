@@ -1,11 +1,31 @@
 // Kernel-owned tables: tenants, companies, users, sequences, audit_log, outbox, ext_field_definitions.
 import { sql } from 'drizzle-orm';
-import { bigint, foreignKey, index, integer, jsonb, pgPolicy, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgPolicy,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { registry } from '../registry.ts';
 import { TENANT_POLICY_SQL } from './table.ts';
 
 const tenantPolicy = (name: string) =>
-  pgPolicy(`${name}_tenant_isolation`, { as: 'permissive', for: 'all', to: 'public', using: TENANT_POLICY_SQL, withCheck: TENANT_POLICY_SQL });
+  pgPolicy(`${name}_tenant_isolation`, {
+    as: 'permissive',
+    for: 'all',
+    to: 'public',
+    using: TENANT_POLICY_SQL,
+    withCheck: TENANT_POLICY_SQL,
+  });
 
 /** Tenants are not RLS-scoped: only the owner role (system context) reads this table. */
 export const tenants = pgTable('tenants', {
@@ -18,16 +38,24 @@ export const companies = pgTable(
   'companies',
   {
     id: uuid('id').primaryKey(),
-    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
     country: text('country').notNull().default('JP'),
     currency: text('currency').notNull().default('JPY'),
     /** Company settings (tax rounding unit, fiscal year start, ...) — validated by the modules that own each key. */
-    settings: jsonb('settings').notNull().default(sql`'{}'::jsonb`),
+    settings: jsonb('settings')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (t) => [unique('companies_tenant_id_uq').on(t.tenantId, t.id), uniqueIndex('companies_code_uq').on(t.tenantId, t.code), tenantPolicy('companies')],
+  (t) => [
+    unique('companies_tenant_id_uq').on(t.tenantId, t.id),
+    uniqueIndex('companies_code_uq').on(t.tenantId, t.code),
+    tenantPolicy('companies'),
+  ],
 ).enableRLS();
 
 export const users = pgTable(
@@ -39,7 +67,10 @@ export const users = pgTable(
     name: text('name').notNull(),
     passwordHash: text('password_hash'),
     /** Legacy migration input only. Runtime authorization uses company memberships. */
-    roles: jsonb('roles').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
+    roles: jsonb('roles')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
     defaultCompanyId: uuid('default_company_id'),
     active: integer('active').notNull().default(1),
     tenantAdmin: integer('tenant_admin').notNull().default(0),
@@ -48,24 +79,54 @@ export const users = pgTable(
     mfaEnabled: integer('mfa_enabled').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (t) => [unique('users_tenant_id_uq').on(t.tenantId, t.id), uniqueIndex('users_email_uq').on(t.tenantId, t.email), foreignKey({ name: 'users_default_company_scope_fk', columns: [t.tenantId, t.defaultCompanyId], foreignColumns: [companies.tenantId, companies.id] }), tenantPolicy('users')],
+  (t) => [
+    unique('users_tenant_id_uq').on(t.tenantId, t.id),
+    uniqueIndex('users_email_uq').on(t.tenantId, t.email),
+    foreignKey({
+      name: 'users_default_company_scope_fk',
+      columns: [t.tenantId, t.defaultCompanyId],
+      foreignColumns: [companies.tenantId, companies.id],
+    }),
+    tenantPolicy('users'),
+  ],
 ).enableRLS();
 
-export const companyMemberships = pgTable('user_company_memberships', {
-  tenantId: uuid('tenant_id').notNull(),
-  userId: uuid('user_id').notNull(),
-  companyId: uuid('company_id').notNull(),
-  roles: jsonb('roles').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
-  accessScope: text('access_scope').notNull().default('all').$type<'all' | 'stores' | 'sites'>(),
-  storeIds: jsonb('store_ids').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
-  siteIds: jsonb('site_ids').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
-  version: integer('version').notNull().default(1),
-}, (t) => [
-  primaryKey({ columns: [t.tenantId, t.userId, t.companyId] }),
-  foreignKey({ name: 'membership_user_scope_fk', columns: [t.tenantId, t.userId], foreignColumns: [users.tenantId, users.id] }),
-  foreignKey({ name: 'membership_company_scope_fk', columns: [t.tenantId, t.companyId], foreignColumns: [companies.tenantId, companies.id] }),
-  tenantPolicy('user_company_memberships'),
-]).enableRLS();
+export const companyMemberships = pgTable(
+  'user_company_memberships',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    companyId: uuid('company_id').notNull(),
+    roles: jsonb('roles')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    accessScope: text('access_scope').notNull().default('all').$type<'all' | 'stores' | 'sites'>(),
+    storeIds: jsonb('store_ids')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    siteIds: jsonb('site_ids')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    version: integer('version').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.userId, t.companyId] }),
+    foreignKey({
+      name: 'membership_user_scope_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'membership_company_scope_fk',
+      columns: [t.tenantId, t.companyId],
+      foreignColumns: [companies.tenantId, companies.id],
+    }),
+    tenantPolicy('user_company_memberships'),
+  ],
+).enableRLS();
 
 /** No-gap numbering (ADR-0006). Row lock on UPDATE serialises concurrent submits per key. */
 export const sequences = pgTable(
@@ -99,7 +160,11 @@ export const auditLog = pgTable(
     before: jsonb('before'),
     after: jsonb('after'),
   },
-  (t) => [index('audit_log_record_idx').on(t.tenantId, t.entity, t.recordId), index('audit_log_at_idx').on(t.tenantId, t.at), tenantPolicy('audit_log')],
+  (t) => [
+    index('audit_log_record_idx').on(t.tenantId, t.entity, t.recordId),
+    index('audit_log_at_idx').on(t.tenantId, t.at),
+    tenantPolicy('audit_log'),
+  ],
 ).enableRLS();
 
 /** Transactional outbox (ADR-0001). Written in the same transaction as the change; delivered by the worker. */
@@ -134,7 +199,10 @@ export const extFieldDefinitions = pgTable(
     options: jsonb('options'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('ext_field_definitions_uq').on(t.tenantId, t.entity, t.key), tenantPolicy('ext_field_definitions')],
+  (t) => [
+    uniqueIndex('ext_field_definitions_uq').on(t.tenantId, t.entity, t.key),
+    tenantPolicy('ext_field_definitions'),
+  ],
 ).enableRLS();
 
 registry.registerSystemTable('tenants', tenants);

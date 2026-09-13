@@ -21,15 +21,26 @@ export const RealEstateUnit = defineEntity({
     name: f.text({ label: label('名称', 'Name'), required: true, maxLength: 100 }),
     usage: f.enum(UNIT_USAGES, {
       label: label('用途', 'Usage'),
-      description: label('契約明細の税区分の既定を決める（住宅 = 非課税、他 = 課税）', 'Decides the default tax category of lease lines (residential = non-taxable, others = standard)'),
+      description: label(
+        '契約明細の税区分の既定を決める（住宅 = 非課税、他 = 課税）',
+        'Decides the default tax category of lease lines (residential = non-taxable, others = standard)',
+      ),
       required: true,
       labels: UNIT_USAGE_LABELS,
     }),
     floorArea: f.decimal({ label: label('面積（㎡）', 'Floor area (m²)'), scale: 2, min: '0' }),
-    monthlyRent: f.money({ label: label('月額賃料（募集）', 'Monthly rent (asking)'), description: label('税抜', 'Tax-exclusive'), required: true, min: '0' }),
+    monthlyRent: f.money({
+      label: label('月額賃料（募集）', 'Monthly rent (asking)'),
+      description: label('税抜', 'Tax-exclusive'),
+      required: true,
+      min: '0',
+    }),
     status: f.enum(UNIT_STATUSES, {
       label: label('状態', 'Status'),
-      description: label('契約から自動計算（確定済みで終了日を過ぎていない契約があれば入居中）', 'Computed from the leases (occupied while a submitted lease has not ended)'),
+      description: label(
+        '契約から自動計算（確定済みで終了日を過ぎていない契約があれば入居中）',
+        'Computed from the leases (occupied while a submitted lease has not ended)',
+      ),
       required: true,
       default: 'vacant',
       labels: { vacant: label('空室', 'Vacant'), occupied: label('入居中', 'Occupied') },

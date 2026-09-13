@@ -29,7 +29,9 @@ describe('Document lifecycle (ADR-0006)', () => {
     const sa = await db.run({}, (ctx) => submitDocument(ctx, TMemo, a.id));
     expect(sb.number).toBe('MEMO-2026-0001');
     expect(sa.number).toBe('MEMO-2026-0002');
-    const nextYear = await db.run({}, async (ctx) => submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId, date: '2027-01-05', amount: '1' })).id));
+    const nextYear = await db.run({}, async (ctx) =>
+      submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId, date: '2027-01-05', amount: '1' })).id),
+    );
     expect(nextYear.number).toBe('MEMO-2027-0001');
     const delivered: string[] = [];
     registry.subscribe('test_memo.submitted', async (_ctx, payload) => {
@@ -54,20 +56,32 @@ describe('Document lifecycle (ADR-0006)', () => {
   });
 
   it('AC-3 submitted documents accept only allowOnSubmit fields; cancelled ones are read-only', async () => {
-    const m = await db.run({}, async (ctx) => submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId, date: '2026-09-13', amount: '5' })).id));
+    const m = await db.run({}, async (ctx) =>
+      submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId, date: '2026-09-13', amount: '5' })).id),
+    );
     const ok = await db.run({}, (ctx) => repo(ctx, TMemo).update(m.id, { remarks: 'late note' }));
     expect(ok.remarks).toBe('late note');
-    await expect(db.run({}, (ctx) => repo(ctx, TMemo).update(m.id, { amount: '6' }))).rejects.toBeInstanceOf(StateError);
+    await expect(db.run({}, (ctx) => repo(ctx, TMemo).update(m.id, { amount: '6' }))).rejects.toBeInstanceOf(
+      StateError,
+    );
     await expect(db.run({}, (ctx) => repo(ctx, TMemo).delete(m.id))).rejects.toBeInstanceOf(StateError);
     const cancelled = await db.run({}, (ctx) => cancelDocument(ctx, TMemo, m.id));
     expect(cancelled.docstatus).toBe(2);
-    await expect(db.run({}, (ctx) => repo(ctx, TMemo).update(m.id, { remarks: 'x' }))).rejects.toBeInstanceOf(StateError);
+    await expect(db.run({}, (ctx) => repo(ctx, TMemo).update(m.id, { remarks: 'x' }))).rejects.toBeInstanceOf(
+      StateError,
+    );
     const trail = await db.run({}, (ctx) => auditTrail(ctx, 'test_memo', m.id));
     expect(trail.map((t) => t.op)).toEqual(['cancel', 'update', 'submit', 'create']);
   });
 
   it('AC-4 amend copies a cancelled document into a new draft linked by amendedFrom', async () => {
-    const m = await db.run({}, async (ctx) => submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId, date: '2026-09-14', amount: '7', note: 'orig' })).id));
+    const m = await db.run({}, async (ctx) =>
+      submitDocument(
+        ctx,
+        TMemo,
+        (await repo(ctx, TMemo).create({ partnerId, date: '2026-09-14', amount: '7', note: 'orig' })).id,
+      ),
+    );
     await db.run({}, (ctx) => cancelDocument(ctx, TMemo, m.id));
     const amended = await db.run({}, (ctx) => amendDocument(ctx, TMemo, m.id));
     expect(amended.docstatus).toBe(0);
@@ -78,7 +92,12 @@ describe('Document lifecycle (ADR-0006)', () => {
     // lines are copied and the amended document is numbered <original>-1 at submit (ADR-0006)
     const m2 = await db.run({}, async (ctx) => {
       const created = await repo(ctx, TMemo).create({ partnerId, date: '2026-09-14', amount: '9' });
-      await saveLines(ctx, TMemo, created.id, { test_memo_line: [{ description: 'L1', amount: '4' }, { description: 'L2', amount: '5' }] });
+      await saveLines(ctx, TMemo, created.id, {
+        test_memo_line: [
+          { description: 'L1', amount: '4' },
+          { description: 'L2', amount: '5' },
+        ],
+      });
       return submitDocument(ctx, TMemo, created.id);
     });
     await db.run({}, (ctx) => cancelDocument(ctx, TMemo, m2.id));
@@ -91,7 +110,13 @@ describe('Document lifecycle (ADR-0006)', () => {
 
   it('AC-5 cancelling a master record’s dependents is enforced via ref fields', async () => {
     const p2 = await db.run({}, (ctx) => repo(ctx, TPartner).create({ name: 'Dep Partner' }));
-    await db.run({}, async (ctx) => submitDocument(ctx, TMemo, (await repo(ctx, TMemo).create({ partnerId: p2.id, date: '2026-09-15', amount: '1' })).id));
+    await db.run({}, async (ctx) =>
+      submitDocument(
+        ctx,
+        TMemo,
+        (await repo(ctx, TMemo).create({ partnerId: p2.id, date: '2026-09-15', amount: '1' })).id,
+      ),
+    );
     // deleting a partner referenced by a submitted memo is blocked by the FK (restrict)
     await expect(db.run({}, (ctx) => repo(ctx, TPartner).delete(p2.id))).rejects.toThrow();
     expect(DependencyError).toBeDefined();
@@ -99,8 +124,12 @@ describe('Document lifecycle (ADR-0006)', () => {
 
   it('AC-6 declared transitions check roles and guards', async () => {
     const zero = await db.run({}, (ctx) => repo(ctx, TMemo).create({ partnerId, date: '2026-09-16', amount: '0' }));
-    await expect(db.run({ roles: ['sales'] }, (ctx) => transitionDocument(ctx, TMemo, zero.id, 'approve'))).rejects.toThrow(/requires roles/);
-    await expect(db.run({ roles: ['manager'] }, (ctx) => transitionDocument(ctx, TMemo, zero.id, 'approve'))).rejects.toThrow(/guard/);
+    await expect(
+      db.run({ roles: ['sales'] }, (ctx) => transitionDocument(ctx, TMemo, zero.id, 'approve')),
+    ).rejects.toThrow(/requires roles/);
+    await expect(
+      db.run({ roles: ['manager'] }, (ctx) => transitionDocument(ctx, TMemo, zero.id, 'approve')),
+    ).rejects.toThrow(/guard/);
     await db.run({}, (ctx) => repo(ctx, TMemo).update(zero.id, { amount: '3' }));
     const approved = await db.run({ roles: ['manager'] }, (ctx) => transitionDocument(ctx, TMemo, zero.id, 'approve'));
     expect(approved.docstatus).toBe(1);

@@ -40,7 +40,7 @@ function parse(date: LocalDate): { y: number; m: number; d: number } {
 
 function addMonths({ y, m }: Ym, n: number): Ym {
   const idx = m - 1 + n;
-  return { y: y + Math.floor(idx / 12), m: ((idx % 12) + 12) % 12 + 1 };
+  return { y: y + Math.floor(idx / 12), m: (((idx % 12) + 12) % 12) + 1 };
 }
 
 function firstDay({ y, m }: Ym): LocalDate {

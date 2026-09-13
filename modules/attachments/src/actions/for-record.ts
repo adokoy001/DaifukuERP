@@ -6,7 +6,10 @@ import { assertLinkTarget } from '../hooks/link-target.ts';
 
 export const forRecordAction = defineAction({
   name: 'attachment.for_record',
-  description: label('レコードにリンクされた証憑を一覧します（新しい順）。', 'List the attachments linked to a record (newest first).'),
+  description: label(
+    'レコードにリンクされた証憑を一覧します（新しい順）。',
+    'List the attachments linked to a record (newest first).',
+  ),
   input: z.object({ entity: z.string().min(1).max(100), recordId: z.uuid() }),
   output: z.object({ items: z.array(Attachment.schemas.json), total: z.number().int() }),
   permission: { entity: 'attachment', op: 'read' },

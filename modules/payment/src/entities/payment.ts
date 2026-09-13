@@ -21,7 +21,11 @@ export const Payment = defineDocument({
   label: label('入出金', 'Payment'),
   naming: { type: 'sequence', prefix: 'PAY-', period: 'year' },
   fields: {
-    cancelledDate: f.date({ label: label('取消有効日', 'Cancellation effective date'), serverOwned: true, hidden: true }),
+    cancelledDate: f.date({
+      label: label('取消有効日', 'Cancellation effective date'),
+      serverOwned: true,
+      hidden: true,
+    }),
     currency: f.enum(['JPY'], { label: label('通貨', 'Currency'), required: true, default: 'JPY', immutable: true }),
     direction: f.enum(PAYMENT_DIRECTIONS, {
       label: label('区分', 'Direction'),
@@ -31,22 +35,49 @@ export const Payment = defineDocument({
     }),
     partnerId: f.ref('partner', { label: label('取引先', 'Partner'), required: true, index: true }),
     date: f.date({ label: label('日付', 'Date'), required: true, default: 'today', index: true }),
-    amount: f.money({ label: label('金額', 'Amount'), description: label('0 より大きい', 'must be > 0'), required: true }),
+    amount: f.money({
+      label: label('金額', 'Amount'),
+      description: label('0 より大きい', 'must be > 0'),
+      required: true,
+    }),
     method: f.enum(PAYMENT_METHODS, {
       label: label('方法', 'Method'),
       required: true,
       default: 'bank_transfer',
-      labels: { cash: label('現金', 'Cash'), bank_transfer: label('振込', 'Bank transfer'), other: label('その他', 'Other') },
+      labels: {
+        cash: label('現金', 'Cash'),
+        bank_transfer: label('振込', 'Bank transfer'),
+        other: label('その他', 'Other'),
+      },
     }),
     accountId: f.ref('account', {
       label: label('入出金科目', 'Cash / bank account'),
-      description: label('現金または普通預金。省略時は設定 payment.accounts（cash なら現金、他は普通預金）', 'Cash or bank account; defaults from payment.accounts by method'),
+      description: label(
+        '現金または普通預金。省略時は設定 payment.accounts（cash なら現金、他は普通預金）',
+        'Cash or bank account; defaults from payment.accounts by method',
+      ),
       required: true,
     }),
-    allocatedAmount: f.money({ serverOwned: true, label: label('消込額', 'Allocated'), description: label('明細の合計（自動計算）', 'Σ allocation lines, computed'), required: true, default: '0' }),
-    unallocatedAmount: f.money({ serverOwned: true, label: label('未消込額', 'Unallocated'), description: label('金額 − 消込額（前受金／前払金）', 'amount − allocated (advance)'), required: true, default: '0' }),
+    allocatedAmount: f.money({
+      serverOwned: true,
+      label: label('消込額', 'Allocated'),
+      description: label('明細の合計（自動計算）', 'Σ allocation lines, computed'),
+      required: true,
+      default: '0',
+    }),
+    unallocatedAmount: f.money({
+      serverOwned: true,
+      label: label('未消込額', 'Unallocated'),
+      description: label('金額 − 消込額（前受金／前払金）', 'amount − allocated (advance)'),
+      required: true,
+      default: '0',
+    }),
     note: f.text({ label: label('備考', 'Note'), multiline: true, maxLength: 2000 }),
-    journalEntryId: f.ref('journal_entry', { serverOwned: true, label: label('仕訳', 'Journal entry'), description: label('submit 時に転記', 'posted at submit') }),
+    journalEntryId: f.ref('journal_entry', {
+      serverOwned: true,
+      label: label('仕訳', 'Journal entry'),
+      description: label('submit 時に転記', 'posted at submit'),
+    }),
   },
   allowOnSubmit: ['journalEntryId'],
   lines: [{ entity: 'payment_allocation', parentField: 'paymentId' }],

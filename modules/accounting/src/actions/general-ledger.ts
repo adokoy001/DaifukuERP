@@ -25,7 +25,10 @@ export const GENERAL_LEDGER_COLUMNS = [
 ];
 
 async function openingBalance(ctx: Context, accountId: string, from: string): Promise<Decimal> {
-  const rows = await repo(ctx, JournalLine).aggregate({ where: { accountId, posted: true, entryDate: { $lt: from } }, metrics: { debit: { sum: 'debit' }, credit: { sum: 'credit' } } });
+  const rows = await repo(ctx, JournalLine).aggregate({
+    where: { accountId, posted: true, entryDate: { $lt: from } },
+    metrics: { debit: { sum: 'debit' }, credit: { sum: 'credit' } },
+  });
   const r = rows[0];
   if (!r) return Decimal.zero();
   return (r.debit as Decimal).minus(r.credit as Decimal);
@@ -64,18 +67,44 @@ export const generalLedgerAction = defineAction({
     const lines = await listAll(
       ctx,
       JournalLine,
-      { where: { accountId: account.id, posted: true, $and: [{ entryDate: { $gte: from } }, { entryDate: { $lte: to } }] }, orderBy: [{ field: 'entryDate', dir: 'asc' }, { field: 'entryId', dir: 'asc' }, { field: 'seq', dir: 'asc' }] },
+      {
+        where: {
+          accountId: account.id,
+          posted: true,
+          $and: [{ entryDate: { $gte: from } }, { entryDate: { $lte: to } }],
+        },
+        orderBy: [
+          { field: 'entryDate', dir: 'asc' },
+          { field: 'entryId', dir: 'asc' },
+          { field: 'seq', dir: 'asc' },
+        ],
+      },
       MAX_REPORT_ROWS - 1,
     );
     const heads = await loadHeads(
       ctx,
       lines.items.map((l) => l.entryId),
     );
-    const sorted = [...lines.items].sort((a, b) => (sortKey(a, heads) < sortKey(b, heads) ? -1 : sortKey(a, heads) > sortKey(b, heads) ? 1 : 0));
+    const sorted = [...lines.items].sort((a, b) =>
+      sortKey(a, heads) < sortKey(b, heads) ? -1 : sortKey(a, heads) > sortKey(b, heads) ? 1 : 0,
+    );
     const balances = runningBalances(opening, sorted);
-    const totals = sorted.reduce((t, l) => ({ debit: t.debit.plus(l.debit), credit: t.credit.plus(l.credit) }), { debit: Decimal.zero(), credit: Decimal.zero() });
+    const totals = sorted.reduce((t, l) => ({ debit: t.debit.plus(l.debit), credit: t.credit.plus(l.credit) }), {
+      debit: Decimal.zero(),
+      credit: Decimal.zero(),
+    });
     const rows: Record<string, unknown>[] = [
-      { date: from, number: null, description: '繰越', memo: null, partnerId: null, debit: null, credit: null, balance: opening.toString(), entryId: null },
+      {
+        date: from,
+        number: null,
+        description: '繰越',
+        memo: null,
+        partnerId: null,
+        debit: null,
+        credit: null,
+        balance: opening.toString(),
+        entryId: null,
+      },
       ...sorted.map((l, i) => ({
         date: l.entryDate,
         number: heads.get(l.entryId)?.number ?? null,
@@ -90,11 +119,27 @@ export const generalLedgerAction = defineAction({
     ];
     const closing = balances.length > 0 ? balances[balances.length - 1] : opening;
     return {
-      title: label(`総勘定元帳 ${account.code} ${account.name} ${from}〜${to}`, `General ledger ${account.code} ${account.name} ${from}..${to}`),
+      title: label(
+        `総勘定元帳 ${account.code} ${account.name} ${from}〜${to}`,
+        `General ledger ${account.code} ${account.name} ${from}..${to}`,
+      ),
       columns: GENERAL_LEDGER_COLUMNS,
       rows,
-      totals: { debit: totals.debit.toString(), credit: totals.credit.toString(), balance: (closing ?? opening).toString() },
-      meta: { accountId: account.id, code: account.code, name: account.name, from, to, openingBalance: opening.toString(), closingBalance: (closing ?? opening).toString(), ...(lines.truncated ? { truncated: true } : {}) },
+      totals: {
+        debit: totals.debit.toString(),
+        credit: totals.credit.toString(),
+        balance: (closing ?? opening).toString(),
+      },
+      meta: {
+        accountId: account.id,
+        code: account.code,
+        name: account.name,
+        from,
+        to,
+        openingBalance: opening.toString(),
+        closingBalance: (closing ?? opening).toString(),
+        ...(lines.truncated ? { truncated: true } : {}),
+      },
     };
   },
 });

@@ -29,7 +29,9 @@ function Changes({ entity, entry }: { entity: EntityMeta; entry: AuditEntry }) {
               <span className="ml-1 font-mono">{after}</span>
             ) : (
               <>
-                <span className="ml-1 font-mono text-neutral-400 line-through">{changeValueText(field, c.before, locale, { currencyScale })}</span>
+                <span className="ml-1 font-mono text-neutral-400 line-through">
+                  {changeValueText(field, c.before, locale, { currencyScale })}
+                </span>
                 <span className="mx-0.5 text-neutral-400">→</span>
                 <span className="font-mono">{after}</span>
               </>
@@ -52,7 +54,9 @@ export function AuditPanel({ entity, id }: { entity: EntityMeta; id: string }) {
       </h2>
       {audit.isPending ? <div className="px-3 py-2 text-xs text-neutral-500">{t(S.loading)}</div> : null}
       {audit.isError ? <div className="px-3 py-2 text-xs text-red-700">{t(S.loadFailed)}</div> : null}
-      {audit.data && audit.data.length === 0 ? <div className="px-3 py-2 text-xs text-neutral-500">{t(S.auditEmpty)}</div> : null}
+      {audit.data && audit.data.length === 0 ? (
+        <div className="px-3 py-2 text-xs text-neutral-500">{t(S.auditEmpty)}</div>
+      ) : null}
       {audit.data && audit.data.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

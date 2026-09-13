@@ -1,7 +1,14 @@
 // Default company settings for Japan (spec AC-2; ADR-0013 L1). Written only when the key is unset, so an operator's
 // choice survives re-seeding. Values: 切捨て・請求書単位 (docs/domain/japan-tax.md#rounding, 国税庁 Q&A 問57) and 税抜入力.
 import { getCompany, setSetting, type Context } from '@daifuku/kernel';
-import { TAX_PRICE_INCLUDES_TAX_KEY, TAX_ROUNDING_KEY, seedTaxRates, taxPriceIncludesTaxSchema, taxRoundingSchema, type TaxRounding } from '@daifuku/mod-tax';
+import {
+  TAX_PRICE_INCLUDES_TAX_KEY,
+  TAX_ROUNDING_KEY,
+  seedTaxRates,
+  taxPriceIncludesTaxSchema,
+  taxRoundingSchema,
+  type TaxRounding,
+} from '@daifuku/mod-tax';
 import type { z } from 'zod';
 
 export interface DefaultSetting<T = unknown> {
@@ -19,7 +26,10 @@ export const JP_DEFAULT_SETTINGS: readonly DefaultSetting[] = [
 ];
 
 /** Sets each default only when the company has no value for the key. Returns the keys written. */
-export async function seedDefaultSettings(ctx: Context, defaults: readonly DefaultSetting[] = JP_DEFAULT_SETTINGS): Promise<string[]> {
+export async function seedDefaultSettings(
+  ctx: Context,
+  defaults: readonly DefaultSetting[] = JP_DEFAULT_SETTINGS,
+): Promise<string[]> {
   const company = await getCompany(ctx);
   const written: string[] = [];
   for (const d of defaults) {

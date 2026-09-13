@@ -2,7 +2,16 @@
 // and rate carried by posted journal lines (not from sales/purchase documents), so manual entries and reversals count.
 // One aggregate query per (account, taxCategory, taxRate) and one account read by id; classification is pure
 // (services/tax-summary.ts). No raw SQL.
-import { Decimal, defineAction, isDecimal, label, repo, ValidationError, type Context, type LocalDate } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  isDecimal,
+  label,
+  repo,
+  ValidationError,
+  type Context,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { column, MAX_REPORT_ROWS, tableResult } from '@daifuku/kernel';
 import { z } from 'zod';
 import { Account, type AccountType, type TaxRole } from '../entities/account.ts';
@@ -27,24 +36,28 @@ function decimalOrNull(v: unknown): Decimal | null {
 }
 
 /** Posted lines dated from..to, grouped per (account, taxCategory, taxRate). */
-async function lineGroups(ctx: Context, from: LocalDate, to: LocalDate): Promise<{ groups: TaxLineGroup[]; truncated: boolean }> {
+async function lineGroups(
+  ctx: Context,
+  from: LocalDate,
+  to: LocalDate,
+): Promise<{ groups: TaxLineGroup[]; truncated: boolean }> {
   const rows = await repo(ctx, JournalLine).aggregate({
     where: { posted: true, $and: [{ entryDate: { $gte: from } }, { entryDate: { $lte: to } }] },
     groupBy: ['accountId', 'accountType', 'accountTaxRole', 'taxCategory', 'taxRate'],
     metrics: { debit: { sum: 'debit' }, credit: { sum: 'credit' }, lines: { count: true } },
     limit: MAX_REPORT_ROWS,
   });
-  const groups = rows.map(
-    (r): TaxLineGroup => ({
-      accountId: String(r.accountId),
-      ...(typeof r.accountType === 'string' && typeof r.accountTaxRole === 'string' ? { accountAtPosting: { type: r.accountType as AccountType, taxRole: r.accountTaxRole as TaxRole } } : {}),
-      taxCategory: typeof r.taxCategory === 'string' ? r.taxCategory : null,
-      taxRate: decimalOrNull(r.taxRate),
-      debit: decimalOrNull(r.debit) ?? Decimal.zero(),
-      credit: decimalOrNull(r.credit) ?? Decimal.zero(),
-      lines: Number(r.lines),
-    }),
-  );
+  const groups = rows.map((r): TaxLineGroup => ({
+    accountId: String(r.accountId),
+    ...(typeof r.accountType === 'string' && typeof r.accountTaxRole === 'string'
+      ? { accountAtPosting: { type: r.accountType as AccountType, taxRole: r.accountTaxRole as TaxRole } }
+      : {}),
+    taxCategory: typeof r.taxCategory === 'string' ? r.taxCategory : null,
+    taxRate: decimalOrNull(r.taxRate),
+    debit: decimalOrNull(r.debit) ?? Decimal.zero(),
+    credit: decimalOrNull(r.credit) ?? Decimal.zero(),
+    lines: Number(r.lines),
+  }));
   return { groups, truncated: rows.length >= MAX_REPORT_ROWS };
 }
 
@@ -71,7 +84,12 @@ export const taxPeriodSummaryAction = defineAction({
   tx: 'none',
   mutates: false,
   handler: async (ctx, { from, to }) => {
-    if (from > to) throw new ValidationError(`from ${from} is after to ${to}`, [{ path: 'to', message: 'must be on or after from' }], 'Swap the dates: from is the first day and to the last day of the period (both inclusive).');
+    if (from > to)
+      throw new ValidationError(
+        `from ${from} is after to ${to}`,
+        [{ path: 'to', message: 'must be on or after from' }],
+        'Swap the dates: from is the first day and to the last day of the period (both inclusive).',
+      );
     const { groups, truncated } = await lineGroups(ctx, from, to);
     const accounts = await loadTaxAccounts(
       ctx,

@@ -2,7 +2,9 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { Decimal } from '../src/decimal.ts';
 
-const decStr = fc.tuple(fc.boolean(), fc.bigInt({ min: 0n, max: 10n ** 18n }), fc.nat({ max: 999999 })).map(([neg, int, frac]) => `${neg ? '-' : ''}${int}.${String(frac).padStart(6, '0')}`);
+const decStr = fc
+  .tuple(fc.boolean(), fc.bigInt({ min: 0n, max: 10n ** 18n }), fc.nat({ max: 999999 }))
+  .map(([neg, int, frac]) => `${neg ? '-' : ''}${int}.${String(frac).padStart(6, '0')}`);
 
 describe('Decimal (ADR-0010)', () => {
   it('rejects floats and accepts decimal strings', () => {

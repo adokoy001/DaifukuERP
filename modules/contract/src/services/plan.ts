@@ -76,7 +76,8 @@ export function planPeriod({ terms, lines, period, alreadyGenerated, scale }: Pl
     .filter((l) => !l.amount.isZero());
   const subtotal = Decimal.sum(planned.map((l) => l.amount));
   const date = billingDate(period, terms.billingDay, terms.billingTiming);
-  if (reason === 'already_generated') return { status: 'generated', reason, billingDate: date, factor, lines: planned, subtotal };
+  if (reason === 'already_generated')
+    return { status: 'generated', reason, billingDate: date, factor, lines: planned, subtotal };
   if (planned.length === 0) return notDue('zero_amount');
   return { status: 'due', reason: null, billingDate: date, factor, lines: planned, subtotal };
 }

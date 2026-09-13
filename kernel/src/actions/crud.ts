@@ -21,10 +21,16 @@ function jsonOf(entity: EntityDef, row: unknown): Record<string, unknown> {
   return snapshot(publicOutput(entity, row as Record<string, unknown>));
 }
 
-async function withLines(ctx: Parameters<typeof getLines>[0], entity: EntityDef, row: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function withLines(
+  ctx: Parameters<typeof getLines>[0],
+  entity: EntityDef,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   if (!hasLines(entity)) return jsonOf(entity, row);
   const lines = await getLines(ctx, entity, row.id as string);
-  const publicLines = Object.fromEntries(Object.entries(lines).map(([name, rows]) => [name, rows.map((line) => jsonOf(registry.entity(name), line))]));
+  const publicLines = Object.fromEntries(
+    Object.entries(lines).map(([name, rows]) => [name, rows.map((line) => jsonOf(registry.entity(name), line))]),
+  );
   return { ...jsonOf(entity, row), lines: publicLines };
 }
 
@@ -45,9 +51,17 @@ function registerReadActions(entity: EntityDef): void {
   defineAction(
     {
       name: `${name}.list`,
-      description: label(`${ja}を検索・一覧します。where/search/orderBy/limit/offset を指定できます。`, `List ${en} records with optional where/search/orderBy/limit/offset.`),
+      description: label(
+        `${ja}を検索・一覧します。where/search/orderBy/limit/offset を指定できます。`,
+        `List ${en} records with optional where/search/orderBy/limit/offset.`,
+      ),
       input: listQuerySchema,
-      output: z.object({ items: z.array(entity.schemas.json), total: z.number().int(), limit: z.number().int(), offset: z.number().int() }),
+      output: z.object({
+        items: z.array(entity.schemas.json),
+        total: z.number().int(),
+        limit: z.number().int(),
+        offset: z.number().int(),
+      }),
       permission: { entity: name, op: 'read' },
       tx: 'none',
       mutates: false,
@@ -61,7 +75,10 @@ function registerReadActions(entity: EntityDef): void {
   defineAction(
     {
       name: `${name}.get`,
-      description: label(`${ja}を1件取得します${lines ? '（明細 lines を含む）' : ''}。`, `Get one ${en} by id${lines ? ' (includes lines)' : ''}.`),
+      description: label(
+        `${ja}を1件取得します${lines ? '（明細 lines を含む）' : ''}。`,
+        `Get one ${en} by id${lines ? ' (includes lines)' : ''}.`,
+      ),
       input: idInput,
       output: recordJsonSchema(entity),
       permission: { entity: name, op: 'read' },
@@ -74,15 +91,40 @@ function registerReadActions(entity: EntityDef): void {
 }
 
 /** Generic update input as it arrives (lenient): id is checked here, the patch by the Repository. */
-function splitUpdate(name: string, raw: unknown): { id: string; expectedVersion: number | undefined; head: Record<string, unknown>; lineRows: LinesInput | undefined } {
-  const parsed = z.object({ id: z.uuid(), patch: z.record(z.string(), z.unknown()), expectedVersion: z.number().int().min(1).optional() }).strict().safeParse(raw);
-  if (!parsed.success) throw new ValidationError(`invalid input for ${name}.update`, parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })));
+function splitUpdate(
+  name: string,
+  raw: unknown,
+): {
+  id: string;
+  expectedVersion: number | undefined;
+  head: Record<string, unknown>;
+  lineRows: LinesInput | undefined;
+} {
+  const parsed = z
+    .object({
+      id: z.uuid(),
+      patch: z.record(z.string(), z.unknown()),
+      expectedVersion: z.number().int().min(1).optional(),
+    })
+    .strict()
+    .safeParse(raw);
+  if (!parsed.success)
+    throw new ValidationError(
+      `invalid input for ${name}.update`,
+      parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+    );
   const head0 = parsed.data;
   const idOk = z.uuid().safeParse(head0.id);
-  if (!idOk.success) throw new ValidationError(`invalid input for ${name}.update`, [{ path: 'id', message: 'uuid required' }]);
+  if (!idOk.success)
+    throw new ValidationError(`invalid input for ${name}.update`, [{ path: 'id', message: 'uuid required' }]);
   const patch = (head0.patch && typeof head0.patch === 'object' ? head0.patch : {}) as Record<string, unknown>;
   const { lines: lineRows, ...head } = patch as Record<string, unknown> & { lines?: LinesInput };
-  return { id: idOk.data, expectedVersion: typeof head0.expectedVersion === 'number' ? head0.expectedVersion : undefined, head, lineRows };
+  return {
+    id: idOk.data,
+    expectedVersion: typeof head0.expectedVersion === 'number' ? head0.expectedVersion : undefined,
+    head,
+    lineRows,
+  };
 }
 
 function registerWriteActions(entity: EntityDef): void {
@@ -93,7 +135,10 @@ function registerWriteActions(entity: EntityDef): void {
   const create = defineAction(
     {
       name: `${name}.create`,
-      description: label(`${ja}を新規作成します${lines ? '（lines で明細も同時に作成）' : ''}。`, `Create a ${en}${lines ? ' with optional lines' : ''}.`),
+      description: label(
+        `${ja}を新規作成します${lines ? '（lines で明細も同時に作成）' : ''}。`,
+        `Create a ${en}${lines ? ' with optional lines' : ''}.`,
+      ),
       input: createInputSchema(entity),
       output: json,
       permission: { entity: name, op: 'create' },
@@ -113,7 +158,10 @@ function registerWriteActions(entity: EntityDef): void {
   const update = defineAction(
     {
       name: `${name}.update`,
-      description: label(`${ja}を更新します。expectedVersion を渡すと楽観ロックします。`, `Update a ${en}. Pass expectedVersion for optimistic locking.`),
+      description: label(
+        `${ja}を更新します。expectedVersion を渡すと楽観ロックします。`,
+        `Update a ${en}. Pass expectedVersion for optimistic locking.`,
+      ),
       input: updateInputSchema(entity),
       output: json,
       permission: { entity: name, op: 'update' },
@@ -125,7 +173,10 @@ function registerWriteActions(entity: EntityDef): void {
           const before = await r.lock(id);
           if (expectedVersion !== undefined && before.version !== expectedVersion) await r.touch(id, expectedVersion);
         }
-        const updated = Object.keys(head).length > 0 || !lineRows ? await r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {}) : await r.get(id);
+        const updated =
+          Object.keys(head).length > 0 || !lineRows
+            ? await r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {})
+            : await r.get(id);
         if (lineRows) await saveLines(ctx, entity, id, lineRows);
         return withLines(ctx, entity, lineRows ? await r.get(id) : updated);
       },
@@ -161,15 +212,22 @@ function registerDocumentActions(entity: EntityDef): void {
       input: versionInput,
       output: json,
       permission: { entity: name, op: 'submit' },
-      handler: async (ctx, { id, expectedVersion }) => jsonOf(entity, await submitDocument(ctx, entity, id, { expectedVersion })),
+      handler: async (ctx, { id, expectedVersion }) =>
+        jsonOf(entity, await submitDocument(ctx, entity, id, { expectedVersion })),
     },
     { generic: true },
   );
   defineAction(
     {
       name: `${name}.cancel`,
-      description: label(`確定済みの${ja}を取消します。依存する確定伝票があると失敗します。`, `Cancel a submitted ${en}. Fails if submitted dependents exist.`),
-      input: idInput.extend({ expectedVersion: z.number().int().min(1).optional(), correctionDate: z.string().refine(isLocalDate).optional() }),
+      description: label(
+        `確定済みの${ja}を取消します。依存する確定伝票があると失敗します。`,
+        `Cancel a submitted ${en}. Fails if submitted dependents exist.`,
+      ),
+      input: idInput.extend({
+        expectedVersion: z.number().int().min(1).optional(),
+        correctionDate: z.string().refine(isLocalDate).optional(),
+      }),
       output: json,
       permission: { entity: name, op: 'cancel' },
       handler: async (ctx, { id, ...opts }) => jsonOf(entity, await cancelDocument(ctx, entity, id, opts)),
@@ -179,19 +237,29 @@ function registerDocumentActions(entity: EntityDef): void {
   defineAction(
     {
       name: `${name}.amend`,
-      description: label(`取消済みの${ja}から訂正用の新しい下書きを作ります。`, `Create a new draft amended from a cancelled ${en}.`),
+      description: label(
+        `取消済みの${ja}から訂正用の新しい下書きを作ります。`,
+        `Create a new draft amended from a cancelled ${en}.`,
+      ),
       input: versionInput,
       output: json,
       permission: { entity: name, op: 'amend' },
-      handler: async (ctx, { id, expectedVersion }) => jsonOf(entity, await amendDocument(ctx, entity, id, { expectedVersion })),
+      handler: async (ctx, { id, expectedVersion }) =>
+        jsonOf(entity, await amendDocument(ctx, entity, id, { expectedVersion })),
     },
     { generic: true },
   );
-  if (Object.keys(entity.doc?.transitions ?? {}).length) defineAction({
-    name: `${name}.transition`,
-    description: label(`${ja}の名前付き状態遷移を実行します。`, `Run a named transition on ${en}.`),
-    input: z.object({ id: z.uuid(), transition: z.string() }), output: json,
-    permission: { entity: name, op: 'update' },
-    handler: async (ctx, { id, transition }) => jsonOf(entity, await transitionDocument(ctx, entity, id, transition)),
-  }, { generic: true });
+  if (Object.keys(entity.doc?.transitions ?? {}).length)
+    defineAction(
+      {
+        name: `${name}.transition`,
+        description: label(`${ja}の名前付き状態遷移を実行します。`, `Run a named transition on ${en}.`),
+        input: z.object({ id: z.uuid(), transition: z.string() }),
+        output: json,
+        permission: { entity: name, op: 'update' },
+        handler: async (ctx, { id, transition }) =>
+          jsonOf(entity, await transitionDocument(ctx, entity, id, transition)),
+      },
+      { generic: true },
+    );
 }

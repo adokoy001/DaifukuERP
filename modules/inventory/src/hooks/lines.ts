@@ -6,7 +6,17 @@
 // When this module writes (submit fills unitCost/amount of outbound lines; auto entries create their lines) the parent
 //   and the rules were already checked, so only a missing amount is derived.
 // before_delete: same parent/role rule (the kernel's replace-all only guards the saveLines path).
-import { DOCSTATUS, isUuid, registry, repo, StateError, ValidationError, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  isUuid,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  type Context,
+  type HookArgs,
+  type Infer,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { StockEntry } from '../entities/stock-entry.ts';
 import { LINE_SIGNS, StockEntryLine, type LineSign } from '../entities/stock-entry-line.ts';
@@ -18,8 +28,10 @@ import { assertEntryRole } from './entry.ts';
 type Raw = Record<string, unknown>;
 type EntryRow = Infer<typeof StockEntry>;
 
-export const FROZEN_HINT = 'Cancel the stock entry (reverse rows are appended) and amend it to change its lines (ADR-0006).';
-export const SERVICE_HINT = 'Only goods products have stock. Use a product with kind goods (services are skipped by the invoice hooks).';
+export const FROZEN_HINT =
+  'Cancel the stock entry (reverse rows are appended) and amend it to change its lines (ADR-0006).';
+export const SERVICE_HINT =
+  'Only goods products have stock. Use a product with kind goods (services are skipped by the invoice hooks).';
 
 function merged(row: Raw, previous: Raw | undefined, key: string): unknown {
   return row[key] !== undefined ? row[key] : previous?.[key];
@@ -34,7 +46,11 @@ async function assertEditableParent(ctx: Context, entryId: unknown, op: string):
   const parent = await loadParent(ctx, entryId);
   if (!parent) return null;
   if (parent.docstatus !== DOCSTATUS.draft) {
-    throw new StateError(`stock_entry ${parent.number ?? parent.id} is not a draft; its lines are frozen`, FROZEN_HINT, { entryId: parent.id, docstatus: parent.docstatus });
+    throw new StateError(
+      `stock_entry ${parent.number ?? parent.id} is not a draft; its lines are frozen`,
+      FROZEN_HINT,
+      { entryId: parent.id, docstatus: parent.docstatus },
+    );
   }
   assertEntryRole(ctx, parent.type, op);
   return parent;
@@ -62,7 +78,8 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
     return;
   }
   const parent = await assertEditableParent(ctx, merged(row, previous, 'entryId'), previous ? 'update' : 'create');
-  if (previous && row.entryId !== undefined && row.entryId !== previous.entryId) await assertEditableParent(ctx, previous.entryId, 'update');
+  if (previous && row.entryId !== undefined && row.entryId !== previous.entryId)
+    await assertEditableParent(ctx, previous.entryId, 'update');
   const productId = merged(row, previous, 'productId');
   const quantity = tryDecimal(merged(row, previous, 'quantity'));
   if (!parent || typeof productId !== 'string' || !isUuid(productId) || !quantity) return; // zod / FK report the shape
@@ -74,7 +91,11 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   const issues = lineIssues(parent.type, { seq: 0, productId, quantity, sign: signOf(sign), unitCost }, kind, '');
   if (issues.length > 0) {
     const service = kind === 'service';
-    throw new ValidationError(`stock_entry_line: ${issues.map((i) => `${i.path} ${i.message}`).join('; ')}`, issues, service ? SERVICE_HINT : 'Fix the line (see details.issues) against the entry type.');
+    throw new ValidationError(
+      `stock_entry_line: ${issues.map((i) => `${i.path} ${i.message}`).join('; ')}`,
+      issues,
+      service ? SERVICE_HINT : 'Fix the line (see details.issues) against the entry type.',
+    );
   }
   setAmount(row, previous);
 }

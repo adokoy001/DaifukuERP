@@ -11,7 +11,15 @@ import { newId, todayLocal } from '../ids.ts';
 import { assertOp, assertWritableFields, maskedFields, rowFilter } from '../permissions.ts';
 import { registry, type HookPhase } from '../registry.ts';
 import { aggregate, type AggregateQuery, type AggregateRow } from './aggregate.ts';
-import { combine, DEFAULT_LIMIT, MAX_LIMIT, orderClauses, searchCondition, whereCondition, type ListQuery } from './query.ts';
+import {
+  combine,
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+  orderClauses,
+  searchCondition,
+  whereCondition,
+  type ListQuery,
+} from './query.ts';
 import { changedKeys, fromDb, snapshot, toDb } from './rows.ts';
 import { assertRelayWrite, scopeCondition } from './scope.ts';
 import { assertOwnedInput } from './ownership.ts';
@@ -83,7 +91,11 @@ export class Repository<E extends EntityDef> {
     assertOp(this.ctx, this.entity, 'read');
     const limit = Math.min(q.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const offset = q.offset ?? 0;
-    const cond = combine(this.visibility('read'), whereCondition(this.ctx, this.entity, q.where), searchCondition(this.ctx, this.entity, q.search));
+    const cond = combine(
+      this.visibility('read'),
+      whereCondition(this.ctx, this.entity, q.where),
+      searchCondition(this.ctx, this.entity, q.search),
+    );
     const rows = await this.ctx.db
       .select()
       .from(this.entity.table)
@@ -110,7 +122,8 @@ export class Repository<E extends EntityDef> {
   // ---- writes ----------------------------------------------------------------------------------
 
   private async runHooks(phase: HookPhase, row: Raw, previous?: Raw): Promise<void> {
-    for (const h of registry.hooksFor(this.entity.name, phase)) await h(this.ctx, previous ? { entity: this.entity.name, row, previous } : { entity: this.entity.name, row });
+    for (const h of registry.hooksFor(this.entity.name, phase))
+      await h(this.ctx, previous ? { entity: this.entity.name, row, previous } : { entity: this.entity.name, row });
   }
 
   /** Entity schema first (definition-time), then registered ext fields (ADR-0014; registered later by packs). */
@@ -148,13 +161,19 @@ export class Repository<E extends EntityDef> {
       version: 1,
       ...(e.kind === 'document' ? { docstatus: DOCSTATUS.draft, number: null, amendedFrom: null } : {}),
     };
-    if (e.scope === 'company' && !this.ctx.companyId) throw new StateError(`${e.name} requires a company context`, 'Select a company (companyId) in the context.');
+    if (e.scope === 'company' && !this.ctx.companyId)
+      throw new StateError(`${e.name} requires a company context`, 'Select a company (companyId) in the context.');
     await this.runHooks('before_create', row);
     await assertStoreWrite(this.ctx, e, row);
     assertRelayWrite(this.ctx, e, row);
     const parents = await lockParents(this.ctx, e, row, undefined, 'create', draft);
     await validateReferences(this.ctx, e, row);
-    const inserted = await this.withConstraintErrors(() => this.ctx.db.insert(e.table).values(toDb(row) as never).returning());
+    const inserted = await this.withConstraintErrors(() =>
+      this.ctx.db
+        .insert(e.table)
+        .values(toDb(row) as never)
+        .returning(),
+    );
     const created = inserted[0] as Raw;
     await this.runHooks('after_create', created);
     await touchParents(this.ctx, parents);
@@ -179,7 +198,13 @@ export class Repository<E extends EntityDef> {
     const keys = Object.keys(values);
     assertWritableFields(this.ctx, e, keys);
     this.assertUpdatable(before, values);
-    const merged: Raw = { ...before, ...values, updatedAt: this.ctx.now(), updatedBy: this.actorUserId(), version: (before.version as number) + 1 };
+    const merged: Raw = {
+      ...before,
+      ...values,
+      updatedAt: this.ctx.now(),
+      updatedBy: this.actorUserId(),
+      version: (before.version as number) + 1,
+    };
     await this.runHooks('before_update', merged, before);
     await assertStoreWrite(this.ctx, e, merged);
     assertRelayWrite(this.ctx, e, merged);
@@ -192,11 +217,14 @@ export class Repository<E extends EntityDef> {
         .returning(),
     );
     const updated = rows[0] as Raw | undefined;
-    if (!updated) throw new Conflict(`${e.name} ${id} was modified concurrently`, 'Reload the record and reapply your change.');
+    if (!updated)
+      throw new Conflict(`${e.name} ${id} was modified concurrently`, 'Reload the record and reapply your change.');
     await this.runHooks('after_update', updated, before);
     await touchParents(this.ctx, parents);
     if (e.audit === 'full') {
-      const changed = changedKeys(fromDb(e, before, new Set()), fromDb(e, updated, new Set())).filter((k) => !BOOKKEEPING.has(k));
+      const changed = changedKeys(fromDb(e, before, new Set()), fromDb(e, updated, new Set())).filter(
+        (k) => !BOOKKEEPING.has(k),
+      );
       const pick = (r: Raw) => Object.fromEntries(changed.map((k) => [k, r[k]]));
       await writeAudit(this.ctx, e.name, id, 'update', snapshot(pick(before)), snapshot(pick(updated)));
     }
@@ -213,10 +241,18 @@ export class Repository<E extends EntityDef> {
     if (!before) throw new NotFound(e.name, id);
     this.assertVersion(id, before, opts.expectedVersion);
     if (e.kind === 'document' && before.docstatus !== DOCSTATUS.draft) {
-      throw new StateError(`${e.name} ${id} is not a draft and cannot be deleted`, 'Cancel the document instead (ADR-0006).', { docstatus: before.docstatus });
+      throw new StateError(
+        `${e.name} ${id} is not a draft and cannot be deleted`,
+        'Cancel the document instead (ADR-0006).',
+        { docstatus: before.docstatus },
+      );
     }
     await this.runHooks('before_delete', before);
-    await this.withConstraintErrors(() => this.ctx.db.delete(e.table).where(and(this.visibility('delete'), eq(e.col('id'), id), eq(e.col('version'), before.version as number))));
+    await this.withConstraintErrors(() =>
+      this.ctx.db
+        .delete(e.table)
+        .where(and(this.visibility('delete'), eq(e.col('id'), id), eq(e.col('version'), before.version as number))),
+    );
     await this.runHooks('after_delete', before);
     await touchParents(this.ctx, parents);
     if (e.audit === 'full') await writeAudit(this.ctx, e.name, id, 'delete', snapshot(before), null);
@@ -225,9 +261,18 @@ export class Repository<E extends EntityDef> {
   /** Internal: used by document operations after their own checks. */
   async rawUpdate(id: string, values: Raw, op: string, before: Raw, authority?: symbol): Promise<Raw> {
     const e = this.entity;
-    if (authority !== DOCUMENT_WRITE) throw new StateError('rawUpdate is reserved for kernel lifecycle operations', 'Use Repository.update with explicit field ownership.');
+    if (authority !== DOCUMENT_WRITE)
+      throw new StateError(
+        'rawUpdate is reserved for kernel lifecycle operations',
+        'Use Repository.update with explicit field ownership.',
+      );
     await validateReferences(this.ctx, e, values);
-    const merged: Raw = { ...values, updatedAt: this.ctx.now(), updatedBy: this.actorUserId(), version: (before.version as number) + 1 };
+    const merged: Raw = {
+      ...values,
+      updatedAt: this.ctx.now(),
+      updatedBy: this.actorUserId(),
+      version: (before.version as number) + 1,
+    };
     const rows = await this.ctx.db
       .update(e.table)
       .set(toDb(merged) as never)
@@ -254,7 +299,11 @@ export class Repository<E extends EntityDef> {
 
   private assertVersion(id: string, before: Raw, version: number | undefined): void {
     if (version !== undefined && (!Number.isInteger(version) || version < 1 || before.version !== version)) {
-      throw new Conflict(`${this.entity.name} ${id} was modified (version ${before.version}, expected ${version})`, 'Reload the record and reapply your change.', { version: before.version });
+      throw new Conflict(
+        `${this.entity.name} ${id} was modified (version ${before.version}, expected ${version})`,
+        'Reload the record and reapply your change.',
+        { version: before.version },
+      );
     }
   }
 
@@ -263,12 +312,22 @@ export class Repository<E extends EntityDef> {
     try {
       return await fn();
     } catch (err) {
-      const pg = (err as { cause?: { code?: string; constraint_name?: string; detail?: string } }).cause ?? (err as { code?: string; constraint_name?: string; detail?: string });
+      const pg =
+        (err as { cause?: { code?: string; constraint_name?: string; detail?: string } }).cause ??
+        (err as { code?: string; constraint_name?: string; detail?: string });
       if (pg?.code === '23505') {
-        throw new Conflict(`${this.entity.name}: duplicate value violates unique constraint ${pg.constraint_name ?? ''}`.trim(), 'A record with the same unique value already exists. Change the value or update the existing record.', { constraint: pg.constraint_name, detail: pg.detail });
+        throw new Conflict(
+          `${this.entity.name}: duplicate value violates unique constraint ${pg.constraint_name ?? ''}`.trim(),
+          'A record with the same unique value already exists. Change the value or update the existing record.',
+          { constraint: pg.constraint_name, detail: pg.detail },
+        );
       }
       if (pg?.code === '23503') {
-        throw new ValidationError(`${this.entity.name}: referenced record does not exist or is still referenced (${pg.constraint_name ?? ''})`.trim(), [{ path: pg.constraint_name ?? 'ref', message: 'foreign key violation' }], 'Check that referenced ids exist and that no submitted document still references this record.');
+        throw new ValidationError(
+          `${this.entity.name}: referenced record does not exist or is still referenced (${pg.constraint_name ?? ''})`.trim(),
+          [{ path: pg.constraint_name ?? 'ref', message: 'foreign key violation' }],
+          'Check that referenced ids exist and that no submitted document still references this record.',
+        );
       }
       throw err;
     }
@@ -299,23 +358,37 @@ export class Repository<E extends EntityDef> {
     for (const k of keys) {
       const fd = e.config.fields[k];
       if (fd?.opts.immutable && k in before) {
-        throw new ValidationError(`${e.name}.${k} is immutable`, [{ path: k, message: 'immutable field' }], 'Create a new record instead of changing this field.');
+        throw new ValidationError(
+          `${e.name}.${k} is immutable`,
+          [{ path: k, message: 'immutable field' }],
+          'Create a new record instead of changing this field.',
+        );
       }
     }
     if (e.kind !== 'document') return;
     const status = before.docstatus as number;
-    if (status === DOCSTATUS.cancelled) throw new StateError(`${e.name} is cancelled and read-only`, 'Amend it to create an editable new version (ADR-0006).');
+    if (status === DOCSTATUS.cancelled)
+      throw new StateError(
+        `${e.name} is cancelled and read-only`,
+        'Amend it to create an editable new version (ADR-0006).',
+      );
     if (status === DOCSTATUS.submitted) {
       const allowed = new Set<string>(e.doc?.allowOnSubmit ?? []);
       if (values.ext && typeof values.ext === 'object') {
         const prior = (before.ext ?? {}) as Raw;
         const next = values.ext as Raw;
-        const changed = [...new Set([...Object.keys(prior), ...Object.keys(next)])].filter((key) => JSON.stringify(prior[key]) !== JSON.stringify(next[key]));
+        const changed = [...new Set([...Object.keys(prior), ...Object.keys(next)])].filter(
+          (key) => JSON.stringify(prior[key]) !== JSON.stringify(next[key]),
+        );
         if (changed.every((key) => allowed.has(`ext.${key}`))) allowed.add('ext');
       }
       const blocked = keys.filter((k) => !allowed.has(k));
       if (blocked.length > 0) {
-        throw new StateError(`${e.name} is submitted; fields [${blocked.join(', ')}] cannot change`, 'Cancel and amend the document, or declare the field in allowOnSubmit.', { blocked });
+        throw new StateError(
+          `${e.name} is submitted; fields [${blocked.join(', ')}] cannot change`,
+          'Cancel and amend the document, or declare the field in allowOnSubmit.',
+          { blocked },
+        );
       }
     }
   }

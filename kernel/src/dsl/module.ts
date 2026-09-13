@@ -10,7 +10,8 @@ export function defineModule(cfg: ModuleConfig): ModuleDef {
     e.module = cfg.name;
   }
   for (const a of cfg.actions ?? []) {
-    if (!a.name.startsWith(`${cfg.name}.`)) throw new Error(`action ${a.name} must be prefixed with its module name "${cfg.name}."`);
+    if (!a.name.startsWith(`${cfg.name}.`))
+      throw new Error(`action ${a.name} must be prefixed with its module name "${cfg.name}."`);
     a.module = cfg.name;
   }
   registry.registerModule(def);

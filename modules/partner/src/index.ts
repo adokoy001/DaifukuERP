@@ -5,7 +5,15 @@ import type { Partner } from './entities/partner.ts';
 export { PartnerModule } from './module.ts';
 export { Partner } from './entities/partner.ts';
 export { computeDueDateAction } from './actions/compute-due-date.ts';
-export { computeDueDate, resolveDueDate, closingDateOf, daysInMonth, END_OF_MONTH, type PaymentTerms, type DueDateResult } from './services/due-date.ts';
+export {
+  computeDueDate,
+  resolveDueDate,
+  closingDateOf,
+  daysInMonth,
+  END_OF_MONTH,
+  type PaymentTerms,
+  type DueDateResult,
+} from './services/due-date.ts';
 export { SEED_PARTNERS, seedPartners } from './seeds/partners.ts';
 
 export type PartnerRow = Infer<typeof Partner>;

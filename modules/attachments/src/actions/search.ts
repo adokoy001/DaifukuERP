@@ -24,7 +24,12 @@ export const searchAction = defineAction({
     limit: z.number().int().min(1).max(500).optional(),
     offset: z.number().int().min(0).optional(),
   }),
-  output: z.object({ items: z.array(Attachment.schemas.json), total: z.number().int(), limit: z.number().int(), offset: z.number().int() }),
+  output: z.object({
+    items: z.array(Attachment.schemas.json),
+    total: z.number().int(),
+    limit: z.number().int(),
+    offset: z.number().int(),
+  }),
   permission: { entity: 'attachment', op: 'read' },
   tx: 'none',
   mutates: false,

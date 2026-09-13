@@ -3,7 +3,16 @@
 // valuation total and, when an earlier month was closed, Dr 期首商品棚卸高 / Cr 商品 for that month's closing amount.
 // Idempotent per period: a second call returns the stored record and writes nothing. Months close in order (a period
 // before an already-closed one is refused). retail_month_close rows are written only here (guard below).
-import { defineAction, label, registry, repo, StateError, withLock, type Context, type HookArgs } from '@daifuku/kernel';
+import {
+  defineAction,
+  label,
+  registry,
+  repo,
+  StateError,
+  withLock,
+  type Context,
+  type HookArgs,
+} from '@daifuku/kernel';
 import { postFromSource } from '@daifuku/mod-accounting';
 import { valuation, INVENTORY_SERIES_LOCK, closeInventoryThrough } from '@daifuku/mod-inventory';
 import { z } from 'zod';
@@ -25,11 +34,22 @@ export const closeMonthOutput = z.object({
 });
 type CloseMonthOutput = z.input<typeof closeMonthOutput>;
 
-export const MONTH_CLOSE_WRITE_HINT = 'Month closes are recorded only by the retail.close_month action (idempotent per period).';
+export const MONTH_CLOSE_WRITE_HINT =
+  'Month closes are recorded only by the retail.close_month action (idempotent per period).';
 export const ORDER_HINT = 'Close months in order, oldest first. Re-closing an earlier month is not supported.';
 
-function outputOf(r: { period: string; asOf: string; valuationTotal: unknown; openingAmount: unknown; journalEntryId: string | null }, alreadyClosed: boolean): CloseMonthOutput {
-  return { period: r.period, asOf: r.asOf, valuationTotal: decimalOf(r.valuationTotal).toString(), openingAmount: decimalOf(r.openingAmount).toString(), journalEntryId: r.journalEntryId, alreadyClosed };
+function outputOf(
+  r: { period: string; asOf: string; valuationTotal: unknown; openingAmount: unknown; journalEntryId: string | null },
+  alreadyClosed: boolean,
+): CloseMonthOutput {
+  return {
+    period: r.period,
+    asOf: r.asOf,
+    valuationTotal: decimalOf(r.valuationTotal).toString(),
+    openingAmount: decimalOf(r.openingAmount).toString(),
+    journalEntryId: r.journalEntryId,
+    alreadyClosed,
+  };
 }
 
 export async function closeMonth(ctx: Context, period: string): Promise<CloseMonthOutput> {
@@ -46,10 +66,21 @@ export async function closeMonth(ctx: Context, period: string): Promise<CloseMon
   const opening = decimalOf(previousClose(records, period)?.valuationTotal);
   const lines = monthCloseLines({ opening, closing }, accounts);
   return asPack(ctx, async (ctx) => {
-    const record = await repo(ctx, RetailMonthClose).create({ period, asOf: to, valuationTotal: closing, openingAmount: opening });
+    const record = await repo(ctx, RetailMonthClose).create({
+      period,
+      asOf: to,
+      valuationTotal: closing,
+      openingAmount: opening,
+    });
     await closeInventoryThrough(ctx, to, { entity: RetailMonthClose.name, id: record.id });
     if (lines.length === 0) return outputOf(record, false);
-    const entry = await postFromSource(ctx, { sourceEntity: RetailMonthClose.name, sourceId: record.id, date: to, description: `月次締め ${period}（期末商品棚卸高 ${closing.toString()}）`, lines });
+    const entry = await postFromSource(ctx, {
+      sourceEntity: RetailMonthClose.name,
+      sourceId: record.id,
+      date: to,
+      description: `月次締め ${period}（期末商品棚卸高 ${closing.toString()}）`,
+      lines,
+    });
     return outputOf(await repo(ctx, RetailMonthClose).update(record.id, { journalEntryId: entry.id }), false);
   });
 }
@@ -70,11 +101,15 @@ export const closeMonthAction = defineAction({
 function refuse(op: string) {
   return (ctx: Context, { row, previous }: HookArgs): void => {
     if (isPackWrite(ctx)) return;
-    throw new StateError(`retail_month_close rows cannot be ${op} directly`, MONTH_CLOSE_WRITE_HINT, { id: previous?.id ?? row.id });
+    throw new StateError(`retail_month_close rows cannot be ${op} directly`, MONTH_CLOSE_WRITE_HINT, {
+      id: previous?.id ?? row.id,
+    });
   };
 }
 
 export function registerMonthCloseGuards(): void {
-  registry.registerHook(RetailMonthClose.name, 'before_validate', (ctx, args) => refuse(args.previous ? 'updated' : 'created')(ctx, args));
+  registry.registerHook(RetailMonthClose.name, 'before_validate', (ctx, args) =>
+    refuse(args.previous ? 'updated' : 'created')(ctx, args),
+  );
   registry.registerHook(RetailMonthClose.name, 'before_delete', refuse('deleted'));
 }

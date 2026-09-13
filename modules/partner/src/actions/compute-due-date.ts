@@ -19,7 +19,11 @@ export const computeDueDateAction = defineAction({
   mutates: false,
   handler: async (ctx, { partnerId, invoiceDate }) => {
     const p = await repo(ctx, Partner).get(partnerId);
-    const { closingDate, dueDate } = resolveDueDate(invoiceDate, { closingDay: p.closingDay, paymentMonthOffset: p.paymentMonthOffset, paymentDay: p.paymentDay });
+    const { closingDate, dueDate } = resolveDueDate(invoiceDate, {
+      closingDay: p.closingDay,
+      paymentMonthOffset: p.paymentMonthOffset,
+      paymentDay: p.paymentDay,
+    });
     return { partnerId, invoiceDate, closingDate, dueDate };
   },
 });

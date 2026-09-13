@@ -25,13 +25,23 @@ const SAFE_KEY = /^[a-z0-9-]+\/[a-z0-9-]+$/;
 export class LocalStorage implements StoragePort {
   constructor(private readonly root: string) {}
 
-  async put(tenantId: string, data: Uint8Array, meta: { filename: string; contentType: string }): Promise<StoredObject> {
+  async put(
+    tenantId: string,
+    data: Uint8Array,
+    meta: { filename: string; contentType: string },
+  ): Promise<StoredObject> {
     const key = `${tenantId}/${newId()}`;
     const path = join(this.root, key);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, data, { flag: 'wx' });
     const sha256 = createHash('sha256').update(data).digest('hex');
-    const obj: StoredObject = { key, size: data.byteLength, sha256, contentType: meta.contentType, filename: meta.filename };
+    const obj: StoredObject = {
+      key,
+      size: data.byteLength,
+      sha256,
+      contentType: meta.contentType,
+      filename: meta.filename,
+    };
     await writeFile(`${path}.meta.json`, JSON.stringify(obj), { flag: 'wx' });
     return obj;
   }
@@ -60,6 +70,9 @@ export function configureStorage(port: StoragePort): void {
 }
 
 export function storage(): StoragePort {
-  if (!configured) throw new Error('storage is not configured. Call configureStorage(new LocalStorage(dir)) at app startup (DAIFUKU_STORAGE_DIR).');
+  if (!configured)
+    throw new Error(
+      'storage is not configured. Call configureStorage(new LocalStorage(dir)) at app startup (DAIFUKU_STORAGE_DIR).',
+    );
   return configured;
 }

@@ -1,0 +1,10 @@
+# Generated and distributed files are verified by their owning generators.
+**/node_modules/**
+**/dist/**
+**/.turbo/**
+**/.stryker-tmp/**
+**/coverage/**
+**/drizzle/migrations/**
+**/*.generated.ts
+**/test-results/**
+**/playwright-report/**

@@ -14,8 +14,12 @@ export const INDUSTRY_DEMO_MARKER = 'demo.industry';
 function assertDemoOwnership(company: { code: string; settings: unknown } | undefined, pack: string): void {
   if (!company) return;
   const settings = company.settings;
-  const marker = typeof settings === 'object' && settings !== null && !Array.isArray(settings) ? (settings as Record<string, unknown>)[INDUSTRY_DEMO_MARKER] : undefined;
-  if (marker !== pack) throw new Error(`Company ${company.code} is not an owned ${pack} demo. Existing company data will not be seeded.`);
+  const marker =
+    typeof settings === 'object' && settings !== null && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>)[INDUSTRY_DEMO_MARKER]
+      : undefined;
+  if (marker !== pack)
+    throw new Error(`Company ${company.code} is not an owned ${pack} demo. Existing company data will not be seeded.`);
 }
 
 /** Add isolated demo companies; never repurpose the user's default company or overwrite settings. */
@@ -23,22 +27,64 @@ export async function prepareIndustryDemoCompanies(owner: Database) {
   const demo = await findDemoIdentity(owner);
   if (!demo) throw new Error('An initialized Demo tenant is required. Prepare a separate demo database first.');
   // Refuse known collisions before creating or seeding any of the three companies.
-  const existing = await owner.drizzle.select().from(companies).where(and(eq(companies.tenantId, demo.tenantId), inArray(companies.code, INDUSTRY_DEMOS.map((item) => item.code))));
-  for (const item of INDUSTRY_DEMOS) assertDemoOwnership(existing.find((company) => company.code === item.code), item.pack);
+  const existing = await owner.drizzle
+    .select()
+    .from(companies)
+    .where(
+      and(
+        eq(companies.tenantId, demo.tenantId),
+        inArray(
+          companies.code,
+          INDUSTRY_DEMOS.map((item) => item.code),
+        ),
+      ),
+    );
+  for (const item of INDUSTRY_DEMOS)
+    assertDemoOwnership(
+      existing.find((company) => company.code === item.code),
+      item.pack,
+    );
   const out: { tenantId: string; companyId: string; pack: string; code: string; name: string }[] = [];
   for (const item of INDUSTRY_DEMOS) {
-    await owner.drizzle.insert(companies).values({ id: newId(), tenantId: demo.tenantId, code: item.code, name: item.name, settings: { [INDUSTRY_DEMO_MARKER]: item.pack } }).onConflictDoNothing();
-    const company = (await owner.drizzle.select().from(companies).where(and(eq(companies.tenantId, demo.tenantId), eq(companies.code, item.code))))[0];
+    await owner.drizzle
+      .insert(companies)
+      .values({
+        id: newId(),
+        tenantId: demo.tenantId,
+        code: item.code,
+        name: item.name,
+        settings: { [INDUSTRY_DEMO_MARKER]: item.pack },
+      })
+      .onConflictDoNothing();
+    const company = (
+      await owner.drizzle
+        .select()
+        .from(companies)
+        .where(and(eq(companies.tenantId, demo.tenantId), eq(companies.code, item.code)))
+    )[0];
     if (!company) throw new Error(`Unable to prepare ${item.code}`);
     assertDemoOwnership(company, item.pack);
-    for (const module of modules) if (module.seed) await withContext(owner, systemParams(demo.tenantId, company.id), async (ctx) => { await module.seed?.(ctx); });
-    out.push({ tenantId: demo.tenantId, companyId: company.id, pack: item.pack, code: company.code, name: company.name });
+    for (const module of modules)
+      if (module.seed)
+        await withContext(owner, systemParams(demo.tenantId, company.id), async (ctx) => {
+          await module.seed?.(ctx);
+        });
+    out.push({
+      tenantId: demo.tenantId,
+      companyId: company.id,
+      pack: item.pack,
+      code: company.code,
+      name: company.name,
+    });
   }
   return out;
 }
 
 export async function seedIndustryDemos(owner: Database) {
   const prepared = await prepareIndustryDemoCompanies(owner);
-  for (const item of prepared) await withContext(owner, systemParams(item.tenantId, item.companyId), (ctx) => applyPack(ctx, item.pack, { sample: true }));
+  for (const item of prepared)
+    await withContext(owner, systemParams(item.tenantId, item.companyId), (ctx) =>
+      applyPack(ctx, item.pack, { sample: true }),
+    );
   return prepared;
 }

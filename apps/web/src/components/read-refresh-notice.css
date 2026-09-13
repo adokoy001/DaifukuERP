@@ -1,8 +1,40 @@
 /* Preserve forms through a failed background read. */
-.read-refresh-notice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .7rem; padding: .9rem 1rem; border: 1px solid #edcc7c; border-radius: 12px; background: #fff7df; color: #684c12; }
-.read-refresh-notice > svg { flex-shrink: 0; margin-top: .1rem; }
-.read-refresh-notice > div { flex: 1; min-width: 0; }
-.read-refresh-notice strong { font-size: .85rem; }
-.read-refresh-notice p { margin: .2rem 0 0; font-size: .8rem; line-height: 1.55; }
-.read-refresh-notice .btn { flex-shrink: 0; }
-@media (max-width: 520px) { .read-refresh-notice { grid-template-columns: auto minmax(0, 1fr); } .read-refresh-notice .btn { grid-column: 2; justify-self: start; } }
+.read-refresh-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #edcc7c;
+  border-radius: 12px;
+  background: #fff7df;
+  color: #684c12;
+}
+.read-refresh-notice > svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.read-refresh-notice > div {
+  flex: 1;
+  min-width: 0;
+}
+.read-refresh-notice strong {
+  font-size: 0.85rem;
+}
+.read-refresh-notice p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+.read-refresh-notice .btn {
+  flex-shrink: 0;
+}
+@media (max-width: 520px) {
+  .read-refresh-notice {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .read-refresh-notice .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

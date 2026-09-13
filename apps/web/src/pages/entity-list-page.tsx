@@ -30,7 +30,12 @@ function useDebouncedNavigate(entity: string, search: ListSearch) {
     if (text === (search.q ?? '')) return;
     const h = globalThis.setTimeout(() => {
       pending.current = text;
-      void navigate({ to: '/e/$entity', params: { entity }, search: (prev) => updateSearch(prev, { q: text }), replace: true });
+      void navigate({
+        to: '/e/$entity',
+        params: { entity },
+        search: (prev) => updateSearch(prev, { q: text }),
+        replace: true,
+      });
     }, 300);
     return () => globalThis.clearTimeout(h);
   }, [text, search.q, entity, navigate]);
@@ -74,16 +79,27 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
   const refFields = useMemo(() => columns.filter((f) => f.kind === 'ref'), [columns]);
   const rows = list.data?.items;
   const refLabel = useRefLabelMaps(refFields, rows ?? []);
-  const setSearch = (patch: Parameters<typeof updateSearch>[1]) => void navigate({ to: '/e/$entity', params: { entity: entity.name }, search: (prev) => updateSearch(prev, patch) });
-  const openRow = (row: RecordJson) => void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id: row.id } });
+  const setSearch = (patch: Parameters<typeof updateSearch>[1]) =>
+    void navigate({ to: '/e/$entity', params: { entity: entity.name }, search: (prev) => updateSearch(prev, patch) });
+  const openRow = (row: RecordJson) =>
+    void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id: row.id } });
   const page = search.page ?? 1;
-  if (entity.name.startsWith('workforce_') && list.isError) return <MetaError error={list.error} retry={() => void list.refetch()} />;
+  if (entity.name.startsWith('workforce_') && list.isError)
+    return <MetaError error={list.error} retry={() => void list.refetch()} />;
   return (
     <div className="flex h-full flex-col gap-2 p-3">
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-base font-semibold">{t(entity.label)}</h1>
         <span className="font-mono text-xs text-neutral-400">{entity.name}</span>
-        <input type="search" role="searchbox" aria-label={t(S.search)} placeholder={t(S.searchPlaceholder)} className="input w-64" value={text} onChange={(e) => setText(e.target.value)} />
+        <input
+          type="search"
+          role="searchbox"
+          aria-label={t(S.search)}
+          placeholder={t(S.searchPlaceholder)}
+          className="input w-64"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
         <div className="ml-auto flex items-center gap-2">
           {list.data ? <Pager total={list.data.total} page={page} onPage={(p) => setSearch({ page: p })} /> : null}
           {entity.ops.includes('create') ? (
@@ -94,7 +110,16 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
         </div>
       </header>
       <WorkforceWorkflowLink entity={entity.name} />
-      <DataTable entity={entity} columns={columns} rows={rows} sort={search.sort} onSortChange={(sort) => setSearch({ sort })} onRowClick={openRow} refLabel={refLabel} loading={list.isFetching} />
+      <DataTable
+        entity={entity}
+        columns={columns}
+        rows={rows}
+        sort={search.sort}
+        onSortChange={(sort) => setSearch({ sort })}
+        onRowClick={openRow}
+        refLabel={refLabel}
+        loading={list.isFetching}
+      />
     </div>
   );
 }

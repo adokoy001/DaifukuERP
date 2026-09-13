@@ -18,7 +18,10 @@ export interface SchemaField {
 }
 
 function humanize(name: string): string {
-  return name.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
 export function toSnake(name: string): string {
@@ -73,15 +76,27 @@ function refByName(name: string, refOf: RefResolver): { ref: string; displayFiel
   return undefined;
 }
 
-function kindOf(name: string, s: JsonSchema, refOf: RefResolver): { kind: SchemaKind; ref?: string; refDisplayField?: string } {
+function kindOf(
+  name: string,
+  s: JsonSchema,
+  refOf: RefResolver,
+): { kind: SchemaKind; ref?: string; refDisplayField?: string } {
   if (Array.isArray(s.enum) && s.enum.every((v) => typeof v === 'string')) return { kind: 'enum' };
   if (s.type === 'boolean') return { kind: 'bool' };
   if (s.type === 'integer') return { kind: 'int' };
   if (s.type === 'number') return { kind: 'number' };
   if (s.type === 'string') {
     const target = s.format === 'uuid' || s.format === undefined ? refByName(name, refOf) : undefined;
-    if (target) return target.displayField ? { kind: 'ref', ref: target.ref, refDisplayField: target.displayField } : { kind: 'ref', ref: target.ref };
-    if (s.format === 'date' || DATE_NAME_RE.test(name) || (typeof s.pattern === 'string' && DATE_PATTERN_RE.test(s.pattern))) return { kind: 'date' };
+    if (target)
+      return target.displayField
+        ? { kind: 'ref', ref: target.ref, refDisplayField: target.displayField }
+        : { kind: 'ref', ref: target.ref };
+    if (
+      s.format === 'date' ||
+      DATE_NAME_RE.test(name) ||
+      (typeof s.pattern === 'string' && DATE_PATTERN_RE.test(s.pattern))
+    )
+      return { kind: 'date' };
     return { kind: 'text' };
   }
   return { kind: 'json' };
@@ -94,7 +109,12 @@ export function schemaFields(schema: JsonSchema | undefined, refOf: RefResolver)
   return Object.entries(schema.properties).map(([name, raw]) => {
     const s = unwrap(raw);
     const k = kindOf(name, s, refOf);
-    const f: SchemaField = { name, kind: k.kind, label: { ja: s.title ?? humanize(name), en: s.title ?? humanize(name) }, required: required.has(name) && s.default === undefined };
+    const f: SchemaField = {
+      name,
+      kind: k.kind,
+      label: { ja: s.title ?? humanize(name), en: s.title ?? humanize(name) },
+      required: required.has(name) && s.default === undefined,
+    };
     if (s.default !== undefined) f.default = s.default;
     if (typeof s.description === 'string') f.description = s.description;
     if (k.kind === 'enum') f.values = (s.enum ?? []).map(String);
@@ -104,11 +124,28 @@ export function schemaFields(schema: JsonSchema | undefined, refOf: RefResolver)
   });
 }
 
-const FIELD_KIND: Record<SchemaKind, string> = { text: 'text', date: 'date', enum: 'enum', number: 'decimal', int: 'int', bool: 'bool', ref: 'ref', json: 'json' };
+const FIELD_KIND: Record<SchemaKind, string> = {
+  text: 'text',
+  date: 'date',
+  enum: 'enum',
+  number: 'decimal',
+  int: 'int',
+  bool: 'bool',
+  ref: 'ref',
+  json: 'json',
+};
 
 /** Adapter so the entity form widgets (FieldWidget) render schema fields unchanged. */
 export function toFieldMeta(f: SchemaField): FieldMeta {
-  const meta: FieldMeta = { name: f.name, kind: FIELD_KIND[f.kind], label: f.label, required: f.required, hasDefault: f.default !== undefined, hidden: false, immutable: false };
+  const meta: FieldMeta = {
+    name: f.name,
+    kind: FIELD_KIND[f.kind],
+    label: f.label,
+    required: f.required,
+    hasDefault: f.default !== undefined,
+    hidden: false,
+    immutable: false,
+  };
   if (f.description) meta.description = { ja: f.description, en: f.description };
   if (f.values) meta.values = f.values;
   if (f.ref) meta.ref = f.ref;
@@ -125,14 +162,20 @@ function defaultValue(f: SchemaField, current: unknown): string | boolean {
 }
 
 /** Initial form values: `current` (a stored setting value) wins over schema defaults. */
-export function schemaInitialValues(fields: readonly SchemaField[], current?: Record<string, unknown> | null): FormValues {
+export function schemaInitialValues(
+  fields: readonly SchemaField[],
+  current?: Record<string, unknown> | null,
+): FormValues {
   const out: FormValues = {};
   for (const f of fields) out[f.name] = defaultValue(f, current?.[f.name]);
   return out;
 }
 
 /** Form values -> JSON payload. Empty values are omitted (server defaults apply); JSON Schema numbers become JS numbers. */
-export function schemaToPayload(values: FormValues, fields: readonly SchemaField[]): { payload: Record<string, unknown>; errors: Record<string, string> } {
+export function schemaToPayload(
+  values: FormValues,
+  fields: readonly SchemaField[],
+): { payload: Record<string, unknown>; errors: Record<string, string> } {
   const metas = fields.map(toFieldMeta);
   const { payload, errors } = toPayload(values, metas, 'create');
   for (const f of fields) {
@@ -144,5 +187,8 @@ export function schemaToPayload(values: FormValues, fields: readonly SchemaField
 
 /** The kernel reports setting issues as `<key>.<field>` (AC-5); the form wants `<field>`. */
 export function stripSettingKey(issues: readonly ValidationIssue[], key: string): ValidationIssue[] {
-  return issues.map((i) => ({ ...i, path: i.path === key ? '' : i.path.startsWith(`${key}.`) ? i.path.slice(key.length + 1) : i.path }));
+  return issues.map((i) => ({
+    ...i,
+    path: i.path === key ? '' : i.path.startsWith(`${key}.`) ? i.path.slice(key.length + 1) : i.path,
+  }));
 }

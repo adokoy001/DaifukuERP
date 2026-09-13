@@ -2,13 +2,27 @@
 import { Decimal, ValidationError, toHalfwidthKana as kernelToHalfwidthKana } from '@daifuku/kernel';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { formatDateJa, formatJpy, formatNumber, formatRatePercent, toHalfwidthKana, toWareki, toWarekiParts, type Era } from '../src/index.ts';
+import {
+  formatDateJa,
+  formatJpy,
+  formatNumber,
+  formatRatePercent,
+  toHalfwidthKana,
+  toWareki,
+  toWarekiParts,
+  type Era,
+} from '../src/index.ts';
 import { escapeHtml, parseInvoiceRenderData, renderInvoiceHtml } from '../src/services/invoice-html.ts';
 import type { InvoiceRenderData } from '../src/services/invoice-render-data.ts';
-import { EXEMPT_SUPPLIER_CREDIT_RATIOS, exemptSupplierCreditRatio, transitionalCreditRatio } from '../src/services/transitional-credit.ts';
+import {
+  EXEMPT_SUPPLIER_CREDIT_RATIOS,
+  exemptSupplierCreditRatio,
+  transitionalCreditRatio,
+} from '../src/services/transitional-credit.ts';
 
 /** Matches a kernel ValidationError whose first issue is on `path`. */
-const validationOn = (path: string) => expect.objectContaining({ code: 'VALIDATION', details: { issues: [expect.objectContaining({ path })] } });
+const validationOn = (path: string) =>
+  expect.objectContaining({ code: 'VALIDATION', details: { issues: [expect.objectContaining({ path })] } });
 
 // ---- AC-3 経過措置 ---------------------------------------------------------------------------------
 
@@ -50,9 +64,15 @@ describe('AC-3 exempt-supplier credit ratio (経過措置, 国税庁 令和8年�
 
   it('AC-3 result is a kernel Decimal (never a JS number) and invalid input is VALIDATION', () => {
     expect(exemptSupplierCreditRatio({ supplierTaxStatus: 'exempt', date: '2026-10-01' })).toBeInstanceOf(Decimal);
-    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'exempt', date: '2026-13-01' })).toThrow(ValidationError);
-    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'exempt', date: '2026/10/01' })).toThrow(validationOn('date'));
-    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'unknown' as 'exempt', date: '2026-10-01' })).toThrow(validationOn('supplierTaxStatus'));
+    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'exempt', date: '2026-13-01' })).toThrow(
+      ValidationError,
+    );
+    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'exempt', date: '2026/10/01' })).toThrow(
+      validationOn('date'),
+    );
+    expect(() => exemptSupplierCreditRatio({ supplierTaxStatus: 'unknown' as 'exempt', date: '2026-10-01' })).toThrow(
+      validationOn('supplierTaxStatus'),
+    );
   });
 
   it('AC-3 the table is contiguous (each row starts the day after the previous ends), ordered, and covers every date', () => {
@@ -67,10 +87,13 @@ describe('AC-3 exempt-supplier credit ratio (経過措置, 国税庁 令和8年�
       expect(Decimal.from(table[i]?.ratio ?? '').lte(table[i - 1]?.ratio ?? '')).toBe(true); // ratios only go down
     }
     fc.assert(
-      fc.property(fc.date({ min: new Date('1990-01-01T00:00:00Z'), max: new Date('2099-12-31T00:00:00Z'), noInvalidDate: true }), (d) => {
-        const r = transitionalCreditRatio(d.toISOString().slice(0, 10));
-        return r.gte(0) && r.lte(1);
-      }),
+      fc.property(
+        fc.date({ min: new Date('1990-01-01T00:00:00Z'), max: new Date('2099-12-31T00:00:00Z'), noInvalidDate: true }),
+        (d) => {
+          const r = transitionalCreditRatio(d.toISOString().slice(0, 10));
+          return r.gte(0) && r.lte(1);
+        },
+      ),
       { numRuns: 200 },
     );
   });
@@ -82,7 +105,9 @@ describe('AC-3 exempt-supplier credit ratio (経過措置, 国税庁 令和8年�
       { validFrom: '2033-10-01', validTo: null, ratio: '0', label: 'end' },
     ];
     expect(transitionalCreditRatio('2032-01-01', table).toString()).toBe('0.1');
-    expect(() => transitionalCreditRatio('2032-01-01', table.slice(0, 1))).toThrow(expect.objectContaining({ code: 'VALIDATION' }));
+    expect(() => transitionalCreditRatio('2032-01-01', table.slice(0, 1))).toThrow(
+      expect.objectContaining({ code: 'VALIDATION' }),
+    );
   });
 });
 
@@ -114,7 +139,11 @@ describe('AC-5 wareki', () => {
   });
 
   it('AC-5 the era table is extensible: a new era added as data takes over from its start date', () => {
-    const eras: Era[] = [{ name: '明治', start: '1868-01-25' }, { name: '令和', start: '2019-05-01' }, { name: '仮称', start: '2040-01-01' }];
+    const eras: Era[] = [
+      { name: '明治', start: '1868-01-25' },
+      { name: '令和', start: '2019-05-01' },
+      { name: '仮称', start: '2040-01-01' },
+    ];
     expect(toWareki('2039-12-31', eras)).toBe('令和21年12月31日');
     expect(toWareki('2040-01-01', eras)).toBe('仮称元年1月1日');
     expect(toWareki('2041-03-03', eras)).toBe('仮称2年3月3日');
@@ -175,12 +204,42 @@ export const SAMPLE: InvoiceRenderData = {
     email: 'billing@example.com',
     bankInfo: '琉球銀行 本店 普通 1234567 ダイフクショウテン',
   },
-  invoice: { number: 'INV-2026-0001', date: '2026-09-11', dueDate: '2026-10-31', note: 'お振込手数料は貴社にてご負担ください。', priceIncludesTax: false },
+  invoice: {
+    number: 'INV-2026-0001',
+    date: '2026-09-11',
+    dueDate: '2026-10-31',
+    note: 'お振込手数料は貴社にてご負担ください。',
+    priceIncludesTax: false,
+  },
   recipient: { name: '株式会社テスト', postalCode: '100-0001', address: '東京都千代田区千代田1-1' },
   lines: [
-    { seq: 1, description: '商品A', quantity: '1', unitPrice: '1234', amount: '1234', taxCategory: 'standard', rate: '0.10' },
-    { seq: 2, description: 'サービスB <保守> & "特急"', quantity: '3', unitPrice: '189', amount: '567', taxCategory: 'standard', rate: '0.10' },
-    { seq: 3, description: '食品C', quantity: '1', unitPrice: '1333', amount: '1333', taxCategory: 'reduced', rate: '0.08' },
+    {
+      seq: 1,
+      description: '商品A',
+      quantity: '1',
+      unitPrice: '1234',
+      amount: '1234',
+      taxCategory: 'standard',
+      rate: '0.10',
+    },
+    {
+      seq: 2,
+      description: 'サービスB <保守> & "特急"',
+      quantity: '3',
+      unitPrice: '189',
+      amount: '567',
+      taxCategory: 'standard',
+      rate: '0.10',
+    },
+    {
+      seq: 3,
+      description: '食品C',
+      quantity: '1',
+      unitPrice: '1333',
+      amount: '1333',
+      taxCategory: 'reduced',
+      rate: '0.08',
+    },
   ],
   taxSummary: [
     { category: 'standard', rate: '0.10', taxable: '1801', tax: '180', gross: '1981' },
@@ -192,7 +251,28 @@ export const SAMPLE: InvoiceRenderData = {
 
 /** Every opening tag we emit has a matching close tag (a cheap well-formedness check without an HTML parser). */
 function assertBalanced(html: string): void {
-  for (const tag of ['html', 'head', 'body', 'article', 'section', 'div', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'p', 'h1', 'h2', 'span', 'caption', 'style', 'title']) {
+  for (const tag of [
+    'html',
+    'head',
+    'body',
+    'article',
+    'section',
+    'div',
+    'table',
+    'thead',
+    'tbody',
+    'tfoot',
+    'tr',
+    'th',
+    'td',
+    'p',
+    'h1',
+    'h2',
+    'span',
+    'caption',
+    'style',
+    'title',
+  ]) {
     const open = html.match(new RegExp(`<${tag}(\\s|>)`, 'g'))?.length ?? 0;
     const close = html.match(new RegExp(`</${tag}>`, 'g'))?.length ?? 0;
     expect(open, tag).toBe(close);
@@ -223,9 +303,15 @@ describe('AC-4 適格請求書 HTML (sales.invoice_html override)', () => {
     expect(html).toContain('※印は軽減税率対象品目');
     // 税率ごとの合計: 税抜/消費税/税込 per rate, 8% marked 軽減税率対象
     expect(html).toContain('<caption>税率ごとの合計</caption>');
-    expect(html).toContain('<th scope="row">10%対象</th><td class="num">¥1,801</td><td class="num">¥180</td><td class="num">¥1,981</td>');
-    expect(html).toContain('<th scope="row">8%対象（軽減税率対象）</th><td class="num">¥1,333</td><td class="num">¥106</td><td class="num">¥1,439</td>');
-    expect(html).toContain('<th scope="row">合計</th><td class="num">¥3,134</td><td class="num">¥286</td><td class="num">¥3,420</td>');
+    expect(html).toContain(
+      '<th scope="row">10%対象</th><td class="num">¥1,801</td><td class="num">¥180</td><td class="num">¥1,981</td>',
+    );
+    expect(html).toContain(
+      '<th scope="row">8%対象（軽減税率対象）</th><td class="num">¥1,333</td><td class="num">¥106</td><td class="num">¥1,439</td>',
+    );
+    expect(html).toContain(
+      '<th scope="row">合計</th><td class="num">¥3,134</td><td class="num">¥286</td><td class="num">¥3,420</td>',
+    );
     expect(html).toContain('<span class="value">¥3,420</span>');
     expect(html).toContain('<h2>振込先</h2><p>琉球銀行 本店 普通 1234567 ダイフクショウテン</p>');
     expect(html).toContain('<h2>備考</h2><p>お振込手数料は貴社にてご負担ください。</p>');
@@ -258,7 +344,10 @@ describe('AC-4 適格請求書 HTML (sales.invoice_html override)', () => {
     // every '<' / '>' from the data must have been escaped.
     const stripped = out
       .replace(/<style>[\s\S]*?<\/style>/, '')
-      .replace(/<\/?(!DOCTYPE html|html|head|meta|title|body|article|section|div|table|thead|tbody|tfoot|tr|th|td|p|h1|h2|span|caption)(\s[^<>]*)?>/g, '');
+      .replace(
+        /<\/?(!DOCTYPE html|html|head|meta|title|body|article|section|div|table|thead|tbody|tfoot|tr|th|td|p|h1|h2|span|caption)(\s[^<>]*)?>/g,
+        '',
+      );
     expect(stripped).not.toMatch(/[<>]/);
     expect(out.match(/&lt;script&gt;alert\(1\)&lt;\/script&gt;/g)?.length).toBe(10);
     expect(escapeHtml(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;');
@@ -294,9 +383,21 @@ describe('AC-4 適格請求書 HTML (sales.invoice_html override)', () => {
   });
 
   it('AC-4 rejects data that does not match the InvoiceRenderData contract with VALIDATION and paths', () => {
-    const bad = { ...SAMPLE, totals: { subtotal: '3134', taxTotal: 'abc', total: '3420' }, invoice: { ...SAMPLE.invoice, date: '2026/09/11' } };
+    const bad = {
+      ...SAMPLE,
+      totals: { subtotal: '3134', taxTotal: 'abc', total: '3420' },
+      invoice: { ...SAMPLE.invoice, date: '2026/09/11' },
+    };
     expect(() => renderInvoiceHtml(bad as InvoiceRenderData)).toThrow(
-      expect.objectContaining({ code: 'VALIDATION', details: { issues: expect.arrayContaining([{ path: 'invoice.date', message: 'must be YYYY-MM-DD' }, { path: 'totals.taxTotal', message: 'must be a decimal string' }]) } }),
+      expect.objectContaining({
+        code: 'VALIDATION',
+        details: {
+          issues: expect.arrayContaining([
+            { path: 'invoice.date', message: 'must be YYYY-MM-DD' },
+            { path: 'totals.taxTotal', message: 'must be a decimal string' },
+          ]),
+        },
+      }),
     );
     expect(() => parseInvoiceRenderData(null)).toThrow(ValidationError);
     expect(() => parseInvoiceRenderData({})).toThrow(ValidationError);

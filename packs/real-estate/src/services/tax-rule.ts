@@ -46,7 +46,10 @@ export function isShortTerm(startDate: LocalDate, endDate: LocalDate | null): bo
  * Default tax category of a rental charge (rent, 共益費, key money, renewal fee) for a unit's usage: residential leases of
  * one month or more are non-taxable; everything else (office, store, parking, short-term residential) is standard.
  */
-export function rentTaxCategory(usage: UnitUsage, term: { startDate: LocalDate; endDate: LocalDate | null } | null = null): RentTaxCategory {
+export function rentTaxCategory(
+  usage: UnitUsage,
+  term: { startDate: LocalDate; endDate: LocalDate | null } | null = null,
+): RentTaxCategory {
   if (usage !== 'residential') return 'standard';
   if (term !== null && isShortTerm(term.startDate, term.endDate)) return 'standard';
   return 'non_taxable';

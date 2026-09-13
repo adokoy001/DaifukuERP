@@ -15,7 +15,8 @@ const AVAILABLE: Readonly<Record<string, () => Promise<PackDef>>> = {
   clinic: async () => (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('clinic'),
   care_service: async () => (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('care_service'),
   education: async () => (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('education'),
-  professional_service: async () => (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('professional_service'),
+  professional_service: async () =>
+    (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('professional_service'),
   beauty_salon: async () => (await import('@daifuku/pack-industry-catalog')).loadIndustryPack('beauty_salon'),
 };
 
@@ -23,16 +24,27 @@ export function selectedPackNames(env: string | undefined = process.env.DAIFUKU_
   const raw = (env ?? 'all').trim();
   if (raw === '' || raw === 'all') return Object.keys(AVAILABLE);
   if (raw === 'none') return [];
-  const names = [...new Set(raw.split(',').map((name) => name.trim()).filter(Boolean))];
+  const names = [
+    ...new Set(
+      raw
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  ];
   const unknown = names.filter((name) => !Object.hasOwn(AVAILABLE, name));
-  if (unknown.length) throw new ValidationError(`Unknown packs: ${unknown.join(', ')}`, [{ path: 'DAIFUKU_PACKS', message: 'unknown pack' }]);
+  if (unknown.length)
+    throw new ValidationError(`Unknown packs: ${unknown.join(', ')}`, [
+      { path: 'DAIFUKU_PACKS', message: 'unknown pack' },
+    ]);
   return names;
 }
 
 export async function loadPacks(names: readonly string[]): Promise<PackDef[]> {
   const loaded: PackDef[] = [];
   for (const name of names) {
-    if (!Object.hasOwn(AVAILABLE, name)) throw new ValidationError(`Unknown packs: ${name}`, [{ path: 'DAIFUKU_PACKS', message: 'unknown pack' }]);
+    if (!Object.hasOwn(AVAILABLE, name))
+      throw new ValidationError(`Unknown packs: ${name}`, [{ path: 'DAIFUKU_PACKS', message: 'unknown pack' }]);
     const load = AVAILABLE[name];
     if (load) loaded.push(await load());
   }

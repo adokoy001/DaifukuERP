@@ -5,92 +5,139 @@ import { nextServiceUid } from '../setup/posix/account-mac.js';
 import { renderLaunchDaemon, renderSystemd, validateContext } from '../setup/posix/render.js';
 import { PosixFixture } from './posix-fixture.js';
 
-for (const platform of ['linux', 'darwin'] as const) describe(platform + ' service adapter', () => {
-  it('inspection is read-only, and non-root execution cannot create an account or service', async () => {
-    const f = new PosixFixture(platform), adapter = createPosixAdapter(platform, f);
-    expect(await adapter.inspect(f.context)).toEqual({ serviceExists: false, serviceRunning: false, serviceOwned: false, conflicts: [] });
-    expect(f.changes).toEqual([]);
-    f.uidValue = 1000;
-    await expect(adapter.prepare(f.context)).rejects.toThrow(/root/);
-    expect(f.changes).toEqual([]);
+for (const platform of ['linux', 'darwin'] as const)
+  describe(platform + ' service adapter', () => {
+    it('inspection is read-only, and non-root execution cannot create an account or service', async () => {
+      const f = new PosixFixture(platform),
+        adapter = createPosixAdapter(platform, f);
+      expect(await adapter.inspect(f.context)).toEqual({
+        serviceExists: false,
+        serviceRunning: false,
+        serviceOwned: false,
+        conflicts: [],
+      });
+      expect(f.changes).toEqual([]);
+      f.uidValue = 1000;
+      await expect(adapter.prepare(f.context)).rejects.toThrow(/root/);
+      expect(f.changes).toEqual([]);
+    });
+    it('install, stop, start, version update and uninstall retain private data and the managed account', async () => {
+      const f = new PosixFixture(platform),
+        adapter = createPosixAdapter(platform, f),
+        context = f.context;
+      await adapter.prepare(context);
+      f.addRelease();
+      await adapter.protect(context);
+      const uid = Number(f.user?.UniqueID);
+      const credential = join(context.statePath, 'credentials.json'),
+        journal = join(context.statePath, 'journal.json');
+      f.put(credential, 'synthetic private credentials', uid);
+      f.put(journal, 'unresolved physical work must remain', uid);
+      await adapter.register(context);
+      await adapter.start(context);
+      expect((await adapter.inspect(context)).serviceRunning).toBe(true);
+      expect((await f.stat(context.nodePath))?.uid).toBe(0);
+      expect((await f.stat(join(context.installRoot, 'releases')))?.mode).toBe(0o755);
+      expect((await adapter.inspect(context)).processId).toBe(12345);
+      expect((await f.stat(context.configPath))?.uid).toBe(uid);
+      expect((await f.stat(context.configPath))?.mode).toBe(0o600);
+      await adapter.stop(context);
+      expect(f.running).toBe(false);
+      await adapter.start(context);
+      expect(f.running).toBe(true);
+      await adapter.stop(context);
+      const releaseDir = join(context.installRoot, 'releases/v2');
+      const updated = {
+        ...context,
+        releaseDir,
+        nodePath: join(releaseDir, 'runtime/node'),
+        appPath: join(releaseDir, 'app/edge.mjs'),
+      };
+      f.addRelease(updated);
+      const beforeProtect = f.changes.length;
+      await adapter.protect(updated);
+      expect(
+        f.changes.slice(beforeProtect).some((change) => change.endsWith(credential) || change.endsWith(journal)),
+      ).toBe(false);
+      await adapter.register(updated);
+      await adapter.start(updated);
+      expect((await adapter.inspect(updated)).serviceOwned).toBe(true);
+      expect(f.loaded).toContain(updated.nodePath);
+      await adapter.uninstall(updated);
+      expect((await adapter.inspect(updated)).serviceExists).toBe(false);
+      expect(await f.read(credential)).toBe('synthetic private credentials');
+      expect(await f.read(journal)).toBe('unresolved physical work must remain');
+      expect(await f.stat(context.nodePath)).not.toBeNull();
+      expect(await f.stat(updated.nodePath)).not.toBeNull();
+      expect(f.user?.UniqueID).toBe(String(uid));
+      expect(await f.stat(join(context.installRoot, 'installation.json'))).not.toBeNull();
+    });
+    it('refuses a same-name foreign account and changed marker without provisioning anything', async () => {
+      const f = new PosixFixture(platform),
+        adapter = createPosixAdapter(platform, f);
+      f.user = { UniqueID: '402', RealName: 'some existing account', Password: '!' };
+      expect((await adapter.inspect(f.context)).conflicts).not.toEqual([]);
+      await expect(adapter.prepare(f.context)).rejects.toThrow(/not owned/);
+      expect(f.changes).toEqual([]);
+      f.user = null;
+      f.put(join(f.context.installRoot, 'installation.json'), '{}', 0);
+      await expect(adapter.prepare(f.context)).rejects.toThrow(/marker/);
+      expect(f.changes).toEqual([]);
+    });
+    it('refuses hard-linked data and preserves its existing mode/content instead of recursively repairing it', async () => {
+      const f = new PosixFixture(platform),
+        adapter = createPosixAdapter(platform, f);
+      await adapter.prepare(f.context);
+      f.addRelease();
+      const path = join(f.context.statePath, 'journal.json');
+      f.put(path, 'unresolved job', Number(f.user?.UniqueID));
+      const info = f.files.get(path);
+      if (!info) throw new Error('Fixture missing');
+      info.links = 2;
+      const before = f.changes.length;
+      await expect(adapter.protect(f.context)).rejects.toThrow(/links/);
+      expect(f.changes.slice(before).some((change) => change.endsWith(path))).toBe(false);
+      expect(await f.read(path)).toBe('unresolved job');
+    });
+    it('retains stopped old registration, credentials and releases if new registration fails', async () => {
+      const f = new PosixFixture(platform),
+        adapter = createPosixAdapter(platform, f);
+      await adapter.prepare(f.context);
+      f.addRelease();
+      await adapter.protect(f.context);
+      await adapter.register(f.context);
+      await adapter.start(f.context);
+      await adapter.stop(f.context);
+      f.failAt = platform === 'linux' ? 'daemon-reload' : '-lint';
+      const releaseDir = join(f.context.installRoot, 'releases/v2');
+      const updated = {
+        ...f.context,
+        releaseDir,
+        nodePath: join(releaseDir, 'runtime/node'),
+        appPath: join(releaseDir, 'app/edge.mjs'),
+      };
+      f.addRelease(updated);
+      await adapter.protect(updated);
+      await expect(adapter.register(updated)).rejects.toThrow(/Injected/);
+      expect(f.running).toBe(false);
+      expect(await f.stat(f.context.nodePath)).not.toBeNull();
+      expect(await f.stat(updated.nodePath)).not.toBeNull();
+      f.failAt = '';
+      await adapter.register(updated);
+      await adapter.start(updated);
+      expect((await adapter.inspect(updated)).serviceRunning).toBe(true);
+    });
   });
-  it('install, stop, start, version update and uninstall retain private data and the managed account', async () => {
-    const f = new PosixFixture(platform), adapter = createPosixAdapter(platform, f), context = f.context;
-    await adapter.prepare(context); f.addRelease(); await adapter.protect(context);
-    const uid = Number(f.user?.UniqueID);
-    const credential = join(context.statePath, 'credentials.json'), journal = join(context.statePath, 'journal.json');
-    f.put(credential, 'synthetic private credentials', uid); f.put(journal, 'unresolved physical work must remain', uid);
-    await adapter.register(context); await adapter.start(context);
-    expect((await adapter.inspect(context)).serviceRunning).toBe(true);
-    expect((await f.stat(context.nodePath))?.uid).toBe(0);
-    expect((await f.stat(join(context.installRoot, 'releases')))?.mode).toBe(0o755);
-    expect((await adapter.inspect(context)).processId).toBe(12345);
-    expect((await f.stat(context.configPath))?.uid).toBe(uid);
-    expect((await f.stat(context.configPath))?.mode).toBe(0o600);
-    await adapter.stop(context); expect(f.running).toBe(false);
-    await adapter.start(context); expect(f.running).toBe(true);
-    await adapter.stop(context);
-    const releaseDir = join(context.installRoot, 'releases/v2');
-    const updated = { ...context, releaseDir, nodePath: join(releaseDir, 'runtime/node'), appPath: join(releaseDir, 'app/edge.mjs') };
-    f.addRelease(updated);
-    const beforeProtect = f.changes.length;
-    await adapter.protect(updated);
-    expect(f.changes.slice(beforeProtect).some((change) => change.endsWith(credential) || change.endsWith(journal))).toBe(false);
-    await adapter.register(updated); await adapter.start(updated);
-    expect((await adapter.inspect(updated)).serviceOwned).toBe(true);
-    expect(f.loaded).toContain(updated.nodePath);
-    await adapter.uninstall(updated);
-    expect((await adapter.inspect(updated)).serviceExists).toBe(false);
-    expect(await f.read(credential)).toBe('synthetic private credentials');
-    expect(await f.read(journal)).toBe('unresolved physical work must remain');
-    expect(await f.stat(context.nodePath)).not.toBeNull();
-    expect(await f.stat(updated.nodePath)).not.toBeNull();
-    expect(f.user?.UniqueID).toBe(String(uid));
-    expect(await f.stat(join(context.installRoot, 'installation.json'))).not.toBeNull();
-  });
-  it('refuses a same-name foreign account and changed marker without provisioning anything', async () => {
-    const f = new PosixFixture(platform), adapter = createPosixAdapter(platform, f);
-    f.user = { UniqueID: '402', RealName: 'some existing account', Password: '!' };
-    expect((await adapter.inspect(f.context)).conflicts).not.toEqual([]);
-    await expect(adapter.prepare(f.context)).rejects.toThrow(/not owned/);
-    expect(f.changes).toEqual([]);
-    f.user = null;
-    f.put(join(f.context.installRoot, 'installation.json'), '{}', 0);
-    await expect(adapter.prepare(f.context)).rejects.toThrow(/marker/);
-    expect(f.changes).toEqual([]);
-  });
-  it('refuses hard-linked data and preserves its existing mode/content instead of recursively repairing it', async () => {
-    const f = new PosixFixture(platform), adapter = createPosixAdapter(platform, f);
-    await adapter.prepare(f.context); f.addRelease();
-    const path = join(f.context.statePath, 'journal.json');
-    f.put(path, 'unresolved job', Number(f.user?.UniqueID));
-    const info = f.files.get(path); if (!info) throw new Error('Fixture missing'); info.links = 2;
-    const before = f.changes.length;
-    await expect(adapter.protect(f.context)).rejects.toThrow(/links/);
-    expect(f.changes.slice(before).some((change) => change.endsWith(path))).toBe(false);
-    expect(await f.read(path)).toBe('unresolved job');
-  });
-  it('retains stopped old registration, credentials and releases if new registration fails', async () => {
-    const f = new PosixFixture(platform), adapter = createPosixAdapter(platform, f);
-    await adapter.prepare(f.context); f.addRelease(); await adapter.protect(f.context);
-    await adapter.register(f.context); await adapter.start(f.context); await adapter.stop(f.context);
-    f.failAt = platform === 'linux' ? 'daemon-reload' : '-lint';
-    const releaseDir = join(f.context.installRoot, 'releases/v2');
-    const updated = { ...f.context, releaseDir, nodePath: join(releaseDir, 'runtime/node'), appPath: join(releaseDir, 'app/edge.mjs') };
-    f.addRelease(updated); await adapter.protect(updated);
-    await expect(adapter.register(updated)).rejects.toThrow(/Injected/);
-    expect(f.running).toBe(false);
-    expect(await f.stat(f.context.nodePath)).not.toBeNull();
-    expect(await f.stat(updated.nodePath)).not.toBeNull();
-    f.failAt = '';
-    await adapter.register(updated); await adapter.start(updated);
-    expect((await adapter.inspect(updated)).serviceRunning).toBe(true);
-  });
-});
 
 it('rejects service command injection and cross-layout paths before rendering', () => {
   const f = new PosixFixture('linux');
-  for (const nodePath of ['/tmp/arbitrary-node', f.context.nodePath + '\nUser=root', f.context.nodePath + '%n', f.context.nodePath + '"']) expect(() => renderSystemd({ ...f.context, nodePath }, 'nogroup')).toThrow();
+  for (const nodePath of [
+    '/tmp/arbitrary-node',
+    f.context.nodePath + '\nUser=root',
+    f.context.nodePath + '%n',
+    f.context.nodePath + '"',
+  ])
+    expect(() => renderSystemd({ ...f.context, nodePath }, 'nogroup')).toThrow();
   expect(() => validateContext({ ...f.context, statePath: f.context.installRoot })).toThrow();
   const mac = new PosixFixture('darwin');
   expect(renderLaunchDaemon(mac.context)).toContain('<key>UserName</key><string>_daifukuedge</string>');
@@ -98,8 +145,12 @@ it('rejects service command injection and cross-layout paths before rendering', 
   expect(renderLaunchDaemon(mac.context)).not.toContain('root</string>');
 });
 it('rejects loaded systemd drop-ins without trying to reload, stop or rewrite the service', async () => {
-  const f = new PosixFixture('linux'), adapter = createPosixAdapter('linux', f);
-  await adapter.prepare(f.context); f.addRelease(); await adapter.protect(f.context); await adapter.register(f.context);
+  const f = new PosixFixture('linux'),
+    adapter = createPosixAdapter('linux', f);
+  await adapter.prepare(f.context);
+  f.addRelease();
+  await adapter.protect(f.context);
+  await adapter.register(f.context);
   f.dropIns = '/etc/systemd/system/daifuku-edge.service.d/override.conf';
   const before = f.changes.length;
   expect((await adapter.inspect(f.context)).conflicts).not.toEqual([]);
@@ -108,24 +159,33 @@ it('rejects loaded systemd drop-ins without trying to reload, stop or rewrite th
   expect(f.changes.length).toBe(before);
 });
 it('macOS resumes only its own tagged partial account and selects an unused UID before exposing it', async () => {
-  const f = new PosixFixture('darwin'), adapter = createPosixAdapter('darwin', f);
+  const f = new PosixFixture('darwin'),
+    adapter = createPosixAdapter('darwin', f);
   f.failAt = '-create /Users/_daifukuedge PrimaryGroupID';
   await expect(adapter.prepare(f.context)).rejects.toThrow(/Injected/);
   expect(f.user?.RealName).toContain(f.context.installationId);
   expect(f.user?.AuthenticationAuthority).toBe(';DisabledUser;');
   expect(f.user?.UniqueID).toBeUndefined();
   expect((await adapter.inspect(f.context)).conflicts).toEqual([]);
-  f.failAt = ''; await adapter.prepare(f.context);
+  f.failAt = '';
+  await adapter.prepare(f.context);
   expect(f.user?.UniqueID).toBe('401');
   expect(nextServiceUid('one 400\ntwo 402')).toBe(401);
-  expect(() => nextServiceUid(Array.from({ length: 100 }, (_, i) => 'used ' + (i + 400)).join('\n'))).toThrow(/No unused/);
+  expect(() => nextServiceUid(Array.from({ length: 100 }, (_, i) => 'used ' + (i + 400)).join('\n'))).toThrow(
+    /No unused/,
+  );
 });
 it('macOS rejects inherited ACLs on existing private data and removes ACLs only from new managed paths', async () => {
-  const f = new PosixFixture('darwin'), adapter = createPosixAdapter('darwin', f);
-  await adapter.prepare(f.context); f.addRelease(); await adapter.protect(f.context);
+  const f = new PosixFixture('darwin'),
+    adapter = createPosixAdapter('darwin', f);
+  await adapter.prepare(f.context);
+  f.addRelease();
+  await adapter.protect(f.context);
   const path = join(f.context.statePath, 'credentials.json');
   f.put(path, 'private', Number(f.user?.UniqueID));
-  const entry = f.files.get(path); if (!entry) throw new Error('Fixture missing'); entry.acl = true;
+  const entry = f.files.get(path);
+  if (!entry) throw new Error('Fixture missing');
+  entry.acl = true;
   const before = f.changes.length;
   await expect(adapter.protect(f.context)).rejects.toThrow(/ACL/);
   expect(f.changes.slice(before)).not.toContain('acl:' + path);

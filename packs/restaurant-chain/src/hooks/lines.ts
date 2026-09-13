@@ -12,7 +12,11 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   const recipe = await submittedRecipe(ctx, recipeId);
   const quantity = decimal(merged(row, previous, 'quantity') ?? '1', 'quantity');
   const changedRecipe = previous && row.recipeId !== undefined && row.recipeId !== previous.recipeId;
-  const price = decimal((changedRecipe && row.unitPrice === undefined ? recipe.unitPrice : merged(row, previous, 'unitPrice')) ?? recipe.unitPrice, 'unitPrice');
+  const price = decimal(
+    (changedRecipe && row.unitPrice === undefined ? recipe.unitPrice : merged(row, previous, 'unitPrice')) ??
+      recipe.unitPrice,
+    'unitPrice',
+  );
   row.unitPrice = price;
   row.description = recipe.name;
   row.taxCategory = servingCategory(String(merged(row, previous, 'serviceMode') ?? 'dine_in'), recipe.alcohol);
@@ -25,7 +29,9 @@ async function touch(ctx: Context, id: unknown): Promise<void> {
 }
 export function registerClosingLineHooks(): void {
   registry.registerHook(RestaurantClosingLine.name, 'before_validate', beforeValidate);
-  registry.registerHook(RestaurantWasteLine.name, 'before_validate', (ctx, { row, previous }) => assertIngredient(ctx, merged(row, previous, 'productId')));
+  registry.registerHook(RestaurantWasteLine.name, 'before_validate', (ctx, { row, previous }) =>
+    assertIngredient(ctx, merged(row, previous, 'productId')),
+  );
   for (const entity of [RestaurantClosingLine, RestaurantWasteLine]) {
     registry.registerHook(entity.name, 'after_create', (ctx, { row }) => touch(ctx, row.closingId));
     registry.registerHook(entity.name, 'after_update', async (ctx, { row, previous }) => {

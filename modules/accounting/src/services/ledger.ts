@@ -25,7 +25,13 @@ export type TrialBalanceRow = {
   closingBalance: string;
 };
 
-export const TRIAL_BALANCE_AMOUNT_KEYS = ['openingDebit', 'openingCredit', 'periodDebit', 'periodCredit', 'closingBalance'] as const;
+export const TRIAL_BALANCE_AMOUNT_KEYS = [
+  'openingDebit',
+  'openingCredit',
+  'periodDebit',
+  'periodCredit',
+  'closingBalance',
+] as const;
 type AmountKey = (typeof TRIAL_BALANCE_AMOUNT_KEYS)[number];
 
 const ZERO: Movement = { debit: Decimal.zero(), credit: Decimal.zero() };
@@ -33,7 +39,9 @@ const ZERO: Movement = { debit: Decimal.zero(), credit: Decimal.zero() };
 /** An opening balance is shown on one side only: the net of everything before the period. */
 export function splitOpening(before: Movement): { openingDebit: Decimal; openingCredit: Decimal } {
   const net = before.debit.minus(before.credit);
-  return net.isNegative() ? { openingDebit: Decimal.zero(), openingCredit: net.neg() } : { openingDebit: net, openingCredit: Decimal.zero() };
+  return net.isNegative()
+    ? { openingDebit: Decimal.zero(), openingCredit: net.neg() }
+    : { openingDebit: net, openingCredit: Decimal.zero() };
 }
 
 /** One row per account in the given order; `opening`/`period` are keyed by account id and may omit idle accounts. */
@@ -73,7 +81,10 @@ export function trialBalanceRows(
       closingBalance: amounts.closingBalance.toString(),
     };
   });
-  const totals = Object.fromEntries(TRIAL_BALANCE_AMOUNT_KEYS.map((k) => [k, sums[k].toString()])) as Record<AmountKey, string>;
+  const totals = Object.fromEntries(TRIAL_BALANCE_AMOUNT_KEYS.map((k) => [k, sums[k].toString()])) as Record<
+    AmountKey,
+    string
+  >;
   return { rows, totals };
 }
 

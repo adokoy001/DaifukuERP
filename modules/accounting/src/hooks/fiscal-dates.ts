@@ -15,7 +15,11 @@ function rangeOf({ row, previous }: HookArgs): DateRange | null {
 function assertDateOrder(entity: string, args: HookArgs): void {
   const range = rangeOf(args);
   if (!range || isValidRange(range)) return;
-  throw new ValidationError(`${entity}: endDate ${range.endDate} is before startDate ${range.startDate}`, [{ path: 'endDate', message: 'must be on or after startDate' }], 'Swap or correct the dates.');
+  throw new ValidationError(
+    `${entity}: endDate ${range.endDate} is before startDate ${range.startDate}`,
+    [{ path: 'endDate', message: 'must be on or after startDate' }],
+    'Swap or correct the dates.',
+  );
 }
 
 async function assertNoOverlap(ctx: Context, args: HookArgs): Promise<void> {
@@ -24,15 +28,25 @@ async function assertNoOverlap(ctx: Context, args: HookArgs): Promise<void> {
   if (!range) return;
   const id = typeof args.row.id === 'string' ? args.row.id : null;
   const others = await repo(ctx, FiscalYear).list({
-    where: { $and: [{ startDate: { $lte: range.endDate } }, { endDate: { $gte: range.startDate } }, ...(id ? [{ id: { $ne: id } }] : [])] },
+    where: {
+      $and: [
+        { startDate: { $lte: range.endDate } },
+        { endDate: { $gte: range.startDate } },
+        ...(id ? [{ id: { $ne: id } }] : []),
+      ],
+    },
     limit: 1,
   });
   const hit = others.items[0];
   if (!hit) return;
-  throw new Conflict(`fiscal year ${range.startDate}..${range.endDate} overlaps ${hit.code} (${hit.startDate}..${hit.endDate})`, 'Choose a start date after the existing year ends, or adjust the existing year.', {
-    overlaps: hit.code,
-    fiscalYearId: hit.id,
-  });
+  throw new Conflict(
+    `fiscal year ${range.startDate}..${range.endDate} overlaps ${hit.code} (${hit.startDate}..${hit.endDate})`,
+    'Choose a start date after the existing year ends, or adjust the existing year.',
+    {
+      overlaps: hit.code,
+      fiscalYearId: hit.id,
+    },
+  );
 }
 
 async function assertPeriod(ctx: Context, args: HookArgs): Promise<void> {
@@ -42,14 +56,26 @@ async function assertPeriod(ctx: Context, args: HookArgs): Promise<void> {
   if (!range || typeof yearId !== 'string') return;
   const year = await repo(ctx, FiscalYear).get(yearId);
   if (range.startDate < year.startDate || range.endDate > year.endDate) {
-    throw new ValidationError('Fiscal period must be contained in its fiscal year', [{ path: 'startDate', message: `must be within ${year.startDate}..${year.endDate}` }]);
+    throw new ValidationError('Fiscal period must be contained in its fiscal year', [
+      { path: 'startDate', message: `must be within ${year.startDate}..${year.endDate}` },
+    ]);
   }
   const id = args.row.id ?? args.previous?.id;
-  const overlap = await repo(ctx, FiscalPeriod).list({ where: { $and: [
-    { startDate: { $lte: range.endDate } }, { endDate: { $gte: range.startDate } },
-    ...(typeof id === 'string' ? [{ id: { $ne: id } }] : []),
-  ] }, limit: 1 });
-  if (overlap.items.length) throw new Conflict('Fiscal periods cannot overlap within a company', 'Choose a non-overlapping period within its fiscal year.');
+  const overlap = await repo(ctx, FiscalPeriod).list({
+    where: {
+      $and: [
+        { startDate: { $lte: range.endDate } },
+        { endDate: { $gte: range.startDate } },
+        ...(typeof id === 'string' ? [{ id: { $ne: id } }] : []),
+      ],
+    },
+    limit: 1,
+  });
+  if (overlap.items.length)
+    throw new Conflict(
+      'Fiscal periods cannot overlap within a company',
+      'Choose a non-overlapping period within its fiscal year.',
+    );
 }
 
 export function registerFiscalDateHooks(): void {

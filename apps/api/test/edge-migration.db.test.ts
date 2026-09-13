@@ -7,11 +7,17 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
 import { legacyMigrationFolder } from './legacy-fixture.ts';
-const owner = connect(OWNER_URL, { max: 1 }), app = connect(APP_URL, { max: 1 }), previous = legacyMigrationFolder(12);
-const tenant = newId(), company = newId(), user = newId(), site = newId();
+const owner = connect(OWNER_URL, { max: 1 }),
+  app = connect(APP_URL, { max: 1 }),
+  previous = legacyMigrationFolder(12);
+const tenant = newId(),
+  company = newId(),
+  user = newId(),
+  site = newId();
 const tables = ['relay_credentials', 'relay_pairings', 'edge_gateway', 'edge_device', 'edge_job', 'edge_device_event'];
 beforeAll(async () => {
-  await dropAll(owner); await migrate(owner.drizzle, { migrationsFolder: previous });
+  await dropAll(owner);
+  await migrate(owner.drizzle, { migrationsFolder: previous });
   await owner.sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id',${tenant},true)`;
     await tx`insert into tenants(id,name) values(${tenant},'Existing enterprise')`;
@@ -22,24 +28,50 @@ beforeAll(async () => {
     await tx`insert into workforce_site(id,tenant_id,company_id,code,name) values(${site},${tenant},${company},'OLD','Existing site')`;
   });
 });
-afterAll(async () => { await app.close(); await owner.close(); rmSync(previous, { recursive: true, force: true }); });
-const facts = () => owner.sql.begin(async (tx) => {
-  await tx`select set_config('app.tenant_id',${tenant},true)`;
-  return { users: await tx`select * from users order by id`, factors: await tx`select * from identity_factors order by user_id`, memberships: await tx`select * from user_company_memberships order by user_id`, companies: await tx`select * from companies order by id`, sites: await tx`select * from workforce_site order by id` };
+afterAll(async () => {
+  await app.close();
+  await owner.close();
+  rmSync(previous, { recursive: true, force: true });
 });
+const facts = () =>
+  owner.sql.begin(async (tx) => {
+    await tx`select set_config('app.tenant_id',${tenant},true)`;
+    return {
+      users: await tx`select * from users order by id`,
+      factors: await tx`select * from identity_factors order by user_id`,
+      memberships: await tx`select * from user_company_memberships order by user_id`,
+      companies: await tx`select * from companies order by id`,
+      sites: await tx`select * from workforce_site order by id`,
+    };
+  });
 it('preserves existing MFA, sessions, memberships and sites; new tables have forced RLS and scoped keys', async () => {
-  const before = await facts(); await runMigrations(owner, MIGRATIONS_DIR); expect(await facts()).toEqual(before);
+  const before = await facts();
+  await runMigrations(owner, MIGRATIONS_DIR);
+  expect(await facts()).toEqual(before);
   for (const table of tables) {
     expect((await owner.sql`select count(*)::int n from ${owner.sql(table)}`)[0]?.n).toBe(0);
-    expect((await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where relname=${table}`)[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+    expect(
+      (await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where relname=${table}`)[0],
+    ).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
   }
   await app.sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id',${tenant},true)`;
     await tx`insert into edge_gateway(id,tenant_id,company_id,site_id,code,name) values(${newId()},${tenant},${company},${site},'TEST','Scoped relay')`;
   });
-  const otherCount = await app.sql.begin(async (tx) => { await tx`select set_config('app.tenant_id',${newId()},true)`; return tx`select count(*)::int n from edge_gateway`; });
+  const otherCount = await app.sql.begin(async (tx) => {
+    await tx`select set_config('app.tenant_id',${newId()},true)`;
+    return tx`select count(*)::int n from edge_gateway`;
+  });
   expect(otherCount[0]?.n).toBe(0);
-  await expect(app.sql.begin(async (tx) => { await tx`select set_config('app.tenant_id',${tenant},true)`; await tx`insert into edge_gateway(id,tenant_id,company_id,site_id,code,name) values(${newId()},${tenant},${newId()},${site},'FOREIGN','Wrong company')`; })).rejects.toMatchObject({ code: '23503' });
-  await runMigrations(owner, MIGRATIONS_DIR); expect(await facts()).toEqual(before);
-  expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(readJournal().entries.length);
+  await expect(
+    app.sql.begin(async (tx) => {
+      await tx`select set_config('app.tenant_id',${tenant},true)`;
+      await tx`insert into edge_gateway(id,tenant_id,company_id,site_id,code,name) values(${newId()},${tenant},${newId()},${site},'FOREIGN','Wrong company')`;
+    }),
+  ).rejects.toMatchObject({ code: '23503' });
+  await runMigrations(owner, MIGRATIONS_DIR);
+  expect(await facts()).toEqual(before);
+  expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
+    readJournal().entries.length,
+  );
 });

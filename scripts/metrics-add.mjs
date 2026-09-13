@@ -8,11 +8,14 @@ for (let i = 0; i < args.length; i++) {
   if (!a.startsWith('--') || a === '--') continue; // pnpm passes the bare `--` separator through
   const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   const v = args[i + 1];
-  rec[key] = v === undefined || v.startsWith('--') ? true : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v === 'null' ? null : v;
+  rec[key] =
+    v === undefined || v.startsWith('--') ? true : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v === 'null' ? null : v;
   if (v !== undefined && !v.startsWith('--')) i++;
 }
 if (!rec.feature) {
-  console.error('usage: pnpm metrics:add -- --feature <slug> --module <m> --phase <n> --tokens <n|null> --agent-minutes <n> --human-minutes <n> --rework-lines <n> --gate-failures <n> --notes "..."');
+  console.error(
+    'usage: pnpm metrics:add -- --feature <slug> --module <m> --phase <n> --tokens <n|null> --agent-minutes <n> --human-minutes <n> --rework-lines <n> --gate-failures <n> --notes "..."',
+  );
   process.exit(1);
 }
 appendFileSync(new URL('../docs/metrics/features.jsonl', import.meta.url), JSON.stringify(rec) + '\n');

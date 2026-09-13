@@ -11,30 +11,340 @@ import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceEmpty, WorkforcePanel } from './workforce-shared.tsx';
 
 type People = Pick<ManagementPortal, 'employees' | 'sites' | 'users'>;
-export function WorkforcePeople({ data, actions, entities }: { data: People; actions: string[]; entities: EntityMeta[] }) {
-  const { t } = useLocale(), task = useWorkforceTask();
-  const [form, setForm] = useState<'employee' | 'leave'>(), [search, setSearch] = useState(''), [status, setStatus] = useState('active'), [siteId, setSiteId] = useState('');
-  const employees = data.employees.filter((row) => (!search || `${row.code} ${row.name}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) && (!siteId || row.siteId === siteId) && (status === 'all' || row.active === (status === 'active')));
+export function WorkforcePeople({
+  data,
+  actions,
+  entities,
+}: {
+  data: People;
+  actions: string[];
+  entities: EntityMeta[];
+}) {
+  const { t } = useLocale(),
+    task = useWorkforceTask();
+  const [form, setForm] = useState<'employee' | 'leave'>(),
+    [search, setSearch] = useState(''),
+    [status, setStatus] = useState('active'),
+    [siteId, setSiteId] = useState('');
+  const employees = data.employees.filter(
+    (row) =>
+      (!search || `${row.code} ${row.name}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) &&
+      (!siteId || row.siteId === siteId) &&
+      (status === 'all' || row.active === (status === 'active')),
+  );
   const candidates = data.users.filter((u) => !data.employees.some((e) => e.userId === u.id));
-  const setup = ['workforce_site', 'workforce_pay_policy', 'workforce_pay_terms'].flatMap((name) => entities.filter((entity) => entity.name === name && entity.ops.includes('read')));
-  return <div className="workforce-stack"><WorkforcePanel title={t({ ja: '運用の準備', en: 'Workforce setup' })} icon="settings" note={t({ ja: '拠点、制度の適用期間、従業員ごとの賃金条件を整えてから運用します。', en: 'Set up sites, effective policies and individual pay terms before operation.' })}><div className="workforce-record-actions">{actions.includes('workforce.initialize_policy') ? <WorkforceInitialize /> : null}{setup.map((entity) => <Link className="btn" key={entity.name} to="/e/$entity" params={{ entity: entity.name }}>{t(entity.label)}</Link>)}</div><p className="workforce-notice">{t({ ja: '利用者アカウントと会社所属は「権限管理」で作成します。従業員登録では、その会社の有効な利用者を選びます。', en: 'Create user accounts and company memberships in Access administration. Employee registration selects active members of this company.' })}</p></WorkforcePanel>
-    <WorkforcePanel title={t({ ja: '従業員', en: 'Employees' })} icon="people" actions={<div className="workforce-record-actions">{actions.includes('workforce.register_employee') ? <button type="button" className="btn btn-primary" onClick={() => setForm('employee')}>{t({ ja: '従業員を登録', en: 'Register employee' })}</button> : null}{actions.includes('workforce.grant_leave') ? <button type="button" className="btn" onClick={() => setForm('leave')}>{t({ ja: '有給を付与', en: 'Grant paid leave' })}</button> : null}</div>}>
-      <div className="workforce-toolbar"><label>{t({ ja: '社員を検索', en: 'Find employees' })}<input type="search" className="input" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label>{t({ ja: '在籍状態', en: 'Employment status' })}<select className="input" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">{t({ ja: '在籍', en: 'Active' })}</option><option value="all">{t({ ja: 'すべて', en: 'All' })}</option><option value="inactive">{t({ ja: '無効', en: 'Inactive' })}</option></select></label><label>{t({ ja: '社員の拠点', en: 'Employee site' })}<select className="input" value={siteId} onChange={(event) => setSiteId(event.target.value)}><option value="">{t({ ja: 'すべての担当拠点', en: 'All authorized sites' })}</option>{data.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label><span>{employees.length}{t({ ja: '人', en: ' employees' })}</span></div>
-      {employees.length ? <div className="workforce-record-list">{employees.map((row) => <article className="workforce-record" key={row.id}><header><h3>{row.name}</h3><span className="workforce-status" data-tone={row.active ? 'positive' : 'neutral'}>{t(row.active ? { ja: '在籍', en: 'Active' } : { ja: '無効', en: 'Inactive' })}</span></header><p>{row.code} · {data.sites.find((s) => s.id === row.siteId)?.name ?? t({ ja: '所属拠点', en: 'Assigned site' })}</p><p>{t({ ja: '雇用期間', en: 'Employment period' })}: {row.hiredOn}–{row.terminatedOn ?? t({ ja: '継続', en: 'Ongoing' })}</p>{actions.includes('workforce.save_shift_profile') ? <ShiftProfileButton employeeId={row.id} siteId={row.siteId} name={row.name} /> : null}{entities.some((e) => e.name === 'workforce_employee' && e.ops.includes('update')) ? <Link className="btn" to="/e/$entity/$id" params={{ entity: 'workforce_employee', id: row.id }}>{t({ ja: '登録内容を確認', en: 'View employee record' })}</Link> : null}</article>)}</div> : <WorkforceEmpty icon="people">{t({ ja: '表示できる従業員はまだいません。', en: 'No employees are available.' })}</WorkforceEmpty>}
-    </WorkforcePanel>
-    {form ? <WorkforceDialog title={t(form === 'employee' ? { ja: '従業員を登録', en: 'Register employee' } : { ja: '有給を付与', en: 'Grant paid leave' })} submitLabel={t(form === 'employee' ? { ja: '登録する', en: 'Register' } : { ja: '付与を記録', en: 'Record grant' })} onClose={() => setForm(undefined)} onSubmit={async (input) => {
-      await task.mutateAsync({ action: form === 'employee' ? 'workforce.register_employee' : 'workforce.grant_leave', input: form === 'employee' ? { userId: formText(input, 'userId'), siteId: formText(input, 'siteId'), code: formText(input, 'code'), name: formText(input, 'name'), hiredOn: formText(input, 'hiredOn') } : { employeeId: formText(input, 'employeeId'), validFrom: formText(input, 'validFrom'), expiresOn: formText(input, 'expiresOn'), days: formText(input, 'days'), eligibilityConfirmed: input.get('eligibilityConfirmed') === 'on', basis: formText(input, 'basis') } });
-    }}>{form === 'employee' ? <><label>{t({ ja: '利用者アカウント', en: 'User account' })}<select className="input" name="userId" aria-label={t({ ja: '利用者アカウント', en: 'User account' })} required defaultValue=""><option value="">{t({ ja: '利用者を選択', en: 'Select user' })}</option>{candidates.map((u) => <option value={u.id} key={u.id}>{u.name} · {u.email}</option>)}</select></label><label>{t({ ja: '所属拠点', en: 'Work site' })}<select className="input" name="siteId" aria-label={t({ ja: '所属拠点', en: 'Work site' })} required defaultValue=""><option value="">{t({ ja: '拠点を選択', en: 'Select site' })}</option>{data.sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><div className="workforce-form-row"><label>{t({ ja: '従業員番号', en: 'Employee code' })}<input className="input" name="code" required maxLength={40} /></label><label>{t({ ja: '氏名', en: 'Employee name' })}<input className="input" name="name" required maxLength={100} /></label></div><label>{t({ ja: '入社日', en: 'Hire date' })}<input className="input" name="hiredOn" type="date" required /></label></> : <><EmployeeSelect data={data} /><div className="workforce-form-row"><label>{t({ ja: '付与日', en: 'Valid from' })}<input className="input" name="validFrom" type="date" required defaultValue={businessToday()} /></label><label>{t({ ja: '有効期限', en: 'Expires on' })}<input className="input" name="expiresOn" type="date" required /></label></div><label>{t({ ja: '付与する日数', en: 'Days granted' })}<input className="input" name="days" inputMode="decimal" pattern="[0-9]+(\.5)?" required /></label><label>{t({ ja: '付与日数・資格の根拠', en: 'Eligibility and grant basis' })}<textarea className="input" name="basis" required maxLength={1000} rows={3} /></label><label className="workforce-checkbox"><input type="checkbox" name="eligibilityConfirmed" required />{t({ ja: '勤続期間・出勤率・勤務日数と会社の規程を確認しました', en: 'I verified service, attendance, work schedule and company rules' })}</label></>}</WorkforceDialog> : null}
-  </div>;
+  const setup = ['workforce_site', 'workforce_pay_policy', 'workforce_pay_terms'].flatMap((name) =>
+    entities.filter((entity) => entity.name === name && entity.ops.includes('read')),
+  );
+  return (
+    <div className="workforce-stack">
+      <WorkforcePanel
+        title={t({ ja: '運用の準備', en: 'Workforce setup' })}
+        icon="settings"
+        note={t({
+          ja: '拠点、制度の適用期間、従業員ごとの賃金条件を整えてから運用します。',
+          en: 'Set up sites, effective policies and individual pay terms before operation.',
+        })}
+      >
+        <div className="workforce-record-actions">
+          {actions.includes('workforce.initialize_policy') ? <WorkforceInitialize /> : null}
+          {setup.map((entity) => (
+            <Link className="btn" key={entity.name} to="/e/$entity" params={{ entity: entity.name }}>
+              {t(entity.label)}
+            </Link>
+          ))}
+        </div>
+        <p className="workforce-notice">
+          {t({
+            ja: '利用者アカウントと会社所属は「権限管理」で作成します。従業員登録では、その会社の有効な利用者を選びます。',
+            en: 'Create user accounts and company memberships in Access administration. Employee registration selects active members of this company.',
+          })}
+        </p>
+      </WorkforcePanel>
+      <WorkforcePanel
+        title={t({ ja: '従業員', en: 'Employees' })}
+        icon="people"
+        actions={
+          <div className="workforce-record-actions">
+            {actions.includes('workforce.register_employee') ? (
+              <button type="button" className="btn btn-primary" onClick={() => setForm('employee')}>
+                {t({ ja: '従業員を登録', en: 'Register employee' })}
+              </button>
+            ) : null}
+            {actions.includes('workforce.grant_leave') ? (
+              <button type="button" className="btn" onClick={() => setForm('leave')}>
+                {t({ ja: '有給を付与', en: 'Grant paid leave' })}
+              </button>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="workforce-toolbar">
+          <label>
+            {t({ ja: '社員を検索', en: 'Find employees' })}
+            <input type="search" className="input" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+          <label>
+            {t({ ja: '在籍状態', en: 'Employment status' })}
+            <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="active">{t({ ja: '在籍', en: 'Active' })}</option>
+              <option value="all">{t({ ja: 'すべて', en: 'All' })}</option>
+              <option value="inactive">{t({ ja: '無効', en: 'Inactive' })}</option>
+            </select>
+          </label>
+          <label>
+            {t({ ja: '社員の拠点', en: 'Employee site' })}
+            <select className="input" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+              <option value="">{t({ ja: 'すべての担当拠点', en: 'All authorized sites' })}</option>
+              {data.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>
+            {employees.length}
+            {t({ ja: '人', en: ' employees' })}
+          </span>
+        </div>
+        {employees.length ? (
+          <div className="workforce-record-list">
+            {employees.map((row) => (
+              <article className="workforce-record" key={row.id}>
+                <header>
+                  <h3>{row.name}</h3>
+                  <span className="workforce-status" data-tone={row.active ? 'positive' : 'neutral'}>
+                    {t(row.active ? { ja: '在籍', en: 'Active' } : { ja: '無効', en: 'Inactive' })}
+                  </span>
+                </header>
+                <p>
+                  {row.code} ·{' '}
+                  {data.sites.find((s) => s.id === row.siteId)?.name ?? t({ ja: '所属拠点', en: 'Assigned site' })}
+                </p>
+                <p>
+                  {t({ ja: '雇用期間', en: 'Employment period' })}: {row.hiredOn}–
+                  {row.terminatedOn ?? t({ ja: '継続', en: 'Ongoing' })}
+                </p>
+                {actions.includes('workforce.save_shift_profile') ? (
+                  <ShiftProfileButton employeeId={row.id} siteId={row.siteId} name={row.name} />
+                ) : null}
+                {entities.some((e) => e.name === 'workforce_employee' && e.ops.includes('update')) ? (
+                  <Link className="btn" to="/e/$entity/$id" params={{ entity: 'workforce_employee', id: row.id }}>
+                    {t({ ja: '登録内容を確認', en: 'View employee record' })}
+                  </Link>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <WorkforceEmpty icon="people">
+            {t({ ja: '表示できる従業員はまだいません。', en: 'No employees are available.' })}
+          </WorkforceEmpty>
+        )}
+      </WorkforcePanel>
+      {form ? (
+        <WorkforceDialog
+          title={t(
+            form === 'employee'
+              ? { ja: '従業員を登録', en: 'Register employee' }
+              : { ja: '有給を付与', en: 'Grant paid leave' },
+          )}
+          submitLabel={t(
+            form === 'employee' ? { ja: '登録する', en: 'Register' } : { ja: '付与を記録', en: 'Record grant' },
+          )}
+          onClose={() => setForm(undefined)}
+          onSubmit={async (input) => {
+            await task.mutateAsync({
+              action: form === 'employee' ? 'workforce.register_employee' : 'workforce.grant_leave',
+              input:
+                form === 'employee'
+                  ? {
+                      userId: formText(input, 'userId'),
+                      siteId: formText(input, 'siteId'),
+                      code: formText(input, 'code'),
+                      name: formText(input, 'name'),
+                      hiredOn: formText(input, 'hiredOn'),
+                    }
+                  : {
+                      employeeId: formText(input, 'employeeId'),
+                      validFrom: formText(input, 'validFrom'),
+                      expiresOn: formText(input, 'expiresOn'),
+                      days: formText(input, 'days'),
+                      eligibilityConfirmed: input.get('eligibilityConfirmed') === 'on',
+                      basis: formText(input, 'basis'),
+                    },
+            });
+          }}
+        >
+          {form === 'employee' ? (
+            <>
+              <label>
+                {t({ ja: '利用者アカウント', en: 'User account' })}
+                <select
+                  className="input"
+                  name="userId"
+                  aria-label={t({ ja: '利用者アカウント', en: 'User account' })}
+                  required
+                  defaultValue=""
+                >
+                  <option value="">{t({ ja: '利用者を選択', en: 'Select user' })}</option>
+                  {candidates.map((u) => (
+                    <option value={u.id} key={u.id}>
+                      {u.name} · {u.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t({ ja: '所属拠点', en: 'Work site' })}
+                <select
+                  className="input"
+                  name="siteId"
+                  aria-label={t({ ja: '所属拠点', en: 'Work site' })}
+                  required
+                  defaultValue=""
+                >
+                  <option value="">{t({ ja: '拠点を選択', en: 'Select site' })}</option>
+                  {data.sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="workforce-form-row">
+                <label>
+                  {t({ ja: '従業員番号', en: 'Employee code' })}
+                  <input className="input" name="code" required maxLength={40} />
+                </label>
+                <label>
+                  {t({ ja: '氏名', en: 'Employee name' })}
+                  <input className="input" name="name" required maxLength={100} />
+                </label>
+              </div>
+              <label>
+                {t({ ja: '入社日', en: 'Hire date' })}
+                <input className="input" name="hiredOn" type="date" required />
+              </label>
+            </>
+          ) : (
+            <>
+              <EmployeeSelect data={data} />
+              <div className="workforce-form-row">
+                <label>
+                  {t({ ja: '付与日', en: 'Valid from' })}
+                  <input className="input" name="validFrom" type="date" required defaultValue={businessToday()} />
+                </label>
+                <label>
+                  {t({ ja: '有効期限', en: 'Expires on' })}
+                  <input className="input" name="expiresOn" type="date" required />
+                </label>
+              </div>
+              <label>
+                {t({ ja: '付与する日数', en: 'Days granted' })}
+                <input className="input" name="days" inputMode="decimal" pattern="[0-9]+(\.5)?" required />
+              </label>
+              <label>
+                {t({ ja: '付与日数・資格の根拠', en: 'Eligibility and grant basis' })}
+                <textarea className="input" name="basis" required maxLength={1000} rows={3} />
+              </label>
+              <label className="workforce-checkbox">
+                <input type="checkbox" name="eligibilityConfirmed" required />
+                {t({
+                  ja: '勤続期間・出勤率・勤務日数と会社の規程を確認しました',
+                  en: 'I verified service, attendance, work schedule and company rules',
+                })}
+              </label>
+            </>
+          )}
+        </WorkforceDialog>
+      ) : null}
+    </div>
+  );
 }
 
 function EmployeeSelect({ data }: { data: Pick<People, 'employees'> }) {
   const { t } = useLocale();
-  return <label>{t({ ja: '対象の従業員', en: 'Employee' })}<select className="input" name="employeeId" aria-label={t({ ja: '対象の従業員', en: 'Employee' })} required defaultValue=""><option value="">{t({ ja: '従業員を選択', en: 'Select employee' })}</option>{data.employees.filter((e) => e.active).map((e) => <option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>;
+  return (
+    <label>
+      {t({ ja: '対象の従業員', en: 'Employee' })}
+      <select
+        className="input"
+        name="employeeId"
+        aria-label={t({ ja: '対象の従業員', en: 'Employee' })}
+        required
+        defaultValue=""
+      >
+        <option value="">{t({ ja: '従業員を選択', en: 'Select employee' })}</option>
+        {data.employees
+          .filter((e) => e.active)
+          .map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.code} · {e.name}
+            </option>
+          ))}
+      </select>
+    </label>
+  );
 }
 
-export function WorkforceCalculate({ data, period }: { data: Pick<People, 'employees'> & Pick<ManagementPortal, 'payrolls'>; period: string }) {
-  const { t } = useLocale(), task = useWorkforceTask();
+export function WorkforceCalculate({
+  data,
+  period,
+}: {
+  data: Pick<People, 'employees'> & Pick<ManagementPortal, 'payrolls'>;
+  period: string;
+}) {
+  const { t } = useLocale(),
+    task = useWorkforceTask();
   const [open, setOpen] = useState(false);
-  return <><button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>{t({ ja: '給与を計算', en: 'Calculate payroll' })}</button>{open ? <WorkforceDialog title={t({ ja: '給与を計算', en: 'Calculate payroll' })} description={t({ ja: '終了した月の承認済み勤怠と賃金条件を使い下書きを作成します。日をまたぐ勤務は初版の自動計算対象外です。', en: 'Create a draft for a completed month from approved attendance and effective pay terms. Cross-calendar shifts are outside the initial automatic calculation scope.' })} submitLabel={t({ ja: '下書きを計算', en: 'Calculate draft' })} onClose={() => setOpen(false)} onSubmit={async (input) => { await task.mutateAsync({ action: 'workforce.calculate_payroll', input: { employeeId: formText(input, 'employeeId'), period: formText(input, 'period'), expectedVersion: data.payrolls.find((p) => p.employeeId === formText(input, 'employeeId') && p.period === formText(input, 'period') && p.status === 'draft')?.version ?? 0, attendanceCompleteConfirmed: input.get('attendanceCompleteConfirmed') === 'on' } }); }}><EmployeeSelect data={data} /><label>{t({ ja: '計算する月', en: 'Payroll month' })}<input className="input" type="month" name="period" defaultValue={period} required /></label><label className="workforce-checkbox"><input type="checkbox" name="attendanceCompleteConfirmed" required />{t({ ja: '対象月の勤怠・欠勤・有給の記録が揃い、必要な承認が完了していることを確認しました', en: 'I verified that attendance, absences and paid leave for this month are complete and approved' })}</label></WorkforceDialog> : null}</>;
+  return (
+    <>
+      <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
+        {t({ ja: '給与を計算', en: 'Calculate payroll' })}
+      </button>
+      {open ? (
+        <WorkforceDialog
+          title={t({ ja: '給与を計算', en: 'Calculate payroll' })}
+          description={t({
+            ja: '終了した月の承認済み勤怠と賃金条件を使い下書きを作成します。日をまたぐ勤務は初版の自動計算対象外です。',
+            en: 'Create a draft for a completed month from approved attendance and effective pay terms. Cross-calendar shifts are outside the initial automatic calculation scope.',
+          })}
+          submitLabel={t({ ja: '下書きを計算', en: 'Calculate draft' })}
+          onClose={() => setOpen(false)}
+          onSubmit={async (input) => {
+            await task.mutateAsync({
+              action: 'workforce.calculate_payroll',
+              input: {
+                employeeId: formText(input, 'employeeId'),
+                period: formText(input, 'period'),
+                expectedVersion:
+                  data.payrolls.find(
+                    (p) =>
+                      p.employeeId === formText(input, 'employeeId') &&
+                      p.period === formText(input, 'period') &&
+                      p.status === 'draft',
+                  )?.version ?? 0,
+                attendanceCompleteConfirmed: input.get('attendanceCompleteConfirmed') === 'on',
+              },
+            });
+          }}
+        >
+          <EmployeeSelect data={data} />
+          <label>
+            {t({ ja: '計算する月', en: 'Payroll month' })}
+            <input className="input" type="month" name="period" defaultValue={period} required />
+          </label>
+          <label className="workforce-checkbox">
+            <input type="checkbox" name="attendanceCompleteConfirmed" required />
+            {t({
+              ja: '対象月の勤怠・欠勤・有給の記録が揃い、必要な承認が完了していることを確認しました',
+              en: 'I verified that attendance, absences and paid leave for this month are complete and approved',
+            })}
+          </label>
+        </WorkforceDialog>
+      ) : null}
+    </>
+  );
 }

@@ -12,19 +12,30 @@ export const passthroughValidator: FastifySchemaCompiler<unknown> = () => (value
 const nameParams = z.object({ name: z.string().min(1).max(200) });
 
 function describe(action: ActionDef): string {
-  const flags = [`tx: ${action.tx}`, action.mutates ? 'mutates data' : 'read-only', action.generic ? 'generic entity action' : 'module action'];
+  const flags = [
+    `tx: ${action.tx}`,
+    action.mutates ? 'mutates data' : 'read-only',
+    action.generic ? 'generic entity action' : 'module action',
+  ];
   return `${action.description.ja}\n\n${action.description.en}\n\n(${flags.join(', ')})`;
 }
 
 export function registerActionRoutes(app: FastifyInstance, opts: { db: Database }): void {
-  app.post('/actions/:name/export', { schema: { tags: ['actions'], summary: 'Run a report with fresh export authorization' }, validatorCompiler: passthroughValidator }, async (req) => {
-    const { name } = parse(nameParams, req.params, 'params');
-    assertExposedAction(name);
-    return withRequestContext(opts.db, req, async (ctx) => {
-      if (registry.hasAction(name)) checkActionExport(ctx, registry.action(name));
-      return tableResult.parse(await runAction(ctx, name, req.body));
-    });
-  });
+  app.post(
+    '/actions/:name/export',
+    {
+      schema: { tags: ['actions'], summary: 'Run a report with fresh export authorization' },
+      validatorCompiler: passthroughValidator,
+    },
+    async (req) => {
+      const { name } = parse(nameParams, req.params, 'params');
+      assertExposedAction(name);
+      return withRequestContext(opts.db, req, async (ctx) => {
+        if (registry.hasAction(name)) checkActionExport(ctx, registry.action(name));
+        return tableResult.parse(await runAction(ctx, name, req.body));
+      });
+    },
+  );
   // internal actions (ADR-0014) get no route and no OpenAPI entry; the catch-all below answers 404 for them
   for (const action of registry.actions()) {
     app.post(

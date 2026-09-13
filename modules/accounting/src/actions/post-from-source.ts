@@ -1,12 +1,30 @@
 // accounting.post_from_source (spec AC-7): the internal posting entry point for sales/purchase/payment. Creates and
 // submits one journal_entry linked to the source document in the caller's transaction (all or nothing). A source may
 // have at most one live (unreversed) entry; re-posting after a reversal is allowed.
-import { Conflict, defineAction, DOCSTATUS, label, repo, StateError, withLock, type Context, type LocalDate } from '@daifuku/kernel';
+import {
+  Conflict,
+  defineAction,
+  DOCSTATUS,
+  label,
+  repo,
+  StateError,
+  withLock,
+  type Context,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { z } from 'zod';
 import { postingDimensions } from '../dimensions.ts';
 import { withPosting } from '../domain-write.ts';
 import { JournalEntry } from '../entities/journal-entry.ts';
-import { createAndSubmitEntry, lineInput, localDate, toEntryJson, entryWithLinesJson, type EntryWithLines, type LineInput } from './helpers.ts';
+import {
+  createAndSubmitEntry,
+  lineInput,
+  localDate,
+  toEntryJson,
+  entryWithLinesJson,
+  type EntryWithLines,
+  type LineInput,
+} from './helpers.ts';
 
 export interface PostFromSourceInput {
   sourceEntity: string;
@@ -27,13 +45,28 @@ export const postFromSourceInput = z.object({
 });
 
 /** Submitted entries of a source that have no submitted reversal. */
-export async function liveEntriesForSource(ctx: Context, sourceEntity: string, sourceId: string): Promise<{ id: string; number: string | null }[]> {
+export async function liveEntriesForSource(
+  ctx: Context,
+  sourceEntity: string,
+  sourceId: string,
+): Promise<{ id: string; number: string | null }[]> {
   const r = repo(ctx, JournalEntry);
   const posted = await r.list({ where: { sourceEntity, sourceId, docstatus: DOCSTATUS.submitted }, limit: 500 });
-  if (posted.total > posted.items.length) throw new StateError('Source history exceeds the supported range', 'Review and archive source posting history before continuing.');
+  if (posted.total > posted.items.length)
+    throw new StateError(
+      'Source history exceeds the supported range',
+      'Review and archive source posting history before continuing.',
+    );
   if (posted.items.length === 0) return [];
-  const reversals = await r.list({ where: { reversalOf: { $in: posted.items.map((e) => e.id) }, docstatus: DOCSTATUS.submitted }, limit: 500 });
-  if (reversals.total > reversals.items.length) throw new StateError('Source reversal history exceeds the supported range', 'Review source posting history before continuing.');
+  const reversals = await r.list({
+    where: { reversalOf: { $in: posted.items.map((e) => e.id) }, docstatus: DOCSTATUS.submitted },
+    limit: 500,
+  });
+  if (reversals.total > reversals.items.length)
+    throw new StateError(
+      'Source reversal history exceeds the supported range',
+      'Review source posting history before continuing.',
+    );
   const reversed = new Set(reversals.items.map((e) => e.reversalOf));
   return posted.items.filter((e) => !reversed.has(e.id)).map((e) => ({ id: e.id, number: e.number }));
 }
@@ -50,7 +83,19 @@ export async function postFromSource(ctx: Context, input: PostFromSourceInput): 
       { sourceEntity: input.sourceEntity, sourceId: input.sourceId, entryId: existing.id, number: existing.number },
     );
   }
-  return withPosting(ctx, (internal) => createAndSubmitEntry(internal, { date: input.date, description: input.description ?? null, sourceEntity: input.sourceEntity, sourceId: input.sourceId, ext: postingDimensions(input.sourceEntity, JournalEntry.name, input.ext) }, input.lines));
+  return withPosting(ctx, (internal) =>
+    createAndSubmitEntry(
+      internal,
+      {
+        date: input.date,
+        description: input.description ?? null,
+        sourceEntity: input.sourceEntity,
+        sourceId: input.sourceId,
+        ext: postingDimensions(input.sourceEntity, JournalEntry.name, input.ext),
+      },
+      input.lines,
+    ),
+  );
 }
 
 export const postFromSourceAction = defineAction({

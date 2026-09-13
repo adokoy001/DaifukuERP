@@ -16,7 +16,8 @@ docs/      adr/ conventions/ domain/ specs/ log/ metrics/  <- READ THESE, WRITE 
 
 ## Commands
 - `pnpm install` — workspace install
-- `pnpm gate` — the full deterministic gate: typecheck + lint + boundaries + unit + db tests. **Must pass before any PR/commit claiming "done".**
+- `pnpm format` / `pnpm format:check` — format source with pinned Prettier / verify formatting without changes.
+- `pnpm gate` — format check + typecheck + lint/boundaries + unit + DB + deployment tests + documentation links + assurance checks. **Must pass before any PR/commit claiming "done".**
 - `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm test:db` (needs Postgres: `DATABASE_URL` in `.env`, see `.env.example`)
 - `pnpm db:schema && pnpm db:generate && pnpm db:migrate` — regenerate drizzle schema from the entity registry, generate migration, apply
 - `pnpm dev:api`, `pnpm dev:web`
@@ -29,7 +30,7 @@ docs/      adr/ conventions/ domain/ specs/ log/ metrics/  <- READ THESE, WRITE 
 4. **Documents never get deleted or edited after submit.** Cancel + amend creates a new version. Ledger lines are append-only.
 5. **Modules/l10n/packs never import drizzle/postgres/fastify/node:fs** — only kernel ports (`repo`, `ctx.emit`, `registry.override`, `ctx.now`, `newId`). Missing port → add to kernel + ADR (ADR-0013).
 6. **Cross-package imports by package name only** (`@daifuku/kernel`, `@daifuku/mod-partner`). Never `../../other-package/src/...`.
-7. **Files ≤ 400 lines, functions ≤ 80 lines.** Split by responsibility, not by line count.
+7. **Format first; split only when readability or responsibilities improve.** Use the pinned Prettier configuration (120-column target, LF). Files over 1,000 nonblank/noncomment lines and functions over 300 produce review warnings, not failures. Do not split solely to satisfy a line count, compress statements, or add formatter/lint ignores to hide warnings. See [formatting and gate](docs/conventions/lint.md).
 8. **Tests are not deleted, skipped or weakened to make gates pass.** If a test is wrong, fix it and say so in the work log.
 9. **One feature = one spec (`docs/specs/`) = one branch = one PR = one work-log entry (`docs/log/`).** Spec first (EARS acceptance criteria, out-of-scope, verification steps). Log after (what was decided, what was verified and *how*: review vs. measurement).
 10. **Japanese business rules cite their source** in `docs/domain/` (URL + date). Tax rates and legal parameters are data with validity periods, never constants in code.

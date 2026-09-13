@@ -22,7 +22,7 @@ export async function writeAudit(
   action?: string,
 ): Promise<void> {
   const def = registry.hasEntity(entity) ? registry.entity(entity) : undefined;
-  const publicSnapshot = (row: Record<string, unknown> | null) => row && def ? publicOutput(def, row) : row;
+  const publicSnapshot = (row: Record<string, unknown> | null) => (row && def ? publicOutput(def, row) : row);
   await ctx.db.insert(auditLog).values({
     id: newId(),
     tenantId: ctx.tenantId,
@@ -58,9 +58,17 @@ export async function auditTrail(ctx: Context, entity: string, recordId: string,
   const def = registry.hasEntity(entity) ? registry.entity(entity) : undefined;
   if (def) {
     assertOp(ctx, def, 'read');
-    const visible = await ctx.db.select({ id: def.col('id') }).from(def.table).where(and(scopeCondition(ctx, def), rowFilter(ctx, def, 'read'), eq(def.col('id'), recordId))).limit(1);
-    if (!visible.length && (!isAdmin(ctx) || (ctx.accessScope && ctx.accessScope !== 'all'))) throw new PermissionDenied(entity, 'audit', ctx.roles);
-  } else if ((ctx.accessScope && ctx.accessScope !== 'all') || (!isAdmin(ctx) && !(entity === 'company_settings' && recordId === ctx.companyId && ctx.roles.includes('settings')))) {
+    const visible = await ctx.db
+      .select({ id: def.col('id') })
+      .from(def.table)
+      .where(and(scopeCondition(ctx, def), rowFilter(ctx, def, 'read'), eq(def.col('id'), recordId)))
+      .limit(1);
+    if (!visible.length && (!isAdmin(ctx) || (ctx.accessScope && ctx.accessScope !== 'all')))
+      throw new PermissionDenied(entity, 'audit', ctx.roles);
+  } else if (
+    (ctx.accessScope && ctx.accessScope !== 'all') ||
+    (!isAdmin(ctx) && !(entity === 'company_settings' && recordId === ctx.companyId && ctx.roles.includes('settings')))
+  ) {
     throw new PermissionDenied(entity, 'audit', ctx.roles);
   }
   const mask = def ? maskedFields(ctx, def) : new Set<string>();
@@ -72,7 +80,18 @@ export async function auditTrail(ctx: Context, entity: string, recordId: string,
   const rows = await ctx.db
     .select()
     .from(auditLog)
-    .where(and(eq(auditLog.tenantId, ctx.tenantId), def?.scope === 'tenant' ? undefined : ctx.companyId ? eq(auditLog.companyId, ctx.companyId) : isNull(auditLog.companyId), eq(auditLog.entity, entity), eq(auditLog.recordId, recordId)))
+    .where(
+      and(
+        eq(auditLog.tenantId, ctx.tenantId),
+        def?.scope === 'tenant'
+          ? undefined
+          : ctx.companyId
+            ? eq(auditLog.companyId, ctx.companyId)
+            : isNull(auditLog.companyId),
+        eq(auditLog.entity, entity),
+        eq(auditLog.recordId, recordId),
+      ),
+    )
     .orderBy(desc(auditLog.at))
     .limit(Math.max(1, Math.min(limit, 500)));
   return rows.map((r) => ({

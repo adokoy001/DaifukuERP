@@ -6,7 +6,9 @@ import { ROUNDING_UNITS } from '../services/settings.ts';
 import { taxSummaryFor, type DocumentTaxSummary } from '../summary.ts';
 import { localDate, taxCategorySchema } from './resolve.ts';
 
-const decimalString = z.string().refine((s) => Decimal.isDecimalString(s), 'must be a decimal string like "1234" or "12.50"');
+const decimalString = z
+  .string()
+  .refine((s) => Decimal.isDecimalString(s), 'must be a decimal string like "1234" or "12.50"');
 
 const groupSchema = z.object({
   category: taxCategorySchema,
@@ -33,7 +35,16 @@ export function summaryToJson(s: DocumentTaxSummary): z.input<typeof summarizeOu
     date: s.date,
     priceIncludesTax: s.priceIncludesTax,
     rounding: s.rounding,
-    groups: s.groups.map((g) => ({ category: g.category, code: g.code, label: g.label, rate: g.rate.toString(), taxable: g.taxable.toString(), tax: g.tax.toString(), gross: g.gross.toString(), lineCount: g.lineCount })),
+    groups: s.groups.map((g) => ({
+      category: g.category,
+      code: g.code,
+      label: g.label,
+      rate: g.rate.toString(),
+      taxable: g.taxable.toString(),
+      tax: g.tax.toString(),
+      gross: g.gross.toString(),
+      lineCount: g.lineCount,
+    })),
     totals: { taxable: s.totals.taxable.toString(), tax: s.totals.tax.toString(), gross: s.totals.gross.toString() },
   };
 }

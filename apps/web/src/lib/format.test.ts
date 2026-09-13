@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldMeta } from '../api/types.ts';
-import { changedFields, changeValueText, decimalMinScale, docstatusLabel, fieldChanges, formatDecimal, formatDecimalInput, formatValue, groupDigits, shortId } from './format.ts';
+import {
+  changedFields,
+  changeValueText,
+  decimalMinScale,
+  docstatusLabel,
+  fieldChanges,
+  formatDecimal,
+  formatDecimalInput,
+  formatValue,
+  groupDigits,
+  shortId,
+} from './format.ts';
 
 function field(over: Partial<FieldMeta> & { name: string; kind: string }): FieldMeta {
-  return { label: { ja: over.name, en: over.name }, required: false, hasDefault: false, hidden: false, immutable: false, ...over };
+  return {
+    label: { ja: over.name, en: over.name },
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    ...over,
+  };
 }
 
 describe('groupDigits / formatDecimal (ADR-0010: strings only)', () => {
@@ -63,12 +81,28 @@ describe('decimalMinScale / formatDecimalInput (web-phase15 AC-4/AC-8)', () => {
 
 describe('formatValue (AC-3 cell rendering)', () => {
   it('numbers are right-aligned monospace, bools are marks, enums use valueLabels', () => {
-    expect(formatValue(field({ name: 'qty', kind: 'int' }), 1200, 'ja')).toEqual({ text: '1,200', align: 'right', mono: true });
-    expect(formatValue(field({ name: 'amt', kind: 'decimal', scale: 6 }), '5.500000', 'ja')).toEqual({ text: '5.5', align: 'right', mono: true });
+    expect(formatValue(field({ name: 'qty', kind: 'int' }), 1200, 'ja')).toEqual({
+      text: '1,200',
+      align: 'right',
+      mono: true,
+    });
+    expect(formatValue(field({ name: 'amt', kind: 'decimal', scale: 6 }), '5.500000', 'ja')).toEqual({
+      text: '5.5',
+      align: 'right',
+      mono: true,
+    });
     // web-phase15 AC-4: the currency's digits apply to money only (FieldMeta.money); a quantity stays '5.5' in USD too
-    expect(formatValue(field({ name: 'amt', kind: 'decimal', money: true }), '5.500000', 'ja', { currencyScale: 2 }).text).toBe('5.50');
-    expect(formatValue(field({ name: 'amt', kind: 'decimal', money: true, scale: 0 }), '5.500000', 'ja', { currencyScale: 2 }).text).toBe('5.5');
-    expect(formatValue(field({ name: 'qty', kind: 'decimal', scale: 6 }), '5.500000', 'ja', { currencyScale: 2 }).text).toBe('5.5');
+    expect(
+      formatValue(field({ name: 'amt', kind: 'decimal', money: true }), '5.500000', 'ja', { currencyScale: 2 }).text,
+    ).toBe('5.50');
+    expect(
+      formatValue(field({ name: 'amt', kind: 'decimal', money: true, scale: 0 }), '5.500000', 'ja', {
+        currencyScale: 2,
+      }).text,
+    ).toBe('5.5');
+    expect(
+      formatValue(field({ name: 'qty', kind: 'decimal', scale: 6 }), '5.500000', 'ja', { currencyScale: 2 }).text,
+    ).toBe('5.5');
     expect(formatValue(field({ name: 'amt', kind: 'decimal' }), '1234567.000000', 'ja').text).toBe('1,234,567');
     expect(formatValue(field({ name: 'ok', kind: 'bool' }), true, 'ja').text).toBe('✓');
     expect(formatValue(field({ name: 'ok', kind: 'bool' }), false, 'ja').text).toBe('—');
@@ -87,12 +121,25 @@ describe('formatValue (AC-3 cell rendering)', () => {
 
 describe('fieldChanges / changeValueText (AC-6 audit values)', () => {
   it('pairs each changed field with its before/after; create has no before', () => {
-    expect(fieldChanges({ before: { total: '100.000000', note: null, version: 1 }, after: { total: '250.000000', note: null, version: 2 } })).toEqual([{ name: 'total', before: '100.000000', after: '250.000000' }]);
-    expect(fieldChanges({ before: null, after: { id: '1', name: 'A', version: 1 } })).toEqual([{ name: 'name', before: undefined, after: 'A' }]);
+    expect(
+      fieldChanges({
+        before: { total: '100.000000', note: null, version: 1 },
+        after: { total: '250.000000', note: null, version: 2 },
+      }),
+    ).toEqual([{ name: 'total', before: '100.000000', after: '250.000000' }]);
+    expect(fieldChanges({ before: null, after: { id: '1', name: 'A', version: 1 } })).toEqual([
+      { name: 'name', before: undefined, after: 'A' },
+    ]);
   });
   it('formats values like cells (decimal rule), shows — for empty and cuts long text', () => {
-    expect(changeValueText(field({ name: 'total', kind: 'decimal', scale: 6 }), '1234500.000000', 'ja')).toBe('1,234,500');
-    expect(changeValueText(field({ name: 'total', kind: 'decimal', money: true, scale: 6 }), '1.500000', 'en', { currencyScale: 2 })).toBe('1.50');
+    expect(changeValueText(field({ name: 'total', kind: 'decimal', scale: 6 }), '1234500.000000', 'ja')).toBe(
+      '1,234,500',
+    );
+    expect(
+      changeValueText(field({ name: 'total', kind: 'decimal', money: true, scale: 6 }), '1.500000', 'en', {
+        currencyScale: 2,
+      }),
+    ).toBe('1.50');
     expect(changeValueText(field({ name: 'note', kind: 'text' }), null, 'ja')).toBe('—');
     expect(changeValueText(undefined, undefined, 'ja')).toBe('—');
     expect(changeValueText(field({ name: 'note', kind: 'text' }), 'x'.repeat(60), 'ja')).toBe(`${'x'.repeat(40)}…`);
@@ -110,10 +157,17 @@ describe('docstatusLabel (AC-5)', () => {
 
 describe('changedFields (AC-6)', () => {
   it('create lists written non-null fields, ignoring system noise', () => {
-    expect(changedFields({ before: null, after: { id: '1', name: 'A', code: null, version: 1, createdAt: 'x' } })).toEqual(['name']);
+    expect(
+      changedFields({ before: null, after: { id: '1', name: 'A', code: null, version: 1, createdAt: 'x' } }),
+    ).toEqual(['name']);
   });
   it('update diffs before/after', () => {
-    expect(changedFields({ before: { name: 'A', notes: null, version: 1, updatedAt: 'a' }, after: { name: 'B', notes: null, version: 2, updatedAt: 'b' } })).toEqual(['name']);
+    expect(
+      changedFields({
+        before: { name: 'A', notes: null, version: 1, updatedAt: 'a' },
+        after: { name: 'B', notes: null, version: 2, updatedAt: 'b' },
+      }),
+    ).toEqual(['name']);
   });
   it('delete and empty entries yield no fields', () => {
     expect(changedFields({ before: { name: 'A' }, after: null })).toEqual([]);

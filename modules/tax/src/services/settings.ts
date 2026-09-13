@@ -27,14 +27,20 @@ export const taxSettingsSchema = z.object({
   priceIncludesTax: taxPriceIncludesTaxSchema,
 });
 export type TaxSettings = z.output<typeof taxSettingsSchema>;
-export const TAX_SETTINGS_DEFAULT: TaxSettings = { rounding: TAX_ROUNDING_DEFAULT, priceIncludesTax: TAX_PRICE_INCLUDES_TAX_DEFAULT };
+export const TAX_SETTINGS_DEFAULT: TaxSettings = {
+  rounding: TAX_ROUNDING_DEFAULT,
+  priceIncludesTax: TAX_PRICE_INCLUDES_TAX_DEFAULT,
+};
 
 /** Declarations for registry.registerSetting (generic settings UI / meta). */
 export const TAX_SETTING_DEFS: readonly SettingDef[] = [
   {
     key: TAX_ROUNDING_KEY,
     label: label('消費税の端数処理', 'Tax rounding'),
-    description: label('税率ごとに1回丸める。mode: 四捨五入/切捨て/切上げ、unit: 請求書単位（納品書単位は未対応）', 'Rounded once per rate. mode: half_up/down/up; unit: invoice (delivery-note rounding is not supported)'),
+    description: label(
+      '税率ごとに1回丸める。mode: 四捨五入/切捨て/切上げ、unit: 請求書単位（納品書単位は未対応）',
+      'Rounded once per rate. mode: half_up/down/up; unit: invoice (delivery-note rounding is not supported)',
+    ),
     schema: taxRoundingSchema,
   },
   {

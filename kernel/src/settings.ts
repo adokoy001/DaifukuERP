@@ -36,7 +36,14 @@ export async function findCompany(ctx: Context): Promise<CompanyInfo | null> {
     .limit(1);
   const c = rows[0];
   if (!c) return null;
-  return { id: c.id, code: c.code, name: c.name, country: c.country, currency: c.currency, settings: (c.settings ?? {}) as Record<string, unknown> };
+  return {
+    id: c.id,
+    code: c.code,
+    name: c.name,
+    country: c.country,
+    currency: c.currency,
+    settings: (c.settings ?? {}) as Record<string, unknown>,
+  };
 }
 
 export async function getCompany(ctx: Context): Promise<CompanyInfo> {
@@ -61,10 +68,14 @@ export async function getSetting<T>(ctx: Context, key: string, schema: z.ZodType
 /** Writes one setting (admin or role `settings`). Validated by the schema; audited as entity `company_settings`. */
 export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType<T>, value: unknown): Promise<T> {
   if (ctx.accessScope && ctx.accessScope !== 'all') throw new PermissionDenied('company_settings', 'update', ctx.roles);
-  if (!isAdmin(ctx) && !ctx.roles.includes('settings')) throw new PermissionDenied('company_settings', 'update', ctx.roles);
+  if (!isAdmin(ctx) && !ctx.roles.includes('settings'))
+    throw new PermissionDenied('company_settings', 'update', ctx.roles);
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ValidationError(`invalid value for setting ${key}`, parsed.error.issues.map((i) => ({ path: [key, ...i.path.map(String)].join('.'), message: i.message })));
+    throw new ValidationError(
+      `invalid value for setting ${key}`,
+      parsed.error.issues.map((i) => ({ path: [key, ...i.path.map(String)].join('.'), message: i.message })),
+    );
   }
   const company = await getCompany(ctx);
   const before = company.settings[key];

@@ -2,7 +2,19 @@
 // due before asOf); only those generated from a contract count — the contract module links them through its
 // contract_billing ledger (contractId, period, invoiceId), not through a field on the invoice. Tenant, property and unit
 // come from the contract (partnerId, ext.unitId). One row per overdue invoice; days overdue from its due date.
-import { defineAction, DOCSTATUS, label, MAX_REPORT_ROWS, column, repo, tableResult, todayLocal, type Context, type LocalDate, type TableResult } from '@daifuku/kernel';
+import {
+  defineAction,
+  DOCSTATUS,
+  label,
+  MAX_REPORT_ROWS,
+  column,
+  repo,
+  tableResult,
+  todayLocal,
+  type Context,
+  type LocalDate,
+  type TableResult,
+} from '@daifuku/kernel';
 import { Contract, ContractBilling } from '@daifuku/mod-contract';
 import { Partner } from '@daifuku/mod-partner';
 import { SalesInvoice, invoiceBalancesAsOf } from '@daifuku/mod-sales';
@@ -29,8 +41,14 @@ export const ARREARS_COLUMNS = [
 
 async function arrearsInputs(ctx: Context, asOf: LocalDate): Promise<ArrearsInput[]> {
   const ir = repo(ctx, SalesInvoice);
-  const where = { date: { $lte: asOf }, dueDate: { $lt: asOf }, $or: [{ docstatus: DOCSTATUS.submitted }, { docstatus: DOCSTATUS.cancelled, cancelledDate: { $gt: asOf } }] };
-  const invoices = await allPages((offset) => ir.list({ where, orderBy: [{ field: 'dueDate', dir: 'asc' }], limit: 500, offset }));
+  const where = {
+    date: { $lte: asOf },
+    dueDate: { $lt: asOf },
+    $or: [{ docstatus: DOCSTATUS.submitted }, { docstatus: DOCSTATUS.cancelled, cancelledDate: { $gt: asOf } }],
+  };
+  const invoices = await allPages((offset) =>
+    ir.list({ where, orderBy: [{ field: 'dueDate', dir: 'asc' }], limit: 500, offset }),
+  );
   const balances = await invoiceBalancesAsOf(ctx, invoices, asOf);
   const br = repo(ctx, ContractBilling);
   const billings = await inChunks(
@@ -42,7 +60,10 @@ async function arrearsInputs(ctx: Context, asOf: LocalDate): Promise<ArrearsInpu
     billings.map((b) => b.contractId),
     (chunk) => cr.list({ where: { id: { $in: chunk } }, limit: chunk.length }),
   );
-  const units = await unitsById(ctx, [...contracts.values()].map(unitIdOf).filter((id): id is string => id !== null));
+  const units = await unitsById(
+    ctx,
+    [...contracts.values()].map(unitIdOf).filter((id): id is string => id !== null),
+  );
   const properties = await propertiesById(
     ctx,
     [...units.values()].map((u) => u.propertyId),
@@ -97,7 +118,15 @@ export const arrearsAction = defineAction({
   ),
   input: z.object({ asOf: localDate.optional() }),
   output: tableResult,
-  exportEntities: ['sales_invoice', 'sales_settlement', 'contract_billing', 'contract', 'real_estate_unit', 'real_estate_property', 'partner'],
+  exportEntities: [
+    'sales_invoice',
+    'sales_settlement',
+    'contract_billing',
+    'contract',
+    'real_estate_unit',
+    'real_estate_property',
+    'partner',
+  ],
   permission: { entity: SalesInvoice.name, op: 'read' },
   tx: 'none',
   mutates: false,

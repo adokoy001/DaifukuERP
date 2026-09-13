@@ -3,7 +3,18 @@ import type { EntityMeta } from '../api/types.ts';
 import { countQuery, DOCSTATUSES, groupByModule } from './dashboard.ts';
 
 function entity(name: string, kind: 'entity' | 'document', module: string | undefined): EntityMeta {
-  return { name, kind, label: { ja: name, en: name }, module, scope: 'company', displayField: undefined, hasExt: false, fields: [], views: { list: [], form: 'auto', search: [] }, ops: ['read'] };
+  return {
+    name,
+    kind,
+    label: { ja: name, en: name },
+    module,
+    scope: 'company',
+    displayField: undefined,
+    hasExt: false,
+    fields: [],
+    views: { list: [], form: 'auto', search: [] },
+    ops: ['read'],
+  };
 }
 
 const OTHER = { ja: 'その他', en: 'Other' };
@@ -27,7 +38,13 @@ describe('groupByModule', () => {
         { name: 'empty', label: { ja: '空', en: 'Empty' }, menus: [] },
         { name: 'partner', label: { ja: '取引先', en: 'Partners' }, menus: [] },
       ],
-      entities: [entity('partner', 'entity', 'partner'), entity('sales_invoice', 'document', 'sales'), entity('sales_invoice_line', 'entity', 'sales'), entity('attachment', 'entity', undefined), entity('stray_doc', 'document', 'nope')],
+      entities: [
+        entity('partner', 'entity', 'partner'),
+        entity('sales_invoice', 'document', 'sales'),
+        entity('sales_invoice_line', 'entity', 'sales'),
+        entity('attachment', 'entity', undefined),
+        entity('stray_doc', 'document', 'nope'),
+      ],
     };
     const groups = groupByModule(meta, OTHER);
     expect(groups.map((g) => g.name)).toEqual(['sales', 'partner', '']);

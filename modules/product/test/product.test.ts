@@ -2,7 +2,16 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { Decimal, isDecimal, registry } from '@daifuku/kernel';
-import { DEFAULT_UOM_CODE, Product, ProductModule, SAMPLE_PRODUCTS, STANDARD_UOMS, TAX_CATEGORIES, Uom, resolvePriceInput } from '../src/index.ts';
+import {
+  DEFAULT_UOM_CODE,
+  Product,
+  ProductModule,
+  SAMPLE_PRODUCTS,
+  STANDARD_UOMS,
+  TAX_CATEGORIES,
+  Uom,
+  resolvePriceInput,
+} from '../src/index.ts';
 
 describe('product module registration', () => {
   it('registers uom, product and product.resolve_price under module "product"', () => {
@@ -34,7 +43,8 @@ describe('product insert schema', () => {
   const uomId = '0192a8b0-0000-7000-8000-000000000001';
 
   it('AC-5 accepts exactly the five tax categories', () => {
-    for (const taxCategory of TAX_CATEGORIES) expect(Product.schemas.insert.safeParse({ name: 'x', uomId, taxCategory }).success).toBe(true);
+    for (const taxCategory of TAX_CATEGORIES)
+      expect(Product.schemas.insert.safeParse({ name: 'x', uomId, taxCategory }).success).toBe(true);
     expect(TAX_CATEGORIES).toEqual(['standard', 'reduced', 'exempt', 'non_taxable', 'out_of_scope']);
     const bad = Product.schemas.insert.safeParse({ name: 'x', uomId, taxCategory: 'taxable' });
     expect(bad.success).toBe(false);
@@ -77,9 +87,13 @@ describe('product insert schema', () => {
 
 describe('resolve_price input and seed data', () => {
   it('AC-8 input requires a uuid productId and side sale|purchase', () => {
-    expect(resolvePriceInput.safeParse({ productId: '0192a8b0-0000-7000-8000-000000000001', side: 'sale' }).success).toBe(true);
+    expect(
+      resolvePriceInput.safeParse({ productId: '0192a8b0-0000-7000-8000-000000000001', side: 'sale' }).success,
+    ).toBe(true);
     expect(resolvePriceInput.safeParse({ productId: 'nope', side: 'sale' }).success).toBe(false);
-    expect(resolvePriceInput.safeParse({ productId: '0192a8b0-0000-7000-8000-000000000001', side: 'buy' }).success).toBe(false);
+    expect(
+      resolvePriceInput.safeParse({ productId: '0192a8b0-0000-7000-8000-000000000001', side: 'buy' }).success,
+    ).toBe(false);
   });
 
   it('AC-1 standard units are 個, 式, 時間, kg, 箱 with unique codes; the default unit is 個', () => {

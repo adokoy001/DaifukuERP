@@ -24,7 +24,9 @@ export const DUE_SKIP_REASONS = ['not_active', 'already_generated', 'not_started
 export type DueSkipReason = (typeof DUE_SKIP_REASONS)[number];
 
 function invalid(path: string, value: unknown, expected: string): ValidationError {
-  return new ValidationError(`invalid ${path} "${String(value)}" (expected ${expected})`, [{ path, message: `expected ${expected}` }]);
+  return new ValidationError(`invalid ${path} "${String(value)}" (expected ${expected})`, [
+    { path, message: `expected ${expected}` },
+  ]);
 }
 
 function isLeapYear(y: number): boolean {
@@ -91,7 +93,8 @@ export function periodEnd(period: Period): LocalDate {
 }
 
 function assertInterval(intervalMonths: number): void {
-  if (!Number.isInteger(intervalMonths) || intervalMonths < 1) throw invalid('intervalMonths', intervalMonths, 'an integer >= 1');
+  if (!Number.isInteger(intervalMonths) || intervalMonths < 1)
+    throw invalid('intervalMonths', intervalMonths, 'an integer >= 1');
 }
 
 /** The months a billing period covers: `period` and the following `intervalMonths - 1` months. */
@@ -105,7 +108,8 @@ export function coveredPeriods(period: Period, intervalMonths: number): Period[]
  * clamped to that month's length (31 = 月末; 31 in February 2026 is 2026-02-28).
  */
 export function billingDate(period: Period, billingDay: number, timing: BillingTiming): LocalDate {
-  if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > END_OF_MONTH) throw invalid('billingDay', billingDay, 'an integer 1..31');
+  if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > END_OF_MONTH)
+    throw invalid('billingDay', billingDay, 'an integer 1..31');
   const target = timing === 'arrears' ? addMonths(period, 1) : period;
   const day = Math.min(billingDay, daysInPeriod(target));
   return `${target}-${String(day).padStart(2, '0')}`;

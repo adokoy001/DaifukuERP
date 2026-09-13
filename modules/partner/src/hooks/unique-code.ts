@@ -9,7 +9,11 @@ export function registerUniqueCodeHook(): void {
     if (typeof code !== 'string' || code.length === 0) return;
     const n = await repo(ctx, Partner).count({ code });
     if (n > 0) {
-      throw new Conflict(`partner code "${code}" already exists in this company`, 'Use a different code, or update the existing partner instead.', { field: 'code', code });
+      throw new Conflict(
+        `partner code "${code}" already exists in this company`,
+        'Use a different code, or update the existing partner instead.',
+        { field: 'code', code },
+      );
     }
   });
 }

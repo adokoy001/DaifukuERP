@@ -25,7 +25,13 @@ function mapMultipartError(err: unknown): unknown {
   const code = (err as { code?: unknown }).code;
   const mapped = typeof code === 'string' ? LIMIT_ERRORS[code] : undefined;
   if (!mapped) return err;
-  return new DaifukuError('VALIDATION', mapped.message, MULTIPART_HINT, { maxBytes: MAX_UPLOAD_BYTES, multipartCode: code }, mapped.status);
+  return new DaifukuError(
+    'VALIDATION',
+    mapped.message,
+    MULTIPART_HINT,
+    { maxBytes: MAX_UPLOAD_BYTES, multipartCode: code },
+    mapped.status,
+  );
 }
 
 interface ParsedUpload {
@@ -38,7 +44,11 @@ interface ParsedUpload {
 /** Consumes every part (busboy is serial, so fields after the file are only visible once the file is read). */
 async function readUpload(req: FastifyRequest): Promise<ParsedUpload> {
   if (!req.isMultipart()) {
-    throw new ValidationError('expected a multipart/form-data body', [{ path: 'body', message: 'not multipart' }], MULTIPART_HINT);
+    throw new ValidationError(
+      'expected a multipart/form-data body',
+      [{ path: 'body', message: 'not multipart' }],
+      MULTIPART_HINT,
+    );
   }
   const fields: Record<string, string | undefined> = {};
   let file: Omit<ParsedUpload, 'fields'> | null = null;
@@ -46,8 +56,17 @@ async function readUpload(req: FastifyRequest): Promise<ParsedUpload> {
     for await (const part of req.parts()) {
       if (part.type === 'file') {
         const buf = await part.toBuffer();
-        if (file) throw new ValidationError('only one file part is accepted', [{ path: part.fieldname, message: 'second file' }], MULTIPART_HINT);
-        file = { data: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), filename: part.filename, contentType: part.mimetype };
+        if (file)
+          throw new ValidationError(
+            'only one file part is accepted',
+            [{ path: part.fieldname, message: 'second file' }],
+            MULTIPART_HINT,
+          );
+        file = {
+          data: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+          filename: part.filename,
+          contentType: part.mimetype,
+        };
       } else if (typeof part.value === 'string') {
         fields[part.fieldname] = part.value;
       }
@@ -62,7 +81,10 @@ async function readUpload(req: FastifyRequest): Promise<ParsedUpload> {
 /** RFC 6266 / RFC 5987: ASCII fallback plus the UTF-8 encoded original (Japanese filenames survive). */
 export function contentDisposition(filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
-  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  const encoded = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
@@ -75,30 +97,54 @@ export function registerAttachmentRoutes(app: FastifyInstance, opts: { db: Datab
     {
       schema: {
         tags: ['attachment'],
-        summary: 'Upload evidence (multipart: file + kind/txnDate/amount/partnerId/linkedEntity/linkedId/note); returns the attachment',
+        summary:
+          'Upload evidence (multipart: file + kind/txnDate/amount/partnerId/linkedEntity/linkedId/note); returns the attachment',
         description: `${MULTIPART_HINT} Max 20 MB; pdf, png, jpeg, csv, xml, txt. Duplicate content (same sha256 in the company) answers 409 with details.existingId.`,
         consumes: ['multipart/form-data'],
       },
     },
     async (req) => {
       const upload = await readUpload(req);
-      return withRequestContext(opts.db, req, async (ctx) => JSON.parse(JSON.stringify(await uploadAttachment(ctx, upload))) as unknown);
+      return withRequestContext(
+        opts.db,
+        req,
+        async (ctx) => JSON.parse(JSON.stringify(await uploadAttachment(ctx, upload))) as unknown,
+      );
     },
   );
 
   app.get(
     '/api/attachments/:id/download',
-    { schema: { tags: ['attachment'], summary: 'Download the stored file (same permission check as attachment.get)', params: idParams, produces: ['application/octet-stream'] } },
+    {
+      schema: {
+        tags: ['attachment'],
+        summary: 'Download the stored file (same permission check as attachment.get)',
+        params: idParams,
+        produces: ['application/octet-stream'],
+      },
+    },
     async (req, reply: FastifyReply) => {
       const { id } = parse(idParams, req.params, 'params');
       const { row, bytes } = await withRequestContext(opts.db, req, async (ctx) => {
         const found = await repo(ctx, Attachment).get(id); // permission + visibility: NotFound when the caller may not see it
         if (!found.storageKey.startsWith(`${ctx.tenantId}/`)) {
-          throw new DaifukuError('PERMISSION_DENIED', 'Attachment storage scope is invalid.', 'Ask an administrator to verify this evidence record.', undefined, 403);
+          throw new DaifukuError(
+            'PERMISSION_DENIED',
+            'Attachment storage scope is invalid.',
+            'Ask an administrator to verify this evidence record.',
+            undefined,
+            403,
+          );
         }
         const bytes = await ctx.storage.get(found.storageKey);
         if (bytes.byteLength !== found.size || createHash('sha256').update(bytes).digest('hex') !== found.sha256) {
-          throw new DaifukuError('INVALID_STATE', 'Attachment content does not match its recorded digest.', 'Restore the original evidence from a verified backup.', undefined, 409);
+          throw new DaifukuError(
+            'INVALID_STATE',
+            'Attachment content does not match its recorded digest.',
+            'Restore the original evidence from a verified backup.',
+            undefined,
+            409,
+          );
         }
         return { row: found, bytes };
       });

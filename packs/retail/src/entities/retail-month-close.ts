@@ -10,11 +10,43 @@ export const RetailMonthClose = defineEntity({
   name: 'retail_month_close',
   label: label('月次締め', 'Month close'),
   fields: {
-    period: f.text({ serverOwned: true, label: label('対象月', 'Period'), description: label('YYYY-MM', 'YYYY-MM'), required: true, unique: true, immutable: true, maxLength: 7, pattern: PERIOD_RE }),
-    asOf: f.date({ serverOwned: true, label: label('評価日', 'Valuation date'), description: label('月末日', 'last day of the month'), required: true }),
-    valuationTotal: f.money({ serverOwned: true, label: label('期末商品棚卸高', 'Closing inventory'), description: label('inventory.valuation の合計（移動平均）', 'inventory.valuation total (moving average)'), required: true }),
-    openingAmount: f.money({ serverOwned: true, label: label('期首商品棚卸高', 'Opening inventory'), description: label('前回の締めの期末商品棚卸高（無ければ 0）', 'closing amount of the previous close (0 when none)'), required: true, default: '0' }),
-    journalEntryId: f.ref(JournalEntry.name, { serverOwned: true, label: label('仕訳', 'Journal entry'), description: label('金額が 0 のときは作らない', 'none when both amounts are 0') }),
+    period: f.text({
+      serverOwned: true,
+      label: label('対象月', 'Period'),
+      description: label('YYYY-MM', 'YYYY-MM'),
+      required: true,
+      unique: true,
+      immutable: true,
+      maxLength: 7,
+      pattern: PERIOD_RE,
+    }),
+    asOf: f.date({
+      serverOwned: true,
+      label: label('評価日', 'Valuation date'),
+      description: label('月末日', 'last day of the month'),
+      required: true,
+    }),
+    valuationTotal: f.money({
+      serverOwned: true,
+      label: label('期末商品棚卸高', 'Closing inventory'),
+      description: label('inventory.valuation の合計（移動平均）', 'inventory.valuation total (moving average)'),
+      required: true,
+    }),
+    openingAmount: f.money({
+      serverOwned: true,
+      label: label('期首商品棚卸高', 'Opening inventory'),
+      description: label(
+        '前回の締めの期末商品棚卸高（無ければ 0）',
+        'closing amount of the previous close (0 when none)',
+      ),
+      required: true,
+      default: '0',
+    }),
+    journalEntryId: f.ref(JournalEntry.name, {
+      serverOwned: true,
+      label: label('仕訳', 'Journal entry'),
+      description: label('金額が 0 のときは作らない', 'none when both amounts are 0'),
+    }),
   },
   permissions: {
     roles: {

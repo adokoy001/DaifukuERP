@@ -34,7 +34,16 @@ export const InventoryModule = defineModule({
   name: 'inventory',
   label: label('在庫', 'Inventory'),
   depends: [ProductModule.name, PartnerModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name],
-  entities: [InventoryPeriodClose, Warehouse, StockLedger, StockBalance, StockEntry, StockEntryLine, StockCount, StockCountLine],
+  entities: [
+    InventoryPeriodClose,
+    Warehouse,
+    StockLedger,
+    StockBalance,
+    StockEntry,
+    StockEntryLine,
+    StockCount,
+    StockCountLine,
+  ],
   actions: [stockOnHandAction, ledgerAction, valuationAction, countVarianceAction],
   hooks: () => {
     registerPeriodCloseHooks();

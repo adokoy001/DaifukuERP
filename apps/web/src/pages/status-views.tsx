@@ -11,7 +11,11 @@ export function LoadingView() {
 
 export function MetaError({ error, retry }: { error: unknown; retry: () => void }) {
   const { t } = useLocale();
-  const detail = isApiError(error) ? `${error.code}: ${error.message} — ${error.hint}` : error instanceof Error ? error.message : String(error);
+  const detail = isApiError(error)
+    ? `${error.code}: ${error.message} — ${error.hint}`
+    : error instanceof Error
+      ? error.message
+      : String(error);
   return (
     <div role="alert" className="m-4 rounded border border-red-200 bg-red-50 p-3 text-red-900">
       <div className="font-medium">{t(S.loadFailed)}</div>

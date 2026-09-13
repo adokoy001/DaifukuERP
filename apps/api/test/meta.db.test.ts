@@ -15,7 +15,9 @@ let salesToken: string;
 
 interface JsonResponse {
   status: number;
-  body: Record<string, unknown> & { error?: { code: string; message: string; hint: string; details?: Record<string, unknown> } };
+  body: Record<string, unknown> & {
+    error?: { code: string; message: string; hint: string; details?: Record<string, unknown> };
+  };
 }
 
 interface ActionMeta {
@@ -32,12 +34,19 @@ interface SettingOut {
   value: unknown;
 }
 
-async function call(method: 'GET' | 'POST' | 'PUT', url: string, opts: { body?: unknown; token?: string | null } = {}): Promise<JsonResponse> {
+async function call(
+  method: 'GET' | 'POST' | 'PUT',
+  url: string,
+  opts: { body?: unknown; token?: string | null } = {},
+): Promise<JsonResponse> {
   const t = opts.token === undefined ? token : opts.token;
   const res = await app.inject({
     method,
     url,
-    headers: { ...(t ? { authorization: `Bearer ${t}` } : {}), ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}) },
+    headers: {
+      ...(t ? { authorization: `Bearer ${t}` } : {}),
+      ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
+    },
     ...(opts.body !== undefined ? { payload: JSON.stringify(opts.body) } : {}),
   });
   return { status: res.statusCode, body: res.json() as JsonResponse['body'] };
@@ -51,19 +60,35 @@ async function login(email: string, password: string): Promise<string> {
 // A TableResult-shaped report action and a setting, declared the way a module would (docs/conventions/reports.md).
 const tableResult = z.object({
   title: z.object({ ja: z.string(), en: z.string() }),
-  columns: z.array(z.object({ key: z.string(), label: z.object({ ja: z.string(), en: z.string() }), kind: z.enum(['text', 'decimal', 'int', 'date', 'ref', 'bool']), ref: z.string().optional(), align: z.enum(['left', 'right']).optional() })),
+  columns: z.array(
+    z.object({
+      key: z.string(),
+      label: z.object({ ja: z.string(), en: z.string() }),
+      kind: z.enum(['text', 'decimal', 'int', 'date', 'ref', 'bool']),
+      ref: z.string().optional(),
+      align: z.enum(['left', 'right']).optional(),
+    }),
+  ),
   rows: z.array(z.record(z.string(), z.unknown())),
   totals: z.record(z.string(), z.string()).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
-const roundingSchema = z.object({ unit: z.enum(['invoice', 'delivery_note']).default('invoice'), mode: z.enum(['half_up', 'down', 'up']) });
+const roundingSchema = z.object({
+  unit: z.enum(['invoice', 'delivery_note']).default('invoice'),
+  mode: z.enum(['half_up', 'down', 'up']),
+});
 
 beforeAll(async () => {
   db = await freshDb();
   defineAction({
     name: 'test_report.balance',
     description: label('テスト用の残高表', 'Test balance table'),
-    input: z.object({ from: z.string(), to: z.string(), partnerId: z.uuid().optional(), includeZero: z.boolean().default(false) }),
+    input: z.object({
+      from: z.string(),
+      to: z.string(),
+      partnerId: z.uuid().optional(),
+      includeZero: z.boolean().default(false),
+    }),
     output: tableResult,
     permission: 'authenticated',
     tx: 'none',
@@ -78,7 +103,12 @@ beforeAll(async () => {
       meta: { from, to },
     }),
   });
-  registry.registerSetting({ key: 'test_report.rounding', label: label('丸め設定', 'Rounding'), description: label('税額の丸め', 'Tax rounding'), schema: roundingSchema });
+  registry.registerSetting({
+    key: 'test_report.rounding',
+    label: label('丸め設定', 'Rounding'),
+    description: label('税額の丸め', 'Tax rounding'),
+    schema: roundingSchema,
+  });
   app = await buildServer({ owner: db.owner, app: db.app, jwtSecret: JWT_SECRET });
   await app.ready();
   token = await login('admin@example.com', 'password');
@@ -92,7 +122,9 @@ beforeAll(async () => {
     roles: ['sales'],
     defaultCompanyId: db.companyId,
   });
-  await db.owner.drizzle.insert(companyMemberships).values({ tenantId: db.tenantId, userId: salesId, companyId: db.companyId, roles: ['sales'] });
+  await db.owner.drizzle
+    .insert(companyMemberships)
+    .values({ tenantId: db.tenantId, userId: salesId, companyId: db.companyId, roles: ['sales'] });
   salesToken = await login('sales@example.com', 'sales-pw');
 });
 
@@ -135,7 +167,12 @@ describe('GET /meta actions (web-phase1 AC-3)', () => {
   it('the report action itself runs through POST /actions/:name and returns the TableResult shape', async () => {
     const res = await call('POST', '/actions/test_report.balance', { body: { from: '2026-01-01', to: '2026-12-31' } });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ title: { ja: '残高表', en: 'Balances' }, rows: [{ code: 'A', amount: '10.5' }], totals: { amount: '10.5' }, meta: { from: '2026-01-01', to: '2026-12-31' } });
+    expect(res.body).toMatchObject({
+      title: { ja: '残高表', en: 'Balances' },
+      rows: [{ code: 'A', amount: '10.5' }],
+      totals: { amount: '10.5' },
+      meta: { from: '2026-01-01', to: '2026-12-31' },
+    });
   });
 });
 
@@ -145,7 +182,11 @@ describe('settings routes (web-phase1 AC-5)', () => {
     expect(res.status).toBe(200);
     const list = res.body as unknown as SettingOut[];
     const rounding = list.find((s) => s.key === 'test_report.rounding');
-    expect(rounding).toMatchObject({ label: { ja: '丸め設定', en: 'Rounding' }, description: { ja: '税額の丸め', en: 'Tax rounding' }, value: null });
+    expect(rounding).toMatchObject({
+      label: { ja: '丸め設定', en: 'Rounding' },
+      description: { ja: '税額の丸め', en: 'Tax rounding' },
+      value: null,
+    });
     expect(rounding?.schema).toMatchObject({ type: 'object', required: ['mode'] });
     expect(rounding?.schema.properties?.mode).toMatchObject({ enum: ['half_up', 'down', 'up'] });
     expect(rounding?.schema.properties?.unit).toMatchObject({ default: 'invoice' });
@@ -158,7 +199,10 @@ describe('settings routes (web-phase1 AC-5)', () => {
   it('PUT /meta/settings/:key validates with the module schema, stores, and is reflected by GET; unknown key -> 404; sales -> 403', async () => {
     const bad = await call('PUT', '/meta/settings/test_report.rounding', { body: { value: { mode: 'sideways' } } });
     expect(bad.status).toBe(400);
-    expect(bad.body.error).toMatchObject({ code: 'VALIDATION', details: { issues: [{ path: 'test_report.rounding.mode' }] } });
+    expect(bad.body.error).toMatchObject({
+      code: 'VALIDATION',
+      details: { issues: [{ path: 'test_report.rounding.mode' }] },
+    });
     const ok = await call('PUT', '/meta/settings/test_report.rounding', { body: { value: { mode: 'up' } } });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ key: 'test_report.rounding', value: { unit: 'invoice', mode: 'up' } });
@@ -167,7 +211,10 @@ describe('settings routes (web-phase1 AC-5)', () => {
     const unknown = await call('PUT', '/meta/settings/nope.nothing', { body: { value: 1 } });
     expect(unknown.status).toBe(404);
     expect(unknown.body.error).toMatchObject({ code: 'NOT_FOUND', hint: expect.stringContaining('/meta/settings') });
-    const denied = await call('PUT', '/meta/settings/test_report.rounding', { body: { value: { mode: 'down' } }, token: salesToken });
+    const denied = await call('PUT', '/meta/settings/test_report.rounding', {
+      body: { value: { mode: 'down' } },
+      token: salesToken,
+    });
     expect(denied.status).toBe(403);
     const missingBody = await call('PUT', '/meta/settings/test_report.rounding', { body: { nope: 1 } });
     expect(missingBody.status).toBe(400);

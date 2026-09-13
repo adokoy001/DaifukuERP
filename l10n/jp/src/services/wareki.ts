@@ -30,7 +30,8 @@ export interface WarekiParts {
 }
 
 function assertLocalDate(date: string): void {
-  if (!isLocalDate(date)) throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
+  if (!isLocalDate(date))
+    throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
 }
 
 /** Splits a Gregorian date into era / year-in-era / month / day. Dates before the first era are rejected. */
@@ -41,7 +42,11 @@ export function toWarekiParts(date: LocalDate, eras: readonly Era[] = ERAS): War
     if (date >= e.start) era = e;
   }
   if (!era) {
-    throw new ValidationError(`no era is defined for ${date}`, [{ path: 'date', message: `before ${eras[0]?.start ?? '(empty era table)'}` }], 'Extend the era table (l10n/jp/src/services/wareki.ts ERAS) or format the date as Gregorian.');
+    throw new ValidationError(
+      `no era is defined for ${date}`,
+      [{ path: 'date', message: `before ${eras[0]?.start ?? '(empty era table)'}` }],
+      'Extend the era table (l10n/jp/src/services/wareki.ts ERAS) or format the date as Gregorian.',
+    );
   }
   const [y, m, d] = date.split('-').map(Number);
   return { era: era.name, year: (y ?? 0) - Number(era.start.slice(0, 4)) + 1, month: m ?? 0, day: d ?? 0 };

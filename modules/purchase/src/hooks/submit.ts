@@ -14,11 +14,18 @@ export const NO_LINES_HINT = 'Add at least one line (purchase_invoice_line) befo
 
 /** Description of the journal entry: 仕入 <supplier> [<supplier invoice no.>]. */
 export function entryDescription(partnerName: string, supplierInvoiceNo: unknown): string {
-  const no = typeof supplierInvoiceNo === 'string' && supplierInvoiceNo.trim() !== '' ? ` ${supplierInvoiceNo.trim()}` : '';
+  const no =
+    typeof supplierInvoiceNo === 'string' && supplierInvoiceNo.trim() !== '' ? ` ${supplierInvoiceNo.trim()}` : '';
   return `仕入 ${partnerName}${no}`;
 }
 
-export async function postInvoice(ctx: Context, row: Record<string, unknown>, computed: InvoiceComputation, lines: readonly InvoiceLineRow[], date: LocalDate): Promise<string> {
+export async function postInvoice(
+  ctx: Context,
+  row: Record<string, unknown>,
+  computed: InvoiceComputation,
+  lines: readonly InvoiceLineRow[],
+  date: LocalDate,
+): Promise<string> {
   await assertJpySettlement(ctx, computed.calc.totals.total);
   const accounts = await resolvePostingAccounts(ctx);
   row.controlAccountId = accounts.payable;
@@ -26,7 +33,13 @@ export async function postInvoice(ctx: Context, row: Record<string, unknown>, co
     partnerId: computed.partner.id,
     priceIncludesTax: computed.calc.priceIncludesTax,
     rounding: computed.calc.rounding,
-    lines: lines.map((l) => ({ productId: l.productId, accountId: l.accountId, amount: l.amount, taxCategory: l.taxCategory, ext: postingDimensions('purchase_invoice_line', 'journal_line', l.ext) })),
+    lines: lines.map((l) => ({
+      productId: l.productId,
+      accountId: l.accountId,
+      amount: l.amount,
+      taxCategory: l.taxCategory,
+      ext: postingDimensions('purchase_invoice_line', 'journal_line', l.ext),
+    })),
     groups: computed.calc.groups,
     totals: computed.calc.totals,
     accounts,
@@ -37,7 +50,10 @@ export async function postInvoice(ctx: Context, row: Record<string, unknown>, co
     date,
     description: entryDescription(computed.partner.name, row.supplierInvoiceNo),
     ext: row.ext as Record<string, unknown>,
-    lines: journalLines.map((l) => ({ ...l, ext: { ...postingDimensions(PurchaseInvoice.name, 'journal_line', row.ext as Record<string, unknown>), ...l.ext } })),
+    lines: journalLines.map((l) => ({
+      ...l,
+      ext: { ...postingDimensions(PurchaseInvoice.name, 'journal_line', row.ext as Record<string, unknown>), ...l.ext },
+    })),
   });
   return entry.id;
 }
@@ -46,8 +62,17 @@ async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   const id = row.id as string;
   const date = row.date as LocalDate;
   const lines = await loadInvoiceLines(ctx, id);
-  if (lines.length === 0) throw new ValidationError(`purchase_invoice ${id} has no lines`, [{ path: 'lines', message: 'at least one line is required' }], NO_LINES_HINT);
-  const computed = await computeInvoice(ctx, { partnerId: row.partnerId as string, date, priceIncludesTax: row.priceIncludesTax === true }, lines);
+  if (lines.length === 0)
+    throw new ValidationError(
+      `purchase_invoice ${id} has no lines`,
+      [{ path: 'lines', message: 'at least one line is required' }],
+      NO_LINES_HINT,
+    );
+  const computed = await computeInvoice(
+    ctx,
+    { partnerId: row.partnerId as string, date, priceIncludesTax: row.priceIncludesTax === true },
+    lines,
+  );
   Object.assign(row, computed.fields);
   if (row.dueDate === null || row.dueDate === undefined) {
     const p = computed.partner;

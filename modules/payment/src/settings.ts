@@ -24,7 +24,14 @@ export const paymentAccountsSchema = z.object({
   advancePaid: code,
 });
 export type PaymentAccountCodes = z.output<typeof paymentAccountsSchema>;
-export const PAYMENT_ACCOUNTS_DEFAULT: PaymentAccountCodes = { cash: '1000', bank: '1100', receivable: '1300', payable: '2100', advanceReceived: '2400', advancePaid: '1900' };
+export const PAYMENT_ACCOUNTS_DEFAULT: PaymentAccountCodes = {
+  cash: '1000',
+  bank: '1100',
+  receivable: '1300',
+  payable: '2100',
+  advanceReceived: '2400',
+  advancePaid: '1900',
+};
 
 export const PAYMENT_SETTING_DEFS: readonly SettingDef[] = [
   {
@@ -75,7 +82,12 @@ export async function resolvePostingAccounts(ctx: Context): Promise<PostingAccou
     );
   }
   const id = (r: (typeof roles)[number]) => byCode.get(codes[r]) ?? '';
-  return { receivable: id('receivable'), payable: id('payable'), advanceReceived: id('advanceReceived'), advancePaid: id('advancePaid') };
+  return {
+    receivable: id('receivable'),
+    payable: id('payable'),
+    advanceReceived: id('advanceReceived'),
+    advancePaid: id('advancePaid'),
+  };
 }
 
 /** Code of the default cash/bank account for a method (AC-1): cash -> `cash`, everything else -> `bank`. */
@@ -84,7 +96,10 @@ export function defaultAccountCodeFor(codes: PaymentAccountCodes, method: Paymen
 }
 
 /** Id of the default cash/bank account for a method, or null when no account carries that code. */
-export async function defaultAccountIdFor(ctx: Context, method: PaymentMethod): Promise<{ code: string; id: string | null }> {
+export async function defaultAccountIdFor(
+  ctx: Context,
+  method: PaymentMethod,
+): Promise<{ code: string; id: string | null }> {
   const codes = await loadPaymentAccountCodes(ctx);
   const wanted = defaultAccountCodeFor(codes, method);
   const byCode = await idsByCode(ctx, [wanted]);

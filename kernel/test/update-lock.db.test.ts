@@ -11,24 +11,44 @@ import { repo } from '../src/repository/repository.ts';
 import { freshDb, type TestDb } from '../src/testing.ts';
 import { withLock } from '../src/transactions.ts';
 
-const Parent = defineEntity({ name: 'test_update_lock_parent', label: label('親行', 'Parent'), fields: { name: f.text({ required: true }) }, permissions: { roles: {} } });
-const Reference = defineEntity({ name: 'test_update_lock_ref', label: label('参照行', 'Reference'), fields: { parentId: f.ref(Parent.name, { required: true }) }, permissions: { roles: {} } });
+const Parent = defineEntity({
+  name: 'test_update_lock_parent',
+  label: label('親行', 'Parent'),
+  fields: { name: f.text({ required: true }) },
+  permissions: { roles: {} },
+});
+const Reference = defineEntity({
+  name: 'test_update_lock_ref',
+  label: label('参照行', 'Reference'),
+  fields: { parentId: f.ref(Parent.name, { required: true }) },
+  permissions: { roles: {} },
+});
 let db: TestDb;
-beforeAll(async () => { db = await freshDb(); });
-afterAll(async () => { await db.close(); });
+beforeAll(async () => {
+  db = await freshDb();
+});
+afterAll(async () => {
+  await db.close();
+});
 function latch() {
   let release = () => undefined as void;
-  const promise = new Promise<void>((resolve) => { release = resolve; });
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return { promise, release };
 }
 function outcome(result: PromiseSettledResult<unknown>) {
-  return result.status === 'fulfilled' ? { status: result.status } : { status: result.status, ...safeErrorDiagnostics(result.reason) };
+  return result.status === 'fulfilled'
+    ? { status: result.status }
+    : { status: result.status, ...safeErrorDiagnostics(result.reason) };
 }
 
 describe('ordinary update row lock and reference integrity', () => {
   it('allows FK insertion while an update hook waits on the publisher business lock', async () => {
     const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Before' }));
-    const businessKey = `update-lock:${parent.id}`, held = latch(), entered = latch();
+    const businessKey = `update-lock:${parent.id}`,
+      held = latch(),
+      entered = latch();
     registry.registerHook(Parent.name, 'before_update', async (ctx, { row }) => {
       if (row.id !== parent.id) return;
       entered.release();
@@ -36,7 +56,11 @@ describe('ordinary update row lock and reference integrity', () => {
     });
     const inserting = db.run({}, async (ctx) => {
       await ctx.db.execute(sql`set local statement_timeout = '5s'`);
-      return withLock(ctx, businessKey, async () => { held.release(); await entered.promise; return repo(ctx, Reference).create({ parentId: parent.id }); });
+      return withLock(ctx, businessKey, async () => {
+        held.release();
+        await entered.promise;
+        return repo(ctx, Reference).create({ parentId: parent.id });
+      });
     });
     await held.promise;
     const updating = db.run({}, async (ctx) => {
@@ -45,31 +69,56 @@ describe('ordinary update row lock and reference integrity', () => {
     });
     const results = await Promise.allSettled([inserting, updating]);
     expect(results.map(outcome)).toEqual([{ status: 'fulfilled' }, { status: 'fulfilled' }]);
-    expect((await db.run({}, (ctx) => repo(ctx, Parent).get(parent.id)))).toMatchObject({ name: 'After', version: 2 });
+    expect(await db.run({}, (ctx) => repo(ctx, Parent).get(parent.id))).toMatchObject({ name: 'After', version: 2 });
     expect(await db.run({}, (ctx) => repo(ctx, Reference).count({ parentId: parent.id }))).toBe(1);
   });
 
   it('continues to serialize ordinary writers and reject the stale expected version', async () => {
     const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Original' }));
-    const results = await Promise.allSettled(['First', 'Second'].map((name) => db.run({}, (ctx) => repo(ctx, Parent).update(parent.id, { name }, { expectedVersion: parent.version }))));
+    const results = await Promise.allSettled(
+      ['First', 'Second'].map((name) =>
+        db.run({}, (ctx) => repo(ctx, Parent).update(parent.id, { name }, { expectedVersion: parent.version })),
+      ),
+    );
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { code: 'CONFLICT' } });
     expect((await db.run({}, (ctx) => repo(ctx, Parent).get(parent.id))).version).toBe(2);
   });
 
   it('keeps explicit Repository.lock exclusive against concurrent reference key-share', async () => {
-    const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Explicit lock' })), held = latch(), release = latch();
-    const locking = db.run({}, async (ctx) => { await repo(ctx, Parent).lock(parent.id); held.release(); await release.promise; });
+    const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Explicit lock' })),
+      held = latch(),
+      release = latch();
+    const locking = db.run({}, async (ctx) => {
+      await repo(ctx, Parent).lock(parent.id);
+      held.release();
+      await release.promise;
+    });
     await held.promise;
     try {
-      const attempted = await db.run({}, (ctx) => ctx.db.execute(sql`select ${Parent.col('id')} from ${Parent.table} where ${Parent.col('id')} = ${parent.id} for key share nowait`)).then(() => null, (error: unknown) => safeErrorDiagnostics(error));
+      const attempted = await db
+        .run({}, (ctx) =>
+          ctx.db.execute(
+            sql`select ${Parent.col('id')} from ${Parent.table} where ${Parent.col('id')} = ${parent.id} for key share nowait`,
+          ),
+        )
+        .then(
+          () => null,
+          (error: unknown) => safeErrorDiagnostics(error),
+        );
       expect(attempted).toEqual({ category: 'database', sqlState: '55P03' });
-    } finally { release.release(); await locking; }
+    } finally {
+      release.release();
+      await locking;
+    }
   });
 
   it('rejects id, tenant and company rewrites on the ordinary update path', async () => {
     const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Stable identity' }));
-    for (const field of ['id', 'tenantId', 'companyId']) await expect(db.run({}, (ctx) => repo(ctx, Parent).update(parent.id, { [field]: newId() }))).rejects.toMatchObject({ code: 'VALIDATION' });
+    for (const field of ['id', 'tenantId', 'companyId'])
+      await expect(
+        db.run({}, (ctx) => repo(ctx, Parent).update(parent.id, { [field]: newId() })),
+      ).rejects.toMatchObject({ code: 'VALIDATION' });
     expect(await db.run({}, (ctx) => repo(ctx, Parent).get(parent.id))).toEqual(parent);
   });
 });

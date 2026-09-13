@@ -12,7 +12,13 @@ import type { UnitUsage } from './services/tax-rule.ts';
 
 export const SAMPLE_PROPERTY = { code: 'SH', name: 'サンプルハイツ', address: '東京都架空区見本町1-2-3' } as const;
 
-export const SAMPLE_UNITS: readonly { code: string; name: string; usage: UnitUsage; floorArea: string | null; monthlyRent: string }[] = [
+export const SAMPLE_UNITS: readonly {
+  code: string;
+  name: string;
+  usage: UnitUsage;
+  floorArea: string | null;
+  monthlyRent: string;
+}[] = [
   { code: '101', name: '101号室', usage: 'residential', floorArea: '25.5', monthlyRent: '60000' },
   { code: '102', name: '102号室', usage: 'residential', floorArea: '28', monthlyRent: '65000' },
   { code: '201', name: '201号室（事務所）', usage: 'office', floorArea: '42.25', monthlyRent: '100000' },
@@ -26,11 +32,56 @@ export const SAMPLE_TENANTS: readonly { code: string; name: string; tenantKind: 
   { code: 'T4', name: '江藤 次郎', tenantKind: 'individual' },
 ];
 
-export const SAMPLE_LEASES: readonly { tenant: string; unit: string; title: string; startDate: string; keyMoney: string; depositMonths: string; description: string; unitPrice: string }[] = [
-  { tenant: 'T1', unit: '101', title: 'サンプルハイツ 101 賃貸借契約', startDate: '2026-04-01', keyMoney: '0', depositMonths: '0', description: '家賃', unitPrice: '60000' },
-  { tenant: 'T2', unit: '102', title: 'サンプルハイツ 102 賃貸借契約', startDate: '2026-11-11', keyMoney: '65000', depositMonths: '1', description: '家賃', unitPrice: '65000' },
-  { tenant: 'T3', unit: '201', title: 'サンプルハイツ 201 賃貸借契約（事務所）', startDate: '2026-11-01', keyMoney: '100000', depositMonths: '2', description: '家賃', unitPrice: '100000' },
-  { tenant: 'T4', unit: 'P1', title: 'サンプルハイツ 駐車場 P1 使用契約', startDate: '2026-11-01', keyMoney: '0', depositMonths: '0', description: '駐車場代', unitPrice: '8000' },
+export const SAMPLE_LEASES: readonly {
+  tenant: string;
+  unit: string;
+  title: string;
+  startDate: string;
+  keyMoney: string;
+  depositMonths: string;
+  description: string;
+  unitPrice: string;
+}[] = [
+  {
+    tenant: 'T1',
+    unit: '101',
+    title: 'サンプルハイツ 101 賃貸借契約',
+    startDate: '2026-04-01',
+    keyMoney: '0',
+    depositMonths: '0',
+    description: '家賃',
+    unitPrice: '60000',
+  },
+  {
+    tenant: 'T2',
+    unit: '102',
+    title: 'サンプルハイツ 102 賃貸借契約',
+    startDate: '2026-11-11',
+    keyMoney: '65000',
+    depositMonths: '1',
+    description: '家賃',
+    unitPrice: '65000',
+  },
+  {
+    tenant: 'T3',
+    unit: '201',
+    title: 'サンプルハイツ 201 賃貸借契約（事務所）',
+    startDate: '2026-11-01',
+    keyMoney: '100000',
+    depositMonths: '2',
+    description: '家賃',
+    unitPrice: '100000',
+  },
+  {
+    tenant: 'T4',
+    unit: 'P1',
+    title: 'サンプルハイツ 駐車場 P1 使用契約',
+    startDate: '2026-11-01',
+    keyMoney: '0',
+    depositMonths: '0',
+    description: '駐車場代',
+    unitPrice: '8000',
+  },
 ];
 
 async function sampleProperty(ctx: Context): Promise<string> {
@@ -49,16 +100,29 @@ async function sampleUnits(ctx: Context, propertyId: string): Promise<Map<string
 async function sampleTenants(ctx: Context): Promise<Map<string, string>> {
   const r = repo(ctx, Partner);
   const codes = SAMPLE_TENANTS.map((t) => t.code);
-  const ids = new Map((await r.list({ where: { code: { $in: codes } }, limit: codes.length })).items.map((p) => [p.code ?? '', p.id]));
+  const ids = new Map(
+    (await r.list({ where: { code: { $in: codes } }, limit: codes.length })).items.map((p) => [p.code ?? '', p.id]),
+  );
   for (const t of SAMPLE_TENANTS) {
     if (ids.has(t.code)) continue;
-    const created = await r.create({ code: t.code, name: t.name, isCustomer: true, closingDay: 31, paymentMonthOffset: 0, paymentDay: 31, ext: { tenantKind: t.tenantKind } });
+    const created = await r.create({
+      code: t.code,
+      name: t.name,
+      isCustomer: true,
+      closingDay: 31,
+      paymentMonthOffset: 0,
+      paymentDay: 31,
+      ext: { tenantKind: t.tenantKind },
+    });
     ids.set(t.code, created.id);
   }
   return ids;
 }
 
-async function createLease(ctx: Context, { partnerId, unitId, lease }: { partnerId: string; unitId: string; lease: (typeof SAMPLE_LEASES)[number] }): Promise<void> {
+async function createLease(
+  ctx: Context,
+  { partnerId, unitId, lease }: { partnerId: string; unitId: string; lease: (typeof SAMPLE_LEASES)[number] },
+): Promise<void> {
   const head = await repo(ctx, Contract).create({
     partnerId,
     title: lease.title,
@@ -67,7 +131,9 @@ async function createLease(ctx: Context, { partnerId, unitId, lease }: { partner
     billingTiming: 'advance',
     ext: { unitId, keyMoney: lease.keyMoney, depositMonths: lease.depositMonths },
   });
-  await saveLines(ctx, Contract, head.id, { [ContractLine.name]: [{ description: lease.description, unitPrice: lease.unitPrice }] });
+  await saveLines(ctx, Contract, head.id, {
+    [ContractLine.name]: [{ description: lease.description, unitPrice: lease.unitPrice }],
+  });
 }
 
 export async function sampleRealEstate(ctx: Context): Promise<void> {

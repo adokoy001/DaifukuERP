@@ -3,7 +3,13 @@
 // the UI infers it by convention (docs/conventions/ui.md). All arithmetic is decimal-string (lib/decimal.ts). Pure;
 // allocation.test.ts.
 import type { ActionMeta, EntityMeta, FieldMeta, RecordJson, TableResult } from '../api/types.ts';
-import { compareDecimalStrings, isDecimalString, minDecimalString, subtractDecimalStrings, sumDecimalStrings } from './decimal.ts';
+import {
+  compareDecimalStrings,
+  isDecimalString,
+  minDecimalString,
+  subtractDecimalStrings,
+  sumDecimalStrings,
+} from './decimal.ts';
 import type { FormValue, FormValues } from './form.ts';
 import { newRow, type GridRow } from './lines.ts';
 
@@ -36,10 +42,12 @@ function hasField(entity: EntityMeta | undefined, name: string, kinds: readonly 
 
 function outstandingAction(entity: EntityMeta, actions: readonly ActionMeta[]): ActionMeta | undefined {
   const names = [entity.module, entity.name].flatMap((n) => (n ? [`${n}${ALLOCATION.actionSuffix}`] : []));
-  return names.flatMap((n) => actions.filter((a) => a.name === n && a.resultKind === 'table')).find((a) => {
-    const props = a.inputSchema?.properties;
-    return !props || (ALLOCATION.partnerField in props && ALLOCATION.directionField in props);
-  });
+  return names
+    .flatMap((n) => actions.filter((a) => a.name === n && a.resultKind === 'table'))
+    .find((a) => {
+      const props = a.inputSchema?.properties;
+      return !props || (ALLOCATION.partnerField in props && ALLOCATION.directionField in props);
+    });
 }
 
 /**
@@ -47,17 +55,33 @@ function outstandingAction(entity: EntityMeta, actions: readonly ActionMeta[]): 
  * (uuid/text/ref), `invoiceEntity` (enum) and a decimal `amount`; a header with `partnerId` (ref) and `direction` (enum);
  * and a table action `<module>.outstanding` (or `<entity>.outstanding`) the caller may run.
  */
-export function allocationConventionOf(entity: EntityMeta, entities: readonly EntityMeta[], actions: readonly ActionMeta[]): AllocationConvention | undefined {
+export function allocationConventionOf(
+  entity: EntityMeta,
+  entities: readonly EntityMeta[],
+  actions: readonly ActionMeta[],
+): AllocationConvention | undefined {
   if (entity.kind !== 'document') return undefined;
-  if (!hasField(entity, ALLOCATION.partnerField, ['ref']) || !hasField(entity, ALLOCATION.directionField, ['enum'])) return undefined;
+  if (!hasField(entity, ALLOCATION.partnerField, ['ref']) || !hasField(entity, ALLOCATION.directionField, ['enum']))
+    return undefined;
   const action = outstandingAction(entity, actions);
   if (!action) return undefined;
   for (const spec of entity.lines ?? []) {
     if (!spec.entity.endsWith(ALLOCATION.lineSuffix)) continue;
     const line = entities.find((e) => e.name === spec.entity);
     const kindField = line?.fields.find((f) => f.name === ALLOCATION.invoiceEntityField && f.kind === 'enum');
-    if (!line || !kindField || !hasField(line, ALLOCATION.invoiceIdField, ['uuid', 'text', 'ref']) || !hasField(line, ALLOCATION.lineAmountField, ['decimal'])) continue;
-    return { lineEntity: line.name, action: action.name, invoiceEntities: kindField.values ?? [], hasAmount: hasField(entity, ALLOCATION.amountField, ['decimal']) };
+    if (
+      !line ||
+      !kindField ||
+      !hasField(line, ALLOCATION.invoiceIdField, ['uuid', 'text', 'ref']) ||
+      !hasField(line, ALLOCATION.lineAmountField, ['decimal'])
+    )
+      continue;
+    return {
+      lineEntity: line.name,
+      action: action.name,
+      invoiceEntities: kindField.values ?? [],
+      hasAmount: hasField(entity, ALLOCATION.amountField, ['decimal']),
+    };
   }
   return undefined;
 }
@@ -66,7 +90,8 @@ export function allocationConventionOf(entity: EntityMeta, entities: readonly En
 export function outstandingInput(values: FormValues): { partnerId: string; direction: string } | undefined {
   const partnerId = values[ALLOCATION.partnerField];
   const direction = values[ALLOCATION.directionField];
-  if (typeof partnerId !== 'string' || typeof direction !== 'string' || partnerId === '' || direction === '') return undefined;
+  if (typeof partnerId !== 'string' || typeof direction !== 'string' || partnerId === '' || direction === '')
+    return undefined;
   return { partnerId, direction };
 }
 
@@ -97,7 +122,16 @@ export function outstandingInvoices(result: TableResult): OutstandingInvoice[] {
     const invoiceId = text(row[ALLOCATION.invoiceIdField]);
     const balance = text(row.balance);
     if (!invoiceId || !isDecimalString(balance)) return [];
-    return [{ invoiceId, invoiceEntity: text(row.invoiceEntity) || invoiceEntity, number: text(row.number), date: text(row.date), dueDate: text(row.dueDate), balance }];
+    return [
+      {
+        invoiceId,
+        invoiceEntity: text(row.invoiceEntity) || invoiceEntity,
+        number: text(row.number),
+        date: text(row.date),
+        dueDate: text(row.dueDate),
+        balance,
+      },
+    ];
   });
 }
 
@@ -138,7 +172,11 @@ export function defaultAllocationAmount(balance: string, remaining: string | und
 }
 
 /** Remaining unallocated amount before a new pick: amount − grid Σ − Σ of the other picks; undefined without an amount. */
-export function remainingFor(amount: FormValue | undefined, rows: readonly GridRow[], otherPicks: readonly string[]): string | undefined {
+export function remainingFor(
+  amount: FormValue | undefined,
+  rows: readonly GridRow[],
+  otherPicks: readonly string[],
+): string | undefined {
   return subtractDecimalStrings(cell(amount), sumDecimalStrings([allocatedTotal(rows), ...otherPicks]));
 }
 
@@ -153,10 +191,18 @@ export function pickProblem(amount: string, balance: string): PickProblem | unde
 }
 
 /** Picks -> new grid rows with invoiceEntity / invoiceId / amount set (other cells blank, as "行を追加" makes them). */
-export function allocationRows(picks: readonly { invoice: OutstandingInvoice; amount: string }[], columns: readonly FieldMeta[]): GridRow[] {
+export function allocationRows(
+  picks: readonly { invoice: OutstandingInvoice; amount: string }[],
+  columns: readonly FieldMeta[],
+): GridRow[] {
   return picks.map(({ invoice, amount }) => {
     const row = newRow(columns);
-    const values = { ...row.values, [ALLOCATION.invoiceEntityField]: invoice.invoiceEntity, [ALLOCATION.invoiceIdField]: invoice.invoiceId, [ALLOCATION.lineAmountField]: amount.trim() };
+    const values = {
+      ...row.values,
+      [ALLOCATION.invoiceEntityField]: invoice.invoiceEntity,
+      [ALLOCATION.invoiceIdField]: invoice.invoiceId,
+      [ALLOCATION.lineAmountField]: amount.trim(),
+    };
     return { ...row, values };
   });
 }

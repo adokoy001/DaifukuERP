@@ -6,11 +6,24 @@ import { templateOrder, templateStory } from './templates.ts';
 
 class MemoryStorage {
   private values = new Map<string, string>();
-  getItem(key: string) { return this.values.get(key) ?? null; }
-  setItem(key: string, value: string) { this.values.set(key, value); }
-  removeItem(key: string) { this.values.delete(key); }
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  }
+  setItem(key: string, value: string) {
+    this.values.set(key, value);
+  }
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
 }
-const user: LoginUser = { id: 'user-a', tenantId: 'tenant-a', defaultCompanyId: 'default-a', name: 'A', email: 'a@example.com', roles: ['admin'] };
+const user: LoginUser = {
+  id: 'user-a',
+  tenantId: 'tenant-a',
+  defaultCompanyId: 'default-a',
+  name: 'A',
+  email: 'a@example.com',
+  roles: ['admin'],
+};
 afterEach(() => vi.unstubAllGlobals());
 
 describe('industry template UI contracts', () => {
@@ -37,7 +50,8 @@ describe('industry template UI contracts', () => {
   });
   it('keeps tab A credentials and request company when tab B logs into a different tenant', async () => {
     vi.stubGlobal('localStorage', new MemoryStorage());
-    const tabA = new MemoryStorage(); const tabB = new MemoryStorage();
+    const tabA = new MemoryStorage();
+    const tabB = new MemoryStorage();
     vi.stubGlobal('sessionStorage', tabA);
     setSession('token-a', user);
     setActiveCompany('company-a-selected');
@@ -52,20 +66,40 @@ describe('industry template UI contracts', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     await request('/api/partner', { method: 'POST', body: unsavedInput });
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/partner'), expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer token-a', 'x-company-id': 'company-a-selected' }), body: JSON.stringify(unsavedInput) }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/partner'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer token-a', 'x-company-id': 'company-a-selected' }),
+        body: JSON.stringify(unsavedInput),
+      }),
+    );
     vi.stubGlobal('sessionStorage', tabB);
     expect(getCompanyId()).toBe('company-b-selected');
   });
   it('does not restore legacy shared localStorage credentials', () => {
     const legacy = new MemoryStorage();
-    legacy.setItem('daifuku.token', 'legacy-token'); legacy.setItem('daifuku.user', JSON.stringify(user));
+    legacy.setItem('daifuku.token', 'legacy-token');
+    legacy.setItem('daifuku.user', JSON.stringify(user));
     vi.stubGlobal('localStorage', legacy);
     vi.stubGlobal('sessionStorage', new MemoryStorage());
-    expect(getToken()).toBeNull(); expect(getUser()).toBeNull(); expect(getCompanyId()).toBeNull();
+    expect(getToken()).toBeNull();
+    expect(getUser()).toBeNull();
+    expect(getCompanyId()).toBeNull();
   });
   it('resolves industry references only within the visible module while retaining core references', () => {
-    const entities = [{ name: 'farm_season', displayField: 'name' }, { name: 'appliance_store_service', displayField: 'number' }, { name: 'partner', displayField: 'name' }] as EntityMeta[];
-    const input = { type: 'object', properties: { seasonId: { type: 'string', format: 'uuid' }, partnerId: { type: 'string', format: 'uuid' }, serviceId: { type: 'string', format: 'uuid' } } };
+    const entities = [
+      { name: 'farm_season', displayField: 'name' },
+      { name: 'appliance_store_service', displayField: 'number' },
+      { name: 'partner', displayField: 'name' },
+    ] as EntityMeta[];
+    const input = {
+      type: 'object',
+      properties: {
+        seasonId: { type: 'string', format: 'uuid' },
+        partnerId: { type: 'string', format: 'uuid' },
+        serviceId: { type: 'string', format: 'uuid' },
+      },
+    };
     const fields = schemaFields(input, refResolverFrom(entities, 'farm'));
     expect(fields[0]).toMatchObject({ kind: 'ref', ref: 'farm_season' });
     expect(fields[1]).toMatchObject({ kind: 'ref', ref: 'partner' });

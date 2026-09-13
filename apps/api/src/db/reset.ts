@@ -13,7 +13,7 @@ export interface SeedResult {
 
 /** Reuses only the exact demo identity, then runs idempotent module seeds. */
 export async function seedAll(owner: Database): Promise<SeedResult> {
-  const boot = await findDemoIdentity(owner) ?? await bootstrapTenant(owner, { ...DEMO_TENANT, tenantId: newId() });
+  const boot = (await findDemoIdentity(owner)) ?? (await bootstrapTenant(owner, { ...DEMO_TENANT, tenantId: newId() }));
   const seededModules: string[] = [];
   for (const m of modules) {
     if (!m.seed) continue;

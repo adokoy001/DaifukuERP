@@ -24,12 +24,22 @@ describe('safe-setup validation', () => {
     expect(() => connection(validUrl.replace('Strong-DatabaseSecret9!', 'owner'), false)).toThrowError(SetupError);
     expect(() => connection(`${validUrl}?host=other`, false)).toThrowError(SetupError);
     expect(() => connection(validUrl.replace('127.0.0.1', 'db.example.test'), true)).toThrowError(SetupError);
-    expect(connection(`${validUrl.replace('127.0.0.1', 'db.example.test')}?sslmode=verify-full`, true).hostname).toBe('db.example.test');
+    expect(connection(`${validUrl.replace('127.0.0.1', 'db.example.test')}?sslmode=verify-full`, true).hostname).toBe(
+      'db.example.test',
+    );
   });
   it('AC-3 rejects edited, reordered and future migration histories', () => {
-    const files = [{ idx: 0, tag: '0000_init', when: 100, hash: 'a' }, { idx: 1, tag: '0001_next', when: 200, hash: 'b' }];
+    const files = [
+      { idx: 0, tag: '0000_init', when: 100, hash: 'a' },
+      { idx: 1, tag: '0001_next', when: 200, hash: 'b' },
+    ];
     expect(() => checkHistory([{ hash: 'a', created_at: '100' }], files)).not.toThrow();
-    for (const rows of [[{ hash: 'edited', created_at: '100' }], [{ hash: 'b', created_at: '200' }], [{ hash: 'a', created_at: '999' }]]) expect(() => checkHistory(rows, files)).toThrowError(SetupError);
+    for (const rows of [
+      [{ hash: 'edited', created_at: '100' }],
+      [{ hash: 'b', created_at: '200' }],
+      [{ hash: 'a', created_at: '999' }],
+    ])
+      expect(() => checkHistory(rows, files)).toThrowError(SetupError);
     expect(() => checkHistory([{ hash: 'a', created_at: '100' }], [])).toThrowError(SetupError);
   });
   it('AC-5 requires an explicit production identity and strong admin password', () => {
@@ -37,7 +47,14 @@ describe('safe-setup validation', () => {
     expect(() => validatePassword('password')).toThrowError(SetupError);
     expect(() => validatePassword('aaaaaaaaaaaaaaaaaaaa')).toThrowError(SetupError);
     expect(() => validatePassword('Correct-HorseSetup9!')).not.toThrow();
-    const options: SetupOptions = { ...parseOptions(args), tenantName: '会社', companyCode: 'CO', companyName: '会社', adminEmail: 'admin@example.com', adminName: '管理者' };
+    const options: SetupOptions = {
+      ...parseOptions(args),
+      tenantName: '会社',
+      companyCode: 'CO',
+      companyName: '会社',
+      adminEmail: 'admin@example.com',
+      adminName: '管理者',
+    };
     expect(() => identityInput(options)).toThrowError(SetupError);
   });
   it('AC-5/6 refuses public secret files, symlinks, and overwriting existing configuration', async () => {
@@ -70,19 +87,49 @@ describe('safe-setup validation', () => {
     const secret = 'Bearer-Private-Credential9!';
     expect(safeFailure(new Error(`${validUrl} ${secret}`))).not.toContain(secret);
     expect(safeFailure({ code: 'ECONNREFUSED', message: validUrl })).not.toContain(validUrl);
-    expect(safeFailure(new SetupError('MAINTENANCE_REQUIRED', '停止を確認してください'))).toContain('MAINTENANCE_REQUIRED');
+    expect(safeFailure(new SetupError('MAINTENANCE_REQUIRED', '停止を確認してください'))).toContain(
+      'MAINTENANCE_REQUIRED',
+    );
   });
   it('AC-5 preserves quotes, hash and literal backslashes through Node env encoding', () => {
-    for (const secret of ['Abcd1234-Strong"SecretWithQuotes9!', "Abcd1234-Strong'SecretWithQuotes9!", 'Abcd1234-Strong\\nSecret#Hash9!', 'Abcd1234-Strong`Secret9!']) {
+    for (const secret of [
+      'Abcd1234-Strong"SecretWithQuotes9!',
+      "Abcd1234-Strong'SecretWithQuotes9!",
+      'Abcd1234-Strong\\nSecret#Hash9!',
+      'Abcd1234-Strong`Secret9!',
+    ]) {
       expect(parseEnv(serializeEnv({ JWT_SECRET: secret })).JWT_SECRET).toBe(secret);
     }
   });
   it('AC-6 refuses an incomplete runtime env without replacing or regenerating its secret', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'daifuku-setup-incomplete-'));
     const body = `DATABASE_URL_OWNER=${validUrl}\nDATABASE_URL=${appUrl}\n`;
-    const path = join(dir, 'runtime.env'); await writeExclusive(path, body);
-    const options = { ...parseOptions(args), stateDir: dir, tenantName: 'Tenant', companyCode: 'CO', companyName: 'Company', adminName: 'Admin', adminEmail: 'a@example.test' };
-    await expect(runtimeConfig(options, { ownerUrl: validUrl, appUrl }, { format: 1, operationMode: 'install', targetId: 'test', identity: { tenantId: 'test', ...identityInput(options) }, phase: 'planned', seededModules: [], backups: [] })).rejects.toMatchObject({ code: 'RUNTIME_CONFIG_INVALID' });
+    const path = join(dir, 'runtime.env');
+    await writeExclusive(path, body);
+    const options = {
+      ...parseOptions(args),
+      stateDir: dir,
+      tenantName: 'Tenant',
+      companyCode: 'CO',
+      companyName: 'Company',
+      adminName: 'Admin',
+      adminEmail: 'a@example.test',
+    };
+    await expect(
+      runtimeConfig(
+        options,
+        { ownerUrl: validUrl, appUrl },
+        {
+          format: 1,
+          operationMode: 'install',
+          targetId: 'test',
+          identity: { tenantId: 'test', ...identityInput(options) },
+          phase: 'planned',
+          seededModules: [],
+          backups: [],
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'RUNTIME_CONFIG_INVALID' });
     expect(await privateFile(path)).toBe(body);
   });
 });

@@ -1,6 +1,22 @@
 // One MCP tool per registered action (ADR-0009): listing and invocation.
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { canRunAction, DaifukuError, newId, registry, runAction, safeErrorDiagnostics, toErrorBody, toolNameOf, withContext, type ActionDef, type Context, type ContextParams, type Database, type ErrorBody, type Logger } from '@daifuku/kernel';
+import {
+  canRunAction,
+  DaifukuError,
+  newId,
+  registry,
+  runAction,
+  safeErrorDiagnostics,
+  toErrorBody,
+  toolNameOf,
+  withContext,
+  type ActionDef,
+  type Context,
+  type ContextParams,
+  type Database,
+  type ErrorBody,
+  type Logger,
+} from '@daifuku/kernel';
 import { toolInputSchema } from './schema.ts';
 import { refreshAgentContext } from './session.ts';
 
@@ -25,7 +41,10 @@ export function toolOf(action: ActionDef, log: Logger): Tool {
 
 /** AC-2: every exposed action, in registration order. `internal` actions (in-process only, ADR-0014) are not tools. */
 export function listTools(log: Logger, ctx?: Context): Tool[] {
-  return registry.actions().filter((a) => !ctx || canRunAction(ctx, a)).map((a) => toolOf(a, log));
+  return registry
+    .actions()
+    .filter((a) => !ctx || canRunAction(ctx, a))
+    .map((a) => toolOf(a, log));
 }
 
 /** Tool names are derived (`.` -> `_`), so resolve by comparing derived names rather than guessing the inverse. Internal actions do not resolve. */
@@ -42,20 +61,32 @@ export function errorResult(body: ErrorBody): CallToolResult {
   return { isError: true, content: [{ type: 'text', text: JSON.stringify(body) }] };
 }
 
-export async function callTool(rt: ToolRuntime, toolName: string, args: Record<string, unknown> | undefined): Promise<CallToolResult> {
+export async function callTool(
+  rt: ToolRuntime,
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+): Promise<CallToolResult> {
   const action = findAction(toolName);
   if (!action) {
-    return errorResult({ code: 'NOT_FOUND', message: `tool "${toolName}" does not exist`, hint: 'List the available tools (tools/list) and use one of those names.', details: { tool: toolName } });
+    return errorResult({
+      code: 'NOT_FOUND',
+      message: `tool "${toolName}" does not exist`,
+      hint: 'List the available tools (tools/list) and use one of those names.',
+      details: { tool: toolName },
+    });
   }
   const requestId = newId();
   try {
     const params = await refreshAgentContext(rt.owner, rt.params);
-    const result = await withContext(rt.app, { ...params, requestId }, (ctx) => runAction(ctx, action.name, args ?? {}));
+    const result = await withContext(rt.app, { ...params, requestId }, (ctx) =>
+      runAction(ctx, action.name, args ?? {}),
+    );
     return textResult(result);
   } catch (err) {
     if (err instanceof DaifukuError) return errorResult(err.toBody());
     const { status, body } = toErrorBody(err);
-    if (status >= 500) rt.log.error('tool call failed', { action: action.name, requestId, ...safeErrorDiagnostics(err) });
+    if (status >= 500)
+      rt.log.error('tool call failed', { action: action.name, requestId, ...safeErrorDiagnostics(err) });
     return errorResult({ ...body, details: { ...body.details, requestId } });
   }
 }

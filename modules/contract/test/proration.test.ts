@@ -12,14 +12,28 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { addMonths, daysInPeriod, periodOf } from '../src/services/periods.ts';
 import { planPeriod, type ContractTerms, type TermLine } from '../src/services/plan.ts';
-import { addFractions, coveredDays, formatFraction, fraction, monthFactor, ONE, periodFactor, prorate, ZERO, type Fraction } from '../src/services/proration.ts';
+import {
+  addFractions,
+  coveredDays,
+  formatFraction,
+  fraction,
+  monthFactor,
+  ONE,
+  periodFactor,
+  prorate,
+  ZERO,
+  type Fraction,
+} from '../src/services/proration.ts';
 
 const DAY = 86_400_000;
 const EPOCH_2000 = Date.UTC(2000, 0, 1) / DAY;
 const dateOf = (epochDay: number) => new Date(epochDay * DAY).toISOString().slice(0, 10);
-const epochOf = (date: string) => Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / DAY;
+const epochOf = (date: string) =>
+  Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / DAY;
 /** start <= end within ~4 years, 2000..2100 */
-const rangeArb = fc.tuple(fc.integer({ min: EPOCH_2000, max: EPOCH_2000 + 36_000 }), fc.integer({ min: 0, max: 1500 })).map(([s, len]) => ({ start: dateOf(s), end: dateOf(s + len) }));
+const rangeArb = fc
+  .tuple(fc.integer({ min: EPOCH_2000, max: EPOCH_2000 + 36_000 }), fc.integer({ min: 0, max: 1500 }))
+  .map(([s, len]) => ({ start: dateOf(s), end: dateOf(s + len) }));
 const exact = (price: Decimal, f: Fraction) => price.times(f.num).div(f.den);
 const money = (s: string) => Decimal.from(s);
 
@@ -28,7 +42,11 @@ describe('factor (AC-3)', () => {
     expect(fraction(15, 30)).toEqual({ num: 1, den: 2 });
     expect(fraction(0, 31)).toEqual(ZERO);
     expect(addFractions(fraction(10, 31), fraction(20, 30))).toEqual({ num: 92, den: 93 });
-    expect([formatFraction(fraction(10, 31)), formatFraction(ONE), formatFraction(fraction(6, 2))]).toEqual(['10/31', '1', '3']);
+    expect([formatFraction(fraction(10, 31)), formatFraction(ONE), formatFraction(fraction(6, 2))]).toEqual([
+      '10/31',
+      '1',
+      '3',
+    ]);
     expect(() => fraction(1, 0)).toThrow(ValidationError);
     expect(() => fraction(-1, 3)).toThrow(ValidationError);
   });
@@ -94,14 +112,20 @@ describe('factor (AC-3)', () => {
 
   it('P3: period factor = Σ month factors, within [0, k]', () => {
     fc.assert(
-      fc.property(rangeArb, fc.integer({ min: 1, max: 12 }), fc.integer({ min: -3, max: 60 }), fc.constantFrom('daily' as const, 'none' as const), ({ start, end }, k, offset, rule) => {
-        const p = addMonths(periodOf(start), offset);
-        const f = periodFactor(p, k, start, end, rule);
-        let sum = ZERO;
-        for (let i = 0; i < k; i++) sum = addFractions(sum, monthFactor(addMonths(p, i), start, end, rule));
-        expect(f).toEqual(sum);
-        expect(f.num).toBeLessThanOrEqual(k * f.den);
-      }),
+      fc.property(
+        rangeArb,
+        fc.integer({ min: 1, max: 12 }),
+        fc.integer({ min: -3, max: 60 }),
+        fc.constantFrom('daily' as const, 'none' as const),
+        ({ start, end }, k, offset, rule) => {
+          const p = addMonths(periodOf(start), offset);
+          const f = periodFactor(p, k, start, end, rule);
+          let sum = ZERO;
+          for (let i = 0; i < k; i++) sum = addFractions(sum, monthFactor(addMonths(p, i), start, end, rule));
+          expect(f).toEqual(sum);
+          expect(f.num).toBeLessThanOrEqual(k * f.den);
+        },
+      ),
     );
   });
 });
@@ -116,10 +140,18 @@ describe('pre-rounded unit price (AC-3)', () => {
   });
 
   it('exact results stay exact in every mode; other scales and negative prices', () => {
-    expect(['down', 'half_up', 'up'].map((m) => prorate(money('31000'), fraction(10, 31), m as 'down', 0).toString())).toEqual(['10000', '10000', '10000']);
-    expect(['down', 'half_up', 'up'].map((m) => prorate(money('50000'), fraction(15, 30), m as 'down', 0).toString())).toEqual(['25000', '25000', '25000']);
-    expect(['down', 'half_up', 'up'].map((m) => prorate(money('100000'), fraction(19, 28), m as 'down', 0).toString())).toEqual(['67857', '67857', '67858']);
-    expect(['down', 'half_up', 'up'].map((m) => prorate(money('1000'), fraction(10, 30), m as 'down', 2).toString())).toEqual(['333.33', '333.33', '333.34']);
+    expect(
+      ['down', 'half_up', 'up'].map((m) => prorate(money('31000'), fraction(10, 31), m as 'down', 0).toString()),
+    ).toEqual(['10000', '10000', '10000']);
+    expect(
+      ['down', 'half_up', 'up'].map((m) => prorate(money('50000'), fraction(15, 30), m as 'down', 0).toString()),
+    ).toEqual(['25000', '25000', '25000']);
+    expect(
+      ['down', 'half_up', 'up'].map((m) => prorate(money('100000'), fraction(19, 28), m as 'down', 0).toString()),
+    ).toEqual(['67857', '67857', '67858']);
+    expect(
+      ['down', 'half_up', 'up'].map((m) => prorate(money('1000'), fraction(10, 30), m as 'down', 2).toString()),
+    ).toEqual(['333.33', '333.33', '333.34']);
     expect(prorate(money('15500'), fraction(1, 2), 'half_up', 0).toString()).toBe('7750');
     expect(prorate(money('15501'), fraction(1, 2), 'half_up', 0).toString()).toBe('7751'); // 7750.5 → 7751
     expect(prorate(money('15501'), fraction(1, 2), 'down', 0).toString()).toBe('7750');
@@ -130,32 +162,81 @@ describe('pre-rounded unit price (AC-3)', () => {
 
   it('P4: rounding bounds per mode; factor 1 keeps a price already at the scale', () => {
     fc.assert(
-      fc.property(fc.bigInt({ min: 0n, max: 100_000_000_00n }), fc.integer({ min: 1, max: 31 }), fc.integer({ min: 28, max: 31 }), fc.constantFrom(0, 2), (cents, d, dim, scale) => {
-        const price = Decimal.from(cents).div(100).roundDown(scale);
-        const f = fraction(Math.min(d, dim), dim);
-        const unit = Decimal.from(1).div(10 ** scale);
-        const x = exact(price, f);
-        const down = prorate(price, f, 'down', scale);
-        const up = prorate(price, f, 'up', scale);
-        const half = prorate(price, f, 'half_up', scale);
-        expect(down.lte(x) && x.lt(down.plus(unit))).toBe(true);
-        expect(up.gte(x) && x.gt(up.minus(unit))).toBe(true);
-        expect(half.minus(x).abs().lte(unit.div(2))).toBe(true);
-        expect(down.lte(half) && half.lte(up)).toBe(true);
-        expect(prorate(price, ONE, 'up', scale).eq(price)).toBe(true);
-      }),
+      fc.property(
+        fc.bigInt({ min: 0n, max: 100_000_000_00n }),
+        fc.integer({ min: 1, max: 31 }),
+        fc.integer({ min: 28, max: 31 }),
+        fc.constantFrom(0, 2),
+        (cents, d, dim, scale) => {
+          const price = Decimal.from(cents).div(100).roundDown(scale);
+          const f = fraction(Math.min(d, dim), dim);
+          const unit = Decimal.from(1).div(10 ** scale);
+          const x = exact(price, f);
+          const down = prorate(price, f, 'down', scale);
+          const up = prorate(price, f, 'up', scale);
+          const half = prorate(price, f, 'half_up', scale);
+          expect(down.lte(x) && x.lt(down.plus(unit))).toBe(true);
+          expect(up.gte(x) && x.gt(up.minus(unit))).toBe(true);
+          expect(half.minus(x).abs().lte(unit.div(2))).toBe(true);
+          expect(down.lte(half) && half.lte(up)).toBe(true);
+          expect(prorate(price, ONE, 'up', scale).eq(price)).toBe(true);
+        },
+      ),
     );
   });
 });
 
 describe('period plan (AC-3 lines, AC-5 expected amount)', () => {
-  const base: ContractTerms = { status: 'active', startDate: '2026-05-22', endDate: null, intervalMonths: 1, billingDay: 27, billingTiming: 'advance', prorationRule: 'daily', roundingMode: 'down' };
+  const base: ContractTerms = {
+    status: 'active',
+    startDate: '2026-05-22',
+    endDate: null,
+    intervalMonths: 1,
+    billingDay: 27,
+    billingTiming: 'advance',
+    prorationRule: 'daily',
+    roundingMode: 'down',
+  };
   const lines: TermLine[] = [
-    { seq: 1, productId: null, description: '賃料', quantity: money('1'), unitPrice: money('100000'), taxCategory: 'standard' },
-    { seq: 2, productId: null, description: '住宅家賃', quantity: money('1'), unitPrice: money('50000'), taxCategory: 'non_taxable' },
-    { seq: 3, productId: null, description: '駐輪場', quantity: money('2'), unitPrice: money('1500'), taxCategory: 'standard' },
+    {
+      seq: 1,
+      productId: null,
+      description: '賃料',
+      quantity: money('1'),
+      unitPrice: money('100000'),
+      taxCategory: 'standard',
+    },
+    {
+      seq: 2,
+      productId: null,
+      description: '住宅家賃',
+      quantity: money('1'),
+      unitPrice: money('50000'),
+      taxCategory: 'non_taxable',
+    },
+    {
+      seq: 3,
+      productId: null,
+      description: '駐輪場',
+      quantity: money('2'),
+      unitPrice: money('1500'),
+      taxCategory: 'standard',
+    },
   ];
-  const view = (plan: ReturnType<typeof planPeriod>) => ({ status: plan.status, reason: plan.reason, date: plan.billingDate, factor: formatFraction(plan.factor), subtotal: plan.subtotal.toString(), lines: plan.lines.map((l) => [l.seq, l.quantity.toString(), l.unitPrice.toString(), l.amount.toString(), l.taxCategory]) });
+  const view = (plan: ReturnType<typeof planPeriod>) => ({
+    status: plan.status,
+    reason: plan.reason,
+    date: plan.billingDate,
+    factor: formatFraction(plan.factor),
+    subtotal: plan.subtotal.toString(),
+    lines: plan.lines.map((l) => [
+      l.seq,
+      l.quantity.toString(),
+      l.unitPrice.toString(),
+      l.amount.toString(),
+      l.taxCategory,
+    ]),
+  });
 
   it('start month prorated, full month, generated, not due', () => {
     // 100,000 × 10/31 = 32,258.06 → 32,258; 50,000 × 10/31 = 16,129.03 → 16,129; 1,500 × 10/31 = 483.87 → 483 (× 2)
@@ -171,19 +252,63 @@ describe('period plan (AC-3 lines, AC-5 expected amount)', () => {
         [3, '2', '483', '966', 'standard'],
       ],
     });
-    expect(view(planPeriod({ terms: base, lines, period: '2026-06', alreadyGenerated: false, scale: 0 }))).toMatchObject({ status: 'due', factor: '1', subtotal: '153000', date: '2026-06-27' });
-    expect(view(planPeriod({ terms: base, lines, period: '2026-06', alreadyGenerated: true, scale: 0 }))).toMatchObject({ status: 'generated', reason: 'already_generated', subtotal: '153000', date: '2026-06-27' });
-    expect(view(planPeriod({ terms: base, lines, period: '2026-04', alreadyGenerated: false, scale: 0 }))).toEqual({ status: 'not_due', reason: 'not_started', date: null, factor: '0', subtotal: '0', lines: [] });
+    expect(
+      view(planPeriod({ terms: base, lines, period: '2026-06', alreadyGenerated: false, scale: 0 })),
+    ).toMatchObject({ status: 'due', factor: '1', subtotal: '153000', date: '2026-06-27' });
+    expect(view(planPeriod({ terms: base, lines, period: '2026-06', alreadyGenerated: true, scale: 0 }))).toMatchObject(
+      { status: 'generated', reason: 'already_generated', subtotal: '153000', date: '2026-06-27' },
+    );
+    expect(view(planPeriod({ terms: base, lines, period: '2026-04', alreadyGenerated: false, scale: 0 }))).toEqual({
+      status: 'not_due',
+      reason: 'not_started',
+      date: null,
+      factor: '0',
+      subtotal: '0',
+      lines: [],
+    });
     // end month to endDate, arrears date in the next month
     const ending = { ...base, endDate: '2026-08-15', billingTiming: 'arrears' as const, billingDay: 31 };
-    expect(view(planPeriod({ terms: ending, lines: lines.slice(0, 1), period: '2026-08', alreadyGenerated: false, scale: 0 }))).toMatchObject({ status: 'due', date: '2026-09-30', factor: '15/31', subtotal: '48387' });
+    expect(
+      view(
+        planPeriod({ terms: ending, lines: lines.slice(0, 1), period: '2026-08', alreadyGenerated: false, scale: 0 }),
+      ),
+    ).toMatchObject({ status: 'due', date: '2026-09-30', factor: '15/31', subtotal: '48387' });
   });
 
   it('a line prorated to 0 is left off; nothing left → not_due zero_amount', () => {
-    const tiny: TermLine[] = [{ seq: 1, productId: null, description: '少額', quantity: money('1'), unitPrice: money('30'), taxCategory: 'standard' }];
+    const tiny: TermLine[] = [
+      {
+        seq: 1,
+        productId: null,
+        description: '少額',
+        quantity: money('1'),
+        unitPrice: money('30'),
+        taxCategory: 'standard',
+      },
+    ];
     const lastDay = { ...base, startDate: '2026-05-31' }; // 30 × 1/31 = 0.96 → 0
-    expect(view(planPeriod({ terms: lastDay, lines: tiny, period: '2026-05', alreadyGenerated: false, scale: 0 }))).toMatchObject({ status: 'not_due', reason: 'zero_amount', date: null, subtotal: '0' });
-    expect(planPeriod({ terms: lastDay, lines: [...tiny, ...lines.slice(0, 1)], period: '2026-05', alreadyGenerated: false, scale: 0 }).lines.map((l) => l.description)).toEqual(['賃料']);
-    expect(view(planPeriod({ terms: { ...lastDay, roundingMode: 'up' }, lines: tiny, period: '2026-05', alreadyGenerated: false, scale: 0 }))).toMatchObject({ status: 'due', subtotal: '1' });
+    expect(
+      view(planPeriod({ terms: lastDay, lines: tiny, period: '2026-05', alreadyGenerated: false, scale: 0 })),
+    ).toMatchObject({ status: 'not_due', reason: 'zero_amount', date: null, subtotal: '0' });
+    expect(
+      planPeriod({
+        terms: lastDay,
+        lines: [...tiny, ...lines.slice(0, 1)],
+        period: '2026-05',
+        alreadyGenerated: false,
+        scale: 0,
+      }).lines.map((l) => l.description),
+    ).toEqual(['賃料']);
+    expect(
+      view(
+        planPeriod({
+          terms: { ...lastDay, roundingMode: 'up' },
+          lines: tiny,
+          period: '2026-05',
+          alreadyGenerated: false,
+          scale: 0,
+        }),
+      ),
+    ).toMatchObject({ status: 'due', subtotal: '1' });
   });
 });

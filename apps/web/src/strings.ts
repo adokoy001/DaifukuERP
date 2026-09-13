@@ -17,7 +17,10 @@ export const S = {
   loading: L('読み込み中…', 'Loading…'),
   loadFailed: L('読み込みに失敗しました', 'Failed to load'),
   retry: L('再試行', 'Retry'),
-  unknownEntity: L('このエンティティは存在しないか、閲覧権限がありません。', 'This entity does not exist or you may not read it.'),
+  unknownEntity: L(
+    'このエンティティは存在しないか、閲覧権限がありません。',
+    'This entity does not exist or you may not read it.',
+  ),
   search: L('検索', 'Search'),
   searchPlaceholder: L('検索…', 'Search…'),
   new: L('新規', 'New'),
@@ -42,7 +45,10 @@ export const S = {
   submit: L('確定', 'Submit'),
   cancelDoc: L('取消', 'Cancel'),
   amend: L('訂正', 'Amend'),
-  confirmSubmit: L('この伝票を確定しますか？確定後は編集できなくなります。', 'Submit this document? Most fields lock after submit.'),
+  confirmSubmit: L(
+    'この伝票を確定しますか？確定後は編集できなくなります。',
+    'Submit this document? Most fields lock after submit.',
+  ),
   confirmCancel: L('この伝票を取消しますか？', 'Cancel this document?'),
   submitted: L('確定しました', 'Submitted'),
   cancelled: L('取消しました', 'Cancelled'),
@@ -57,7 +63,10 @@ export const S = {
   auditAt: L('日時', 'At'),
   auditChanged: L('変更項目', 'Changed fields'),
   conflictTitle: L('他のユーザーが先に更新しました', 'Someone else updated this record'),
-  conflictBody: L('最新の内容を読み込み直してから、もう一度編集してください。', 'Reload the latest version, then re-apply your changes.'),
+  conflictBody: L(
+    '最新の内容を読み込み直してから、もう一度編集してください。',
+    'Reload the latest version, then re-apply your changes.',
+  ),
   reload: L('再読み込み', 'Reload'),
   version: L('バージョン', 'Version'),
   createdAt: L('作成日時', 'Created at'),
@@ -84,7 +93,10 @@ export const S = {
   rowNo: L('#', '#'),
   sums: L('合計', 'Total'),
   referenceValue: L('参考値', 'reference'),
-  referenceValueHint: L('画面上の合算です。正式な値はサーバが計算します。', 'Computed on this screen; the server value is authoritative.'),
+  referenceValueHint: L(
+    '画面上の合算です。正式な値はサーバが計算します。',
+    'Computed on this screen; the server value is authoritative.',
+  ),
   noLines: L('明細がありません', 'No lines'),
   linesFrozen: L('確定済み／取消済みのため明細は変更できません', 'Lines are frozen after submit/cancel'),
   linesHaveErrors: L('明細の入力内容を確認してください', 'Please check the highlighted line cells'),
@@ -96,7 +108,10 @@ export const S = {
   downloadCsv: L('CSV ダウンロード', 'Download CSV'),
   reportEmpty: L('該当する行がありません', 'No rows'),
   reportTruncated: L('行数が上限を超えたため一部のみ表示しています', 'Row limit reached; showing a partial result'),
-  reportNotFound: L('このレポートは存在しないか、実行権限がありません。', 'This report does not exist or you may not run it.'),
+  reportNotFound: L(
+    'このレポートは存在しないか、実行権限がありません。',
+    'This report does not exist or you may not run it.',
+  ),
   reportRows: L('行', 'rows'),
   conditions: L('条件', 'Conditions'),
   // attachments (AC-4)
@@ -118,7 +133,10 @@ export const S = {
   // settings (AC-5)
   settings: L('設定', 'Settings'),
   settingsEmpty: L('モジュールが宣言した設定はありません', 'No module has declared settings'),
-  settingsForbidden: L('設定の変更には admin または settings ロールが必要です。', 'Changing settings requires the admin or settings role.'),
+  settingsForbidden: L(
+    '設定の変更には admin または settings ロールが必要です。',
+    'Changing settings requires the admin or settings role.',
+  ),
   settingSaved: L('設定を保存しました', 'Setting saved'),
   key: L('キー', 'Key'),
   rawJson: L('JSON で編集', 'Edit as JSON'),
@@ -126,14 +144,20 @@ export const S = {
   viewInvoice: L('請求書を表示', 'View invoice'),
   print: L('印刷', 'Print'),
   rendering: L('帳票を作成しています…', 'Rendering…'),
-  popupBlocked: L('新しいタブを開けませんでした。ポップアップを許可してください。', 'Could not open a new tab. Please allow pop-ups for this site.'),
+  popupBlocked: L(
+    '新しいタブを開けませんでした。ポップアップを許可してください。',
+    'Could not open a new tab. Please allow pop-ups for this site.',
+  ),
   printNoHtml: L('帳票の HTML が返されませんでした', 'The action returned no HTML'),
   // web-polish: home dashboard
   documents: L('伝票', 'Documents'),
   masters: L('マスタ', 'Masters'),
   list: L('一覧', 'List'),
   countUnavailable: L('件数を取得できませんでした', 'Count unavailable'),
-  noDocuments: L('伝票エンティティがありません。左のメニューからエンティティを選んでください。', 'No document entities. Pick an entity from the menu on the left.'),
+  noDocuments: L(
+    '伝票エンティティがありません。左のメニューからエンティティを選んでください。',
+    'No document entities. Pick an entity from the menu on the left.',
+  ),
   // web-phase15: ext fields (AC-3)
   extFields: L('追加項目', 'Additional fields'),
   // web-phase15: allocation picker (AC-1/AC-2)
@@ -144,7 +168,10 @@ export const S = {
   allocatedTotal: L('配分合計', 'Allocated'),
   unallocated: L('未配分', 'Unallocated'),
   overAllocated: L('配分合計が金額を超えています', 'Allocations exceed the amount'),
-  submitBlockedOverAllocated: L('配分合計が金額を超えているため確定できません', 'Cannot submit: allocations exceed the amount'),
+  submitBlockedOverAllocated: L(
+    '配分合計が金額を超えているため確定できません',
+    'Cannot submit: allocations exceed the amount',
+  ),
   date: L('日付', 'Date'),
   dueDate: L('期日', 'Due date'),
   balance: L('残高', 'Balance'),

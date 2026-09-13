@@ -16,7 +16,12 @@ import { appliedPacksOf, PACKS_APPLIED_KEY } from '../src/pack.ts';
 import { registry } from '../src/registry.ts';
 import { TMemo, TPartner } from './fixtures/entities.ts';
 
-const ctx: Context = makeContext({} as unknown as Db, { tenantId: '00000000-0000-0000-0000-000000000001', companyId: null, actor: { type: 'user', id: 'u' }, roles: ['admin'] });
+const ctx: Context = makeContext({} as unknown as Db, {
+  tenantId: '00000000-0000-0000-0000-000000000001',
+  companyId: null,
+  actor: { type: 'user', id: 'u' },
+  roles: ['admin'],
+});
 
 const Shelf = defineEntity({
   name: 'unitpack_shelf',
@@ -46,8 +51,14 @@ const UnitPack = definePack({
   entities: [Shelf],
   actions: [shelfCount],
   hooks,
-  labels: { test_partner: { entity: label('得意先', 'Customer'), fields: { name: label('得意先名', 'Customer name') } } },
-  menus: [{ label: label('棚', 'Shelves'), entity: Shelf.name }, { label: label('レポート', 'Report'), route: '/unitpack/report' }, { label: label('共通取引先', 'Core partner'), entity: TPartner.name }],
+  labels: {
+    test_partner: { entity: label('得意先', 'Customer'), fields: { name: label('得意先名', 'Customer name') } },
+  },
+  menus: [
+    { label: label('棚', 'Shelves'), entity: Shelf.name },
+    { label: label('レポート', 'Report'), route: '/unitpack/report' },
+    { label: label('共通取引先', 'Core partner'), entity: TPartner.name },
+  ],
 });
 
 function caught(fn: () => unknown): unknown {
@@ -67,18 +78,34 @@ describe('definePack registers at definition time (AC-1, AC-2)', () => {
     expect(registry.extFields('test_partner').map((d) => [d.key, d.source])).toEqual([['shelfCode', 'pack:unitpack']]);
     expect(Shelf.module).toBe('unitpack');
     expect(shelfCount.module).toBe('unitpack');
-    expect(registry.labelOverrides('test_partner')).toEqual({ entity: { ja: '得意先', en: 'Customer' }, fields: { name: { ja: '得意先名', en: 'Customer name' } } });
+    expect(registry.labelOverrides('test_partner')).toEqual({
+      entity: { ja: '得意先', en: 'Customer' },
+      fields: { name: { ja: '得意先名', en: 'Customer name' } },
+    });
     expect(hookCalls).toBe(1);
   });
 
   it('AC-2 a pack may depend on another pack', () => {
-    const child = definePack({ name: 'unitpack_child', label: label('子', 'Child'), version: '1.2.0', depends: ['unitpack'], labels: { unitpack_shelf: { entity: label('ラック', 'Rack') } } });
+    const child = definePack({
+      name: 'unitpack_child',
+      label: label('子', 'Child'),
+      version: '1.2.0',
+      depends: ['unitpack'],
+      labels: { unitpack_shelf: { entity: label('ラック', 'Rack') } },
+    });
     expect(child.version).toBe('1.2.0');
     expect(registry.labelOverrides('unitpack_shelf')?.entity).toEqual({ ja: 'ラック', en: 'Rack' });
   });
 
   it('AC-2 unregistered depends -> DependencyError naming what is missing; nothing registered', () => {
-    const e = caught(() => definePack({ name: 'unitpack_orphan', label: label('孤児', 'Orphan'), depends: ['test', 'retail_core', 'nope'], ext: { test_partner: { orphanKey: f.text() } } }));
+    const e = caught(() =>
+      definePack({
+        name: 'unitpack_orphan',
+        label: label('孤児', 'Orphan'),
+        depends: ['test', 'retail_core', 'nope'],
+        ext: { test_partner: { orphanKey: f.text() } },
+      }),
+    );
     expect(e).toBeInstanceOf(DependencyError);
     expect((e as DependencyError).message).toContain('"retail_core", "nope"');
     expect((e as DependencyError).hint).toContain('retail_core, nope');
@@ -87,10 +114,24 @@ describe('definePack registers at definition time (AC-1, AC-2)', () => {
   });
 
   it('AC-2 ext/labels on an entity whose module is not reachable from depends -> DependencyError; unknown entity too', () => {
-    const outside = caught(() => definePack({ name: 'unitpack_reach', label: label('到達', 'Reach'), depends: [], ext: { test_partner: { reachKey: f.text() } } }));
+    const outside = caught(() =>
+      definePack({
+        name: 'unitpack_reach',
+        label: label('到達', 'Reach'),
+        depends: [],
+        ext: { test_partner: { reachKey: f.text() } },
+      }),
+    );
     expect(outside).toBeInstanceOf(DependencyError);
     expect((outside as DependencyError).message).toContain('belongs to "test"');
-    const unknown = caught(() => definePack({ name: 'unitpack_reach', label: label('到達', 'Reach'), depends: ['test'], labels: { no_such_entity: { entity: label('x', 'x') } } }));
+    const unknown = caught(() =>
+      definePack({
+        name: 'unitpack_reach',
+        label: label('到達', 'Reach'),
+        depends: ['test'],
+        labels: { no_such_entity: { entity: label('x', 'x') } },
+      }),
+    );
     expect(unknown).toBeInstanceOf(DependencyError);
     expect(registry.hasPack('unitpack_reach')).toBe(false);
   });
@@ -100,17 +141,37 @@ describe('definePack registers at definition time (AC-1, AC-2)', () => {
       definePack({ name: 'Bad-Name', label: label('x', 'x'), depends: [], actions: [shelfCount] }),
     );
     expect(e).toBeInstanceOf(ValidationError);
-    expect(((e as ValidationError).details as { issues: { path: string }[] }).issues.map((i) => i.path)).toEqual(['name', 'actions.unitpack.count_shelves']);
-    expect(caught(() => definePack({ name: 'pack', label: label('x', 'x'), depends: [] }))).toBeInstanceOf(ValidationError);
-    const field = caught(() => definePack({ name: 'unitpack_lbl', label: label('x', 'x'), depends: ['test'], labels: { test_partner: { fields: { nope: label('x', 'x') } } } }));
-    expect(((field as ValidationError).details as { issues: { path: string }[] }).issues.map((i) => i.path)).toEqual(['labels.test_partner.fields.nope']);
+    expect(((e as ValidationError).details as { issues: { path: string }[] }).issues.map((i) => i.path)).toEqual([
+      'name',
+      'actions.unitpack.count_shelves',
+    ]);
+    expect(caught(() => definePack({ name: 'pack', label: label('x', 'x'), depends: [] }))).toBeInstanceOf(
+      ValidationError,
+    );
+    const field = caught(() =>
+      definePack({
+        name: 'unitpack_lbl',
+        label: label('x', 'x'),
+        depends: ['test'],
+        labels: { test_partner: { fields: { nope: label('x', 'x') } } },
+      }),
+    );
+    expect(((field as ValidationError).details as { issues: { path: string }[] }).issues.map((i) => i.path)).toEqual([
+      'labels.test_partner.fields.nope',
+    ]);
     expect(registry.packs().map((p) => p.name)).toEqual(['unitpack', 'unitpack_child']);
   });
 
   it('AC-2 name of a module/pack, entity owned elsewhere -> Conflict', () => {
     expect(caught(() => definePack({ name: 'test', label: label('x', 'x'), depends: [] }))).toBeInstanceOf(Conflict);
-    expect(caught(() => definePack({ name: 'unitpack', label: label('x', 'x'), depends: [] }))).toBeInstanceOf(Conflict);
-    expect(caught(() => definePack({ name: 'unitpack_steal', label: label('x', 'x'), depends: ['test'], entities: [TPartner] }))).toBeInstanceOf(Conflict);
+    expect(caught(() => definePack({ name: 'unitpack', label: label('x', 'x'), depends: [] }))).toBeInstanceOf(
+      Conflict,
+    );
+    expect(
+      caught(() =>
+        definePack({ name: 'unitpack_steal', label: label('x', 'x'), depends: ['test'], entities: [TPartner] }),
+      ),
+    ).toBeInstanceOf(Conflict);
   });
 
   it('AC-2 ext is all-or-nothing across entities: a Conflict on the second entity leaves the first unregistered', () => {
@@ -127,7 +188,6 @@ describe('definePack registers at definition time (AC-1, AC-2)', () => {
     expect(registry.extFields(TMemo.name)).toEqual([]);
     expect(registry.hasPack('unitpack_dup')).toBe(false);
   });
-
 });
 
 describe('meta and generic pack actions (AC-4, AC-5)', () => {
@@ -149,8 +209,14 @@ describe('meta and generic pack actions (AC-4, AC-5)', () => {
     ]);
     expect(appMeta(ctx, { appliedPacks: ['unitpack'] }).packs.map((p) => p.applied)).toEqual([true, false]);
     expect(appMeta(ctx).modules.some((m) => m.name === 'unitpack')).toBe(false);
-    expect(appMeta(ctx).modules.flatMap((m) => m.menus).some((menu) => menu.route === '/unitpack/report' || menu.label.en === 'Core partner')).toBe(false);
-    expect(appMeta(ctx, { appliedPacks: ['unitpack'] }).modules.find((m) => m.name === 'unitpack')?.menus).toEqual(UnitPack.menus);
+    expect(
+      appMeta(ctx)
+        .modules.flatMap((m) => m.menus)
+        .some((menu) => menu.route === '/unitpack/report' || menu.label.en === 'Core partner'),
+    ).toBe(false);
+    expect(appMeta(ctx, { appliedPacks: ['unitpack'] }).modules.find((m) => m.name === 'unitpack')?.menus).toEqual(
+      UnitPack.menus,
+    );
   });
 
   it('AC-4 registerPackActions is idempotent, declares packs.applied, and exposes pack.apply (admin, mutates) and pack.list', () => {
@@ -158,16 +224,27 @@ describe('meta and generic pack actions (AC-4, AC-5)', () => {
     registerPackActions();
     const apply = registry.action('pack.apply');
     expect(apply).toMatchObject({ permission: { roles: ['admin'] }, mutates: true, internal: false, tx: 'required' });
-    expect(registry.action('pack.list')).toMatchObject({ permission: 'authenticated', mutates: false, siteAccess: true, storeAccess: true });
+    expect(registry.action('pack.list')).toMatchObject({
+      permission: 'authenticated',
+      mutates: false,
+      siteAccess: true,
+      storeAccess: true,
+    });
     expect(registry.actions().map((a) => a.name)).toEqual(expect.arrayContaining(['pack.apply', 'pack.list']));
     expect(registry.hasSetting(PACKS_APPLIED_KEY)).toBe(true);
-    expect(registry.setting(PACKS_APPLIED_KEY).schema.safeParse({ unitpack: { at: '2026-09-11T00:00:00.000Z', version: '0.0.0' } }).success).toBe(true);
+    expect(
+      registry
+        .setting(PACKS_APPLIED_KEY)
+        .schema.safeParse({ unitpack: { at: '2026-09-11T00:00:00.000Z', version: '0.0.0' } }).success,
+    ).toBe(true);
   });
 
   it('AC-3 appliedPacksOf reads packs.applied; a missing or corrupt value reads as nothing applied', () => {
     expect(appliedPacksOf({})).toEqual({});
     expect(appliedPacksOf({ [PACKS_APPLIED_KEY]: 'garbage' })).toEqual({});
-    expect(appliedPacksOf({ [PACKS_APPLIED_KEY]: { unitpack: { at: 'x', version: '1' } } })).toEqual({ unitpack: { at: 'x', version: '1' } });
+    expect(appliedPacksOf({ [PACKS_APPLIED_KEY]: { unitpack: { at: 'x', version: '1' } } })).toEqual({
+      unitpack: { at: 'x', version: '1' },
+    });
   });
 });
 
@@ -180,14 +257,25 @@ describe('label overrides across packs (AC-2, last-wins)', () => {
     const before = registry.warnings().length;
     const meta0 = entityMeta(ctx, TPartner, { appliedPacks: ['unitpack'] });
     expect(meta0.fields.find((x) => x.name === 'name')?.label).toEqual({ ja: '得意先名', en: 'Customer name' });
-    definePack({ name: 'unitpack_relabel', label: label('x', 'x'), depends: ['test'], labels: { test_partner: { fields: { name: label('顧客名', 'Client') } } } });
+    definePack({
+      name: 'unitpack_relabel',
+      label: label('x', 'x'),
+      depends: ['test'],
+      labels: { test_partner: { fields: { name: label('顧客名', 'Client') } } },
+    });
     expect(registry.hasPack('unitpack_relabel')).toBe(true);
     const warnings = registry.warnings().slice(before);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.kind).toBe('label_override');
     expect(warnings[0]?.message).toContain('test_partner.name');
     expect(warnings[0]?.message).toContain('"unitpack"');
-    expect(entityMeta(ctx, TPartner, { appliedPacks: ['unitpack', 'unitpack_relabel'] }).fields.find((x) => x.name === 'name')?.label).toEqual({ ja: '顧客名', en: 'Client' });
-    expect(entityMeta(ctx, TPartner, { appliedPacks: ['unitpack'] }).fields.find((x) => x.name === 'name')?.label).toEqual({ ja: '得意先名', en: 'Customer name' });
+    expect(
+      entityMeta(ctx, TPartner, { appliedPacks: ['unitpack', 'unitpack_relabel'] }).fields.find(
+        (x) => x.name === 'name',
+      )?.label,
+    ).toEqual({ ja: '顧客名', en: 'Client' });
+    expect(
+      entityMeta(ctx, TPartner, { appliedPacks: ['unitpack'] }).fields.find((x) => x.name === 'name')?.label,
+    ).toEqual({ ja: '得意先名', en: 'Customer name' });
   });
 });

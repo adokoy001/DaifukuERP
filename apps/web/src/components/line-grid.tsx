@@ -32,7 +32,9 @@ function focusCell(root: HTMLElement | null, rowKey: string, field: string | und
   if (!root) return;
   const row = root.querySelector(`tr[data-row-key="${rowKey}"]`);
   const scope = field ? row?.querySelector(`td[data-field="${field}"]`) : row;
-  const el = scope?.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+  const el = scope?.querySelector<HTMLElement>(
+    'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+  );
   el?.focus();
 }
 
@@ -86,9 +88,19 @@ function TargetLink({ entity, id }: { entity: EntityMeta; id: string }) {
   const rec = useRecord(entity.name, id);
   if (!rec.data) return null;
   const display = entity.displayField ? rec.data[entity.displayField] : undefined;
-  const text = typeof rec.data.number === 'string' && rec.data.number ? rec.data.number : typeof display === 'string' && display ? display : shortId(id);
+  const text =
+    typeof rec.data.number === 'string' && rec.data.number
+      ? rec.data.number
+      : typeof display === 'string' && display
+        ? display
+        : shortId(id);
   return (
-    <Link to="/e/$entity/$id" params={{ entity: entity.name, id }} data-testid="target-link" className="block px-1 font-mono text-[11px] text-sky-700 hover:underline">
+    <Link
+      to="/e/$entity/$id"
+      params={{ entity: entity.name, id }}
+      data-testid="target-link"
+      className="block px-1 font-mono text-[11px] text-sky-700 hover:underline"
+    >
       {text}
     </Link>
   );
@@ -99,8 +111,20 @@ function Cell({ line, row, field, columns, entities, readOnly, error, onChange, 
   const Widget = WIDGETS[widgetFor(field)];
   const target = polymorphicTarget(field, row.values, columns, entities);
   return (
-    <td data-field={field.name} className={`px-1 py-0.5 align-top ${NUMERIC.has(field.kind) ? 'min-w-28' : 'min-w-36'}`}>
-      <Widget id={`l-${line.name}-${row.key}-${field.name}`} field={field} value={row.values[field.name] ?? ''} onChange={onChange} onSelectRecord={onSelect} disabled={readOnly || field.serverOwned === true || field.readOnly === true} invalid={error !== undefined} ariaLabel={t(field.label)} />
+    <td
+      data-field={field.name}
+      className={`px-1 py-0.5 align-top ${NUMERIC.has(field.kind) ? 'min-w-28' : 'min-w-36'}`}
+    >
+      <Widget
+        id={`l-${line.name}-${row.key}-${field.name}`}
+        field={field}
+        value={row.values[field.name] ?? ''}
+        onChange={onChange}
+        onSelectRecord={onSelect}
+        disabled={readOnly || field.serverOwned === true || field.readOnly === true}
+        invalid={error !== undefined}
+        ariaLabel={t(field.label)}
+      />
       {target ? <TargetLink entity={target.entity} id={target.id} /> : null}
       {error ? (
         <span role="alert" className="block text-[11px] text-red-700">
@@ -111,19 +135,51 @@ function Cell({ line, row, field, columns, entities, readOnly, error, onChange, 
   );
 }
 
-function RowTools({ index, count, readOnly, onMove, onRemove }: { index: number; count: number; readOnly: boolean; onMove: (to: number) => void; onRemove: () => void }) {
+function RowTools({
+  index,
+  count,
+  readOnly,
+  onMove,
+  onRemove,
+}: {
+  index: number;
+  count: number;
+  readOnly: boolean;
+  onMove: (to: number) => void;
+  onRemove: () => void;
+}) {
   const { t } = useLocale();
   if (readOnly) return <td />;
   const btn = 'rounded px-1 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-30';
   return (
     <td className="px-1 py-0.5 align-top whitespace-nowrap">
-      <button type="button" className={btn} aria-label={t(S.moveUp)} title={t(S.moveUp)} disabled={index === 0} onClick={() => onMove(index - 1)}>
+      <button
+        type="button"
+        className={btn}
+        aria-label={t(S.moveUp)}
+        title={t(S.moveUp)}
+        disabled={index === 0}
+        onClick={() => onMove(index - 1)}
+      >
         ↑
       </button>
-      <button type="button" className={btn} aria-label={t(S.moveDown)} title={t(S.moveDown)} disabled={index >= count - 1} onClick={() => onMove(index + 1)}>
+      <button
+        type="button"
+        className={btn}
+        aria-label={t(S.moveDown)}
+        title={t(S.moveDown)}
+        disabled={index >= count - 1}
+        onClick={() => onMove(index + 1)}
+      >
         ↓
       </button>
-      <button type="button" className={`${btn} text-red-700`} aria-label={t(S.removeRow)} title={t(S.removeRow)} onClick={onRemove}>
+      <button
+        type="button"
+        className={`${btn} text-red-700`}
+        aria-label={t(S.removeRow)}
+        title={t(S.removeRow)}
+        onClick={onRemove}
+      >
         ×
       </button>
     </td>
@@ -140,8 +196,17 @@ function SumsFooter({ columns, rows }: { columns: FieldMeta[]; rows: GridRow[] }
       <tr data-testid="line-sums">
         <td className="px-2 py-1 whitespace-nowrap text-neutral-500">{t(S.sums)}</td>
         {columns.map((c) => (
-          <td key={c.name} data-sum={c.name} className={`px-2 py-1 ${NUMERIC.has(c.kind) ? 'num' : ''}`} title={t(S.referenceValueHint)}>
-            {sums[c.name] !== undefined ? (c.kind === 'decimal' ? formatDecimal(sums[c.name] ?? '0', decimalMinScale(c, currencyScale)) : groupDigits(sums[c.name] ?? '0')) : ''}
+          <td
+            key={c.name}
+            data-sum={c.name}
+            className={`px-2 py-1 ${NUMERIC.has(c.kind) ? 'num' : ''}`}
+            title={t(S.referenceValueHint)}
+          >
+            {sums[c.name] !== undefined
+              ? c.kind === 'decimal'
+                ? formatDecimal(sums[c.name] ?? '0', decimalMinScale(c, currencyScale))
+                : groupDigits(sums[c.name] ?? '0')
+              : ''}
           </td>
         ))}
         <td className="px-1 py-1 text-[10px] text-neutral-400">{t(S.referenceValue)}</td>
@@ -154,17 +219,29 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
   const { t } = useLocale();
   const { body, addRow, onKeyDown } = useKeyboard(rows, columns, readOnly, onChange);
   const entities = useMeta().data?.entities ?? NO_ENTITIES;
-  const setCell = (key: string, field: string, v: FormValue) => onChange(rows.map((r) => (r.key === key ? { ...r, values: { ...r.values, [field]: v } } : r)));
+  const setCell = (key: string, field: string, v: FormValue) =>
+    onChange(rows.map((r) => (r.key === key ? { ...r, values: { ...r.values, [field]: v } } : r)));
   const selectRecord = (key: string, field: FieldMeta, picked: RecordJson) => {
     const fill = field.ref === 'product' ? productDefaults(picked, columns, line.name.startsWith('purchase_')) : {};
-    onChange(rows.map((r) => r.key === key ? { ...r, values: { ...r.values, ...fill, [field.name]: picked.id } } : r));
+    onChange(
+      rows.map((r) => (r.key === key ? { ...r, values: { ...r.values, ...fill, [field.name]: picked.id } } : r)),
+    );
   };
   return (
-    <section aria-label={t(line.label)} data-testid={`lines-${line.name}`} data-readonly={readOnly} className="rounded border border-neutral-200 bg-white">
+    <section
+      aria-label={t(line.label)}
+      data-testid={`lines-${line.name}`}
+      data-readonly={readOnly}
+      className="rounded border border-neutral-200 bg-white"
+    >
       <header className="flex items-center gap-2 border-b border-neutral-200 px-3 py-1.5">
         <h2 className="text-sm font-semibold">{t(line.label)}</h2>
         <span className="text-xs text-neutral-500">({rows.length})</span>
-        {readOnly ? <span className="text-[11px] text-neutral-500">🔒 {readOnlyReason ?? t(S.readonly)}</span> : <span className="text-[11px] text-neutral-400">{t(S.enterAddsRow)}</span>}
+        {readOnly ? (
+          <span className="text-[11px] text-neutral-500">🔒 {readOnlyReason ?? t(S.readonly)}</span>
+        ) : (
+          <span className="text-[11px] text-neutral-400">{t(S.enterAddsRow)}</span>
+        )}
         {!readOnly ? (
           <button type="button" className="btn ml-auto px-2 py-0.5" onClick={() => addRow()}>
             + {t(S.addRow)}
@@ -180,9 +257,15 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
                 {t(S.rowNo)}
               </th>
               {columns.map((c) => (
-                <th key={c.name} scope="col" className={`px-2 py-1 font-medium whitespace-nowrap ${NUMERIC.has(c.kind) ? 'text-right' : ''}`}>
+                <th
+                  key={c.name}
+                  scope="col"
+                  className={`px-2 py-1 font-medium whitespace-nowrap ${NUMERIC.has(c.kind) ? 'text-right' : ''}`}
+                >
                   {t(c.label)}
-                  {c.required && !c.hasDefault && !c.serverOwned && !c.readOnly && !readOnly ? <span className="ml-0.5 text-red-600">*</span> : null}
+                  {c.required && !c.hasDefault && !c.serverOwned && !c.readOnly && !readOnly ? (
+                    <span className="ml-0.5 text-red-600">*</span>
+                  ) : null}
                 </th>
               ))}
               <th scope="col" className="w-20" />
@@ -197,12 +280,35 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
               </tr>
             ) : null}
             {rows.map((row, i) => (
-              <tr key={row.key} data-row-key={row.key} data-row-index={i} data-testid="line-row" className="border-t border-neutral-100">
+              <tr
+                key={row.key}
+                data-row-key={row.key}
+                data-row-index={i}
+                data-testid="line-row"
+                className="border-t border-neutral-100"
+              >
                 <td className="px-2 py-1 font-mono text-xs text-neutral-400">{i + 1}</td>
                 {columns.map((c) => (
-                  <Cell key={c.name} line={line} row={row} field={c} columns={columns} entities={entities} readOnly={readOnly} error={errors[row.key]?.[c.name]} onChange={(v) => setCell(row.key, c.name, v)} onSelect={(picked) => selectRecord(row.key, c, picked)} />
+                  <Cell
+                    key={c.name}
+                    line={line}
+                    row={row}
+                    field={c}
+                    columns={columns}
+                    entities={entities}
+                    readOnly={readOnly}
+                    error={errors[row.key]?.[c.name]}
+                    onChange={(v) => setCell(row.key, c.name, v)}
+                    onSelect={(picked) => selectRecord(row.key, c, picked)}
+                  />
                 ))}
-                <RowTools index={i} count={rows.length} readOnly={readOnly} onMove={(to) => onChange(moveRow(rows, i, to))} onRemove={() => onChange(rows.filter((r) => r.key !== row.key))} />
+                <RowTools
+                  index={i}
+                  count={rows.length}
+                  readOnly={readOnly}
+                  onMove={(to) => onChange(moveRow(rows, i, to))}
+                  onRemove={() => onChange(rows.filter((r) => r.key !== row.key))}
+                />
               </tr>
             ))}
           </tbody>

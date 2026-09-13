@@ -8,10 +8,34 @@ import { z } from 'zod';
 export const INVOICE_HTML_OVERRIDE = 'sales.invoice_html';
 
 export interface InvoiceRenderData {
-  issuer: { name: string; invoiceRegistrationNo?: string; postalCode?: string; address?: string; phone?: string; email?: string; bankInfo?: string };
-  invoice: { docstatus?: number; number: string; date: string; dueDate: string | null; note: string | null; priceIncludesTax: boolean };
+  issuer: {
+    name: string;
+    invoiceRegistrationNo?: string;
+    postalCode?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    bankInfo?: string;
+  };
+  invoice: {
+    docstatus?: number;
+    number: string;
+    date: string;
+    dueDate: string | null;
+    note: string | null;
+    priceIncludesTax: boolean;
+  };
   recipient: { name: string; postalCode?: string; address?: string };
-  lines: Array<{ uomCode?: string; seq: number; description: string; quantity: string; unitPrice: string; amount: string; taxCategory: string; rate: string }>;
+  lines: Array<{
+    uomCode?: string;
+    seq: number;
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    amount: string;
+    taxCategory: string;
+    rate: string;
+  }>;
   /** rate '0.10' etc.; money as Decimal strings */
   taxSummary: Array<{ category: string; rate: string; taxable: string; tax: string; gross: string }>;
   totals: { subtotal: string; taxTotal: string; total: string };
@@ -43,7 +67,16 @@ export const invoiceRenderDataSchema = z.object({
   }),
   recipient: z.object({ name: text, postalCode: text.optional(), address: text.optional() }),
   lines: z.array(
-    z.object({ uomCode: text.optional(), seq: z.number().int(), description: text, quantity: money, unitPrice: money, amount: money, taxCategory: text, rate: money }),
+    z.object({
+      uomCode: text.optional(),
+      seq: z.number().int(),
+      description: text,
+      quantity: money,
+      unitPrice: money,
+      amount: money,
+      taxCategory: text,
+      rate: money,
+    }),
   ),
   taxSummary: z.array(z.object({ category: text, rate: money, taxable: money, tax: money, gross: money })),
   totals: z.object({ subtotal: money, taxTotal: money, total: money }),

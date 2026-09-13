@@ -2,7 +2,16 @@
 // (active, or ended with endDate on or after the period start) with partner, title, billing date, the expected amount
 // (税抜, prorated: exactly what contract.generate_invoices puts or put on the invoice, from the same planPeriod) and
 // status due | generated | not_due (+ the reason). Read-only, outside the request transaction.
-import { Decimal, defineAction, label, MAX_REPORT_ROWS, tableResult, column, type Context, type TableResult } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  label,
+  MAX_REPORT_ROWS,
+  tableResult,
+  column,
+  type Context,
+  type TableResult,
+} from '@daifuku/kernel';
 import { Partner } from '@daifuku/mod-partner';
 import { SalesInvoice } from '@daifuku/mod-sales';
 import { z } from 'zod';
@@ -72,7 +81,13 @@ export async function contractSchedule(ctx: Context, period: Period): Promise<Ta
   );
   const planned = contracts.map((c) => {
     const billing = billings.get(c.id);
-    const plan = planPeriod({ terms: termsOf(c), lines: lines.get(c.id) ?? [], period, alreadyGenerated: billing !== undefined, scale });
+    const plan = planPeriod({
+      terms: termsOf(c),
+      lines: lines.get(c.id) ?? [],
+      period,
+      alreadyGenerated: billing !== undefined,
+      scale,
+    });
     const row: ScheduleRow = {
       contractId: c.id,
       contractNumber: c.number,

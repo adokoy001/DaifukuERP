@@ -1,7 +1,17 @@
 // Code-based routes: /login, and the authenticated shell with /, /e/$entity, /e/$entity/new, /e/$entity/$id,
 // /r/$action (reports, web-phase1 AC-3) and /settings (AC-5).
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, Outlet, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
+import {
+  Link,
+  Outlet,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router';
 import { clearSession, getToken, getUser, isApiError } from './api/client.ts';
 import { CompanyProvider } from './api/company.tsx';
 import { useMeta } from './api/queries.ts';
@@ -31,7 +41,10 @@ const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFou
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  validateSearch: (raw: Record<string, unknown>): { reason?: 'expired' | 'password-changed' | 'signed-out-all' } => (raw.reason === 'expired' || raw.reason === 'password-changed' || raw.reason === 'signed-out-all' ? { reason: raw.reason } : {}),
+  validateSearch: (raw: Record<string, unknown>): { reason?: 'expired' | 'password-changed' | 'signed-out-all' } =>
+    raw.reason === 'expired' || raw.reason === 'password-changed' || raw.reason === 'signed-out-all'
+      ? { reason: raw.reason }
+      : {},
   component: LoginPage,
 });
 
@@ -60,11 +73,66 @@ function AppLayout() {
   return (
     <CompanyProvider>
       <div className="app-layout">
-        <Sidebar userName={getUser()?.name ?? getUser()?.email} onLogout={logout} open={navOpen} onClose={closeNavigation} />
+        <Sidebar
+          userName={getUser()?.name ?? getUser()?.email}
+          onLogout={logout}
+          open={navOpen}
+          onClose={closeNavigation}
+        />
         <main className="app-main" inert={navOpen}>
-          <a className="skip-navigation" href="#screen-content">{t({ ja: '本文へ移動', en: 'Skip to content' })}</a>
-          <div className="app-topbar"><div className="topbar-title"><button type="button" className="mobile-toggle" aria-label={t({ ja: 'メニューを開く', en: 'Open menu' })} aria-expanded={navOpen} aria-controls="app-navigation" onClick={() => setNavOpen(true)}><Icon name="menu" /></button><Link to="/templates" className="topbar-company" aria-label={t({ ja: '会社を切り替え', en: 'Switch company' })}><Icon name="building" size={17} /><CompanyName /><small>{t({ ja: '会社を切り替え', en: 'Switch company' })}</small></Link></div><Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}><span>{getUser()?.name ?? getUser()?.email}</span><span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span></Link></div>
-          <div className="page-content" id="screen-content" ref={content} tabIndex={-1}>{meta.isError && !canRetainData(meta) ? isApiError(meta.error) && meta.error.status === 403 ? <div className="workspace-page"><p className="notice-strip" role="alert">{t({ ja: 'この会社へのアクセス権がありません。利用できる会社を選び直してください。会社がない場合は管理者へ所属の設定を依頼してください。', en: 'Access to this company is unavailable. Select a permitted company, or ask your administrator to assign a membership.' })}</p><CompanyPicker disabled={false} /></div> : <MetaError error={meta.error} retry={() => void meta.refetch()} /> : <><ScreenTrail /><ReadRefreshNotice sources={[meta]} /><Outlet /></>}</div>
+          <a className="skip-navigation" href="#screen-content">
+            {t({ ja: '本文へ移動', en: 'Skip to content' })}
+          </a>
+          <div className="app-topbar">
+            <div className="topbar-title">
+              <button
+                type="button"
+                className="mobile-toggle"
+                aria-label={t({ ja: 'メニューを開く', en: 'Open menu' })}
+                aria-expanded={navOpen}
+                aria-controls="app-navigation"
+                onClick={() => setNavOpen(true)}
+              >
+                <Icon name="menu" />
+              </button>
+              <Link
+                to="/templates"
+                className="topbar-company"
+                aria-label={t({ ja: '会社を切り替え', en: 'Switch company' })}
+              >
+                <Icon name="building" size={17} />
+                <CompanyName />
+                <small>{t({ ja: '会社を切り替え', en: 'Switch company' })}</small>
+              </Link>
+            </div>
+            <Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}>
+              <span>{getUser()?.name ?? getUser()?.email}</span>
+              <span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span>
+            </Link>
+          </div>
+          <div className="page-content" id="screen-content" ref={content} tabIndex={-1}>
+            {meta.isError && !canRetainData(meta) ? (
+              isApiError(meta.error) && meta.error.status === 403 ? (
+                <div className="workspace-page">
+                  <p className="notice-strip" role="alert">
+                    {t({
+                      ja: 'この会社へのアクセス権がありません。利用できる会社を選び直してください。会社がない場合は管理者へ所属の設定を依頼してください。',
+                      en: 'Access to this company is unavailable. Select a permitted company, or ask your administrator to assign a membership.',
+                    })}
+                  </p>
+                  <CompanyPicker disabled={false} />
+                </div>
+              ) : (
+                <MetaError error={meta.error} retry={() => void meta.refetch()} />
+              )
+            ) : (
+              <>
+                <ScreenTrail />
+                <ReadRefreshNotice sources={[meta]} />
+                <Outlet />
+              </>
+            )}
+          </div>
         </main>
       </div>
     </CompanyProvider>
@@ -82,9 +150,23 @@ const appRoute = createRoute({
 });
 
 const indexRoute = createRoute({ getParentRoute: () => appRoute, path: '/', component: HomePage });
-const workspaceDirectoryRoute = createRoute({ getParentRoute: () => appRoute, path: '/workspaces', validateSearch: parseDirectorySearch, component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage') });
-const workspaceRoute = createRoute({ getParentRoute: () => appRoute, path: '/workspaces/$workspace', validateSearch: parseDirectorySearch, component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage') });
-const analyticsRoute = createRoute({ getParentRoute: () => appRoute, path: '/analytics', component: lazyRouteComponent(() => import('./pages/analytics-page.tsx'), 'AnalyticsPage') });
+const workspaceDirectoryRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workspaces',
+  validateSearch: parseDirectorySearch,
+  component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage'),
+});
+const workspaceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workspaces/$workspace',
+  validateSearch: parseDirectorySearch,
+  component: lazyRouteComponent(() => import('./pages/workspaces-page.tsx'), 'WorkspacesPage'),
+});
+const analyticsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/analytics',
+  component: lazyRouteComponent(() => import('./pages/analytics-page.tsx'), 'AnalyticsPage'),
+});
 
 const listRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -93,42 +175,175 @@ const listRoute = createRoute({
   component: EntityListPage,
 });
 
-const newRoute = createRoute({ getParentRoute: () => appRoute, path: '/e/$entity/new', component: () => <EntityFormPage mode="new" /> });
-const recordRoute = createRoute({ getParentRoute: () => appRoute, path: '/e/$entity/$id', component: () => <EntityFormPage mode="edit" /> });
+const newRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/e/$entity/new',
+  component: () => <EntityFormPage mode="new" />,
+});
+const recordRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/e/$entity/$id',
+  component: () => <EntityFormPage mode="edit" />,
+});
 const reportRoute = createRoute({ getParentRoute: () => appRoute, path: '/r/$action', component: ReportPage });
 const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: '/settings', component: SettingsPage });
 const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: '/templates', component: TemplatesPage });
 const actionRoute = createRoute({ getParentRoute: () => appRoute, path: '/a/$action', component: ActionPage });
 
-const operationsRoute = createRoute({ getParentRoute: () => appRoute, path: '/operations', validateSearch: (raw: Record<string, unknown>): { from?: string; to?: string; asOf?: string; storeId?: string } => Object.fromEntries(Object.entries(raw).filter(([key, value]) => ['from', 'to', 'asOf', 'storeId'].includes(key) && typeof value === 'string')), component: lazyRouteComponent(() => import('./pages/operations-page.tsx'), 'OperationsPage') });
-const edgeRoute = createRoute({ getParentRoute: () => appRoute, path: '/operations/devices', component: lazyRouteComponent(() => import('./pages/edge-page.tsx'), 'EdgePage') });
-const reportsRoute = createRoute({ getParentRoute: () => appRoute, path: '/reports', component: lazyRouteComponent(() => import('./pages/reports-page.tsx'), 'ReportsPage') });
-const accessRoute = createRoute({ getParentRoute: () => appRoute, path: '/admin/users', component: lazyRouteComponent(() => import('./pages/access-page.tsx'), 'AccessPage') });
-const employeeRoute = createRoute({ getParentRoute: () => appRoute, path: '/me', component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage') });
-const workforceRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce', component: lazyRouteComponent(() => import('./pages/workforce-page.tsx'), 'WorkforcePage') });
+const operationsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/operations',
+  validateSearch: (raw: Record<string, unknown>): { from?: string; to?: string; asOf?: string; storeId?: string } =>
+    Object.fromEntries(
+      Object.entries(raw).filter(
+        ([key, value]) => ['from', 'to', 'asOf', 'storeId'].includes(key) && typeof value === 'string',
+      ),
+    ),
+  component: lazyRouteComponent(() => import('./pages/operations-page.tsx'), 'OperationsPage'),
+});
+const edgeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/operations/devices',
+  component: lazyRouteComponent(() => import('./pages/edge-page.tsx'), 'EdgePage'),
+});
+const reportsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/reports',
+  component: lazyRouteComponent(() => import('./pages/reports-page.tsx'), 'ReportsPage'),
+});
+const accessRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/users',
+  component: lazyRouteComponent(() => import('./pages/access-page.tsx'), 'AccessPage'),
+});
+const employeeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/me',
+  component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage'),
+});
+const workforceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workforce',
+  component: lazyRouteComponent(() => import('./pages/workforce-page.tsx'), 'WorkforcePage'),
+});
 
-const shiftRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/shifts', component: lazyRouteComponent(() => import('./pages/shift-page.tsx'), 'ShiftPage') });
+const shiftRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workforce/shifts',
+  component: lazyRouteComponent(() => import('./pages/shift-page.tsx'), 'ShiftPage'),
+});
 
-const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', beforeLoad: () => { if (!getToken()) throw redirect({ to: '/login' }); }, component: lazyRouteComponent(() => import('./pages/account-page.tsx'), 'AccountPage') });
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/account',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/login' });
+  },
+  component: lazyRouteComponent(() => import('./pages/account-page.tsx'), 'AccountPage'),
+});
 
-const fiscalRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/payroll', component: lazyRouteComponent(() => import('./pages/fiscal-page.tsx'), 'FiscalPage') });
-const workSystemRoute = createRoute({ getParentRoute: () => appRoute, path: '/workforce/systems', component: lazyRouteComponent(() => import('./pages/work-system-page.tsx'), 'WorkSystemPage') });
-const commercePosRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/pos', component: lazyRouteComponent(() => import('./pages/commerce-pos-page.tsx'), 'CommercePosPage') });
-const commerceGroupRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/group', component: lazyRouteComponent(() => import('./pages/commerce-group-page.tsx'), 'CommerceGroupPage') });
-const commerceFranchiseRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/franchise', component: lazyRouteComponent(() => import('./pages/commerce-franchise-page.tsx'), 'CommerceFranchisePage') });
-const tradeRoute = createRoute({ getParentRoute: () => appRoute, path: '/commerce/trade', component: lazyRouteComponent(() => import('./pages/trade-page.tsx'), 'TradePage') });
-const bankingRoute = createRoute({ getParentRoute: () => appRoute, path: '/finance/banking', component: lazyRouteComponent(() => import('./pages/banking-page.tsx'), 'BankingPage') });
-const taxFilingRoute = createRoute({ getParentRoute: () => appRoute, path: '/finance/filing', component: lazyRouteComponent(() => import('./pages/tax-filing-page.tsx'), 'TaxFilingPage') });
+const fiscalRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workforce/payroll',
+  component: lazyRouteComponent(() => import('./pages/fiscal-page.tsx'), 'FiscalPage'),
+});
+const workSystemRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/workforce/systems',
+  component: lazyRouteComponent(() => import('./pages/work-system-page.tsx'), 'WorkSystemPage'),
+});
+const commercePosRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/commerce/pos',
+  component: lazyRouteComponent(() => import('./pages/commerce-pos-page.tsx'), 'CommercePosPage'),
+});
+const commerceGroupRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/commerce/group',
+  component: lazyRouteComponent(() => import('./pages/commerce-group-page.tsx'), 'CommerceGroupPage'),
+});
+const commerceFranchiseRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/commerce/franchise',
+  component: lazyRouteComponent(() => import('./pages/commerce-franchise-page.tsx'), 'CommerceFranchisePage'),
+});
+const tradeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/commerce/trade',
+  component: lazyRouteComponent(() => import('./pages/trade-page.tsx'), 'TradePage'),
+});
+const bankingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/banking',
+  component: lazyRouteComponent(() => import('./pages/banking-page.tsx'), 'BankingPage'),
+});
+const taxFilingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/filing',
+  component: lazyRouteComponent(() => import('./pages/tax-filing-page.tsx'), 'TaxFilingPage'),
+});
 
 const publicIdentityRoutes = [
-  createRoute({ getParentRoute: () => rootRoute, path: '/forgot-password', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'ForgotPasswordPage') }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/reset-password', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'MailPasswordPage') }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/accept-invitation', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'InvitationPage') }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/auth/oidc/callback', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'SsoCallbackPage') }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/auth/recovery-codes', component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'RecoveryCodesPage') }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/forgot-password',
+    component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'ForgotPasswordPage'),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/reset-password',
+    component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'MailPasswordPage'),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/accept-invitation',
+    component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'InvitationPage'),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/auth/oidc/callback',
+    component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'SsoCallbackPage'),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/auth/recovery-codes',
+    component: lazyRouteComponent(() => import('./pages/identity-public-pages.tsx'), 'RecoveryCodesPage'),
+  }),
 ];
 
-const routeTree = rootRoute.addChildren([loginRoute, accountRoute, ...publicIdentityRoutes, appRoute.addChildren([indexRoute, workspaceDirectoryRoute, workspaceRoute, analyticsRoute, listRoute, newRoute, recordRoute, reportRoute, settingsRoute, templatesRoute, actionRoute, operationsRoute, edgeRoute, reportsRoute, accessRoute, employeeRoute, workforceRoute, shiftRoute, fiscalRoute, workSystemRoute, commercePosRoute, commerceGroupRoute, commerceFranchiseRoute, tradeRoute, bankingRoute, taxFilingRoute])]);
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  accountRoute,
+  ...publicIdentityRoutes,
+  appRoute.addChildren([
+    indexRoute,
+    workspaceDirectoryRoute,
+    workspaceRoute,
+    analyticsRoute,
+    listRoute,
+    newRoute,
+    recordRoute,
+    reportRoute,
+    settingsRoute,
+    templatesRoute,
+    actionRoute,
+    operationsRoute,
+    edgeRoute,
+    reportsRoute,
+    accessRoute,
+    employeeRoute,
+    workforceRoute,
+    shiftRoute,
+    fiscalRoute,
+    workSystemRoute,
+    commercePosRoute,
+    commerceGroupRoute,
+    commerceFranchiseRoute,
+    tradeRoute,
+    bankingRoute,
+    taxFilingRoute,
+  ]),
+]);
 
 export const router = createRouter({ routeTree, defaultPreload: false, scrollRestoration: true });
 

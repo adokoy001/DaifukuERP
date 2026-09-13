@@ -89,7 +89,12 @@ export function tryDecimal(v: unknown): Decimal | null {
  * Checks one line against the payment header and its invoice — the rules that do not depend on the other lines.
  * Issue paths are `<prefix>.<field>` (`lines.<seq>.amount` by default; pass '' for a bare field path).
  */
-export function lineIssues(line: AllocationLine, head: Pick<AllocationInput, 'direction' | 'partnerId' | 'amount'>, inv: InvoiceSnapshot | null, prefix = `lines.${line.seq}`): AllocationIssue[] {
+export function lineIssues(
+  line: AllocationLine,
+  head: Pick<AllocationInput, 'direction' | 'partnerId' | 'amount'>,
+  inv: InvoiceSnapshot | null,
+  prefix = `lines.${line.seq}`,
+): AllocationIssue[] {
   const at = (field: string) => (prefix ? `${prefix}.${field}` : field);
   const issues: AllocationIssue[] = [];
   if (!line.amount.gt(0)) issues.push({ path: at('amount'), message: 'must be > 0' });
@@ -99,14 +104,24 @@ export function lineIssues(line: AllocationLine, head: Pick<AllocationInput, 'di
     return issues;
   }
   if (!inv) {
-    issues.push({ path: at('invoiceId'), message: `${line.invoiceEntity} ${line.invoiceId} does not exist or is not visible` });
+    issues.push({
+      path: at('invoiceId'),
+      message: `${line.invoiceEntity} ${line.invoiceId} does not exist or is not visible`,
+    });
     return issues;
   }
   const ref = inv.number ?? inv.id;
-  if (!isOpenInvoice(inv)) issues.push({ path: at('invoiceId'), message: `${line.invoiceEntity} ${ref} is not open (docstatus ${inv.docstatus}, status ${inv.status})` });
-  if (inv.partnerId !== head.partnerId) issues.push({ path: at('invoiceId'), message: `${line.invoiceEntity} ${ref} belongs to another partner` });
-  if (line.amount.gt(inv.balance)) issues.push({ path: at('amount'), message: `must be <= the invoice balance ${inv.balance.toString()}` });
-  if (line.amount.gt(head.amount)) issues.push({ path: at('amount'), message: `must be <= the payment amount ${head.amount.toString()}` });
+  if (!isOpenInvoice(inv))
+    issues.push({
+      path: at('invoiceId'),
+      message: `${line.invoiceEntity} ${ref} is not open (docstatus ${inv.docstatus}, status ${inv.status})`,
+    });
+  if (inv.partnerId !== head.partnerId)
+    issues.push({ path: at('invoiceId'), message: `${line.invoiceEntity} ${ref} belongs to another partner` });
+  if (line.amount.gt(inv.balance))
+    issues.push({ path: at('amount'), message: `must be <= the invoice balance ${inv.balance.toString()}` });
+  if (line.amount.gt(head.amount))
+    issues.push({ path: at('amount'), message: `must be <= the payment amount ${head.amount.toString()}` });
   return issues;
 }
 
@@ -122,11 +137,19 @@ export function validateAllocations(input: AllocationInput): AllocationResult {
     const inv = input.invoices.get(line.invoiceId) ?? null;
     issues.push(...lineIssues(line, input, inv && inv.entity === line.invoiceEntity ? inv : null));
     const key = `${line.invoiceEntity}:${line.invoiceId}`;
-    if (seen.has(key)) issues.push({ path: `lines.${line.seq}.invoiceId`, message: `${line.invoiceEntity} ${inv?.number ?? line.invoiceId} is allocated twice; merge the lines` });
+    if (seen.has(key))
+      issues.push({
+        path: `lines.${line.seq}.invoiceId`,
+        message: `${line.invoiceEntity} ${inv?.number ?? line.invoiceId} is allocated twice; merge the lines`,
+      });
     seen.add(key);
   }
   const allocated = allocatedOf(input.lines);
   const unallocated = unallocatedOf(input.amount, allocated);
-  if (unallocated.isNegative()) issues.push({ path: 'lines', message: `allocations ${allocated.toString()} exceed the payment amount ${input.amount.toString()}` });
+  if (unallocated.isNegative())
+    issues.push({
+      path: 'lines',
+      message: `allocations ${allocated.toString()} exceed the payment amount ${input.amount.toString()}`,
+    });
   return { issues, allocated, unallocated };
 }

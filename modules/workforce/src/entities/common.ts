@@ -8,15 +8,35 @@ export const read = ['read', 'export'] as const;
 export const edit = ['read', 'create', 'update', 'export'] as const;
 export function identityFields() {
   return {
-    employeeId: f.ref('workforce_employee', { ...owned, required: true, immutable: true, label: label('従業員', 'Employee') }),
+    employeeId: f.ref('workforce_employee', {
+      ...owned,
+      required: true,
+      immutable: true,
+      label: label('従業員', 'Employee'),
+    }),
     userId: f.uuid({ ...owned, required: true, immutable: true, label: label('利用者ID', 'User ID'), hidden: true }),
     siteId: f.ref('workforce_site', { ...owned, required: true, immutable: true, label: label('所属拠点', 'Site') }),
   };
 }
-export function personPermissions(roles: { employee?: readonly Op[]; manager?: readonly Op[]; hr?: readonly Op[]; payroll?: readonly Op[] }, confirmedOnly = false): PermissionConfig {
+export function personPermissions(
+  roles: { employee?: readonly Op[]; manager?: readonly Op[]; hr?: readonly Op[]; payroll?: readonly Op[] },
+  confirmedOnly = false,
+): PermissionConfig {
   return {
-    roles: Object.fromEntries([[E, roles.employee], [M, roles.manager], [H, roles.hr], [P, roles.payroll]].filter((entry): entry is [string, readonly Op[]] => entry[1] !== undefined)),
-    rowRules: [{ roles: confirmedOnly ? [E, M, H] : [E], where: { userId: '$ctx.userId', ...(confirmedOnly ? { docstatus: 1 } : {}) } }],
+    roles: Object.fromEntries(
+      [
+        [E, roles.employee],
+        [M, roles.manager],
+        [H, roles.hr],
+        [P, roles.payroll],
+      ].filter((entry): entry is [string, readonly Op[]] => entry[1] !== undefined),
+    ),
+    rowRules: [
+      {
+        roles: confirmedOnly ? [E, M, H] : [E],
+        where: { userId: '$ctx.userId', ...(confirmedOnly ? { docstatus: 1 } : {}) },
+      },
+    ],
   };
 }
 export function reviewFields() {

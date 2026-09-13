@@ -94,9 +94,7 @@ export interface EntityConfig<F extends FieldMap = FieldMap> {
 }
 
 export type StoreAccessPolicy =
-  | { kind: 'store'; field: string }
-  | { kind: 'parent'; field: string; entity: string }
-  | { kind: 'sharedRead' };
+  { kind: 'store'; field: string } | { kind: 'parent'; field: string; entity: string } | { kind: 'sharedRead' };
 
 export interface Transition {
   from: 0 | 1 | 2;
@@ -116,7 +114,17 @@ export interface DocumentConfig<F extends FieldMap = FieldMap> extends EntityCon
   transitions?: Record<string, Transition>;
 }
 
-export const SYSTEM_FIELDS = ['id', 'tenantId', 'companyId', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'version', 'ext'] as const;
+export const SYSTEM_FIELDS = [
+  'id',
+  'tenantId',
+  'companyId',
+  'createdAt',
+  'updatedAt',
+  'createdBy',
+  'updatedBy',
+  'version',
+  'ext',
+] as const;
 export const DOCUMENT_FIELDS = ['docstatus', 'number', 'amendedFrom'] as const;
 
 export interface SystemFields {

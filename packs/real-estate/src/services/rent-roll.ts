@@ -22,7 +22,11 @@ export function liveLeases<T extends LeaseTerm>(leases: readonly T[], date: Loca
 export function leaseOn<T extends LeaseTerm>(leases: readonly T[], date: LocalDate): T | null {
   const live = liveLeases(leases, date);
   const current = live.filter((l) => l.startDate <= date).sort((a, b) => (a.startDate < b.startDate ? 1 : -1));
-  if (current.length > 1) throw new StateError('Conflicting leases exist for this unit and reporting date', 'Resolve the overlapping historical leases before rendering a rent roll; no lease is silently hidden.');
+  if (current.length > 1)
+    throw new StateError(
+      'Conflicting leases exist for this unit and reporting date',
+      'Resolve the overlapping historical leases before rendering a rent roll; no lease is silently hidden.',
+    );
   if (current[0]) return current[0];
   const upcoming = [...live].sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
   return upcoming[0] ?? null;
@@ -85,9 +89,26 @@ function lineCategory(lines: RentRollLease['lines']): string {
 }
 
 function rowFor(unit: RentRollUnit, lease: RentRollLease | null): RentRollRow {
-  const base = { propertyName: unit.propertyName, unitCode: unit.code, unitName: unit.name, usage: unit.usage, floorArea: unit.floorArea?.toString() ?? null, unitId: unit.id };
+  const base = {
+    propertyName: unit.propertyName,
+    unitCode: unit.code,
+    unitName: unit.name,
+    usage: unit.usage,
+    floorArea: unit.floorArea?.toString() ?? null,
+    unitId: unit.id,
+  };
   if (lease === null) {
-    return { ...base, monthlyRent: unit.monthlyRent.toString(), tenantName: null, startDate: null, endDate: null, status: 'vacant', taxCategory: rentTaxCategory(unit.usage), contractId: null, partnerId: null };
+    return {
+      ...base,
+      monthlyRent: unit.monthlyRent.toString(),
+      tenantName: null,
+      startDate: null,
+      endDate: null,
+      status: 'vacant',
+      taxCategory: rentTaxCategory(unit.usage),
+      contractId: null,
+      partnerId: null,
+    };
   }
   const rent = Decimal.sum(lease.lines.map((l) => l.amount));
   return {
@@ -104,8 +125,14 @@ function rowFor(unit: RentRollUnit, lease: RentRollLease | null): RentRollRow {
 }
 
 /** One row per unit (property code, unit code order) as of `asOf`, and the occupied rent split taxable / non-taxable. */
-export function rentRoll(units: readonly RentRollUnit[], leases: readonly RentRollLease[], asOf: LocalDate): { rows: RentRollRow[]; totals: RentRollTotals; counts: Record<UnitStatus, number> } {
-  const sorted = [...units].sort((a, b) => (a.propertyCode === b.propertyCode ? (a.code < b.code ? -1 : 1) : a.propertyCode < b.propertyCode ? -1 : 1));
+export function rentRoll(
+  units: readonly RentRollUnit[],
+  leases: readonly RentRollLease[],
+  asOf: LocalDate,
+): { rows: RentRollRow[]; totals: RentRollTotals; counts: Record<UnitStatus, number> } {
+  const sorted = [...units].sort((a, b) =>
+    a.propertyCode === b.propertyCode ? (a.code < b.code ? -1 : 1) : a.propertyCode < b.propertyCode ? -1 : 1,
+  );
   let taxable = Decimal.zero();
   let nonTaxable = Decimal.zero();
   const rows = sorted.map((unit) => {
@@ -119,6 +146,17 @@ export function rentRoll(units: readonly RentRollUnit[], leases: readonly RentRo
     }
     return rowFor(unit, lease);
   });
-  const counts = { vacant: rows.filter((r) => r.status === 'vacant').length, occupied: rows.filter((r) => r.status === 'occupied').length };
-  return { rows, totals: { monthlyRent: taxable.plus(nonTaxable).toString(), taxableRent: taxable.toString(), nonTaxableRent: nonTaxable.toString() }, counts };
+  const counts = {
+    vacant: rows.filter((r) => r.status === 'vacant').length,
+    occupied: rows.filter((r) => r.status === 'occupied').length,
+  };
+  return {
+    rows,
+    totals: {
+      monthlyRent: taxable.plus(nonTaxable).toString(),
+      taxableRent: taxable.toString(),
+      nonTaxableRent: nonTaxable.toString(),
+    },
+    counts,
+  };
 }

@@ -8,12 +8,21 @@ import { loadRuntime } from '@daifuku/runtime';
 import { loadDotEnv, requireEnv } from '../config.ts';
 import { MIGRATIONS_DIR, pendingMigration, writeMigration } from './migrations.ts';
 
-
 const out = (msg: string) => process.stdout.write(`${msg}\n`);
 
 async function snapshot(): Promise<void> {
   const pending = await pendingMigration();
-  out(JSON.stringify({ tables: Object.keys(pending.cur.tables), pendingStatements: pending.statements.length, statements: pending.statements }, null, 2));
+  out(
+    JSON.stringify(
+      {
+        tables: Object.keys(pending.cur.tables),
+        pendingStatements: pending.statements.length,
+        statements: pending.statements,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function generate(name: string): Promise<void> {
@@ -32,7 +41,9 @@ async function reset(owner: Database): Promise<void> {
   await migrate(owner);
   const boot = await seedAll(owner);
   out(`seeded modules: ${boot.seededModules.join(', ') || '(none)'}`);
-  out(`tenant ${boot.tenantId} company ${boot.companyId} admin ${DEMO_TENANT.adminEmail} / ${DEMO_TENANT.adminPassword}`);
+  out(
+    `tenant ${boot.tenantId} company ${boot.companyId} admin ${DEMO_TENANT.adminEmail} / ${DEMO_TENANT.adminPassword}`,
+  );
 }
 
 async function main(): Promise<void> {

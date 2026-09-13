@@ -30,11 +30,14 @@ export interface EntityDef<F extends FieldMap = FieldMap, K extends 'entity' | '
   readonly __row?: RowOf<F>;
 }
 
-export type Infer<E> = E extends EntityDef<infer F, infer K>
-  ? RowOf<F> & SystemFields & (K extends 'document' ? DocumentFields : Record<never, never>)
-  : never;
-export type InsertInput<E> = E extends EntityDef<infer F, 'entity' | 'document'> ? InsertOf<F> & { ext?: Record<string, unknown> } : never;
-export type UpdateInput<E> = E extends EntityDef<infer F, 'entity' | 'document'> ? UpdateOf<F> & { ext?: Record<string, unknown> } : never;
+export type Infer<E> =
+  E extends EntityDef<infer F, infer K>
+    ? RowOf<F> & SystemFields & (K extends 'document' ? DocumentFields : Record<never, never>)
+    : never;
+export type InsertInput<E> =
+  E extends EntityDef<infer F, 'entity' | 'document'> ? InsertOf<F> & { ext?: Record<string, unknown> } : never;
+export type UpdateInput<E> =
+  E extends EntityDef<infer F, 'entity' | 'document'> ? UpdateOf<F> & { ext?: Record<string, unknown> } : never;
 
 // ---- actions -----------------------------------------------------------------------------------
 
@@ -79,7 +82,10 @@ export interface ActionConfig<I extends z.ZodType, O extends z.ZodType> {
   handler: (ctx: Context, input: z.output<I>) => Promise<z.input<O>>;
 }
 
-export interface ActionDef<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.ZodType> extends ActionConfig<I, O> {
+export interface ActionDef<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.ZodType> extends ActionConfig<
+  I,
+  O
+> {
   readonly kind: 'action';
   readonly tx: 'required' | 'none';
   readonly mutates: boolean;

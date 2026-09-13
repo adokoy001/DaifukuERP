@@ -20,10 +20,17 @@ export function legacyMigrationFolder(lastIndex = 6): string {
 
 export async function seedLegacy(owner: Database, dir: string) {
   await migrate(owner.drizzle, { migrationsFolder: dir });
-  const tenant = newId(); const company = newId(); const otherCompany = newId();
-  const partner = newId(); const account = newId(); const entry = newId();
+  const tenant = newId();
+  const company = newId();
+  const otherCompany = newId();
+  const partner = newId();
+  const account = newId();
+  const entry = newId();
   const revenue = newId();
-  const invoice = newId(); const unknownInvoice = newId(); const line = newId(); const payment = newId();
+  const invoice = newId();
+  const unknownInvoice = newId();
+  const line = newId();
+  const payment = newId();
   await owner.sql`insert into tenants (id,name) values (${tenant},'Migration fixture')`;
   await owner.sql`insert into companies (id,tenant_id,code,name) values (${company},${tenant},'OLD','Original'), (${otherCompany},${tenant},'OTHER','Other')`;
   await owner.sql`insert into partner (id,tenant_id,company_id,name,is_customer) values (${partner},${tenant},${company},'Old customer',true)`;
@@ -43,7 +50,9 @@ export async function seedLegacy(owner: Database, dir: string) {
 
 /** Historical Demo identity: do not call the current bootstrap against a pre-membership schema. */
 export async function seedLegacyDemo(owner: Database): Promise<SeedResult> {
-  const tenantId = newId(), companyId = newId(), userId = newId();
+  const tenantId = newId(),
+    companyId = newId(),
+    userId = newId();
   await owner.sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id', ${tenantId}, true)`;
     await tx`insert into tenants (id, name) values (${tenantId}, ${DEMO_TENANT.tenantName})`;
@@ -53,9 +62,10 @@ export async function seedLegacyDemo(owner: Database): Promise<SeedResult> {
   const seededModules: string[] = [];
   // Only modules that existed in the historical fixture may seed its pre-workforce schema.
   const historicalSeeds = new Set(['partner', 'product', 'tax', 'accounting', 'inventory', 'l10n_jp']);
-  for (const module of modules) if (module.seed && historicalSeeds.has(module.name)) {
-    await withContext(owner, systemParams(tenantId, companyId), async (ctx) => module.seed?.(ctx));
-    seededModules.push(module.name);
-  }
+  for (const module of modules)
+    if (module.seed && historicalSeeds.has(module.name)) {
+      await withContext(owner, systemParams(tenantId, companyId), async (ctx) => module.seed?.(ctx));
+      seededModules.push(module.name);
+    }
   return { tenantId, companyId, userId, seededModules };
 }

@@ -1,6 +1,19 @@
 // retail.daily_sales (docs/specs/pack-retail.md AC-7): submitted register closings from..to (inclusive) per business date —
 // 税抜, 消費税 per rate (8% / 10% columns from the data), 消費税計, 税込, 現金, カード, 締め件数 — and the period totals.
-import { column, defineAction, DOCSTATUS, isLocalDate, label, MAX_REPORT_ROWS, repo, tableResult, ValidationError, type Context, type TableColumn, type TableResult } from '@daifuku/kernel';
+import {
+  column,
+  defineAction,
+  DOCSTATUS,
+  isLocalDate,
+  label,
+  MAX_REPORT_ROWS,
+  repo,
+  tableResult,
+  ValidationError,
+  type Context,
+  type TableColumn,
+  type TableResult,
+} from '@daifuku/kernel';
 import { TAX_CATEGORIES, TAX_CATEGORY_LABELS, type TaxCategory } from '@daifuku/mod-accounting';
 import { z } from 'zod';
 import { RetailClosing } from '../entities/retail-closing.ts';
@@ -32,13 +45,32 @@ export function dailySalesColumns(taxColumns: readonly TaxColumn[]): TableColumn
   ];
 }
 
-async function loadClosings(ctx: Context, input: DailySalesInput): Promise<{ items: ClosingForReport[]; truncated: boolean }> {
-  const where = { docstatus: DOCSTATUS.submitted, $and: [{ date: { $gte: input.from } }, { date: { $lte: input.to } }] };
+async function loadClosings(
+  ctx: Context,
+  input: DailySalesInput,
+): Promise<{ items: ClosingForReport[]; truncated: boolean }> {
+  const where = {
+    docstatus: DOCSTATUS.submitted,
+    $and: [{ date: { $gte: input.from } }, { date: { $lte: input.to } }],
+  };
   const items: ClosingForReport[] = [];
-  for (let offset = 0; ; ) {
-    const page = await repo(ctx, RetailClosing).list({ where, orderBy: [{ field: 'date', dir: 'asc' }], limit: 500, offset });
+  for (let offset = 0; ;) {
+    const page = await repo(ctx, RetailClosing).list({
+      where,
+      orderBy: [{ field: 'date', dir: 'asc' }],
+      limit: 500,
+      offset,
+    });
     for (const c of page.items) {
-      items.push({ date: c.date, subtotal: c.subtotal, taxTotal: c.taxTotal, total: c.total, cashAmount: c.cashAmount, cardAmount: c.cardAmount, taxSummary: summaryRowsOf(c.taxSummary) });
+      items.push({
+        date: c.date,
+        subtotal: c.subtotal,
+        taxTotal: c.taxTotal,
+        total: c.total,
+        cashAmount: c.cashAmount,
+        cardAmount: c.cardAmount,
+        taxSummary: summaryRowsOf(c.taxSummary),
+      });
     }
     offset += page.items.length;
     if (items.length >= MAX_REPORT_ROWS) return { items: items.slice(0, MAX_REPORT_ROWS), truncated: true };
@@ -47,7 +79,12 @@ async function loadClosings(ctx: Context, input: DailySalesInput): Promise<{ ite
 }
 
 export async function dailySales(ctx: Context, input: DailySalesInput): Promise<TableResult> {
-  if (input.from > input.to) throw new ValidationError(`from ${input.from} is after to ${input.to}`, [{ path: 'to', message: 'must be on or after from' }], 'Swap the dates: from is the first day and to the last day (both inclusive).');
+  if (input.from > input.to)
+    throw new ValidationError(
+      `from ${input.from} is after to ${input.to}`,
+      [{ path: 'to', message: 'must be on or after from' }],
+      'Swap the dates: from is the first day and to the last day (both inclusive).',
+    );
   const { items, truncated } = await loadClosings(ctx, input);
   const agg = aggregateDaily(items);
   return {

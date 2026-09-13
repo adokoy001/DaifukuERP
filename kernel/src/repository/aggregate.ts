@@ -28,7 +28,11 @@ const MAX_ROWS = 10000;
 
 function assertField(entity: EntityDef, name: string, where: string): void {
   if (!(name in entity.columns)) {
-    throw new ValidationError(`unknown field "${name}" in ${where}`, [{ path: where, message: 'unknown field' }], `Valid fields: ${Object.keys(entity.columns).join(', ')}`);
+    throw new ValidationError(
+      `unknown field "${name}" in ${where}`,
+      [{ path: where, message: 'unknown field' }],
+      `Valid fields: ${Object.keys(entity.columns).join(', ')}`,
+    );
   }
 }
 
@@ -42,7 +46,10 @@ export async function aggregate(ctx: Context, entity: EntityDef, q: AggregateQue
   for (const g of groupBy) selection[g] = sql`${entity.col(g)}`;
   const decimalMetrics = new Set<string>();
   for (const [name, m] of Object.entries(q.metrics)) {
-    if (name in selection) throw new ValidationError(`metric "${name}" collides with a group field`, [{ path: `metrics.${name}`, message: 'name collision' }]);
+    if (name in selection)
+      throw new ValidationError(`metric "${name}" collides with a group field`, [
+        { path: `metrics.${name}`, message: 'name collision' },
+      ]);
     if ('count' in m) selection[name] = count();
     else {
       const field = 'sum' in m ? m.sum : 'min' in m ? m.min : m.max;
@@ -53,13 +60,23 @@ export async function aggregate(ctx: Context, entity: EntityDef, q: AggregateQue
       if (entity.config.fields[field]?.kind === 'decimal') decimalMetrics.add(name);
     }
   }
-  const cond = combine(scopeCondition(ctx, entity), rowFilter(ctx, entity, 'read'), whereCondition(ctx, entity, q.where));
+  const cond = combine(
+    scopeCondition(ctx, entity),
+    rowFilter(ctx, entity, 'read'),
+    whereCondition(ctx, entity, q.where),
+  );
   const order = (q.orderBy ?? []).map((o) => {
     const target = groupBy.includes(o.field) ? sql`${entity.col(o.field)}` : selection[o.field];
-    if (!target) throw new ValidationError(`cannot order by "${o.field}"`, [{ path: 'orderBy', message: 'must be a group field or a metric' }]);
+    if (!target)
+      throw new ValidationError(`cannot order by "${o.field}"`, [
+        { path: 'orderBy', message: 'must be a group field or a metric' },
+      ]);
     return o.dir === 'desc' ? desc(target as SQL) : asc(target as SQL);
   });
-  const base = ctx.db.select(selection as Record<string, SQL>).from(entity.table).where(cond);
+  const base = ctx.db
+    .select(selection as Record<string, SQL>)
+    .from(entity.table)
+    .where(cond);
   const grouped = groupCols.length > 0 ? base.groupBy(...groupCols) : base;
   const rows = await grouped.orderBy(...order).limit(Math.min(q.limit ?? MAX_ROWS, MAX_ROWS));
   return (rows as AggregateRow[]).map((r) => {

@@ -21,5 +21,7 @@ export async function readPrivateSource(path: string, maxBytes: number): Promise
     const data = await handle.readFile();
     if (data.length > maxBytes) throw new EdgeError('invalid_state_file');
     return data;
-  } finally { await handle.close(); }
+  } finally {
+    await handle.close();
+  }
 }

@@ -3,7 +3,17 @@
 //   rule as sales_invoice_line); `amount` is always quantity × unitPrice (the caller never controls it).
 // before_create/update/delete: lines of a non-draft contract are frozen on every path — the kernel guards only the
 //   replace-all saveLines path, direct repo writes are covered here (same as sales).
-import { DOCSTATUS, isUuid, registry, repo, StateError, ValidationError, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  isUuid,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  type Context,
+  type HookArgs,
+  type Infer,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { lineAmount, tryDecimal } from '@daifuku/mod-sales';
 import { ContractLine } from '../entities/contract-line.ts';
@@ -12,10 +22,14 @@ import { Contract } from '../entities/contract.ts';
 type Raw = Record<string, unknown>;
 type ContractRow = Infer<typeof Contract>;
 
-export const FROZEN_HINT = 'Cancel and amend the contract to change its lines (ADR-0006); use contract.end to stop billing.';
+export const FROZEN_HINT =
+  'Cancel and amend the contract to change its lines (ADR-0006); use contract.end to stop billing.';
 
 function frozenError(parent: ContractRow): StateError {
-  return new StateError(`contract ${parent.number ?? parent.id} is not a draft; its lines are frozen`, FROZEN_HINT, { contractId: parent.id, docstatus: parent.docstatus });
+  return new StateError(`contract ${parent.number ?? parent.id} is not a draft; its lines are frozen`, FROZEN_HINT, {
+    contractId: parent.id,
+    docstatus: parent.docstatus,
+  });
 }
 
 async function assertParentDraft(ctx: Context, contractId: unknown): Promise<void> {
@@ -41,7 +55,11 @@ async function applyProductDefaults(ctx: Context, row: Raw, previous: Raw | unde
   if (keys.includes('taxCategory')) row.taxCategory = product.taxCategory;
   if (!keys.includes('unitPrice')) return;
   if (product.salePrice === null) {
-    throw new ValidationError(`product ${product.code ?? product.name} has no sale price`, [{ path: 'unitPrice', message: 'required: the product has no salePrice' }], 'Pass unitPrice on the line or set salePrice on the product.');
+    throw new ValidationError(
+      `product ${product.code ?? product.name} has no sale price`,
+      [{ path: 'unitPrice', message: 'required: the product has no salePrice' }],
+      'Pass unitPrice on the line or set salePrice on the product.',
+    );
   }
   row.unitPrice = product.salePrice;
 }

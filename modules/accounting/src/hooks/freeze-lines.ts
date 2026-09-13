@@ -3,7 +3,18 @@
 // columns: `posted`/`entryDate` stay false/null while the entry is a draft and, once it is submitted, the only write
 // still accepted is the stamp `posted = true, entryDate = <entry.date>` (what the after_submit hook writes). Hence
 // `posted = true` ⇔ "the entry is submitted", which is what the trial balance and ledger filter on.
-import { Decimal, DOCSTATUS, isDecimal, registry, repo, StateError, ValidationError, hasWriteCapability, type Context, type Infer } from '@daifuku/kernel';
+import {
+  Decimal,
+  DOCSTATUS,
+  isDecimal,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  hasWriteCapability,
+  type Context,
+  type Infer,
+} from '@daifuku/kernel';
 import { JournalEntry } from '../entities/journal-entry.ts';
 import { JournalLine } from '../entities/journal-line.ts';
 
@@ -37,7 +48,12 @@ function assertNotStamped(row: Raw): void {
   if (row.posted !== true && (row.entryDate === null || row.entryDate === undefined)) return;
   throw new ValidationError(
     'journal_line.posted and journal_line.entryDate are derived at submit',
-    [{ path: row.posted === true ? 'posted' : 'entryDate', message: 'set by the system when the journal_entry is submitted' }],
+    [
+      {
+        path: row.posted === true ? 'posted' : 'entryDate',
+        message: 'set by the system when the journal_entry is submitted',
+      },
+    ],
     'Omit posted/entryDate; submit the journal_entry instead.',
   );
 }

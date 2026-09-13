@@ -36,7 +36,10 @@ export interface ArrearsRow extends Record<string, unknown> {
   unitId: string | null;
 }
 
-export function isInArrears(input: Pick<ArrearsInput, 'invoiceDate' | 'dueDate' | 'balance'>, asOf: LocalDate): boolean {
+export function isInArrears(
+  input: Pick<ArrearsInput, 'invoiceDate' | 'dueDate' | 'balance'>,
+  asOf: LocalDate,
+): boolean {
   return input.dueDate !== null && input.dueDate < asOf && input.invoiceDate <= asOf && input.balance.gt(0);
 }
 

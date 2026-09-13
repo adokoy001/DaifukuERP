@@ -23,7 +23,9 @@ function withExt(entity: EntityDef, schema: ObjectSchema, mode: 'insert' | 'upda
 function linesInputSchema(entity: EntityDef): z.ZodType {
   const shape: Record<string, z.ZodType> = {};
   for (const { entity: line, parentField } of lineSpecs(entity)) {
-    const withoutParent = withExt(line, line.schemas.insert, 'insert').omit({ [parentField]: true } as never) as unknown as ObjectSchema;
+    const withoutParent = withExt(line, line.schemas.insert, 'insert').omit({
+      [parentField]: true,
+    } as never) as unknown as ObjectSchema;
     shape[line.name] = z.array(withoutParent.extend({ id: z.uuid().optional() })).max(500);
   }
   return z.object(shape).partial();
@@ -37,7 +39,9 @@ function linesJsonSchema(entity: EntityDef): z.ZodType {
 
 /** Output of get/create/update: the JSON row, plus `lines` for documents with line entities. */
 export function recordJsonSchema(entity: EntityDef): z.ZodType {
-  return hasLines(entity) ? entity.schemas.json.extend({ lines: linesJsonSchema(entity).optional() }) : entity.schemas.json;
+  return hasLines(entity)
+    ? entity.schemas.json.extend({ lines: linesJsonSchema(entity).optional() })
+    : entity.schemas.json;
 }
 
 export function createInputSchema(entity: EntityDef): z.ZodType {
@@ -56,7 +60,8 @@ export function updateInputSchema(entity: EntityDef): z.ZodType {
  * registerCrudActions): the schema is rebuilt when the entity's or a line entity's ext version changes.
  */
 export function followExtFields(def: ActionDef, entity: EntityDef, build: (entity: EntityDef) => z.ZodType): void {
-  const stamp = () => [entity, ...lineSpecs(entity).map((s) => s.entity)].map((e) => registry.extVersion(e.name)).join(',');
+  const stamp = () =>
+    [entity, ...lineSpecs(entity).map((s) => s.entity)].map((e) => registry.extVersion(e.name)).join(',');
   let seen = stamp();
   let schema = def.input;
   Object.defineProperty(def, 'input', {

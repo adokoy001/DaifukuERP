@@ -1,9 +1,16 @@
 import { defineEntity, f, label } from '@daifuku/kernel';
 
 export const ApplianceDevice = defineEntity({
-  name: 'appliance_store_device', label: label('顧客の家電', 'Customer appliance'),
+  name: 'appliance_store_device',
+  label: label('顧客の家電', 'Customer appliance'),
   fields: {
-    code: f.text({ label: label('機器管理番号', 'Device code'), required: true, unique: true, immutable: true, maxLength: 40 }),
+    code: f.text({
+      label: label('機器管理番号', 'Device code'),
+      required: true,
+      unique: true,
+      immutable: true,
+      maxLength: 40,
+    }),
     partnerId: f.ref('partner', { label: label('お客様', 'Customer'), required: true, immutable: true, index: true }),
     productId: f.ref('product', { label: label('商品', 'Product'), immutable: true }),
     name: f.text({ label: label('機器名', 'Device name'), required: true, maxLength: 200 }),
@@ -18,5 +25,14 @@ export const ApplianceDevice = defineEntity({
   },
   displayField: 'name',
   permissions: { roles: { sales: ['read', 'create', 'update', 'delete'], accounting: ['read'], viewer: ['read'] } },
-  views: { list: ['code', 'name', 'partnerId', 'model', 'serialNumber', 'warrantyUntil'], search: ['code', 'name', 'model', 'serialNumber'], form: [['code', 'name', 'partnerId'], ['productId', 'manufacturer', 'model', 'serialNumber'], ['location', 'purchaseDate', 'warrantyUntil'], ['contractId', 'note']] },
+  views: {
+    list: ['code', 'name', 'partnerId', 'model', 'serialNumber', 'warrantyUntil'],
+    search: ['code', 'name', 'model', 'serialNumber'],
+    form: [
+      ['code', 'name', 'partnerId'],
+      ['productId', 'manufacturer', 'model', 'serialNumber'],
+      ['location', 'purchaseDate', 'warrantyUntil'],
+      ['contractId', 'note'],
+    ],
+  },
 });

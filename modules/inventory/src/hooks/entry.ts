@@ -4,7 +4,15 @@
 //   is writing — this also unlinks a copy made by amend), `date` defaults to today (JST) and `warehouseId` to the default
 //   warehouse; on update a patch cannot touch the source link. A destination warehouse is accepted only on transfers.
 //   Completeness (lines, toWarehouseId of a transfer) is checked at submit (hooks/submit.ts).
-import { isUuid, PermissionDenied, registry, todayLocal, ValidationError, type Context, type HookArgs } from '@daifuku/kernel';
+import {
+  isUuid,
+  PermissionDenied,
+  registry,
+  todayLocal,
+  ValidationError,
+  type Context,
+  type HookArgs,
+} from '@daifuku/kernel';
 import { STOCK_ENTRY_TYPES, StockEntry, type StockEntryType } from '../entities/stock-entry.ts';
 import { ROLE_HINT, roleAllowsEntry } from '../services/entry-rules.ts';
 import { resolveDefaultWarehouse } from '../settings.ts';
@@ -34,9 +42,18 @@ function assertDestination(row: Raw, previous: Raw | undefined): void {
   const to = merged(row, previous, 'toWarehouseId');
   if (to === null || to === undefined || !isEntryType(type)) return;
   if (type !== 'transfer') {
-    throw new ValidationError(`stock_entry of type ${type} cannot have toWarehouseId`, [{ path: 'toWarehouseId', message: 'only a transfer has a destination warehouse' }], 'Clear toWarehouseId (send null), or use type transfer.');
+    throw new ValidationError(
+      `stock_entry of type ${type} cannot have toWarehouseId`,
+      [{ path: 'toWarehouseId', message: 'only a transfer has a destination warehouse' }],
+      'Clear toWarehouseId (send null), or use type transfer.',
+    );
   }
-  if (to === from) throw new ValidationError('stock_entry transfer: toWarehouseId must differ from warehouseId', [{ path: 'toWarehouseId', message: 'must differ from warehouseId' }], 'Pick another destination warehouse.');
+  if (to === from)
+    throw new ValidationError(
+      'stock_entry transfer: toWarehouseId must differ from warehouseId',
+      [{ path: 'toWarehouseId', message: 'must differ from warehouseId' }],
+      'Pick another destination warehouse.',
+    );
 }
 
 async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promise<void> {
@@ -45,7 +62,8 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   if (!previous) {
     if (!moduleWrite) Object.assign(row, { sourceEntity: null, sourceId: null });
     if (row.date === undefined || row.date === null) row.date = todayLocal(ctx.now());
-    if (row.warehouseId === undefined || row.warehouseId === null) row.warehouseId = (await resolveDefaultWarehouse(ctx)).id;
+    if (row.warehouseId === undefined || row.warehouseId === null)
+      row.warehouseId = (await resolveDefaultWarehouse(ctx)).id;
   } else if (!moduleWrite) {
     delete row.sourceEntity;
     delete row.sourceId;

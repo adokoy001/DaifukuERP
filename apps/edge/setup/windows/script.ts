@@ -1,7 +1,18 @@
 import { pathsScript } from './paths-script.ts';
 import { serviceScript } from './service-script.ts';
 
-export type WindowsSetupOperation = 'inspect' | 'administrator' | 'prepareRoot' | 'prepare' | 'protect' | 'register' | 'start' | 'stop' | 'uninstall' | 'durableReplace' | 'durablePublish';
+export type WindowsSetupOperation =
+  | 'inspect'
+  | 'administrator'
+  | 'prepareRoot'
+  | 'prepare'
+  | 'protect'
+  | 'register'
+  | 'start'
+  | 'stop'
+  | 'uninstall'
+  | 'durableReplace'
+  | 'durablePublish';
 const actions: Record<WindowsSetupOperation, string> = {
   inspect: 'Reply (Inspection $edgeInput.context $edgeInput.xml)',
   administrator: 'Administrator; Reply $null',
@@ -46,18 +57,25 @@ Reply $null
   uninstall: "Administrator; ServiceAction $edgeInput.context $edgeInput.xml 'uninstall'; Reply $null",
 };
 export function windowsSetupScript(operation: WindowsSetupOperation): string {
-  return String.raw`
+  return (
+    String.raw`
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = [IO.Path]::Combine($PSHOME,'Modules')
 $ProgressPreference = 'SilentlyContinue'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 function Reply($value) { [Console]::Out.WriteLine((@{ok=$true;value=$value} | ConvertTo-Json -Depth 8 -Compress)) }
-` + pathsScript + serviceScript + '\ntry {\n$edgeInput = [Console]::In.ReadLine() | ConvertFrom-Json\n' + actions[operation] + String.raw`
+` +
+    pathsScript +
+    serviceScript +
+    '\ntry {\n$edgeInput = [Console]::In.ReadLine() | ConvertFrom-Json\n' +
+    actions[operation] +
+    String.raw`
 } catch {
   $code = $_.Exception.Message
   if ($code -notmatch '^windows_[a-z_]{1,64}$') { $code = 'windows_service_operation_failed' }
   [Console]::Out.WriteLine((@{ok=$false;code=$code} | ConvertTo-Json -Compress)); exit 74
 }
-`;
+`
+  );
 }

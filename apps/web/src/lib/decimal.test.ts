@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { addDecimalStrings, compareDecimalStrings, isDecimalString, minDecimalString, parseDecimalString, subtractDecimalStrings, sumDecimalStrings } from './decimal.ts';
+import {
+  addDecimalStrings,
+  compareDecimalStrings,
+  isDecimalString,
+  minDecimalString,
+  parseDecimalString,
+  subtractDecimalStrings,
+  sumDecimalStrings,
+} from './decimal.ts';
 
 describe('web-phase15 AC-2 subtraction / comparison (no floats)', () => {
   it('subtracts exactly across scales and signs', () => {

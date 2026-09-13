@@ -12,6 +12,7 @@ export function outputHiddenFields(entity: EntityDef): Set<string> {
 export function publicOutput(entity: EntityDef, row: Record<string, unknown>): Record<string, unknown> {
   const hidden = outputHiddenFields(entity);
   const out = Object.fromEntries(Object.entries(row).filter(([key]) => !hidden.has(key)));
-  if (out.ext && typeof out.ext === 'object' && !Array.isArray(out.ext)) out.ext = Object.fromEntries(Object.entries(out.ext).filter(([key]) => !hidden.has(`ext.${key}`)));
+  if (out.ext && typeof out.ext === 'object' && !Array.isArray(out.ext))
+    out.ext = Object.fromEntries(Object.entries(out.ext).filter(([key]) => !hidden.has(`ext.${key}`)));
   return out;
 }

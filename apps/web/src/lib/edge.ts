@@ -5,11 +5,19 @@ export function edgeEntityForUi(entity: EntityMeta): EntityMeta {
   return { ...entity, ops: entity.ops.filter((op) => op === 'read' || op === 'export') };
 }
 export function edgePrintRequest(data: FormData): EdgeJobRequest {
-  return edgeJobRequest.parse({ kind: 'print.text', payload: { title: String(data.get('title') ?? ''), text: String(data.get('text') ?? ''), copies: Number(data.get('copies')) } });
+  return edgeJobRequest.parse({
+    kind: 'print.text',
+    payload: {
+      title: String(data.get('title') ?? ''),
+      text: String(data.get('text') ?? ''),
+      copies: Number(data.get('copies')),
+    },
+  });
 }
 export function edgeExpiry(serverTime: string, minutes: number): string {
   const instant = Date.parse(serverTime);
-  if (!Number.isFinite(instant) || !Number.isInteger(minutes) || minutes < 1 || minutes > 60) throw new Error('Invalid execution deadline');
+  if (!Number.isFinite(instant) || !Number.isInteger(minutes) || minutes < 1 || minutes > 60)
+    throw new Error('Invalid execution deadline');
   return new Date(instant + minutes * 60_000).toISOString();
 }
 export function edgeRecentResponse(lastSeenAt: unknown, serverTime: string): boolean {

@@ -8,9 +8,11 @@ let root: string;
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'daifuku-ledger-'));
   await mkdir(join(root, 'docs'));
-  await Promise.all(['source.ts', 'sample.test.ts', 'spec.md'].map(file => writeFile(join(root, file), 'fixture\n')));
+  await Promise.all(['source.ts', 'sample.test.ts', 'spec.md'].map((file) => writeFile(join(root, file), 'fixture\n')));
 });
-afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+afterAll(async () => {
+  await rm(root, { recursive: true, force: true });
+});
 const entry = (id = 'CORE-DEMO-001') => `## ${id}
 - 条件: sum remains balanced
 - 前提: approved lines only

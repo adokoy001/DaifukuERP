@@ -1,7 +1,16 @@
 // inventory.valuation (docs/specs/inventory.md AC-7): per product, across warehouses, the quantity and value as of a date
 // (ledger replayed up to asOf) and average = value ÷ qty. totals.value is the basis of 期末商品棚卸高 under 三分法 —
 // this module posts no journal entry; the closing entry is made in accounting by hand or by a pack (spec scope).
-import { Decimal, defineAction, label, column, tableResult, type Context, type TableColumn, type TableResult } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  label,
+  column,
+  tableResult,
+  type Context,
+  type TableColumn,
+  type TableResult,
+} from '@daifuku/kernel';
 import { Product } from '@daifuku/mod-product';
 import { z } from 'zod';
 import { StockLedger } from '../entities/stock-ledger.ts';
@@ -26,7 +35,9 @@ export async function valuation(ctx: Context, input: ValuationInput): Promise<Ta
     ctx,
     lines.map((l) => l.productId),
   );
-  const ordered = [...lines].sort((a, b) => sortKey(products, a.productId).localeCompare(sortKey(products, b.productId)));
+  const ordered = [...lines].sort((a, b) =>
+    sortKey(products, a.productId).localeCompare(sortKey(products, b.productId)),
+  );
   const rows = ordered.map((l) => ({
     productCode: products.get(l.productId)?.code ?? null,
     productName: products.get(l.productId)?.name ?? l.productId,

@@ -10,7 +10,18 @@
 //   path wrote the line. Inside the kernel's replace-all saveLines (generic create/update with `lines`, amend) these are
 //   no-ops: the payment's `after_lines_saved` hook (hooks/validate.ts) touches it once per save instead of once per line
 //   (phase15-cleanup AC-4, the sales/purchase pattern of kernel-phase15 AC-7).
-import { DOCSTATUS, isSavingLines, isUuid, registry, repo, StateError, ValidationError, type Context, type HookArgs, type Infer } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  isSavingLines,
+  isUuid,
+  registry,
+  repo,
+  StateError,
+  ValidationError,
+  type Context,
+  type HookArgs,
+  type Infer,
+} from '@daifuku/kernel';
 import { INVOICE_ENTITIES, PaymentAllocation, type InvoiceEntity } from '../entities/payment-allocation.ts';
 import { Payment } from '../entities/payment.ts';
 import { loadInvoice } from '../invoices.ts';
@@ -22,7 +33,11 @@ type PaymentRow = Infer<typeof Payment>;
 export const FROZEN_HINT = 'Cancel and amend the payment to change its allocations (ADR-0006).';
 
 function frozenError(parent: PaymentRow): StateError {
-  return new StateError(`payment ${parent.number ?? parent.id} is not a draft; its allocations are frozen`, FROZEN_HINT, { paymentId: parent.id, docstatus: parent.docstatus });
+  return new StateError(
+    `payment ${parent.number ?? parent.id} is not a draft; its allocations are frozen`,
+    FROZEN_HINT,
+    { paymentId: parent.id, docstatus: parent.docstatus },
+  );
 }
 
 async function loadParent(ctx: Context, paymentId: unknown): Promise<PaymentRow | null> {
@@ -53,11 +68,21 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   if (!parent) return; // FK reports it
   if (parent.docstatus !== DOCSTATUS.draft) throw frozenError(parent);
   // a mismatched entity is reported as VALIDATION before any read the caller's roles might not be allowed to make
-  const invoice = invoiceEntity === invoiceEntityFor(parent.direction) ? await loadInvoice(ctx, invoiceEntity, invoiceId) : null;
+  const invoice =
+    invoiceEntity === invoiceEntityFor(parent.direction) ? await loadInvoice(ctx, invoiceEntity, invoiceId) : null;
   const seq = typeof row.seq === 'number' ? row.seq : typeof previous?.seq === 'number' ? previous.seq : 0;
-  const issues = lineIssues({ seq, invoiceEntity, invoiceId, amount }, { direction: parent.direction, partnerId: parent.partnerId, amount: parent.amount }, invoice, '');
+  const issues = lineIssues(
+    { seq, invoiceEntity, invoiceId, amount },
+    { direction: parent.direction, partnerId: parent.partnerId, amount: parent.amount },
+    invoice,
+    '',
+  );
   if (issues.length > 0) {
-    throw new ValidationError(`payment_allocation: ${issues.map((i) => `${i.path} ${i.message}`).join('; ')}`, issues, 'Allocate an open invoice of the same partner and direction, at most its balance (see payment.outstanding).');
+    throw new ValidationError(
+      `payment_allocation: ${issues.map((i) => `${i.path} ${i.message}`).join('; ')}`,
+      issues,
+      'Allocate an open invoice of the same partner and direction, at most its balance (see payment.outstanding).',
+    );
   }
 }
 
@@ -69,12 +94,16 @@ async function touchPayment(ctx: Context, paymentId: unknown): Promise<void> {
 
 export function registerLineHooks(): void {
   registry.registerHook(PaymentAllocation.name, 'before_validate', beforeValidate);
-  registry.registerHook(PaymentAllocation.name, 'before_create', (ctx, { row }) => assertParentDraft(ctx, row.paymentId));
+  registry.registerHook(PaymentAllocation.name, 'before_create', (ctx, { row }) =>
+    assertParentDraft(ctx, row.paymentId),
+  );
   registry.registerHook(PaymentAllocation.name, 'before_update', async (ctx, { row, previous }) => {
     await assertParentDraft(ctx, previous?.paymentId);
     if (row.paymentId !== previous?.paymentId) await assertParentDraft(ctx, row.paymentId);
   });
-  registry.registerHook(PaymentAllocation.name, 'before_delete', (ctx, { row }) => assertParentDraft(ctx, row.paymentId));
+  registry.registerHook(PaymentAllocation.name, 'before_delete', (ctx, { row }) =>
+    assertParentDraft(ctx, row.paymentId),
+  );
   registry.registerHook(PaymentAllocation.name, 'after_create', (ctx, { row }) => touchPayment(ctx, row.paymentId));
   registry.registerHook(PaymentAllocation.name, 'after_update', async (ctx, { row, previous }) => {
     await touchPayment(ctx, row.paymentId);

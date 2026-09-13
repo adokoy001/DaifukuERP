@@ -51,7 +51,9 @@ async function fetchMeta(page: Page): Promise<Meta> {
     const token = globalThis.sessionStorage.getItem('daifuku.token') ?? '';
     const user = globalThis.sessionStorage.getItem('daifuku.user');
     const company = user ? (JSON.parse(user) as { defaultCompanyId?: string | null }).defaultCompanyId : null;
-    const res = await fetch(`${api}/meta`, { headers: { authorization: `Bearer ${token}`, ...(company ? { 'x-company-id': company } : {}) } });
+    const res = await fetch(`${api}/meta`, {
+      headers: { authorization: `Bearer ${token}`, ...(company ? { 'x-company-id': company } : {}) },
+    });
     return { status: res.status, body: (await res.json()) as unknown };
   }, API);
   expect(result.status, `GET ${API}/meta -> ${result.status}`).toBe(200);
@@ -60,8 +62,16 @@ async function fetchMeta(page: Page): Promise<Meta> {
 
 /** The subject of the test: a creatable+submittable document whose line entities are all readable, and a table action. */
 function pickSubjects(meta: Meta): { doc: Entity; lines: Entity[]; report: Action } | string {
-  const doc = meta.entities.find((e) => e.kind === 'document' && (e.lines?.length ?? 0) > 0 && e.ops.includes('create') && e.ops.includes('submit') && (e.lines ?? []).every((l) => meta.entities.some((x) => x.name === l.entity)));
-  if (!doc) return 'no document entity with `lines` (creatable + submittable) in /meta — install a module with a line document (e.g. accounting)';
+  const doc = meta.entities.find(
+    (e) =>
+      e.kind === 'document' &&
+      (e.lines?.length ?? 0) > 0 &&
+      e.ops.includes('create') &&
+      e.ops.includes('submit') &&
+      (e.lines ?? []).every((l) => meta.entities.some((x) => x.name === l.entity)),
+  );
+  if (!doc)
+    return 'no document entity with `lines` (creatable + submittable) in /meta — install a module with a line document (e.g. accounting)';
   const tables = meta.actions.filter((a) => a.resultKind === 'table');
   const report = tables.find((a) => a.name.endsWith('trial_balance')) ?? tables[0];
   if (!report) return 'no action with resultKind "table" in /meta — install a module with a report action';
@@ -107,8 +117,10 @@ async function fillHeader(page: Page, doc: Entity, marker: string): Promise<void
     else if (f.kind === 'date') await cell.locator('input').fill(today());
     else if (f.kind === 'enum') await cell.locator('select').selectOption(f.values?.[0] ?? '');
     else if (f.kind === 'int' || f.kind === 'decimal') await cell.locator('input').fill('1');
-    else if (f.kind === 'ref') expect(await pickRef(cell, 0, false), `no ${f.name} records to pick for ${doc.name}`).toBeTruthy();
-    else if (f.kind !== 'bool') throw new Error(`cannot auto-fill required header field ${doc.name}.${f.name} (${f.kind})`);
+    else if (f.kind === 'ref')
+      expect(await pickRef(cell, 0, false), `no ${f.name} records to pick for ${doc.name}`).toBeTruthy();
+    else if (f.kind !== 'bool')
+      throw new Error(`cannot auto-fill required header field ${doc.name}.${f.name} (${f.kind})`);
   }
 }
 
@@ -119,7 +131,9 @@ interface RowFill {
 
 /** Fills one grid row: required refs pick option `rowIndex`, optional refs the first option, one decimal column gets 100. */
 async function fillRow(row: Locator, line: Entity, rowIndex: number): Promise<RowFill> {
-  const names = await row.locator('td[data-field]').evaluateAll((tds) => tds.map((td) => (td as HTMLElement).dataset.field ?? ''));
+  const names = await row
+    .locator('td[data-field]')
+    .evaluateAll((tds) => tds.map((td) => (td as HTMLElement).dataset.field ?? ''));
   const fields = names.flatMap((n) => line.fields.filter((f) => f.name === n && !f.serverOwned && !f.readOnly));
   const decimals = fields.filter((f) => f.kind === 'decimal').map((f) => f.name);
   // Row 0 fills the first decimal column, row 1 the second (debit / credit) so a journal entry balances.
@@ -134,8 +148,10 @@ async function fillRow(row: Locator, line: Entity, rowIndex: number): Promise<Ro
         if (text) picked.push(text);
       }
     } else if (f.kind === 'decimal' && f.name === target) await cell.locator('input').fill('100');
-    else if (f.kind === 'enum' && f.required && !f.hasDefault) await cell.locator('select').selectOption(f.values?.[0] ?? '');
-    else if (f.kind === 'text' && f.required && !f.hasDefault) await cell.locator('input, textarea').fill(`E2E line ${rowIndex + 1}`);
+    else if (f.kind === 'enum' && f.required && !f.hasDefault)
+      await cell.locator('select').selectOption(f.values?.[0] ?? '');
+    else if (f.kind === 'text' && f.required && !f.hasDefault)
+      await cell.locator('input, textarea').fill(`E2E line ${rowIndex + 1}`);
     else if (f.kind === 'date' && f.required && !f.hasDefault) await cell.locator('input').fill(today());
   }
   return { picked, decimals };
@@ -177,7 +193,8 @@ test('AC-6: document with 2 lines -> submit -> grid read-only -> report page sho
   await form.getByRole('button', { name: '保存' }).click();
   await expect(page).toHaveURL(new RegExp(`/e/${doc.name}/[0-9a-f-]{36}$`));
   await expect(page.getByTestId(`lines-${line.name}`).getByTestId('line-row')).toHaveCount(2);
-  if (sumCol) await expect(page.getByTestId(`lines-${line.name}`).locator(`td[data-sum="${sumCol}"]`)).toContainText('100');
+  if (sumCol)
+    await expect(page.getByTestId(`lines-${line.name}`).locator(`td[data-sum="${sumCol}"]`)).toContainText('100');
 
   // Submit -> docstatus 確定; grids frozen (kernel refuses line writes on submitted documents).
   await page.getByRole('button', { name: '確定', exact: true }).click();

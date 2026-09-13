@@ -3,25 +3,292 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { commerceIdentity, useCommerceList, useCommerceTask } from '../api/commerce.ts';
 import type { RecordJson } from '../api/types.ts';
-import { CommerceDialog, CommerceEmpty, CommerceMoney, CommercePager, CommercePanel, CommerceShell, SourceLink, useCommerceAccess } from '../components/commerce-shared.tsx';
+import {
+  CommerceDialog,
+  CommerceEmpty,
+  CommerceMoney,
+  CommercePager,
+  CommercePanel,
+  CommerceShell,
+  SourceLink,
+  useCommerceAccess,
+} from '../components/commerce-shared.tsx';
 import { ReadRecoveryProvider } from '../components/read-refresh-notice.tsx';
 import { businessToday } from '../lib/operations.ts';
-const states: Record<string, string> = { received: '受信済み', ignored: '未完了・対象外', deferred: '元決済待ち', blocked: '確認が必要', posted: '転記済み', cancelled: '取消済み' };
-export function CommercePosPage() { return <PosWorkspace key={commerceIdentity()}/>; }
+const states: Record<string, string> = {
+  received: '受信済み',
+  ignored: '未完了・対象外',
+  deferred: '元決済待ち',
+  blocked: '確認が必要',
+  posted: '転記済み',
+  cancelled: '取消済み',
+};
+export function CommercePosPage() {
+  return <PosWorkspace key={commerceIdentity()} />;
+}
 function PosWorkspace() {
-    const copy = useCommerceCopy();
-    const { allowed, actions } = useCommerceAccess('pos_integration.inbox'), [offset, setOffset] = useState(0), [sourceOffset, setSourceOffset] = useState(0), [dialog, setDialog] = useState<{
-        row: RecordJson;
-        mode: 'retry' | 'correct';
+  const copy = useCommerceCopy();
+  const { allowed, actions } = useCommerceAccess('pos_integration.inbox'),
+    [offset, setOffset] = useState(0),
+    [sourceOffset, setSourceOffset] = useState(0),
+    [dialog, setDialog] = useState<{
+      row: RecordJson;
+      mode: 'retry' | 'correct';
     }>();
-    const inbox = useCommerceList('pos_integration_inbox', allowed, offset), locations = useCommerceList('pos_integration_location', allowed), sources = useCommerceList('pos_integration_transaction', allowed, sourceOffset), readers = [inbox, locations, sources], busy = readers.some((r) => r.isFetching), task = useCommerceTask();
-    const locationName = (id: unknown) => { const row = locations.data?.items.find((l) => l.id === id); return row ? String(row.name) : copy("連携店舗"); }, selected = dialog?.mode === 'retry' ? inbox.data?.items.find((r) => r.id === dialog.row.id) : sources.data?.items.find((r) => r.id === dialog?.row.id);
-    return <CommerceShell title={copy("POS決済の自動連携")} subtitle={copy("Square通知から決済原資料と仮勘定仕訳を作成。受信・保留・再試行・訂正の状況を追跡します。")} action="pos_integration.inbox" sources={readers}><ReadRecoveryProvider sources={readers}>
- <p className="commerce-notice">{copy("初版はJPYの完了決済・返金の連携です。決済金額から売上税・品目・在庫を推測しません。決済未収等と未分類売上の仮勘定へ転記し、実売上との照合・振替は会計担当が別途行います。")}</p>
- <CommercePanel title={copy("連携店舗")} note={copy("加盟店・外部店舗・会社は運用設定と一致する必要があります。Webhook署名キーはブラウザへ送りません。")} actions={<Link className="btn" to="/e/$entity" params={{ entity: 'pos_integration_location' }}>{copy("店舗設定を開く")}</Link>}><div className="commerce-list">{locations.data?.items.map((r) => <div className="commerce-list-item" key={r.id}><div><strong>{String(r.code)} · {String(r.name)}</strong><small>{copy("Square加盟店")}{String(r.merchantId)}{copy("/ 店舗")}{String(r.externalLocationId)}</small></div><span className="commerce-badge">{r.active ? copy("有効") : copy("停止中")}</span></div>)}</div>{locations.data?.total === 0 ? <CommerceEmpty>{copy("連携店舗を作成し、運用担当がSquare通知先・署名キー・専用利用者を設定してください。")}</CommerceEmpty> : null}{(locations.data?.total ?? 0) > 100 ? <p>{copy("先頭100店舗を表示しています。全店舗は店舗設定から確認できます。")}</p> : null}</CommercePanel>
- <CommercePanel title={copy("受信と再処理")} note={copy("確認が必要・元決済待ちは転記成功ではありません。エラーの原因を修正し、再試行してください。")} actions={<button className="btn" disabled={busy} onClick={() => { for (const reader of readers)
-        void reader.refetch(); }}>{copy("最新の状況を取得")}</button>}><div className="commerce-table-wrap"><table className="commerce-table"><thead><tr><th>{copy("店舗 / 種別")}</th><th>{copy("外部原資料ID")}</th><th>{copy("受信状態")}</th><th>{copy("試行")}</th><th>{copy("確認事項")}</th><th>{copy("操作")}</th></tr></thead><tbody>{inbox.data?.items.map((r) => <tr key={r.id}><td>{locationName(r.locationId)}<br />{r.kind === 'refund' ? copy("返金") : r.kind === 'payment' ? copy("決済") : copy("未対応イベント")}</td><td><SourceLink entity="pos_integration_inbox" id={r.id}>{String(r.externalId)}</SourceLink></td><td><span className="commerce-badge" data-status={String(r.status)}>{copy(states[String(r.status)] ?? String(r.status))}</span></td><td>{String(r.attempts)}</td><td className="wrap">{r.error ? String(r.error) : '—'}</td><td>{['blocked', 'deferred', 'received'].includes(String(r.status)) && actions.includes('pos_integration.retry') ? <button className="btn" disabled={busy || inbox.isError} onClick={() => setDialog({ row: r, mode: 'retry' })}>{copy("再試行")}</button> : r.transactionId ? <SourceLink entity="pos_integration_transaction" id={String(r.transactionId)}>{copy("原資料")}</SourceLink> : '—'}</td></tr>)}</tbody></table></div>{inbox.data?.total === 0 ? <CommerceEmpty>{copy("まだ通知を受信していません。未設定の連携を稼働中とは表示しません。")}</CommerceEmpty> : null}<CommercePager offset={offset} total={inbox.data?.total ?? 0} onPage={setOffset}/></CommercePanel>
- <CommercePanel title={copy("転記した決済原資料")} note={copy("取消は元帳を削除せず訂正日の逆仕訳を作ります。元決済の取消は先に返金を取り消す必要があります。")}><div className="commerce-table-wrap"><table className="commerce-table"><thead><tr><th>{copy("原資料日 / 外部ID")}</th><th>{copy("店舗")}</th><th>{copy("区分")}</th><th>{copy("金額")}</th><th>{copy("状態")}</th><th>{copy("元帳 / 訂正")}</th></tr></thead><tbody>{sources.data?.items.map((r) => <tr key={r.id}><td>{String(r.date)}<br /><SourceLink entity="pos_integration_transaction" id={r.id}>{String(r.externalId)}</SourceLink></td><td>{locationName(r.locationId)}</td><td>{r.kind === 'refund' ? copy("返金") : copy("決済")}</td><td className="money"><CommerceMoney value={String(r.amount)}/></td><td><span className="commerce-badge" data-status={String(r.status)}>{copy(states[String(r.status)] ?? String(r.status))}</span></td><td><SourceLink entity="journal_entry" id={r.journalEntryId ? String(r.journalEntryId) : null}>{copy("仕訳")}</SourceLink>{r.status === 'posted' && actions.includes('pos_integration.correct') ? <button className="btn" disabled={busy || sources.isError} onClick={() => setDialog({ row: r, mode: 'correct' })}>{copy("訂正")}</button> : null}</td></tr>)}</tbody></table></div><CommercePager offset={sourceOffset} total={sources.data?.total ?? 0} onPage={setSourceOffset}/></CommercePanel>
- {dialog && selected ? <CommerceDialog title={dialog.mode === 'retry' ? copy("POS原資料を再試行") : copy("POS原資料を訂正")} submitLabel={dialog.mode === 'retry' ? copy("現在の設定で再試行") : copy("理由を記録して逆仕訳")} confirmOnly={dialog.mode === 'retry'} stale={selected.version !== dialog.row.version} onClose={() => setDialog(undefined)} onSubmit={async (data) => { await task.mutateAsync({ action: dialog.mode === 'retry' ? 'pos_integration.retry' : 'pos_integration.correct', input: dialog.mode === 'retry' ? { inboxId: dialog.row.id, expectedVersion: dialog.row.version } : { transactionId: dialog.row.id, expectedVersion: dialog.row.version, date: String(data.get('date')), reason: String(data.get('reason') ?? '').trim() } }); }}><p className="commerce-notice">{String(dialog.row.externalId)} · {dialog.mode === 'retry' ? copy("重複通知は同じ原資料へ結び付きます。処理できない場合は保留状態とエラーが残ります。") : copy("訂正後に同じ通知を再送しても再転記されません。実際の決済取消はSquare側の返金手続きが必要です。")}</p>{dialog.mode === 'correct' ? <><label>{copy("訂正日")}<input className="input" name="date" type="date" required defaultValue={businessToday()} min={String(dialog.row.date)} max={businessToday()}/></label><label>{copy("訂正理由")}<textarea className="input" name="reason" rows={3} required maxLength={500}/></label></> : null}</CommerceDialog> : null}
- </ReadRecoveryProvider></CommerceShell>;
+  const inbox = useCommerceList('pos_integration_inbox', allowed, offset),
+    locations = useCommerceList('pos_integration_location', allowed),
+    sources = useCommerceList('pos_integration_transaction', allowed, sourceOffset),
+    readers = [inbox, locations, sources],
+    busy = readers.some((r) => r.isFetching),
+    task = useCommerceTask();
+  const locationName = (id: unknown) => {
+      const row = locations.data?.items.find((l) => l.id === id);
+      return row ? String(row.name) : copy('連携店舗');
+    },
+    selected =
+      dialog?.mode === 'retry'
+        ? inbox.data?.items.find((r) => r.id === dialog.row.id)
+        : sources.data?.items.find((r) => r.id === dialog?.row.id);
+  return (
+    <CommerceShell
+      title={copy('POS決済の自動連携')}
+      subtitle={copy('Square通知から決済原資料と仮勘定仕訳を作成。受信・保留・再試行・訂正の状況を追跡します。')}
+      action="pos_integration.inbox"
+      sources={readers}
+    >
+      <ReadRecoveryProvider sources={readers}>
+        <p className="commerce-notice">
+          {copy(
+            '初版はJPYの完了決済・返金の連携です。決済金額から売上税・品目・在庫を推測しません。決済未収等と未分類売上の仮勘定へ転記し、実売上との照合・振替は会計担当が別途行います。',
+          )}
+        </p>
+        <CommercePanel
+          title={copy('連携店舗')}
+          note={copy(
+            '加盟店・外部店舗・会社は運用設定と一致する必要があります。Webhook署名キーはブラウザへ送りません。',
+          )}
+          actions={
+            <Link className="btn" to="/e/$entity" params={{ entity: 'pos_integration_location' }}>
+              {copy('店舗設定を開く')}
+            </Link>
+          }
+        >
+          <div className="commerce-list">
+            {locations.data?.items.map((r) => (
+              <div className="commerce-list-item" key={r.id}>
+                <div>
+                  <strong>
+                    {String(r.code)} · {String(r.name)}
+                  </strong>
+                  <small>
+                    {copy('Square加盟店')}
+                    {String(r.merchantId)}
+                    {copy('/ 店舗')}
+                    {String(r.externalLocationId)}
+                  </small>
+                </div>
+                <span className="commerce-badge">{r.active ? copy('有効') : copy('停止中')}</span>
+              </div>
+            ))}
+          </div>
+          {locations.data?.total === 0 ? (
+            <CommerceEmpty>
+              {copy('連携店舗を作成し、運用担当がSquare通知先・署名キー・専用利用者を設定してください。')}
+            </CommerceEmpty>
+          ) : null}
+          {(locations.data?.total ?? 0) > 100 ? (
+            <p>{copy('先頭100店舗を表示しています。全店舗は店舗設定から確認できます。')}</p>
+          ) : null}
+        </CommercePanel>
+        <CommercePanel
+          title={copy('受信と再処理')}
+          note={copy('確認が必要・元決済待ちは転記成功ではありません。エラーの原因を修正し、再試行してください。')}
+          actions={
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                for (const reader of readers) void reader.refetch();
+              }}
+            >
+              {copy('最新の状況を取得')}
+            </button>
+          }
+        >
+          <div className="commerce-table-wrap">
+            <table className="commerce-table">
+              <thead>
+                <tr>
+                  <th>{copy('店舗 / 種別')}</th>
+                  <th>{copy('外部原資料ID')}</th>
+                  <th>{copy('受信状態')}</th>
+                  <th>{copy('試行')}</th>
+                  <th>{copy('確認事項')}</th>
+                  <th>{copy('操作')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inbox.data?.items.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      {locationName(r.locationId)}
+                      <br />
+                      {r.kind === 'refund'
+                        ? copy('返金')
+                        : r.kind === 'payment'
+                          ? copy('決済')
+                          : copy('未対応イベント')}
+                    </td>
+                    <td>
+                      <SourceLink entity="pos_integration_inbox" id={r.id}>
+                        {String(r.externalId)}
+                      </SourceLink>
+                    </td>
+                    <td>
+                      <span className="commerce-badge" data-status={String(r.status)}>
+                        {copy(states[String(r.status)] ?? String(r.status))}
+                      </span>
+                    </td>
+                    <td>{String(r.attempts)}</td>
+                    <td className="wrap">{r.error ? String(r.error) : '—'}</td>
+                    <td>
+                      {['blocked', 'deferred', 'received'].includes(String(r.status)) &&
+                      actions.includes('pos_integration.retry') ? (
+                        <button
+                          className="btn"
+                          disabled={busy || inbox.isError}
+                          onClick={() => setDialog({ row: r, mode: 'retry' })}
+                        >
+                          {copy('再試行')}
+                        </button>
+                      ) : r.transactionId ? (
+                        <SourceLink entity="pos_integration_transaction" id={String(r.transactionId)}>
+                          {copy('原資料')}
+                        </SourceLink>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {inbox.data?.total === 0 ? (
+            <CommerceEmpty>{copy('まだ通知を受信していません。未設定の連携を稼働中とは表示しません。')}</CommerceEmpty>
+          ) : null}
+          <CommercePager offset={offset} total={inbox.data?.total ?? 0} onPage={setOffset} />
+        </CommercePanel>
+        <CommercePanel
+          title={copy('転記した決済原資料')}
+          note={copy('取消は元帳を削除せず訂正日の逆仕訳を作ります。元決済の取消は先に返金を取り消す必要があります。')}
+        >
+          <div className="commerce-table-wrap">
+            <table className="commerce-table">
+              <thead>
+                <tr>
+                  <th>{copy('原資料日 / 外部ID')}</th>
+                  <th>{copy('店舗')}</th>
+                  <th>{copy('区分')}</th>
+                  <th>{copy('金額')}</th>
+                  <th>{copy('状態')}</th>
+                  <th>{copy('元帳 / 訂正')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sources.data?.items.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      {String(r.date)}
+                      <br />
+                      <SourceLink entity="pos_integration_transaction" id={r.id}>
+                        {String(r.externalId)}
+                      </SourceLink>
+                    </td>
+                    <td>{locationName(r.locationId)}</td>
+                    <td>{r.kind === 'refund' ? copy('返金') : copy('決済')}</td>
+                    <td className="money">
+                      <CommerceMoney value={String(r.amount)} />
+                    </td>
+                    <td>
+                      <span className="commerce-badge" data-status={String(r.status)}>
+                        {copy(states[String(r.status)] ?? String(r.status))}
+                      </span>
+                    </td>
+                    <td>
+                      <SourceLink entity="journal_entry" id={r.journalEntryId ? String(r.journalEntryId) : null}>
+                        {copy('仕訳')}
+                      </SourceLink>
+                      {r.status === 'posted' && actions.includes('pos_integration.correct') ? (
+                        <button
+                          className="btn"
+                          disabled={busy || sources.isError}
+                          onClick={() => setDialog({ row: r, mode: 'correct' })}
+                        >
+                          {copy('訂正')}
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <CommercePager offset={sourceOffset} total={sources.data?.total ?? 0} onPage={setSourceOffset} />
+        </CommercePanel>
+        {dialog && selected ? (
+          <CommerceDialog
+            title={dialog.mode === 'retry' ? copy('POS原資料を再試行') : copy('POS原資料を訂正')}
+            submitLabel={dialog.mode === 'retry' ? copy('現在の設定で再試行') : copy('理由を記録して逆仕訳')}
+            confirmOnly={dialog.mode === 'retry'}
+            stale={selected.version !== dialog.row.version}
+            onClose={() => setDialog(undefined)}
+            onSubmit={async (data) => {
+              await task.mutateAsync({
+                action: dialog.mode === 'retry' ? 'pos_integration.retry' : 'pos_integration.correct',
+                input:
+                  dialog.mode === 'retry'
+                    ? { inboxId: dialog.row.id, expectedVersion: dialog.row.version }
+                    : {
+                        transactionId: dialog.row.id,
+                        expectedVersion: dialog.row.version,
+                        date: String(data.get('date')),
+                        reason: String(data.get('reason') ?? '').trim(),
+                      },
+              });
+            }}
+          >
+            <p className="commerce-notice">
+              {String(dialog.row.externalId)} ·{' '}
+              {dialog.mode === 'retry'
+                ? copy('重複通知は同じ原資料へ結び付きます。処理できない場合は保留状態とエラーが残ります。')
+                : copy(
+                    '訂正後に同じ通知を再送しても再転記されません。実際の決済取消はSquare側の返金手続きが必要です。',
+                  )}
+            </p>
+            {dialog.mode === 'correct' ? (
+              <>
+                <label>
+                  {copy('訂正日')}
+                  <input
+                    className="input"
+                    name="date"
+                    type="date"
+                    required
+                    defaultValue={businessToday()}
+                    min={String(dialog.row.date)}
+                    max={businessToday()}
+                  />
+                </label>
+                <label>
+                  {copy('訂正理由')}
+                  <textarea className="input" name="reason" rows={3} required maxLength={500} />
+                </label>
+              </>
+            ) : null}
+          </CommerceDialog>
+        ) : null}
+      </ReadRecoveryProvider>
+    </CommerceShell>
+  );
 }

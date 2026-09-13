@@ -33,16 +33,47 @@ export const RealEstatePack = definePack({
   name: 'real_estate',
   label: label('賃貸管理（不動産）', 'Rental management (real estate)'),
   version: '0.1.0',
-  depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name, SalesModule.name, PaymentModule.name, ContractModule.name, JapanModule.name],
+  depends: [
+    PartnerModule.name,
+    ProductModule.name,
+    TaxModule.name,
+    AccountingModule.name,
+    SalesModule.name,
+    PaymentModule.name,
+    ContractModule.name,
+    JapanModule.name,
+  ],
   ext: {
     contract: {
       unitId: f.ref(RealEstateUnit.name, { label: label('部屋・区画', 'Unit') }),
-      keyMoney: f.money({ label: label('礼金', 'Key money'), description: label('入居時に 1 回請求（返還しない）。住宅は非課税', 'Billed once at move-in (not returned); non-taxable for housing'), min: '0' }),
-      depositMonths: f.decimal({ label: label('敷金（月数）', 'Deposit (months)'), description: label('敷金 = 月数 × 月額賃料。返還するので不課税（請求書に載せない）', 'Deposit = months × monthly rent; returnable, so out of scope (never invoiced)'), scale: 2, min: '0' }),
-      renewalFee: f.money({ label: label('更新料', 'Renewal fee'), description: label('v1 は記録のみ（自動請求しない）', 'Recorded only in v1 (not billed automatically)'), min: '0' }),
+      keyMoney: f.money({
+        label: label('礼金', 'Key money'),
+        description: label(
+          '入居時に 1 回請求（返還しない）。住宅は非課税',
+          'Billed once at move-in (not returned); non-taxable for housing',
+        ),
+        min: '0',
+      }),
+      depositMonths: f.decimal({
+        label: label('敷金（月数）', 'Deposit (months)'),
+        description: label(
+          '敷金 = 月数 × 月額賃料。返還するので不課税（請求書に載せない）',
+          'Deposit = months × monthly rent; returnable, so out of scope (never invoiced)',
+        ),
+        scale: 2,
+        min: '0',
+      }),
+      renewalFee: f.money({
+        label: label('更新料', 'Renewal fee'),
+        description: label('v1 は記録のみ（自動請求しない）', 'Recorded only in v1 (not billed automatically)'),
+        min: '0',
+      }),
     },
     partner: {
-      tenantKind: f.enum(TENANT_KINDS, { label: label('入居者区分', 'Tenant kind'), labels: { individual: label('個人', 'Individual'), corporate: label('法人', 'Corporate') } }),
+      tenantKind: f.enum(TENANT_KINDS, {
+        label: label('入居者区分', 'Tenant kind'),
+        labels: { individual: label('個人', 'Individual'), corporate: label('法人', 'Corporate') },
+      }),
       emergencyContact: f.text({ label: label('緊急連絡先', 'Emergency contact'), maxLength: 200 }),
     },
   },

@@ -17,13 +17,19 @@ export const CONTRACT_SETTING_DEFS: readonly SettingDef[] = [
   {
     key: CONTRACT_DEFAULT_PRORATION_KEY,
     label: label('契約の日割り（既定）', 'Default contract proration'),
-    description: label('新しい契約の prorationRule の既定値: daily = 当月の実日数で日割り, none = 満額', 'Default prorationRule of new contracts: daily = prorate by the actual days of the month, none = full price'),
+    description: label(
+      '新しい契約の prorationRule の既定値: daily = 当月の実日数で日割り, none = 満額',
+      'Default prorationRule of new contracts: daily = prorate by the actual days of the month, none = full price',
+    ),
     schema: contractDefaultProrationSchema,
   },
   {
     key: CONTRACT_AUTO_SUBMIT_KEY,
     label: label('契約請求書を自動で確定', 'Auto-submit contract invoices'),
-    description: label('contract.generate_invoices で submit を省略したとき、作った請求書を確定（submit）するか', 'Whether contract.generate_invoices submits the invoices it creates when `submit` is omitted'),
+    description: label(
+      'contract.generate_invoices で submit を省略したとき、作った請求書を確定（submit）するか',
+      'Whether contract.generate_invoices submits the invoices it creates when `submit` is omitted',
+    ),
     schema: contractAutoSubmitSchema,
   },
 ];
@@ -33,7 +39,12 @@ export function registerContractSettings(): void {
 }
 
 export function loadDefaultProration(ctx: Context): Promise<ProrationRule> {
-  return getSetting(ctx, CONTRACT_DEFAULT_PRORATION_KEY, contractDefaultProrationSchema, CONTRACT_DEFAULT_PRORATION_DEFAULT);
+  return getSetting(
+    ctx,
+    CONTRACT_DEFAULT_PRORATION_KEY,
+    contractDefaultProrationSchema,
+    CONTRACT_DEFAULT_PRORATION_DEFAULT,
+  );
 }
 
 export function loadAutoSubmit(ctx: Context): Promise<boolean> {

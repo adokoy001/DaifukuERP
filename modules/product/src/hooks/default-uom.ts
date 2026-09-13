@@ -4,7 +4,12 @@
 import { ValidationError, registry, type Context, type HookArgs } from '@daifuku/kernel';
 import { DEFAULT_UOM_CODE, findUomByCode } from '../seeds/uoms.ts';
 
-const required = (): ValidationError => new ValidationError('product.uomId is required', [{ path: 'uomId', message: 'required' }], 'Pass the id of a uom (see uom.list).');
+const required = (): ValidationError =>
+  new ValidationError(
+    'product.uomId is required',
+    [{ path: 'uomId', message: 'required' }],
+    'Pass the id of a uom (see uom.list).',
+  );
 
 export async function applyDefaultUom(ctx: Context, { row, previous }: HookArgs): Promise<void> {
   if (previous) {

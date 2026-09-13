@@ -1,6 +1,18 @@
 // accounting.reverse_entry (spec AC-6, ADR-0005): the only correction path for a posted entry. Posts a new entry with
 // debit/credit swapped, linked by reversalOf, and emits journal_entry.reversed.
-import { Conflict, defineAction, DOCSTATUS, label, repo, StateError, ValidationError, hasWriteCapability, withLock, type Context, type LocalDate } from '@daifuku/kernel';
+import {
+  Conflict,
+  defineAction,
+  DOCSTATUS,
+  label,
+  repo,
+  StateError,
+  ValidationError,
+  hasWriteCapability,
+  withLock,
+  type Context,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { z } from 'zod';
 import { withPosting, withStamp } from '../domain-write.ts';
 import { JournalLine } from '../entities/journal-line.ts';
@@ -22,14 +34,31 @@ export async function reverseEntry(ctx: Context, { id, date }: ReverseEntryInput
   const r = repo(ctx, JournalEntry);
   await withLock(ctx, `accounting-reversal:${id}`, async () => undefined);
   const original = await r.lock(id, 'submit');
-  const owningSource = original.sourceEntity || (original.reversalOf ? (await r.get(original.reversalOf)).sourceEntity : null);
-  if (date && date < original.date) throw new ValidationError('Correction cannot precede the original entry', [{ path: 'date', message: 'must be on or after the original date' }]);
-  if (owningSource && !hasWriteCapability(ctx, JournalEntry.name, 'reverse-source')) throw new StateError('A source-generated journal must be reversed by its owning business operation', 'Cancel the source document; a standalone reversal would leave its business balance unchanged.');
+  const owningSource =
+    original.sourceEntity || (original.reversalOf ? (await r.get(original.reversalOf)).sourceEntity : null);
+  if (date && date < original.date)
+    throw new ValidationError('Correction cannot precede the original entry', [
+      { path: 'date', message: 'must be on or after the original date' },
+    ]);
+  if (owningSource && !hasWriteCapability(ctx, JournalEntry.name, 'reverse-source'))
+    throw new StateError(
+      'A source-generated journal must be reversed by its owning business operation',
+      'Cancel the source document; a standalone reversal would leave its business balance unchanged.',
+    );
   if (original.docstatus !== DOCSTATUS.submitted) {
-    throw new StateError(`journal_entry ${id} is not submitted`, 'Only submitted entries can be reversed; delete a draft instead.', { id, docstatus: original.docstatus });
+    throw new StateError(
+      `journal_entry ${id} is not submitted`,
+      'Only submitted entries can be reversed; delete a draft instead.',
+      { id, docstatus: original.docstatus },
+    );
   }
   const already = await r.count({ reversalOf: id, docstatus: DOCSTATUS.submitted });
-  if (already > 0) throw new Conflict(`journal_entry ${original.number ?? id} is already reversed`, 'Post a new entry instead of reversing twice.', { id, number: original.number });
+  if (already > 0)
+    throw new Conflict(
+      `journal_entry ${original.number ?? id} is already reversed`,
+      'Post a new entry instead of reversing twice.',
+      { id, number: original.number },
+    );
   const originalLines = await loadLines(ctx, id);
   const lines = reverseLines(originalLines).map((l) => ({
     accountId: l.accountId,
@@ -41,15 +70,35 @@ export async function reverseEntry(ctx: Context, { id, date }: ReverseEntryInput
     memo: l.memo,
     ext: l.ext ?? {},
   }));
-  const reversal = await withPosting(ctx, (internal) => createAndSubmitEntry(internal, { date: date ?? original.date, description: `逆仕訳: ${original.number ?? id}`, reversalOf: id, ext: original.ext ?? {} }, lines));
+  const reversal = await withPosting(ctx, (internal) =>
+    createAndSubmitEntry(
+      internal,
+      {
+        date: date ?? original.date,
+        description: `逆仕訳: ${original.number ?? id}`,
+        reversalOf: id,
+        ext: original.ext ?? {},
+      },
+      lines,
+    ),
+  );
   await withStamp(ctx, async (internal) => {
     for (let i = 0; i < reversal.lines.length; i += 1) {
       const line = reversal.lines[i];
       const before = originalLines[i];
-      if (line && before) reversal.lines[i] = await repo(internal, JournalLine).update(line.id, { accountType: before.accountType, accountTaxRole: before.accountTaxRole });
+      if (line && before)
+        reversal.lines[i] = await repo(internal, JournalLine).update(line.id, {
+          accountType: before.accountType,
+          accountTaxRole: before.accountTaxRole,
+        });
     }
   });
-  await ctx.emit(REVERSED_EVENT, { id, number: original.number, reversalId: reversal.id, reversalNumber: reversal.number });
+  await ctx.emit(REVERSED_EVENT, {
+    id,
+    number: original.number,
+    reversalId: reversal.id,
+    reversalNumber: reversal.number,
+  });
   return reversal;
 }
 

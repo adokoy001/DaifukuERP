@@ -12,7 +12,11 @@ async function main(): Promise<void> {
   const envFile = loadDotEnv();
   const cfg = readConfig(process.env);
   if (!cfg.ok) {
-    log.error('missing environment variables', { missing: cfg.problem.missing, envFile: envFile ?? null, hint: 'Set DATABASE_URL_OWNER, DATABASE_URL, DAIFUKU_EMAIL and DAIFUKU_PASSWORD (optional: DAIFUKU_AGENT_ID, DAIFUKU_COMPANY_ID).' });
+    log.error('missing environment variables', {
+      missing: cfg.problem.missing,
+      envFile: envFile ?? null,
+      hint: 'Set DATABASE_URL_OWNER, DATABASE_URL, DAIFUKU_EMAIL and DAIFUKU_PASSWORD (optional: DAIFUKU_AGENT_ID, DAIFUKU_COMPANY_ID).',
+    });
     process.exit(2);
   }
   const { config } = cfg;
@@ -23,7 +27,10 @@ async function main(): Promise<void> {
   const session = await openAgentSession(owner, config, log);
   if (!session) {
     await owner.close();
-    log.error('authentication failed', { email: config.email, hint: 'Check DAIFUKU_EMAIL / DAIFUKU_PASSWORD; the user must exist and be active.' });
+    log.error('authentication failed', {
+      email: config.email,
+      hint: 'Check DAIFUKU_EMAIL / DAIFUKU_PASSWORD; the user must exist and be active.',
+    });
     process.exit(3);
   }
 
@@ -39,10 +46,19 @@ async function main(): Promise<void> {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
   await server.connect(transport);
-  log.info('daifuku mcp server ready', { user: session.user.email, agentId: config.agentId, companyId: session.params.companyId, roles: session.params.roles, ...loaded });
+  log.info('daifuku mcp server ready', {
+    user: session.user.email,
+    agentId: config.agentId,
+    companyId: session.params.companyId,
+    roles: session.params.roles,
+    ...loaded,
+  });
 }
 
 main().catch((err: unknown) => {
-  log.error('fatal', { ...safeErrorDiagnostics(err), hint: 'Check database connection, storage and account settings; sensitive details are not logged.' });
+  log.error('fatal', {
+    ...safeErrorDiagnostics(err),
+    hint: 'Check database connection, storage and account settings; sensitive details are not logged.',
+  });
   process.exit(1);
 });

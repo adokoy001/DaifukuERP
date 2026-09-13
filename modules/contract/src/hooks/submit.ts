@@ -13,10 +13,20 @@ export const NO_LINES_HINT = 'Add at least one contract_line (lines.contract_lin
 async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   const id = row.id as string;
   const lines = await repo(ctx, ContractLine).count({ contractId: id });
-  if (lines === 0) throw new ValidationError(`contract ${id} has no lines`, [{ path: 'lines', message: 'at least 1 line is required' }], NO_LINES_HINT);
+  if (lines === 0)
+    throw new ValidationError(
+      `contract ${id} has no lines`,
+      [{ path: 'lines', message: 'at least 1 line is required' }],
+      NO_LINES_HINT,
+    );
   assertDateRange(row.startDate, row.endDate);
   const startDate = typeof row.startDate === 'string' && isLocalDate(row.startDate) ? row.startDate : null;
-  if (startDate === null) throw new ValidationError(`contract ${id} has no valid startDate`, [{ path: 'startDate', message: 'required' }], 'Set startDate, then submit.');
+  if (startDate === null)
+    throw new ValidationError(
+      `contract ${id} has no valid startDate`,
+      [{ path: 'startDate', message: 'required' }],
+      'Set startDate, then submit.',
+    );
   const endDate = typeof row.endDate === 'string' && isLocalDate(row.endDate) ? row.endDate : null;
   Object.assign(row, { status: statusFor(endDate, todayLocal(ctx.now())), nextPeriod: periodOf(startDate) });
 }

@@ -22,7 +22,10 @@ export function PrintButton({ entity, record }: { entity: EntityMeta; record: Re
   const toast = useToast();
   const meta = useMeta();
   const action = useMemo(() => printActionFor(entity, meta.data?.actions ?? []), [entity, meta.data]);
-  const render = useMutation({ mutationFn: (input: RenderInput) => request<unknown>(`/actions/${input.action}`, { method: 'POST', body: { id: input.id } }) });
+  const render = useMutation({
+    mutationFn: (input: RenderInput) =>
+      request<unknown>(`/actions/${input.action}`, { method: 'POST', body: { id: input.id } }),
+  });
   if (!action || entity.kind !== 'document' || record.docstatus !== DOCSTATUS.submitted) return null;
 
   const open = () => {
@@ -54,7 +57,14 @@ export function PrintButton({ entity, record }: { entity: EntityMeta; record: Re
   };
 
   return (
-    <button type="button" className="btn" disabled={render.isPending} onClick={open} title={t(action.description)} data-testid="print-button">
+    <button
+      type="button"
+      className="btn"
+      disabled={render.isPending}
+      onClick={open}
+      title={t(action.description)}
+      data-testid="print-button"
+    >
       🖨 {t(S.viewInvoice)}
     </button>
   );

@@ -6,13 +6,19 @@ import { INDUSTRY_DEMOS, INDUSTRY_DEMO_MARKER, prepareIndustryDemoCompanies } fr
 
 let db: TestDb;
 let demo: Awaited<ReturnType<typeof bootstrapTenant>>;
-beforeEach(async () => { db = await freshDb(); demo = await bootstrapTenant(db.owner, DEMO_TENANT); });
-afterEach(async () => { await db?.close(); });
+beforeEach(async () => {
+  db = await freshDb();
+  demo = await bootstrapTenant(db.owner, DEMO_TENANT);
+});
+afterEach(async () => {
+  await db?.close();
+});
 
 describe('industry demo company ownership', () => {
   it('refuses an unmarked code collision before any company is created or seeded', async () => {
     const id = newId();
-    await db.owner.sql`insert into companies (id,tenant_id,code,name,settings) values (${id},${demo.tenantId},'DEMO_FARM','Existing business','{"keep":"original"}'::jsonb)`;
+    await db.owner
+      .sql`insert into companies (id,tenant_id,code,name,settings) values (${id},${demo.tenantId},'DEMO_FARM','Existing business','{"keep":"original"}'::jsonb)`;
     const before = await db.owner.sql`select id,name,settings from companies order by id`;
     await expect(prepareIndustryDemoCompanies(db.owner)).rejects.toThrow('not an owned farm demo');
     expect(await db.owner.sql`select id,name,settings from companies order by id`).toEqual(before);
@@ -22,7 +28,8 @@ describe('industry demo company ownership', () => {
 
   it('refuses an ownership marker for another pack without replacing settings', async () => {
     const id = newId();
-    await db.owner.sql`insert into companies (id,tenant_id,code,name,settings) values (${id},${demo.tenantId},'DEMO_APPLIANCE','Wrong marked company','{"demo.industry":"farm","keep":"original"}'::jsonb)`;
+    await db.owner
+      .sql`insert into companies (id,tenant_id,code,name,settings) values (${id},${demo.tenantId},'DEMO_APPLIANCE','Wrong marked company','{"demo.industry":"farm","keep":"original"}'::jsonb)`;
     await expect(prepareIndustryDemoCompanies(db.owner)).rejects.toThrow('not an owned appliance_store demo');
     const [company] = await db.owner.sql`select settings from companies where id=${id}`;
     expect(company?.settings).toEqual({ 'demo.industry': 'farm', keep: 'original' });

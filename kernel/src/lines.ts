@@ -43,8 +43,13 @@ export async function getLines(ctx: Context, doc: EntityDef, id: string): Promis
   const out: LinesResult = {};
   for (const { entity, parentField } of lineSpecs(doc)) {
     const res = await repo(ctx, entity).list({ where: { [parentField]: id }, orderBy: orderFor(entity), limit: 500 });
-    if (res.total !== await lineCount(ctx, entity, parentField, id)) throw new PermissionDenied(doc.name, 'read-all-lines', ctx.roles);
-    if (res.total > MAX_LINES) throw new StateError(`${doc.name} has more than ${MAX_LINES} lines`, 'Repair the oversized document before reading or changing it.');
+    if (res.total !== (await lineCount(ctx, entity, parentField, id)))
+      throw new PermissionDenied(doc.name, 'read-all-lines', ctx.roles);
+    if (res.total > MAX_LINES)
+      throw new StateError(
+        `${doc.name} has more than ${MAX_LINES} lines`,
+        'Repair the oversized document before reading or changing it.',
+      );
     out[entity.name] = res.items as Raw[];
   }
   return out;
@@ -65,19 +70,30 @@ async function replaceLineSet(ctx: Context, spec: LineSpec, id: string, incoming
   const { entity, parentField } = spec;
   const r = repo(ctx, entity);
   const listed = await r.list({ where: { [parentField]: id }, limit: MAX_LINES });
-  if (listed.total !== await lineCount(ctx, entity, parentField, id)) throw new PermissionDenied(entity.name, 'replace-all-lines', ctx.roles);
-  if (listed.total > MAX_LINES) throw new StateError('Oversized line set cannot be replaced', 'Repair the existing document first.');
+  if (listed.total !== (await lineCount(ctx, entity, parentField, id)))
+    throw new PermissionDenied(entity.name, 'replace-all-lines', ctx.roles);
+  if (listed.total > MAX_LINES)
+    throw new StateError('Oversized line set cannot be replaced', 'Repair the existing document first.');
   const existing = listed.items as Raw[];
-  const supplied = new Set(incoming.flatMap((row) => typeof row.id === 'string' ? [row.id] : []));
-  if (supplied.size !== incoming.filter((row) => row.id !== undefined).length) throw new ValidationError('duplicate line id', [{ path: 'lines', message: 'each line id must be unique' }]);
-  for (const lineId of supplied) if (!existing.some((e) => e.id === lineId)) throw new ValidationError('line does not belong to this document', [{ path: 'lines.id', message: 'unknown or foreign line id' }]);
+  const supplied = new Set(incoming.flatMap((row) => (typeof row.id === 'string' ? [row.id] : [])));
+  if (supplied.size !== incoming.filter((row) => row.id !== undefined).length)
+    throw new ValidationError('duplicate line id', [{ path: 'lines', message: 'each line id must be unique' }]);
+  for (const lineId of supplied)
+    if (!existing.some((e) => e.id === lineId))
+      throw new ValidationError('line does not belong to this document', [
+        { path: 'lines.id', message: 'unknown or foreign line id' },
+      ]);
   // Remove absent rows first so a valid 500-row replacement never temporarily exceeds the invariant.
   for (const old of existing) if (!supplied.has(old.id as string)) await r.delete(old.id as string);
   const hasSeq = 'seq' in entity.config.fields;
   let i = 0;
   for (const row of incoming) {
     const { id: lineId, ...values } = row;
-    const payload: Raw = { ...values, [parentField]: id, ...(hasSeq && values.seq === undefined ? { seq: i + 1 } : {}) };
+    const payload: Raw = {
+      ...values,
+      [parentField]: id,
+      ...(hasSeq && values.seq === undefined ? { seq: i + 1 } : {}),
+    };
     for (const k of SYSTEM_KEYS) delete payload[k];
     if (typeof lineId === 'string' && existing.some((e) => e.id === lineId)) {
       await r.update(lineId, payload as never);
@@ -104,21 +120,42 @@ async function fireLinesSaved(ctx: Context, doc: EntityDef, id: string): Promise
  * Fires the document's `after_lines_saved` hooks once at the end (ADR-0014).
  */
 export async function saveLines(ctx: Context, doc: EntityDef, id: string, lines: LinesInput): Promise<LinesResult> {
-  if (!lines || typeof lines !== 'object' || Array.isArray(lines)) throw new ValidationError('invalid lines', [{ path: 'lines', message: 'object required' }]);
+  if (!lines || typeof lines !== 'object' || Array.isArray(lines))
+    throw new ValidationError('invalid lines', [{ path: 'lines', message: 'object required' }]);
   const specs = lineSpecs(doc);
   for (const key of Object.keys(lines)) {
     if (!specs.some((s) => s.entity.name === key)) {
-      throw new ValidationError(`${doc.name} has no line entity "${key}"`, [{ path: `lines.${key}`, message: 'unknown line entity' }], `Declared line entities: ${specs.map((s) => s.entity.name).join(', ')}`);
+      throw new ValidationError(
+        `${doc.name} has no line entity "${key}"`,
+        [{ path: `lines.${key}`, message: 'unknown line entity' }],
+        `Declared line entities: ${specs.map((s) => s.entity.name).join(', ')}`,
+      );
     }
     const rows = lines[key];
-    if (!Array.isArray(rows) || rows.length > MAX_LINES || rows.some((r) => !r || typeof r !== 'object' || Array.isArray(r) || (r.id !== undefined && (typeof r.id !== 'string' || !isUuid(r.id))))) {
-      throw new ValidationError('invalid line set', [{ path: `lines.${key}`, message: `array of at most ${MAX_LINES} rows with valid ids required` }]);
+    if (
+      !Array.isArray(rows) ||
+      rows.length > MAX_LINES ||
+      rows.some(
+        (r) =>
+          !r ||
+          typeof r !== 'object' ||
+          Array.isArray(r) ||
+          (r.id !== undefined && (typeof r.id !== 'string' || !isUuid(r.id))),
+      )
+    ) {
+      throw new ValidationError('invalid line set', [
+        { path: `lines.${key}`, message: `array of at most ${MAX_LINES} rows with valid ids required` },
+      ]);
     }
   }
   const r = repo(ctx, doc);
   const parent = await r.rawGet(id, 'update', true);
   if (parent.docstatus !== DOCSTATUS.draft) {
-    throw new StateError(`${doc.name} ${id} is not a draft; lines are frozen`, 'Cancel and amend the document to change its lines.', { docstatus: parent.docstatus });
+    throw new StateError(
+      `${doc.name} ${id} is not a draft; lines are frozen`,
+      'Cancel and amend the document to change its lines.',
+      { docstatus: parent.docstatus },
+    );
   }
   const out: LinesResult = {};
   markReplacing(ctx, doc.name, id, true);

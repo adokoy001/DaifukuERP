@@ -21,8 +21,12 @@ async function main(): Promise<void> {
   const app = connect(requireEnv('DATABASE_URL'), { max: 1 });
   try {
     const target = await resolvePackCompany(owner, companyId);
-    const result = await withContext(app, systemParams(target.tenantId, target.companyId), (ctx) => applyPack(ctx, name, opts));
-    process.stdout.write(`${JSON.stringify({ tenantId: target.tenantId, companyId: target.companyId, ...result }, null, 2)}\n`);
+    const result = await withContext(app, systemParams(target.tenantId, target.companyId), (ctx) =>
+      applyPack(ctx, name, opts),
+    );
+    process.stdout.write(
+      `${JSON.stringify({ tenantId: target.tenantId, companyId: target.companyId, ...result }, null, 2)}\n`,
+    );
   } finally {
     await app.close();
     await owner.close();

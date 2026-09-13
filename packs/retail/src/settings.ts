@@ -2,7 +2,11 @@
 // 三分法 transfer, and the defaults the pack writes for settings the modules declare.
 import { getSetting, label, repo, StateError, type Context, type SettingDef } from '@daifuku/kernel';
 import { Account } from '@daifuku/mod-accounting';
-import { ALLOW_NEGATIVE_STOCK_KEY, AUTO_ISSUE_ON_SALES_KEY, AUTO_RECEIPT_ON_PURCHASE_KEY } from '@daifuku/mod-inventory';
+import {
+  ALLOW_NEGATIVE_STOCK_KEY,
+  AUTO_ISSUE_ON_SALES_KEY,
+  AUTO_RECEIPT_ON_PURCHASE_KEY,
+} from '@daifuku/mod-inventory';
 import { TAX_PRICE_INCLUDES_TAX_KEY } from '@daifuku/mod-tax';
 import { z } from 'zod';
 
@@ -19,12 +23,19 @@ export const closingAccountsSchema = z.object({
   openingStock: code,
 });
 export type ClosingAccountCodes = z.output<typeof closingAccountsSchema>;
-export const CLOSING_ACCOUNTS_DEFAULT: ClosingAccountCodes = { inventory: '1400', closingStock: '5100', openingStock: '5050' };
+export const CLOSING_ACCOUNTS_DEFAULT: ClosingAccountCodes = {
+  inventory: '1400',
+  closingStock: '5100',
+  openingStock: '5050',
+};
 
 export const CLOSING_ACCOUNTS_SETTING: SettingDef<ClosingAccountCodes> = {
   key: CLOSING_ACCOUNTS_KEY,
   label: label('月次締め（三分法）の勘定科目', 'Month-close accounts (periodic inventory)'),
-  description: label('科目コード: inventory=商品, closingStock=期末商品棚卸高, openingStock=期首商品棚卸高', 'Account codes: inventory, closingStock (closing inventory), openingStock (opening inventory)'),
+  description: label(
+    '科目コード: inventory=商品, closingStock=期末商品棚卸高, openingStock=期首商品棚卸高',
+    'Account codes: inventory, closingStock (closing inventory), openingStock (opening inventory)',
+  ),
   schema: closingAccountsSchema,
 };
 
@@ -54,7 +65,11 @@ export async function resolveClosingAccounts(ctx: Context): Promise<ClosingAccou
   const roles = ['inventory', 'closingStock', 'openingStock'] as const;
   const missing = roles.filter((r) => !byCode.has(codes[r]));
   if (missing.length > 0) {
-    throw new StateError(`account code(s) ${missing.map((r) => `${codes[r]} (${r})`).join(', ')} do not exist`, ACCOUNTS_HINT, { setting: CLOSING_ACCOUNTS_KEY, missing: Object.fromEntries(missing.map((r) => [r, codes[r]])) });
+    throw new StateError(
+      `account code(s) ${missing.map((r) => `${codes[r]} (${r})`).join(', ')} do not exist`,
+      ACCOUNTS_HINT,
+      { setting: CLOSING_ACCOUNTS_KEY, missing: Object.fromEntries(missing.map((r) => [r, codes[r]])) },
+    );
   }
   const id = (r: (typeof roles)[number]) => byCode.get(codes[r]) ?? '';
   return { inventory: id('inventory'), closingStock: id('closingStock'), openingStock: id('openingStock') };

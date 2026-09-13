@@ -22,8 +22,14 @@ describe('toolInputSchema (AC-2)', () => {
 
   it('AC-2 the kernel Decimal input (string | Decimal with transform) is exposed as a string', () => {
     const { log, warnings } = recorder();
-    const decimalInput = z.union([z.string(), z.custom<Decimal>((v) => v instanceof Decimal)]).transform((v) => Decimal.from(v));
-    const out = toolInputSchema('x.y', z.object({ amount: decimalInput, opt: decimalInput.nullable().optional() }), log);
+    const decimalInput = z
+      .union([z.string(), z.custom<Decimal>((v) => v instanceof Decimal)])
+      .transform((v) => Decimal.from(v));
+    const out = toolInputSchema(
+      'x.y',
+      z.object({ amount: decimalInput, opt: decimalInput.nullable().optional() }),
+      log,
+    );
     expect(out.properties?.amount).toEqual({ type: 'string' });
     expect(out.properties?.opt).toEqual({ type: ['string', 'null'] });
     expect(warnings).toEqual([]);
@@ -43,7 +49,11 @@ describe('toolInputSchema (AC-2)', () => {
 
   it('AC-2 a standalone custom type is exposed as "any" rather than failing the whole tool list', () => {
     const { log, warnings } = recorder();
-    const out = toolInputSchema('x.custom', z.object({ blob: z.custom<Uint8Array>((v) => v instanceof Uint8Array) }), log);
+    const out = toolInputSchema(
+      'x.custom',
+      z.object({ blob: z.custom<Uint8Array>((v) => v instanceof Uint8Array) }),
+      log,
+    );
     expect(out.type).toBe('object');
     expect(out.properties?.blob).toEqual({});
     expect(warnings).toEqual([]);

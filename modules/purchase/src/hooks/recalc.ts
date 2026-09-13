@@ -4,12 +4,30 @@
 // re-save makes the last write reflect the final line set. The re-save happens once per kernel saveLines call through
 // `after_lines_saved` (kernel-phase15 AC-7), and once per direct line write through hooks/lines.ts.
 // Submitted/cancelled bills are left alone (only allowOnSubmit fields move after submit).
-import { DOCSTATUS, Decimal, ValidationError, isLocalDate, registry, repo, todayLocal, type Context, type HookArgs, type Infer, type LocalDate } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  Decimal,
+  ValidationError,
+  isLocalDate,
+  registry,
+  repo,
+  todayLocal,
+  type Context,
+  type HookArgs,
+  type Infer,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { Partner, computeDueDate } from '@daifuku/mod-partner';
 import { taxSummaryFor, type TaxCategory } from '@daifuku/mod-tax';
 import { PurchaseInvoice } from '../entities/purchase-invoice.ts';
 import { PurchaseInvoiceLine } from '../entities/purchase-invoice-line.ts';
-import { PURCHASE_CREDIT_RATIO_POINT, assertCreditRatio, defaultCreditRatio, type CreditRatioInput, type SupplierTaxStatus } from '../services/credit-ratio.ts';
+import {
+  PURCHASE_CREDIT_RATIO_POINT,
+  assertCreditRatio,
+  defaultCreditRatio,
+  type CreditRatioInput,
+  type SupplierTaxStatus,
+} from '../services/credit-ratio.ts';
 import { applyCreditRatio, calculationToJson, type PurchaseCalculation } from '../services/recalculate.ts';
 
 type Raw = Record<string, unknown>;
@@ -32,12 +50,23 @@ export interface InvoiceComputation {
 }
 
 export async function loadInvoiceLines(ctx: Context, invoiceId: string): Promise<InvoiceLineRow[]> {
-  return (await repo(ctx, PurchaseInvoiceLine).list({ where: { invoiceId }, orderBy: [{ field: 'seq', dir: 'asc' }], limit: 500 })).items;
+  return (
+    await repo(ctx, PurchaseInvoiceLine).list({
+      where: { invoiceId },
+      orderBy: [{ field: 'seq', dir: 'asc' }],
+      limit: 500,
+    })
+  ).items;
 }
 
 export async function loadSupplier(ctx: Context, partnerId: string): Promise<PartnerRow> {
   const partner = await repo(ctx, Partner).find(partnerId);
-  if (!partner) throw new ValidationError(`partner ${partnerId} does not exist`, [{ path: 'partnerId', message: 'partner not found' }], 'Pass the id of an existing partner (see partner.list).');
+  if (!partner)
+    throw new ValidationError(
+      `partner ${partnerId} does not exist`,
+      [{ path: 'partnerId', message: 'partner not found' }],
+      'Pass the id of an existing partner (see partner.list).',
+    );
   return partner;
 }
 
@@ -48,11 +77,20 @@ export function resolveCreditRatio(input: CreditRatioInput): Decimal {
 }
 
 /** Tax summary (one rounding per rate, modules/tax) → credit split → header totals, for the given lines. */
-export async function computeInvoice(ctx: Context, head: InvoiceHead, lines: readonly Pick<InvoiceLineRow, 'amount' | 'taxCategory'>[], partner?: PartnerRow): Promise<InvoiceComputation> {
+export async function computeInvoice(
+  ctx: Context,
+  head: InvoiceHead,
+  lines: readonly Pick<InvoiceLineRow, 'amount' | 'taxCategory'>[],
+  partner?: PartnerRow,
+): Promise<InvoiceComputation> {
   const supplier = partner ?? (await loadSupplier(ctx, head.partnerId));
   const supplierTaxStatus = supplier.taxStatus;
   const creditRatio = resolveCreditRatio({ supplierTaxStatus, date: head.date });
-  const summary = await taxSummaryFor(ctx, { date: head.date, priceIncludesTax: head.priceIncludesTax, lines: lines.map((l) => ({ amount: l.amount, category: l.taxCategory as TaxCategory })) });
+  const summary = await taxSummaryFor(ctx, {
+    date: head.date,
+    priceIncludesTax: head.priceIncludesTax,
+    lines: lines.map((l) => ({ amount: l.amount, category: l.taxCategory as TaxCategory })),
+  });
   const calc = applyCreditRatio(summary, creditRatio);
   const { subtotal, taxTotal, deductibleTax, nonDeductibleTax, total } = calc.totals;
   return {
@@ -60,7 +98,16 @@ export async function computeInvoice(ctx: Context, head: InvoiceHead, lines: rea
     supplierTaxStatus,
     creditRatio,
     calc,
-    fields: { supplierTaxStatus, creditRatio, subtotal, taxTotal, deductibleTax, nonDeductibleTax, total, taxSummary: calculationToJson(calc) },
+    fields: {
+      supplierTaxStatus,
+      creditRatio,
+      subtotal,
+      taxTotal,
+      deductibleTax,
+      nonDeductibleTax,
+      total,
+      taxSummary: calculationToJson(calc),
+    },
   };
 }
 
@@ -76,7 +123,10 @@ function merged(draft: Raw, previous: Raw | undefined, key: string): unknown {
 function needsDueDate(draft: Raw, previous: Raw | undefined): boolean {
   if ('dueDate' in draft) return draft.dueDate === null || draft.dueDate === undefined;
   if (!previous || previous.dueDate === null || previous.dueDate === undefined) return true;
-  return (draft.date !== undefined && draft.date !== previous.date) || (draft.partnerId !== undefined && draft.partnerId !== previous.partnerId);
+  return (
+    (draft.date !== undefined && draft.date !== previous.date) ||
+    (draft.partnerId !== undefined && draft.partnerId !== previous.partnerId)
+  );
 }
 
 async function onInvoiceValidate(ctx: Context, { row: draft, previous }: HookArgs): Promise<void> {
@@ -92,7 +142,8 @@ async function onInvoiceValidate(ctx: Context, { row: draft, previous }: HookArg
   const lines = previous ? await loadInvoiceLines(ctx, previous.id as string) : [];
   const computed = await computeInvoice(ctx, head, lines, partner);
   Object.assign(draft, computed.fields);
-  if (needsDueDate(draft, previous)) draft.dueDate = computeDueDate(date, partner.closingDay, partner.paymentMonthOffset, partner.paymentDay);
+  if (needsDueDate(draft, previous))
+    draft.dueDate = computeDueDate(date, partner.closingDay, partner.paymentMonthOffset, partner.paymentDay);
   // System-owned while draft: these only move through submit / applyPayment / cancel.
   draft.status = 'draft';
   draft.paidAmount = Decimal.zero();
@@ -114,5 +165,7 @@ export async function recalculateInvoice(ctx: Context, invoiceId: string): Promi
 export function registerRecalcHooks(): void {
   registry.registerHook(PurchaseInvoice.name, 'before_validate', onInvoiceValidate);
   // one header re-save per saveLines call (the kernel passes the re-read parent), whatever the line count
-  registry.registerHook(PurchaseInvoice.name, 'after_lines_saved', (ctx, { row }) => recalculateInvoice(ctx, row.id as string));
+  registry.registerHook(PurchaseInvoice.name, 'after_lines_saved', (ctx, { row }) =>
+    recalculateInvoice(ctx, row.id as string),
+  );
 }

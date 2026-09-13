@@ -41,7 +41,12 @@ export const MEMO = {
   disbursement: '支払',
 } as const;
 
-function line(accountId: string, side: 'debit' | 'credit', amount: Decimal, extra: Omit<JournalLineSpec, 'accountId' | 'debit' | 'credit'> = {}): JournalLineSpec {
+function line(
+  accountId: string,
+  side: 'debit' | 'credit',
+  amount: Decimal,
+  extra: Omit<JournalLineSpec, 'accountId' | 'debit' | 'credit'> = {},
+): JournalLineSpec {
   return side === 'debit' ? { accountId, debit: amount, ...extra } : { accountId, credit: amount, ...extra };
 }
 
@@ -53,11 +58,16 @@ function counterLines(input: PostingInput, side: 'debit' | 'credit'): JournalLin
   const settledMemo = receive ? MEMO.receivable : MEMO.payable;
   const advanceMemo = receive ? MEMO.advanceReceived : MEMO.advancePaid;
   const out = input.allocations
-    .map((a) => ({ accountId: a.controlAccountId ?? settled, amount: Decimal.from(a.amount), memo: a.invoiceNumber ? `${settledMemo} ${a.invoiceNumber}` : settledMemo }))
+    .map((a) => ({
+      accountId: a.controlAccountId ?? settled,
+      amount: Decimal.from(a.amount),
+      memo: a.invoiceNumber ? `${settledMemo} ${a.invoiceNumber}` : settledMemo,
+    }))
     .filter((a) => !a.amount.isZero())
     .map((a) => line(a.accountId, side, a.amount, { partnerId: input.partnerId, memo: a.memo }));
   const unallocated = Decimal.from(input.unallocated);
-  if (!unallocated.isZero()) out.push(line(advance, side, unallocated, { partnerId: input.partnerId, memo: advanceMemo }));
+  if (!unallocated.isZero())
+    out.push(line(advance, side, unallocated, { partnerId: input.partnerId, memo: advanceMemo }));
   return out;
 }
 
@@ -65,14 +75,22 @@ function counterLines(input: PostingInput, side: 'debit' | 'credit'): JournalLin
 export function journalLinesFor(input: PostingInput): JournalLineSpec[] {
   const amount = Decimal.from(input.amount);
   if (input.direction === 'receive') {
-    return [line(input.accountId, 'debit', amount, { partnerId: input.partnerId, memo: MEMO.receipt }), ...counterLines(input, 'credit')];
+    return [
+      line(input.accountId, 'debit', amount, { partnerId: input.partnerId, memo: MEMO.receipt }),
+      ...counterLines(input, 'credit'),
+    ];
   }
-  return [...counterLines(input, 'debit'), line(input.accountId, 'credit', amount, { partnerId: input.partnerId, memo: MEMO.disbursement })];
+  return [
+    ...counterLines(input, 'debit'),
+    line(input.accountId, 'credit', amount, { partnerId: input.partnerId, memo: MEMO.disbursement }),
+  ];
 }
 
 /** Σcredit − Σdebit over the lines; 0 when balanced. Exposed for tests/property checks. */
 export function imbalance(lines: readonly JournalLineSpec[]): Decimal {
-  return Decimal.sum(lines.map((l) => l.credit ?? Decimal.zero())).minus(Decimal.sum(lines.map((l) => l.debit ?? Decimal.zero())));
+  return Decimal.sum(lines.map((l) => l.credit ?? Decimal.zero())).minus(
+    Decimal.sum(lines.map((l) => l.debit ?? Decimal.zero())),
+  );
 }
 
 /** Journal entry description: 入金/支払 <number> <partner>; before numbering, without the number. */

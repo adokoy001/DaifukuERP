@@ -5,23 +5,43 @@ async function dependency(stage, directory, name) {
   if (!/^(?:@[a-zA-Z0-9._-]+\/)?[a-zA-Z0-9._-]+$/.test(name)) throw new Error('Invalid dependency name.');
   for (let current = directory; within(stage, current); current = dirname(current)) {
     const path = join(current, 'node_modules', name);
-    try { const info = await lstat(path), target = await realpath(path); return { path, target, link: info.isSymbolicLink() }; }
-    catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+    try {
+      const info = await lstat(path),
+        target = await realpath(path);
+      return { path, target, link: info.isSymbolicLink() };
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;
+    }
     if (current === stage) break;
   }
 }
 async function copyHoistedLinks(stage, destination, visited) {
   async function directory(path) {
-    let entries; try { entries = await readdir(path); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    let entries;
+    try {
+      entries = await readdir(path);
+    } catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
     for (const name of entries) {
-      const link = join(path, name), info = await lstat(link);
-      if (name.startsWith('@') && info.isDirectory()) { await directory(link); continue; }
+      const link = join(path, name),
+        info = await lstat(link);
+      if (name.startsWith('@') && info.isDirectory()) {
+        await directory(link);
+        continue;
+      }
       if (!info.isSymbolicLink()) continue;
       const actual = await realpath(link);
       if (!visited.has(actual)) continue;
-      const output = join(destination, relative(stage, link)), target = join(destination, relative(stage, actual));
+      const output = join(destination, relative(stage, link)),
+        target = join(destination, relative(stage, actual));
       await mkdir(dirname(output), { recursive: true });
-      try { await symlink(relative(dirname(output), target), output); } catch (error) { if (error.code !== 'EEXIST' || await readlink(output) !== relative(dirname(output), target)) throw error; }
+      try {
+        await symlink(relative(dirname(output), target), output);
+      } catch (error) {
+        if (error.code !== 'EEXIST' || (await readlink(output)) !== relative(dirname(output), target)) throw error;
+      }
     }
   }
   // Keep only fallback links for already selected packages. Some upstream bundles
@@ -31,27 +51,48 @@ async function copyHoistedLinks(stage, destination, visited) {
 }
 /** Copy the already frozen installed graph. Never resolve semver ranges during deployment. */
 export async function copyRuntime(stage, destination) {
-  stage = resolve(stage); await mkdir(destination);
-  const pending = [join(stage, 'apps/api')], visited = new Set(), packages = [];
-  for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json']) await cp(join(stage, name), join(destination, name));
+  stage = resolve(stage);
+  await mkdir(destination);
+  const pending = [join(stage, 'apps/api')],
+    visited = new Set(),
+    packages = [];
+  for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json'])
+    await cp(join(stage, name), join(destination, name));
   while (pending.length) {
     const directory = pending.shift();
     if (visited.has(directory)) continue;
     if (!within(stage, directory)) throw new Error('Installed dependency escapes the frozen build.');
     visited.add(directory);
-    const path = relative(stage, directory), target = join(destination, path), metadata = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    const path = relative(stage, directory),
+      target = join(destination, path),
+      metadata = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     await mkdir(dirname(target), { recursive: true });
-    await cp(directory, target, { recursive: true, verbatimSymlinks: true, filter: (entry) => !relative(directory, entry).split('/').includes('node_modules') });
+    await cp(directory, target, {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (entry) => !relative(directory, entry).split('/').includes('node_modules'),
+    });
     packages.push({ name: metadata.name, version: metadata.version, path });
-    const required = metadata.dependencies ?? {}, optional = metadata.optionalDependencies ?? {}, peers = metadata.peerDependencies ?? {};
+    const required = metadata.dependencies ?? {},
+      optional = metadata.optionalDependencies ?? {},
+      peers = metadata.peerDependencies ?? {};
     for (const name of new Set([...Object.keys(required), ...Object.keys(optional), ...Object.keys(peers)])) {
       const found = await dependency(stage, directory, name);
-      if (!found) { if (name in required && !(name in optional)) throw new Error('A required frozen runtime dependency is missing.'); continue; }
+      if (!found) {
+        if (name in required && !(name in optional))
+          throw new Error('A required frozen runtime dependency is missing.');
+        continue;
+      }
       if (!within(stage, found.target)) throw new Error('Installed dependency points outside the build.');
       if (found.link) {
-        const link = join(destination, relative(stage, found.path)), output = join(destination, relative(stage, found.target));
+        const link = join(destination, relative(stage, found.path)),
+          output = join(destination, relative(stage, found.target));
         await mkdir(dirname(link), { recursive: true });
-        try { await symlink(relative(dirname(link), output), link); } catch (error) { if (error.code !== 'EEXIST' || await readlink(link) !== relative(dirname(link), output)) throw error; }
+        try {
+          await symlink(relative(dirname(link), output), link);
+        } catch (error) {
+          if (error.code !== 'EEXIST' || (await readlink(link)) !== relative(dirname(link), output)) throw error;
+        }
       }
       pending.push(found.target);
     }

@@ -6,7 +6,16 @@
 // taxable depends on what it pays for (docs/domain/real-estate.md#deposit-deduction, 【未確認】); adjust by journal entry.
 // The entry's source is `real_estate_deposit_return`: accounting allows one live entry per (sourceEntity, sourceId), and
 // the receipt already holds `real_estate_deposit`.
-import { Decimal, defineAction, label, repo, snapshot, StateError, ValidationError, type Context } from '@daifuku/kernel';
+import {
+  Decimal,
+  defineAction,
+  label,
+  repo,
+  snapshot,
+  StateError,
+  ValidationError,
+  type Context,
+} from '@daifuku/kernel';
 import { postFromSource, type LineInput } from '@daifuku/mod-accounting';
 import { Contract } from '@daifuku/mod-contract';
 import { Partner } from '@daifuku/mod-partner';
@@ -33,30 +42,69 @@ function checkedAmounts(deposit: DepositRow, input: ReturnDepositInput): { amoun
   const amount = Decimal.from(input.amount);
   const deduction = Decimal.from(input.deductionAmount ?? '0');
   const issues: { path: string; message: string }[] = [];
-  if (!amount.eq(deposit.amount)) issues.push({ path: 'amount', message: `must equal the deposit amount ${deposit.amount.toString()} (v1 returns a deposit in full)` });
+  if (!amount.eq(deposit.amount))
+    issues.push({
+      path: 'amount',
+      message: `must equal the deposit amount ${deposit.amount.toString()} (v1 returns a deposit in full)`,
+    });
   if (deduction.isNegative()) issues.push({ path: 'deductionAmount', message: 'must be >= 0' });
   if (deduction.gt(amount)) issues.push({ path: 'deductionAmount', message: `must be <= amount ${amount.toString()}` });
-  if (deposit.receivedDate !== null && input.date < deposit.receivedDate) issues.push({ path: 'date', message: `must be on or after the receipt date ${deposit.receivedDate}` });
-  if (issues.length > 0) throw new ValidationError(`real_estate_deposit ${deposit.id} cannot be returned`, issues, 'Pass amount = the deposit amount and the kept part as deductionAmount.');
+  if (deposit.receivedDate !== null && input.date < deposit.receivedDate)
+    issues.push({ path: 'date', message: `must be on or after the receipt date ${deposit.receivedDate}` });
+  if (issues.length > 0)
+    throw new ValidationError(
+      `real_estate_deposit ${deposit.id} cannot be returned`,
+      issues,
+      'Pass amount = the deposit amount and the kept part as deductionAmount.',
+    );
   return { amount, deduction };
 }
 
-async function returnLines(ctx: Context, deposit: DepositRow, input: ReturnDepositInput, amount: Decimal, deduction: Decimal): Promise<LineInput[]> {
+async function returnLines(
+  ctx: Context,
+  deposit: DepositRow,
+  input: ReturnDepositInput,
+  amount: Decimal,
+  deduction: Decimal,
+): Promise<LineInput[]> {
   const accounts = await loadRealEstateAccounts(ctx);
   const partnerId = deposit.partnerId;
-  const lines: LineInput[] = [{ accountId: await accountIdByCode(ctx, accounts.deposit, 'deposit'), debit: amount, partnerId, memo: '預り金（敷金）返還' }];
+  const lines: LineInput[] = [
+    {
+      accountId: await accountIdByCode(ctx, accounts.deposit, 'deposit'),
+      debit: amount,
+      partnerId,
+      memo: '預り金（敷金）返還',
+    },
+  ];
   const cash = amount.minus(deduction);
-  if (cash.gt(0)) lines.push({ accountId: await bankAccountId(ctx, input.accountId), credit: cash, partnerId, memo: '敷金返還' });
-  if (deduction.gt(0)) lines.push({ accountId: input.deductionAccountId ?? (await accountIdByCode(ctx, accounts.deduction, 'deduction')), credit: deduction, partnerId, memo: '敷金から控除（原状回復費）' });
+  if (cash.gt(0))
+    lines.push({ accountId: await bankAccountId(ctx, input.accountId), credit: cash, partnerId, memo: '敷金返還' });
+  if (deduction.gt(0))
+    lines.push({
+      accountId: input.deductionAccountId ?? (await accountIdByCode(ctx, accounts.deduction, 'deduction')),
+      credit: deduction,
+      partnerId,
+      memo: '敷金から控除（原状回復費）',
+    });
   return lines;
 }
 
 export async function returnDeposit(ctx: Context, input: ReturnDepositInput): Promise<DepositRow> {
   const r = repo(ctx, RealEstateDeposit);
   const deposit = await r.lock(input.depositId);
-  if (deposit.journalEntryId === null) throw new StateError(`real_estate_deposit ${deposit.id} has not been received`, 'Receive it first with real_estate.receive_deposit.', { depositId: deposit.id });
+  if (deposit.journalEntryId === null)
+    throw new StateError(
+      `real_estate_deposit ${deposit.id} has not been received`,
+      'Receive it first with real_estate.receive_deposit.',
+      { depositId: deposit.id },
+    );
   if (deposit.returnJournalEntryId !== null) {
-    throw new StateError(`real_estate_deposit ${deposit.id} was already returned on ${String(deposit.returnedDate)}`, 'A deposit can be returned only once. Check the linked return and deposit ledger; a return correction workflow is not supported yet.', { depositId: deposit.id, returnJournalEntryId: deposit.returnJournalEntryId });
+    throw new StateError(
+      `real_estate_deposit ${deposit.id} was already returned on ${String(deposit.returnedDate)}`,
+      'A deposit can be returned only once. Check the linked return and deposit ledger; a return correction workflow is not supported yet.',
+      { depositId: deposit.id, returnJournalEntryId: deposit.returnJournalEntryId },
+    );
   }
   const { amount, deduction } = checkedAmounts(deposit, input);
   const contract = await repo(ctx, Contract).get(deposit.contractId);
@@ -68,7 +116,14 @@ export async function returnDeposit(ctx: Context, input: ReturnDepositInput): Pr
     description: depositDescription('敷金返還', contract.number, partner.name),
     lines: await returnLines(ctx, deposit, input, amount, deduction),
   });
-  return withDepositWrite(ctx, (owned) => repo(owned, RealEstateDeposit).update(deposit.id, { returnedDate: input.date, returnedAmount: amount.minus(deduction), deductionAmount: deduction, returnJournalEntryId: entry.id }));
+  return withDepositWrite(ctx, (owned) =>
+    repo(owned, RealEstateDeposit).update(deposit.id, {
+      returnedDate: input.date,
+      returnedAmount: amount.minus(deduction),
+      deductionAmount: deduction,
+      returnJournalEntryId: entry.id,
+    }),
+  );
 }
 
 export const returnDepositAction = defineAction({

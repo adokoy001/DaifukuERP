@@ -42,7 +42,11 @@ export interface JournalLineSpec {
   memo?: string | null;
 }
 
-function side(accountId: string, credit: Decimal, extra: Omit<JournalLineSpec, 'accountId' | 'debit' | 'credit'>): JournalLineSpec {
+function side(
+  accountId: string,
+  credit: Decimal,
+  extra: Omit<JournalLineSpec, 'accountId' | 'debit' | 'credit'>,
+): JournalLineSpec {
   return credit.isNegative() ? { accountId, debit: credit.abs(), ...extra } : { accountId, credit, ...extra };
 }
 
@@ -54,31 +58,69 @@ export function ratePercent(rate: DecimalInput): string {
 function revenueLines(input: PostingInput, accounts: PostingAccounts): JournalLineSpec[] {
   if (input.priceIncludesTax) {
     for (const group of input.taxSummary) {
-      const dimensions = input.lines.filter((l) => l.taxCategory === group.category).map((l) => JSON.stringify(Object.entries(l.ext ?? {}).sort(([a], [b]) => a.localeCompare(b))));
-      if (new Set(dimensions).size > 1) throw new ValidationError('Tax-inclusive grouped posting requires consistent line dimensions per tax category', [{ path: 'lines.ext', message: 'split the invoice or use consistent dimensions; silent dimension loss is not allowed' }]);
+      const dimensions = input.lines
+        .filter((l) => l.taxCategory === group.category)
+        .map((l) => JSON.stringify(Object.entries(l.ext ?? {}).sort(([a], [b]) => a.localeCompare(b))));
+      if (new Set(dimensions).size > 1)
+        throw new ValidationError(
+          'Tax-inclusive grouped posting requires consistent line dimensions per tax category',
+          [
+            {
+              path: 'lines.ext',
+              message: 'split the invoice or use consistent dimensions; silent dimension loss is not allowed',
+            },
+          ],
+        );
     }
     return input.taxSummary
       .filter((g) => !Decimal.from(g.taxable).isZero())
-      .map((g) => side(accounts.revenue, Decimal.from(g.taxable), { taxCategory: g.category, taxRate: Decimal.from(g.rate), memo: `${g.label || g.category} 税抜`, ext: input.lines.find((l) => l.taxCategory === g.category)?.ext ?? {} }));
+      .map((g) =>
+        side(accounts.revenue, Decimal.from(g.taxable), {
+          taxCategory: g.category,
+          taxRate: Decimal.from(g.rate),
+          memo: `${g.label || g.category} 税抜`,
+          ext: input.lines.find((l) => l.taxCategory === g.category)?.ext ?? {},
+        }),
+      );
   }
   return input.lines
     .filter((l) => !Decimal.from(l.amount).isZero())
-    .map((l) => side(accounts.revenue, Decimal.from(l.amount), { taxCategory: l.taxCategory, taxRate: Decimal.from(rateOfCategory(input.taxSummary, l.taxCategory)), memo: l.description, ext: l.ext ?? {} }));
+    .map((l) =>
+      side(accounts.revenue, Decimal.from(l.amount), {
+        taxCategory: l.taxCategory,
+        taxRate: Decimal.from(rateOfCategory(input.taxSummary, l.taxCategory)),
+        memo: l.description,
+        ext: l.ext ?? {},
+      }),
+    );
 }
 
 function taxLines(input: PostingInput, accounts: PostingAccounts): JournalLineSpec[] {
   return input.taxSummary
     .filter((g) => !Decimal.from(g.tax).isZero())
-    .map((g) => side(accounts.taxPayable, Decimal.from(g.tax), { taxCategory: g.category, taxRate: Decimal.from(g.rate), memo: `仮受消費税 ${ratePercent(g.rate)}` }));
+    .map((g) =>
+      side(accounts.taxPayable, Decimal.from(g.tax), {
+        taxCategory: g.category,
+        taxRate: Decimal.from(g.rate),
+        memo: `仮受消費税 ${ratePercent(g.rate)}`,
+      }),
+    );
 }
 
 /** Journal lines in posting order: receivable, revenue…, tax…. Balanced by construction (Σ = total). */
 export function journalLinesFor(input: PostingInput, accounts: PostingAccounts): JournalLineSpec[] {
-  const receivable: JournalLineSpec = { accountId: accounts.receivable, debit: Decimal.from(input.total), partnerId: input.partnerId, memo: '売掛金' };
+  const receivable: JournalLineSpec = {
+    accountId: accounts.receivable,
+    debit: Decimal.from(input.total),
+    partnerId: input.partnerId,
+    memo: '売掛金',
+  };
   return [receivable, ...revenueLines(input, accounts), ...taxLines(input, accounts)];
 }
 
 /** Σcredit − Σdebit over the lines; 0 when balanced. Exposed for tests/property checks. */
 export function imbalance(lines: readonly JournalLineSpec[]): Decimal {
-  return Decimal.sum(lines.map((l) => l.credit ?? Decimal.zero())).minus(Decimal.sum(lines.map((l) => l.debit ?? Decimal.zero())));
+  return Decimal.sum(lines.map((l) => l.credit ?? Decimal.zero())).minus(
+    Decimal.sum(lines.map((l) => l.debit ?? Decimal.zero())),
+  );
 }

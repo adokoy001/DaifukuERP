@@ -42,7 +42,14 @@ beforeAll(async () => {
   });
   // 2nd hook: records what it receives; `row` must already carry the 1st hook's update (re-read by the kernel)
   registry.registerHook(TMemo.name, 'after_lines_saved', (_ctx, args: HookArgs) => {
-    seen.push({ entity: args.entity, rowId: args.row.id, rowAmount: args.row.amount, rowVersion: args.row.version, lineSets: Object.keys(args.lines ?? {}), lines: args.lines?.test_memo_line ?? [] });
+    seen.push({
+      entity: args.entity,
+      rowId: args.row.id,
+      rowAmount: args.row.amount,
+      rowVersion: args.row.version,
+      lineSets: Object.keys(args.lines ?? {}),
+      lines: args.lines?.test_memo_line ?? [],
+    });
   });
   registry.registerHook(TMemoLine.name, 'after_create', (ctx, { row }) => {
     lineCreateSawSaving.push(isSavingLines(ctx, TMemo.name, row.memoId as string));
@@ -63,7 +70,13 @@ describe('after_lines_saved (AC-6)', () => {
         partnerId,
         date: '2026-09-11',
         amount: '0',
-        lines: { test_memo_line: [{ description: 'a', amount: '10' }, { description: 'b', amount: '20.5' }, { description: 'c', amount: '30' }] },
+        lines: {
+          test_memo_line: [
+            { description: 'a', amount: '10' },
+            { description: 'b', amount: '20.5' },
+            { description: 'c', amount: '30' },
+          ],
+        },
       }),
     )) as MemoWithLines;
     expect(seen).toHaveLength(1);
@@ -87,12 +100,25 @@ describe('after_lines_saved (AC-6)', () => {
   it('AC-6 generic update with header patch + lines fires once; saveLines called directly fires once; empty input still fires once', async () => {
     const m = await db.run({}, (ctx) => repo(ctx, TMemo).create({ partnerId, date: '2026-09-11', amount: '0' }));
     const updated = (await db.run({}, (ctx) =>
-      runAction(ctx, 'test_memo.update', { id: m.id, patch: { note: 'n', lines: { test_memo_line: [{ description: 'x', amount: '1' }, { description: 'y', amount: '2' }] } } }),
+      runAction(ctx, 'test_memo.update', {
+        id: m.id,
+        patch: {
+          note: 'n',
+          lines: {
+            test_memo_line: [
+              { description: 'x', amount: '1' },
+              { description: 'y', amount: '2' },
+            ],
+          },
+        },
+      }),
     )) as MemoWithLines;
     expect(seen).toHaveLength(1);
     expect(updated).toMatchObject({ note: 'n', amount: '3', version: 3 }); // 1 create, +1 header patch, +1 hook update
     const keep = updated.lines.test_memo_line[0]?.id as string;
-    await db.run({}, (ctx) => saveLines(ctx, TMemo, m.id, { test_memo_line: [{ id: keep, description: 'x', amount: '5' }] }));
+    await db.run({}, (ctx) =>
+      saveLines(ctx, TMemo, m.id, { test_memo_line: [{ id: keep, description: 'x', amount: '5' }] }),
+    );
     expect(seen).toHaveLength(2);
     expect(seen[1]?.lines.map((l) => l.description)).toEqual(['x']);
     expect(Decimal.from(String(seen[1]?.rowAmount)).eq('5')).toBe(true);
@@ -124,7 +150,17 @@ describe('after_lines_saved (AC-6)', () => {
 
   it('AC-6 amend copies the lines through saveLines: one call for the new draft', async () => {
     const m = (await db.run({}, (ctx) =>
-      runAction(ctx, 'test_memo.create', { partnerId, date: '2026-09-11', amount: '0', lines: { test_memo_line: [{ description: 'p', amount: '4' }, { description: 'q', amount: '6' }] } }),
+      runAction(ctx, 'test_memo.create', {
+        partnerId,
+        date: '2026-09-11',
+        amount: '0',
+        lines: {
+          test_memo_line: [
+            { description: 'p', amount: '4' },
+            { description: 'q', amount: '6' },
+          ],
+        },
+      }),
     )) as MemoWithLines;
     await db.run({ roles: ['manager'] }, (ctx) => submitDocument(ctx, TMemo, m.id));
     await db.run({ roles: ['manager'] }, (ctx) => cancelDocument(ctx, TMemo, m.id));

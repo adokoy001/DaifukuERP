@@ -25,7 +25,10 @@ async function apiSession(request: APIRequestContext): Promise<Api> {
   const login = await request.post(`${API}/auth/login`, { data: { email: EMAIL, password: PASSWORD } });
   expect(login.status(), 'API login').toBe(200);
   const { token, user } = (await login.json()) as { token: string; user: { defaultCompanyId: string | null } };
-  const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...(user.defaultCompanyId ? { 'x-company-id': user.defaultCompanyId } : {}) };
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    ...(user.defaultCompanyId ? { 'x-company-id': user.defaultCompanyId } : {}),
+  };
   const check = async (res: Awaited<ReturnType<APIRequestContext['get']>>, what: string): Promise<Rec> => {
     const body = (await res.json()) as Rec;
     expect(res.ok(), `${what} -> ${res.status()} ${JSON.stringify(body)}`).toBe(true);
@@ -43,7 +46,11 @@ async function openInvoice(api: Api): Promise<{ invoice: Rec; partnerName: strin
   const partner = partners.items.find((p) => p.code === 'C-0001') ?? partners.items[0];
   if (!partner) throw new TypeError('no seeded partner: prepare the dedicated E2E fixture from CONTRIBUTING.md');
   const line = { description: `E2E 消込 ${Date.now()}`, quantity: '1', unitPrice: '1000', taxCategory: 'standard' };
-  const draft = await api.post('/api/sales_invoice', { date: BUSINESS_DATE, partnerId: partner.id, lines: { sales_invoice_line: [line] } });
+  const draft = await api.post('/api/sales_invoice', {
+    date: BUSINESS_DATE,
+    partnerId: partner.id,
+    lines: { sales_invoice_line: [line] },
+  });
   const invoice = await api.post(`/api/sales_invoice/${draft.id}/submit`, {});
   expect(invoice.status).toBe('open');
   return { invoice, partnerName: String(partner.name) };
@@ -86,7 +93,10 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: test.info().outputPath(`${name}.png`), fullPage: true });
 }
 
-test('AC-5: receive payment -> pick the invoice from the outstanding panel -> submit -> invoice paid', async ({ page, request }) => {
+test('AC-5: receive payment -> pick the invoice from the outstanding panel -> submit -> invoice paid', async ({
+  page,
+  request,
+}) => {
   const api = await apiSession(request);
   const { invoice, partnerName } = await openInvoice(api);
   const balance = String(invoice.balance);
@@ -161,7 +171,10 @@ test('AC-5: receive payment -> pick the invoice from the outstanding panel -> su
   await shot(page, 'web-phase15-invoice-paid');
 });
 
-test('AC-2: a saved draft whose allocations exceed its amount cannot be submitted from the UI', async ({ page, request }) => {
+test('AC-2: a saved draft whose allocations exceed its amount cannot be submitted from the UI', async ({
+  page,
+  request,
+}) => {
   const api = await apiSession(request);
   const first = await openInvoice(api);
   const second = await openInvoice(api);

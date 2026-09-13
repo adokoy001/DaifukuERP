@@ -40,7 +40,14 @@ export function bucketFor(daysOverdue: number): AgingBucket {
 }
 
 export function emptyAmounts(): AgingAmounts {
-  return { notDue: Decimal.zero(), days1to30: Decimal.zero(), days31to60: Decimal.zero(), days61to90: Decimal.zero(), over90: Decimal.zero(), total: Decimal.zero() };
+  return {
+    notDue: Decimal.zero(),
+    days1to30: Decimal.zero(),
+    days31to60: Decimal.zero(),
+    days61to90: Decimal.zero(),
+    over90: Decimal.zero(),
+    total: Decimal.zero(),
+  };
 }
 
 /** One row per partner; insertion order = first appearance. */

@@ -49,10 +49,17 @@ async function assertSupersedeChange(ctx: Context, row: Row, previous: Row): Pro
   const prev = (previous.supersededById as string | null | undefined) ?? null;
   if (next === prev) return;
   if (typeof next !== 'string') {
-    throw new StateError(`attachment ${String(row.id)} is superseded by ${prev}; the link cannot be cleared`, 'Supersede history is append-only (電帳法 訂正削除履歴).', { id: row.id, supersededById: prev });
+    throw new StateError(
+      `attachment ${String(row.id)} is superseded by ${prev}; the link cannot be cleared`,
+      'Supersede history is append-only (電帳法 訂正削除履歴).',
+      { id: row.id, supersededById: prev },
+    );
   }
   const replacement = await repo(ctx, Attachment).get(next);
-  assertSupersedable({ id: row.id as string, supersededById: prev }, { id: replacement.id, supersededById: replacement.supersededById });
+  assertSupersedable(
+    { id: row.id as string, supersededById: prev },
+    { id: replacement.id, supersededById: replacement.supersededById },
+  );
 }
 
 export function registerIntegrityHooks(): void {
@@ -63,7 +70,11 @@ export function registerIntegrityHooks(): void {
       if (existing) throw duplicateConflict(existing, sha256);
     }
     if (row.supersededById !== undefined && row.supersededById !== null) {
-      throw new ValidationError('supersededById cannot be set on create', [{ path: 'supersededById', message: 'use attachment.supersede' }], 'Create the attachment first, then call attachment.supersede with a reason.');
+      throw new ValidationError(
+        'supersededById cannot be set on create',
+        [{ path: 'supersededById', message: 'use attachment.supersede' }],
+        'Create the attachment first, then call attachment.supersede with a reason.',
+      );
     }
     await assertReferences(ctx, row, undefined);
   });
@@ -76,6 +87,10 @@ export function registerIntegrityHooks(): void {
 
   // Applies to admin as well: the permission table grants nobody `delete`, and this closes the implicit-admin path.
   registry.registerHook('attachment', 'before_delete', (_ctx, { row }) => {
-    throw new StateError(`attachment ${String(row.id)} cannot be deleted`, 'Evidence is never deleted (電子帳簿保存法). Upload the corrected file and call attachment.supersede with a reason.', { id: row.id });
+    throw new StateError(
+      `attachment ${String(row.id)} cannot be deleted`,
+      'Evidence is never deleted (電子帳簿保存法). Upload the corrected file and call attachment.supersede with a reason.',
+      { id: row.id },
+    );
   });
 }

@@ -21,7 +21,12 @@ function asObject(v: unknown): Record<string, unknown> | null {
 }
 
 function fresh(fields: readonly SchemaField[], current: unknown, jsonMode: boolean): SchemaFormState {
-  return { values: schemaInitialValues(fields, asObject(current)), errors: {}, json: JSON.stringify(current ?? {}, null, 2), jsonMode };
+  return {
+    values: schemaInitialValues(fields, asObject(current)),
+    errors: {},
+    json: JSON.stringify(current ?? {}, null, 2),
+    jsonMode,
+  };
 }
 
 export type SchemaPayload = { ok: true; payload: unknown } | { ok: false; errors: Record<string, string> };
@@ -46,7 +51,7 @@ export function useSchemaForm(fields: readonly SchemaField[], opts: { current?: 
     });
   const setJson = (json: string) => setState((s) => ({ ...s, json, errors: {} }));
   const setErrors = (errors: Record<string, string>) => setState((s) => ({ ...s, errors }));
-  const toggleJson = () => setState((s) => forceJson ? s : switchSchemaMode(s, fields));
+  const toggleJson = () => setState((s) => (forceJson ? s : switchSchemaMode(s, fields)));
   /** Values -> JSON payload (form mode) or parsed text (JSON mode); errors are keyed by field, `_json` for the textarea. */
   const build = (): SchemaPayload => {
     if (state.jsonMode) {
@@ -80,7 +85,16 @@ export function SchemaFields({ fields, form, disabled, idPrefix }: SchemaFieldsP
         <label htmlFor={`${idPrefix}-json`} className="text-xs font-medium text-neutral-700">
           JSON
         </label>
-        <textarea id={`${idPrefix}-json`} rows={6} spellCheck={false} className={`input font-mono text-xs ${err ? 'input-error' : ''}`} value={state.json} disabled={disabled} aria-invalid={err !== undefined} onChange={(e) => form.setJson(e.target.value)} />
+        <textarea
+          id={`${idPrefix}-json`}
+          rows={6}
+          spellCheck={false}
+          className={`input font-mono text-xs ${err ? 'input-error' : ''}`}
+          value={state.json}
+          disabled={disabled}
+          aria-invalid={err !== undefined}
+          onChange={(e) => form.setJson(e.target.value)}
+        />
         {err ? (
           <span role="alert" className="text-xs text-red-700">
             {err}
@@ -94,7 +108,15 @@ export function SchemaFields({ fields, form, disabled, idPrefix }: SchemaFieldsP
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-3">
       {fields.map((f) => (
-        <FieldWidget key={f.name} idPrefix={idPrefix} field={toFieldMeta(f)} value={state.values[f.name] ?? ''} onChange={(v) => form.setValue(f.name, v)} disabled={disabled} error={state.errors[f.name]} />
+        <FieldWidget
+          key={f.name}
+          idPrefix={idPrefix}
+          field={toFieldMeta(f)}
+          value={state.values[f.name] ?? ''}
+          onChange={(v) => form.setValue(f.name, v)}
+          disabled={disabled}
+          error={state.errors[f.name]}
+        />
       ))}
     </div>
   );

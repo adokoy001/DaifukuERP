@@ -16,7 +16,10 @@ import { LoadingView, MetaError } from './status-views.tsx';
 function SettingCard({ setting, meta }: { setting: SettingMeta; meta: AppMeta }) {
   const { t } = useLocale();
   const toast = useToast();
-  const fields = useMemo(() => schemaFields(setting.schema, refResolverFrom(meta.entities)), [setting.schema, meta.entities]);
+  const fields = useMemo(
+    () => schemaFields(setting.schema, refResolverFrom(meta.entities)),
+    [setting.schema, meta.entities],
+  );
   const form = useSchemaForm(fields, { current: setting.value, jsonOnly: setting.schema.type !== 'object' });
   const save = useSaveSetting();
   const idPrefix = `s-${setting.key.replace(/\./g, '-')}`;
@@ -34,8 +37,18 @@ function SettingCard({ setting, meta }: { setting: SettingMeta; meta: AppMeta })
         onSuccess: () => toast.success(t(S.settingSaved)),
         onError: (err) => {
           if (isApiError(err) && err.code === 'VALIDATION') {
-            const mapped = issuesToFieldErrors(stripSettingKey(err.issues(), setting.key), fields.map((f) => f.name));
-            form.setErrors(form.state.jsonMode ? { _json: [...Object.values(mapped.fieldErrors), ...mapped.formErrors].join('; ') } : { ...mapped.fieldErrors, ...(mapped.formErrors.length > 0 ? { _json: mapped.formErrors.join('; ') } : {}) });
+            const mapped = issuesToFieldErrors(
+              stripSettingKey(err.issues(), setting.key),
+              fields.map((f) => f.name),
+            );
+            form.setErrors(
+              form.state.jsonMode
+                ? { _json: [...Object.values(mapped.fieldErrors), ...mapped.formErrors].join('; ') }
+                : {
+                    ...mapped.fieldErrors,
+                    ...(mapped.formErrors.length > 0 ? { _json: mapped.formErrors.join('; ') } : {}),
+                  },
+            );
           }
           toast.error(err);
         },
@@ -44,7 +57,13 @@ function SettingCard({ setting, meta }: { setting: SettingMeta; meta: AppMeta })
   };
 
   return (
-    <form onSubmit={submit} noValidate aria-label={t(setting.label)} data-testid={`setting-${setting.key}`} className="flex flex-col gap-2 rounded border border-neutral-200 bg-white p-3">
+    <form
+      onSubmit={submit}
+      noValidate
+      aria-label={t(setting.label)}
+      data-testid={`setting-${setting.key}`}
+      className="flex flex-col gap-2 rounded border border-neutral-200 bg-white p-3"
+    >
       <div className="flex flex-wrap items-baseline gap-2">
         <h2 className="text-sm font-semibold">{t(setting.label)}</h2>
         <span className="font-mono text-xs text-neutral-400">{setting.key}</span>

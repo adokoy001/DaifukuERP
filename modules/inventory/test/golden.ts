@@ -13,9 +13,13 @@ const stepSchema = z.discriminatedUnion('op', [
 
 export const goldenSchema = z.object({
   description: z.string(),
-  scenarios: z.array(z.object({ name: z.string(), allowNegative: z.boolean(), steps: z.array(stepSchema).min(1) })).min(1),
+  scenarios: z
+    .array(z.object({ name: z.string(), allowNegative: z.boolean(), steps: z.array(stepSchema).min(1) }))
+    .min(1),
 });
 export type Golden = z.output<typeof goldenSchema>;
 export type GoldenStep = Golden['scenarios'][number]['steps'][number];
 
-export const golden: Golden = goldenSchema.parse(JSON.parse(readFileSync(new URL('./golden/moving-average.json', import.meta.url), 'utf8')));
+export const golden: Golden = goldenSchema.parse(
+  JSON.parse(readFileSync(new URL('./golden/moving-average.json', import.meta.url), 'utf8')),
+);

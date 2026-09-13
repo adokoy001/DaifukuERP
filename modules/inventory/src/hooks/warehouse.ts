@@ -5,7 +5,10 @@ import { Warehouse } from '../entities/warehouse.ts';
 
 async function clearOtherDefaults(ctx: Context, { row }: HookArgs): Promise<void> {
   if (row.isDefault !== true) return;
-  const others = await repo(ctx, Warehouse).list({ where: { isDefault: true, id: { $ne: row.id as string } }, limit: 500 });
+  const others = await repo(ctx, Warehouse).list({
+    where: { isDefault: true, id: { $ne: row.id as string } },
+    limit: 500,
+  });
   for (const w of others.items) await repo(ctx, Warehouse).update(w.id, { isDefault: false });
 }
 

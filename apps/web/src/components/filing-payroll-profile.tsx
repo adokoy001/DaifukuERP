@@ -5,23 +5,201 @@ import { useLocale } from '../i18n.tsx';
 import { FinanceDialog, FinanceField, FinanceNotice } from './finance-shared.tsx';
 
 type Facts = PayrollProfile['recipients'][number];
-function emptyFacts(employeeId: string): Facts { return { employeeId, nameKana: null, address: null, birthDate: null, municipalityCode: null, unpaidSalaryAmount: null, uncollectedTaxAmount: null, evidence: '' }; }
-export function FilingPayrollProfile({ board, stale, onClose }: { board: FilingBoard; stale: boolean; onClose: () => void }) {
-  const { t } = useLocale(), command = useFinanceCommand(), current = board.payrollProfile;
-  const [profileCode, setProfileCode] = useState(current?.countryProfile ?? board.profiles[0]?.code ?? ''), [recipients, setRecipients] = useState<Record<string, Facts>>(Object.fromEntries((current?.recipients ?? []).map((row) => [row.employeeId, row])));
+function emptyFacts(employeeId: string): Facts {
+  return {
+    employeeId,
+    nameKana: null,
+    address: null,
+    birthDate: null,
+    municipalityCode: null,
+    unpaidSalaryAmount: null,
+    uncollectedTaxAmount: null,
+    evidence: '',
+  };
+}
+export function FilingPayrollProfile({
+  board,
+  stale,
+  onClose,
+}: {
+  board: FilingBoard;
+  stale: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useLocale(),
+    command = useFinanceCommand(),
+    current = board.payrollProfile;
+  const [profileCode, setProfileCode] = useState(current?.countryProfile ?? board.profiles[0]?.code ?? ''),
+    [recipients, setRecipients] = useState<Record<string, Facts>>(
+      Object.fromEntries((current?.recipients ?? []).map((row) => [row.employeeId, row])),
+    );
   const option = board.profiles.find((row) => row.code === profileCode);
-  return <FinanceDialog title={t({ ja: '給与の申告準備情報', en: 'Payroll filing preparation details' })} submitLabel={t({ ja: '補足情報を保存', en: 'Save supplemental details' })} stale={stale} submitDisabled={board.truncated || !option} onClose={onClose} onSubmit={async (data) => {
-    const input = savePayrollProfileInput.parse({ expectedVersion: current?.version ?? 0, countryProfile: profileCode, taxYear: Number(data.get('taxYear')), legalName: String(data.get('legalName') ?? ''), payerAddress: String(data.get('payerAddress') ?? '').trim() || null, payerPhone: String(data.get('payerPhone') ?? '').trim() || null, recipients: Object.values(recipients), basis: String(data.get('basis') ?? '') });
-    await command.mutateAsync({ action: 'tax_filing.save_payroll_profile', input });
-  }}>
-    <FinanceNotice>{t({ ja: '給与は申告準備用の資料を作成します。空欄を0円とみなさず、未確認項目を残します。マイナンバーは入力しないでください。このCSVはe-Tax・eLTAXへ直接取り込む形式ではありません。', en: 'Payroll output is a preparation worksheet. Blank values remain unverified, not zero. Do not enter personal identification numbers. This CSV is not a direct e-Tax or eLTAX import format.' })}</FinanceNotice>
-    <div className="finance-form-grid"><label className="finance-field"><span>{t({ ja: '準備資料の仕様', en: 'Preparation profile' })}</span><select className="input" value={profileCode} onChange={(event) => setProfileCode(event.target.value)}>{board.profiles.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></label><label className="finance-field"><span>{t({ ja: '対象年', en: 'Tax year' })}</span><select className="input" name="taxYear" defaultValue={current?.taxYear ?? option?.taxYears[0]} required>{option?.taxYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><FinanceField label={{ ja: '給与支払者の名称', en: 'Payer name' }} name="legalName" required maxLength={200} defaultValue={current?.legalName}/><FinanceField label={{ ja: '支払者の所在地', en: 'Payer address' }} name="payerAddress" maxLength={200} defaultValue={current?.payerAddress ?? ''}/><FinanceField label={{ ja: '支払者の電話番号', en: 'Payer telephone' }} name="payerPhone" maxLength={200} defaultValue={current?.payerPhone ?? ''}/></div>
-    <p>{t({ ja: '補足する従業員を選び、確認できた値と根拠を入力してください。0円が確認済みなら0を入力します。', en: 'Select employees to supplement and enter verified values and evidence. Enter 0 only when zero has been verified.' })}</p>
-    {board.employees.map((employee) => { const row = recipients[employee.id]; return <details className="finance-download" key={employee.id}><summary>{employee.code} · {employee.name} {row ? t({ ja: '（補足あり）', en: '(supplemented)' }) : ''}</summary><label><input type="checkbox" checked={Boolean(row)} onChange={(event) => { const checked = event.target.checked; setRecipients((previous) => { const next = { ...previous }; if (checked) next[employee.id] = emptyFacts(employee.id); else delete next[employee.id]; return next; }); }}/>{t({ ja: 'この従業員の補足情報を保存', en: 'Save supplemental facts for this employee' })}</label>{row ? <RecipientFields row={row} onChange={(next) => setRecipients((previous) => ({ ...previous, [employee.id]: next }))}/> : null}</details>; })}
-    <FinanceField label={{ ja: '支払者・対象範囲の確認根拠', en: 'Payer and scope review evidence' }} name="basis" required maxLength={2000} defaultValue={current?.basis}/>
-  </FinanceDialog>;
+  return (
+    <FinanceDialog
+      title={t({ ja: '給与の申告準備情報', en: 'Payroll filing preparation details' })}
+      submitLabel={t({ ja: '補足情報を保存', en: 'Save supplemental details' })}
+      stale={stale}
+      submitDisabled={board.truncated || !option}
+      onClose={onClose}
+      onSubmit={async (data) => {
+        const input = savePayrollProfileInput.parse({
+          expectedVersion: current?.version ?? 0,
+          countryProfile: profileCode,
+          taxYear: Number(data.get('taxYear')),
+          legalName: String(data.get('legalName') ?? ''),
+          payerAddress: String(data.get('payerAddress') ?? '').trim() || null,
+          payerPhone: String(data.get('payerPhone') ?? '').trim() || null,
+          recipients: Object.values(recipients),
+          basis: String(data.get('basis') ?? ''),
+        });
+        await command.mutateAsync({ action: 'tax_filing.save_payroll_profile', input });
+      }}
+    >
+      <FinanceNotice>
+        {t({
+          ja: '給与は申告準備用の資料を作成します。空欄を0円とみなさず、未確認項目を残します。マイナンバーは入力しないでください。このCSVはe-Tax・eLTAXへ直接取り込む形式ではありません。',
+          en: 'Payroll output is a preparation worksheet. Blank values remain unverified, not zero. Do not enter personal identification numbers. This CSV is not a direct e-Tax or eLTAX import format.',
+        })}
+      </FinanceNotice>
+      <div className="finance-form-grid">
+        <label className="finance-field">
+          <span>{t({ ja: '準備資料の仕様', en: 'Preparation profile' })}</span>
+          <select className="input" value={profileCode} onChange={(event) => setProfileCode(event.target.value)}>
+            {board.profiles.map((row) => (
+              <option key={row.code} value={row.code}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="finance-field">
+          <span>{t({ ja: '対象年', en: 'Tax year' })}</span>
+          <select className="input" name="taxYear" defaultValue={current?.taxYear ?? option?.taxYears[0]} required>
+            {option?.taxYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+        <FinanceField
+          label={{ ja: '給与支払者の名称', en: 'Payer name' }}
+          name="legalName"
+          required
+          maxLength={200}
+          defaultValue={current?.legalName}
+        />
+        <FinanceField
+          label={{ ja: '支払者の所在地', en: 'Payer address' }}
+          name="payerAddress"
+          maxLength={200}
+          defaultValue={current?.payerAddress ?? ''}
+        />
+        <FinanceField
+          label={{ ja: '支払者の電話番号', en: 'Payer telephone' }}
+          name="payerPhone"
+          maxLength={200}
+          defaultValue={current?.payerPhone ?? ''}
+        />
+      </div>
+      <p>
+        {t({
+          ja: '補足する従業員を選び、確認できた値と根拠を入力してください。0円が確認済みなら0を入力します。',
+          en: 'Select employees to supplement and enter verified values and evidence. Enter 0 only when zero has been verified.',
+        })}
+      </p>
+      {board.employees.map((employee) => {
+        const row = recipients[employee.id];
+        return (
+          <details className="finance-download" key={employee.id}>
+            <summary>
+              {employee.code} · {employee.name} {row ? t({ ja: '（補足あり）', en: '(supplemented)' }) : ''}
+            </summary>
+            <label>
+              <input
+                type="checkbox"
+                checked={Boolean(row)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setRecipients((previous) => {
+                    const next = { ...previous };
+                    if (checked) next[employee.id] = emptyFacts(employee.id);
+                    else delete next[employee.id];
+                    return next;
+                  });
+                }}
+              />
+              {t({ ja: 'この従業員の補足情報を保存', en: 'Save supplemental facts for this employee' })}
+            </label>
+            {row ? (
+              <RecipientFields
+                row={row}
+                onChange={(next) => setRecipients((previous) => ({ ...previous, [employee.id]: next }))}
+              />
+            ) : null}
+          </details>
+        );
+      })}
+      <FinanceField
+        label={{ ja: '支払者・対象範囲の確認根拠', en: 'Payer and scope review evidence' }}
+        name="basis"
+        required
+        maxLength={2000}
+        defaultValue={current?.basis}
+      />
+    </FinanceDialog>
+  );
 }
 
 function RecipientFields({ row, onChange }: { row: Facts; onChange: (value: Facts) => void }) {
-  return <div className="finance-form-grid"><FinanceField label={{ ja: '氏名カナ', en: 'Name in kana' }} value={row.nameKana ?? ''} maxLength={200} onChange={(event) => onChange({ ...row, nameKana: event.target.value || null })}/><FinanceField label={{ ja: '住所', en: 'Address' }} value={row.address ?? ''} maxLength={200} onChange={(event) => onChange({ ...row, address: event.target.value || null })}/><FinanceField label={{ ja: '生年月日', en: 'Birth date' }} type="date" value={row.birthDate ?? ''} onChange={(event) => onChange({ ...row, birthDate: event.target.value || null })}/><FinanceField label={{ ja: '市区町村コード（6桁）', en: 'Municipality code (6 digits)' }} value={row.municipalityCode ?? ''} pattern="[0-9]{6}" inputMode="numeric" onChange={(event) => onChange({ ...row, municipalityCode: event.target.value || null })}/><FinanceField label={{ ja: '未払給与額（確認済みの円）', en: 'Verified unpaid salary (JPY)' }} value={row.unpaidSalaryAmount ?? ''} inputMode="numeric" pattern="[0-9]{1,15}" onChange={(event) => onChange({ ...row, unpaidSalaryAmount: event.target.value || null })}/><FinanceField label={{ ja: '未徴収税額（確認済みの円）', en: 'Verified uncollected tax (JPY)' }} value={row.uncollectedTaxAmount ?? ''} inputMode="numeric" pattern="[0-9]{1,15}" onChange={(event) => onChange({ ...row, uncollectedTaxAmount: event.target.value || null })}/><FinanceField label={{ ja: '本人情報の確認根拠', en: 'Evidence for employee facts' }} required value={row.evidence} maxLength={2000} onChange={(event) => onChange({ ...row, evidence: event.target.value })}/></div>;
+  return (
+    <div className="finance-form-grid">
+      <FinanceField
+        label={{ ja: '氏名カナ', en: 'Name in kana' }}
+        value={row.nameKana ?? ''}
+        maxLength={200}
+        onChange={(event) => onChange({ ...row, nameKana: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '住所', en: 'Address' }}
+        value={row.address ?? ''}
+        maxLength={200}
+        onChange={(event) => onChange({ ...row, address: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '生年月日', en: 'Birth date' }}
+        type="date"
+        value={row.birthDate ?? ''}
+        onChange={(event) => onChange({ ...row, birthDate: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '市区町村コード（6桁）', en: 'Municipality code (6 digits)' }}
+        value={row.municipalityCode ?? ''}
+        pattern="[0-9]{6}"
+        inputMode="numeric"
+        onChange={(event) => onChange({ ...row, municipalityCode: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '未払給与額（確認済みの円）', en: 'Verified unpaid salary (JPY)' }}
+        value={row.unpaidSalaryAmount ?? ''}
+        inputMode="numeric"
+        pattern="[0-9]{1,15}"
+        onChange={(event) => onChange({ ...row, unpaidSalaryAmount: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '未徴収税額（確認済みの円）', en: 'Verified uncollected tax (JPY)' }}
+        value={row.uncollectedTaxAmount ?? ''}
+        inputMode="numeric"
+        pattern="[0-9]{1,15}"
+        onChange={(event) => onChange({ ...row, uncollectedTaxAmount: event.target.value || null })}
+      />
+      <FinanceField
+        label={{ ja: '本人情報の確認根拠', en: 'Evidence for employee facts' }}
+        required
+        value={row.evidence}
+        maxLength={2000}
+        onChange={(event) => onChange({ ...row, evidence: event.target.value })}
+      />
+    </div>
+  );
 }

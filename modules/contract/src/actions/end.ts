@@ -8,7 +8,8 @@ import { Contract } from '../entities/contract.ts';
 import { assertDateRange } from '../hooks/recalc.ts';
 import type { ContractRow } from '../load.ts';
 
-export const END_STATE_HINT = 'Only submitted contracts can be ended; on a draft set endDate with contract.update, a cancelled contract is read-only.';
+export const END_STATE_HINT =
+  'Only submitted contracts can be ended; on a draft set endDate with contract.update, a cancelled contract is read-only.';
 
 export const endContractInput = z.object({
   id: z.uuid(),
@@ -20,7 +21,11 @@ export async function endContract(ctx: Context, input: EndContractInput): Promis
   const r = repo(ctx, Contract);
   const contract = await r.lock(input.id);
   if (contract.docstatus !== DOCSTATUS.submitted) {
-    throw new StateError(`contract ${contract.number ?? contract.id} is not submitted (docstatus ${contract.docstatus})`, END_STATE_HINT, { id: contract.id, docstatus: contract.docstatus });
+    throw new StateError(
+      `contract ${contract.number ?? contract.id} is not submitted (docstatus ${contract.docstatus})`,
+      END_STATE_HINT,
+      { id: contract.id, docstatus: contract.docstatus },
+    );
   }
   assertDateRange(contract.startDate, input.endDate);
   return r.update(contract.id, { endDate: input.endDate });

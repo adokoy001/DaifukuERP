@@ -1,6 +1,7 @@
 import type { Label } from '../api/types.ts';
 
-export type WorkspaceId = 'sales' | 'inventory' | 'workforce' | 'finance' | 'operations' | 'reports' | 'admin' | 'other';
+export type WorkspaceId =
+  'sales' | 'inventory' | 'workforce' | 'finance' | 'operations' | 'reports' | 'admin' | 'other';
 export type NavigationKind = 'workspace' | 'record' | 'report' | 'action' | 'setting';
 export interface NavigationEntry {
   /** Canonical application href; stable across locale changes and duplicate menu declarations. */
@@ -15,6 +16,15 @@ export interface NavigationEntry {
   /** Other names for the same destination, including its module's bilingual label. */
   aliases: Label[];
 }
-export interface WorkspaceDefinition { id: WorkspaceId; label: Label; description: Label }
-export interface NavigationWorkspace extends WorkspaceDefinition { entries: NavigationEntry[] }
-export interface NavigationCatalog { entries: NavigationEntry[]; workspaces: NavigationWorkspace[] }
+export interface WorkspaceDefinition {
+  id: WorkspaceId;
+  label: Label;
+  description: Label;
+}
+export interface NavigationWorkspace extends WorkspaceDefinition {
+  entries: NavigationEntry[];
+}
+export interface NavigationCatalog {
+  entries: NavigationEntry[];
+  workspaces: NavigationWorkspace[];
+}

@@ -15,15 +15,25 @@ let salesToken: string;
 
 interface JsonResponse {
   status: number;
-  body: Record<string, unknown> & { error?: { code: string; message: string; hint: string; details?: Record<string, unknown> } };
+  body: Record<string, unknown> & {
+    error?: { code: string; message: string; hint: string; details?: Record<string, unknown> };
+  };
 }
 
-async function call(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, opts: { body?: unknown; token?: string | null; headers?: Record<string, string> } = {}): Promise<JsonResponse> {
+async function call(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  url: string,
+  opts: { body?: unknown; token?: string | null; headers?: Record<string, string> } = {},
+): Promise<JsonResponse> {
   const t = opts.token === undefined ? token : opts.token;
   const res = await app.inject({
     method,
     url,
-    headers: { ...(t ? { authorization: `Bearer ${t}` } : {}), ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}), ...opts.headers },
+    headers: {
+      ...(t ? { authorization: `Bearer ${t}` } : {}),
+      ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...opts.headers,
+    },
     ...(opts.body !== undefined ? { payload: JSON.stringify(opts.body) } : {}),
   });
   return { status: res.statusCode, body: res.json() as JsonResponse['body'] };
@@ -49,7 +59,9 @@ beforeAll(async () => {
     roles: ['sales'],
     defaultCompanyId: db.companyId,
   });
-  await db.owner.drizzle.insert(companyMemberships).values({ tenantId: db.tenantId, userId: salesUserId, companyId: db.companyId, roles: ['sales'] });
+  await db.owner.drizzle
+    .insert(companyMemberships)
+    .values({ tenantId: db.tenantId, userId: salesUserId, companyId: db.companyId, roles: ['sales'] });
   salesToken = (await login('sales@example.com', 'sales-pw')).body.token as string;
 });
 
@@ -62,14 +74,29 @@ describe('auth (AC-1, AC-2, AC-7)', () => {
   it('AC-1 login returns a 12h JWT and the user; bad credentials -> 401 standard error body', async () => {
     const ok = await login('admin@example.com', 'password');
     expect(ok.status).toBe(200);
-    expect(ok.body.user).toEqual({ id: db.adminUserId, name: 'Admin', email: 'admin@example.com', roles: ['admin'], tenantId: db.tenantId, defaultCompanyId: db.companyId, tenantAdmin: true, accessScope: 'all', storeIds: [], siteIds: [] });
+    expect(ok.body.user).toEqual({
+      id: db.adminUserId,
+      name: 'Admin',
+      email: 'admin@example.com',
+      roles: ['admin'],
+      tenantId: db.tenantId,
+      defaultCompanyId: db.companyId,
+      tenantAdmin: true,
+      accessScope: 'all',
+      storeIds: [],
+      siteIds: [],
+    });
     const claims = app.jwt.verify<{ sub: string; tenantId: string; iat: number; exp: number }>(ok.body.token as string);
     expect(claims.sub).toBe(db.adminUserId);
     expect(claims.tenantId).toBe(db.tenantId);
     expect(claims.exp - claims.iat).toBe(12 * 3600);
     const bad = await login('admin@example.com', 'wrong');
     expect(bad.status).toBe(401);
-    expect(bad.body.error).toMatchObject({ code: 'PERMISSION_DENIED', message: expect.stringContaining('invalid'), hint: expect.stringContaining('/auth/login') });
+    expect(bad.body.error).toMatchObject({
+      code: 'PERMISSION_DENIED',
+      message: expect.stringContaining('invalid'),
+      hint: expect.stringContaining('/auth/login'),
+    });
     const malformed = await call('POST', '/auth/login', { body: { email: 'x' }, token: null });
     expect(malformed.status).toBe(400);
     expect(malformed.body.error?.details).toMatchObject({ issues: [{ path: 'password' }] });
@@ -85,16 +112,25 @@ describe('auth (AC-1, AC-2, AC-7)', () => {
 
     const me = await call('GET', '/auth/me', { token: salesToken });
     expect(me.status).toBe(200);
-    expect(me.body).toMatchObject({ user: { roles: ['sales'] }, companyId: db.companyId, actor: { type: 'user', id: salesUserId }, locale: 'ja' });
+    expect(me.body).toMatchObject({
+      user: { roles: ['sales'] },
+      companyId: db.companyId,
+      actor: { type: 'user', id: salesUserId },
+      locale: 'ja',
+    });
     // role change takes effect without a new token
-    await db.owner.sql`update user_company_memberships set roles = '["sales","viewer"]'::jsonb where user_id = ${salesUserId}`;
+    await db.owner
+      .sql`update user_company_memberships set roles = '["sales","viewer"]'::jsonb where user_id = ${salesUserId}`;
     const after = await call('GET', '/auth/me', { token: salesToken });
     expect((after.body.user as { roles: string[] }).roles).toEqual(['sales', 'viewer']);
     await db.owner.sql`update user_company_memberships set roles = '["sales"]'::jsonb where user_id = ${salesUserId}`;
 
     const otherCompany = newId();
-    await db.owner.sql`insert into companies (id, tenant_id, code, name) values (${otherCompany}, ${db.tenantId}, 'T2', 'Second Co')`;
-    const withHeader = await call('GET', '/auth/me', { headers: { 'x-company-id': otherCompany, 'accept-language': 'en-US,en;q=0.9' } });
+    await db.owner
+      .sql`insert into companies (id, tenant_id, code, name) values (${otherCompany}, ${db.tenantId}, 'T2', 'Second Co')`;
+    const withHeader = await call('GET', '/auth/me', {
+      headers: { 'x-company-id': otherCompany, 'accept-language': 'en-US,en;q=0.9' },
+    });
     expect(withHeader.body).toMatchObject({ companyId: otherCompany, locale: 'en' });
     // the second company has its own partner scope
     const inSecond = await call('GET', '/api/partner', { headers: { 'x-company-id': otherCompany } });
@@ -102,7 +138,8 @@ describe('auth (AC-1, AC-2, AC-7)', () => {
     for (const bad of ['nope', newId()]) {
       const badHeader = await call('GET', '/auth/me', { headers: { 'x-company-id': bad } });
       expect(badHeader.status).toBe(bad === 'nope' ? 400 : 403);
-      if (bad === 'nope') expect(badHeader.body.error?.details).toMatchObject({ issues: [{ path: 'headers.x-company-id' }] });
+      if (bad === 'nope')
+        expect(badHeader.body.error?.details).toMatchObject({ issues: [{ path: 'headers.x-company-id' }] });
       else expect(badHeader.body.error?.code).toBe('PERMISSION_DENIED');
     }
   });
@@ -110,11 +147,19 @@ describe('auth (AC-1, AC-2, AC-7)', () => {
   it('AC-7 x-agent-id makes the actor an agent acting on behalf of the user (visible in /auth/me and the audit log)', async () => {
     const me = await call('GET', '/auth/me', { headers: { 'x-agent-id': 'claude-1' } });
     expect(me.body.actor).toEqual({ type: 'agent', id: 'claude-1', onBehalfOf: db.adminUserId });
-    const created = await call('POST', '/api/partner', { body: { name: 'By agent' }, headers: { 'x-agent-id': 'claude-1' } });
+    const created = await call('POST', '/api/partner', {
+      body: { name: 'By agent' },
+      headers: { 'x-agent-id': 'claude-1' },
+    });
     expect(created.status).toBe(200);
     expect(created.body.createdBy).toBe(db.adminUserId);
     const trail = await db.run({}, (ctx) => auditTrail(ctx, 'partner', created.body.id as string));
-    expect(trail[0]).toMatchObject({ op: 'create', actorType: 'agent', actorId: 'claude-1', onBehalfOf: db.adminUserId });
+    expect(trail[0]).toMatchObject({
+      op: 'create',
+      actorType: 'agent',
+      actorId: 'claude-1',
+      onBehalfOf: db.adminUserId,
+    });
   });
 });
 
@@ -129,7 +174,12 @@ describe('meta and actions (AC-3, AC-4)', () => {
     const asSales = await call('GET', '/meta', { token: salesToken });
     expect((asSales.body.entities as { ops: string[] }[])[0]?.ops).toEqual(['read', 'create', 'update']);
     const partner = await call('GET', '/meta/entities/partner');
-    expect(partner.body).toMatchObject({ name: 'partner', module: 'partner', displayField: 'name', views: { search: ['name', 'nameKana', 'code'] } });
+    expect(partner.body).toMatchObject({
+      name: 'partner',
+      module: 'partner',
+      displayField: 'name',
+      views: { search: ['name', 'nameKana', 'code'] },
+    });
     expect((partner.body.fields as unknown[]).length).toBe(23); // the 23 fields of the spec table
     const missing = await call('GET', '/meta/entities/nope');
     expect(missing.status).toBe(404);
@@ -137,14 +187,26 @@ describe('meta and actions (AC-3, AC-4)', () => {
   });
 
   it('AC-4 POST /actions/:name runs the action in a context; validation/permission/unknown errors keep the standard shape', async () => {
-    const created = await call('POST', '/actions/partner.create', { body: { name: 'Via action', closingDay: 20, paymentMonthOffset: 1, paymentDay: 10 } });
+    const created = await call('POST', '/actions/partner.create', {
+      body: { name: 'Via action', closingDay: 20, paymentMonthOffset: 1, paymentDay: 10 },
+    });
     expect(created.status).toBe(200);
     expect(created.body).toMatchObject({ name: 'Via action', taxStatus: 'registered', isActive: true });
-    const due = await call('POST', '/actions/partner.compute_due_date', { body: { partnerId: created.body.id, invoiceDate: '2026-09-21' } });
-    expect(due.body).toEqual({ partnerId: created.body.id, invoiceDate: '2026-09-21', closingDate: '2026-10-20', dueDate: '2026-11-10' });
+    const due = await call('POST', '/actions/partner.compute_due_date', {
+      body: { partnerId: created.body.id, invoiceDate: '2026-09-21' },
+    });
+    expect(due.body).toEqual({
+      partnerId: created.body.id,
+      invoiceDate: '2026-09-21',
+      closingDate: '2026-10-20',
+      dueDate: '2026-11-10',
+    });
     const invalid = await call('POST', '/actions/partner.create', { body: { name: 'x', invoiceRegistrationNo: 'T1' } });
     expect(invalid.status).toBe(400);
-    expect(invalid.body.error).toMatchObject({ code: 'VALIDATION', details: { issues: [{ path: 'invoiceRegistrationNo' }] } });
+    expect(invalid.body.error).toMatchObject({
+      code: 'VALIDATION',
+      details: { issues: [{ path: 'invoiceRegistrationNo' }] },
+    });
     const denied = await call('POST', '/actions/partner.delete', { body: { id: created.body.id }, token: salesToken });
     expect(denied.status).toBe(403);
     expect(denied.body.error?.code).toBe('PERMISSION_DENIED');
@@ -160,7 +222,9 @@ describe('REST sugar (AC-5)', () => {
   let id: string;
 
   it('POST/GET/PATCH/DELETE map to the generic actions', async () => {
-    const created = await call('POST', '/api/partner', { body: { name: 'REST 商店', code: 'R-1', nameKana: 'れすと' } });
+    const created = await call('POST', '/api/partner', {
+      body: { name: 'REST 商店', code: 'R-1', nameKana: 'れすと' },
+    });
     expect(created.status).toBe(200);
     expect(created.body).toMatchObject({ code: 'R-1', nameKana: 'ﾚｽﾄ', version: 1 });
     id = created.body.id as string;
@@ -190,7 +254,10 @@ describe('REST sugar (AC-5)', () => {
     await call('POST', '/api/partner', { body: { name: 'Alpha', code: 'A-1', isSupplier: true } });
     const search = await call('GET', '/api/partner?search=REST');
     expect((search.body.items as { code: string }[]).map((i) => i.code)).toEqual(['R-1']);
-    const where = await call('GET', `/api/partner?where=${encodeURIComponent(JSON.stringify({ isSupplier: true }))}&orderBy=name:asc`);
+    const where = await call(
+      'GET',
+      `/api/partner?where=${encodeURIComponent(JSON.stringify({ isSupplier: true }))}&orderBy=name:asc`,
+    );
     expect((where.body.items as { code: string }[]).map((i) => i.code)).toEqual(['A-1', 'Z-1']);
     const paged = await call('GET', '/api/partner?orderBy=name:desc&limit=1&offset=1');
     expect(paged.body).toMatchObject({ limit: 1, offset: 1 });
@@ -224,17 +291,40 @@ describe('OpenAPI and request log (AC-6, AC-8)', () => {
   it('AC-6 /openapi.json documents every action with its zod schemas; /docs serves Swagger UI', async () => {
     const res = await app.inject({ method: 'GET', url: '/openapi.json' });
     expect(res.statusCode).toBe(200);
-    const doc = res.json() as { openapi: string; paths: Record<string, { post?: { requestBody: { content: Record<string, { schema: { properties: Record<string, unknown>; required?: string[] } }> }; responses: Record<string, unknown> } }> };
+    const doc = res.json() as {
+      openapi: string;
+      paths: Record<
+        string,
+        {
+          post?: {
+            requestBody: {
+              content: Record<string, { schema: { properties: Record<string, unknown>; required?: string[] } }>;
+            };
+            responses: Record<string, unknown>;
+          };
+        }
+      >;
+    };
     expect(doc.openapi).toBe('3.1.0');
     const paths = Object.keys(doc.paths);
-    for (const p of ['/auth/login', '/meta', '/actions/partner.list', '/actions/partner.create', '/actions/partner.compute_due_date', '/api/{entity}', '/api/{entity}/{id}/audit']) {
+    for (const p of [
+      '/auth/login',
+      '/meta',
+      '/actions/partner.list',
+      '/actions/partner.create',
+      '/actions/partner.compute_due_date',
+      '/api/{entity}',
+      '/api/{entity}/{id}/audit',
+    ]) {
       expect(paths).toContain(p);
     }
     expect(paths).not.toContain('/actions/{name}');
     const create = doc.paths['/actions/partner.create']?.post;
     const body = create?.requestBody.content['application/json']?.schema;
     expect(body?.required).toEqual(['name']);
-    expect(Object.keys(body?.properties ?? {})).toEqual(expect.arrayContaining(['name', 'nameKana', 'closingDay', 'taxStatus', 'ext']));
+    expect(Object.keys(body?.properties ?? {})).toEqual(
+      expect.arrayContaining(['name', 'nameKana', 'closingDay', 'taxStatus', 'ext']),
+    );
     expect(body?.properties.taxStatus).toMatchObject({ enum: ['registered', 'exempt'] });
     expect(create?.responses['200']).toBeDefined();
     const ui = await app.inject({ method: 'GET', url: '/docs/' });
@@ -249,9 +339,18 @@ describe('OpenAPI and request log (AC-6, AC-8)', () => {
     await call('GET', '/meta', { token: null });
     const lines = logLines.filter((l) => l.msg === 'request');
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatchObject({ requestId: 'req-abc', method: 'GET', url: '/meta', status: 200, actor: { type: 'user', id: db.adminUserId } });
+    expect(lines[0]).toMatchObject({
+      requestId: 'req-abc',
+      method: 'GET',
+      url: '/meta',
+      status: 200,
+      actor: { type: 'user', id: db.adminUserId },
+    });
     expect(typeof lines[0]?.ms).toBe('number');
-    expect(lines[1]).toMatchObject({ url: '/auth/me', actor: { type: 'agent', id: 'bot-9', onBehalfOf: db.adminUserId } });
+    expect(lines[1]).toMatchObject({
+      url: '/auth/me',
+      actor: { type: 'agent', id: 'bot-9', onBehalfOf: db.adminUserId },
+    });
     expect(lines[2]).toMatchObject({ status: 401, actor: { type: 'anonymous', id: null } });
   });
 });
@@ -283,13 +382,17 @@ describe('kernel-phase15: internal actions, /auth/me company, meta contract (AC-
     const actions = ((await call('GET', '/meta')).body.actions as { name: string }[]).map((a) => a.name);
     expect(actions).toEqual(expect.arrayContaining(['sales.ar_aging', 'purchase.ap_aging', 'sales_invoice.create']));
     for (const name of INTERNAL) expect(actions).not.toContain(name);
-    const doc = (await app.inject({ method: 'GET', url: '/openapi.json' })).json() as { paths: Record<string, unknown> };
+    const doc = (await app.inject({ method: 'GET', url: '/openapi.json' })).json() as {
+      paths: Record<string, unknown>;
+    };
     const paths = Object.keys(doc.paths);
     expect(paths).toEqual(expect.arrayContaining(['/actions/sales.ar_aging', '/actions/purchase.ap_aging']));
     for (const name of INTERNAL) {
       expect(paths).not.toContain(`/actions/${name}`);
       // the catch-all route must not reach runAction for it either
-      const res = await call('POST', `/actions/${name}`, { body: { invoiceId: newId(), amount: '1', date: '2026-09-11' } });
+      const res = await call('POST', `/actions/${name}`, {
+        body: { invoiceId: newId(), amount: '1', date: '2026-09-11' },
+      });
       expect(res.status).toBe(404);
       expect(res.body.error).toMatchObject({ code: 'NOT_FOUND', hint: expect.stringContaining('internal') });
     }
@@ -299,12 +402,21 @@ describe('kernel-phase15: internal actions, /auth/me company, meta contract (AC-
     const me = await call('GET', '/auth/me');
     expect(me.body.company).toEqual({ id: db.companyId, name: 'テスト株式会社', currency: 'JPY' });
     const usd = newId();
-    await db.owner.sql`insert into companies (id, tenant_id, code, name, currency) values (${usd}, ${db.tenantId}, 'US1', 'US Branch', 'USD')`;
+    await db.owner
+      .sql`insert into companies (id, tenant_id, code, name, currency) values (${usd}, ${db.tenantId}, 'US1', 'US Branch', 'USD')`;
     const withHeader = await call('GET', '/auth/me', { headers: { 'x-company-id': usd } });
     expect(withHeader.body).toMatchObject({ companyId: usd, company: { id: usd, name: 'US Branch', currency: 'USD' } });
     expect(withHeader.body.company).not.toHaveProperty('settings');
     const lonerId = newId();
-    await db.owner.drizzle.insert(users).values({ id: lonerId, tenantId: db.tenantId, email: 'nocompany@example.com', name: 'No Company', passwordHash: hashPassword('nc-pw'), roles: ['viewer'], defaultCompanyId: null });
+    await db.owner.drizzle.insert(users).values({
+      id: lonerId,
+      tenantId: db.tenantId,
+      email: 'nocompany@example.com',
+      name: 'No Company',
+      passwordHash: hashPassword('nc-pw'),
+      roles: ['viewer'],
+      defaultCompanyId: null,
+    });
     const lonerToken = (await login('nocompany@example.com', 'nc-pw')).body.token as string;
     const loner = await call('GET', '/auth/me', { token: lonerToken });
     expect(loner.status).toBe(200);
@@ -314,16 +426,23 @@ describe('kernel-phase15: internal actions, /auth/me company, meta contract (AC-
   it('AC-11 / AC-3 /meta FieldMeta: money scale follows the company currency, quantities keep theirs; extFields is [] without registrations', async () => {
     const inv = await call('GET', '/meta/entities/sales_invoice');
     expect(inv.body.extFields).toEqual([]);
-    const fieldsOf = (body: Record<string, unknown>) => new Map((body.fields as { name: string; scale?: number; money?: boolean }[]).map((x) => [x.name, x] as const));
+    const fieldsOf = (body: Record<string, unknown>) =>
+      new Map((body.fields as { name: string; scale?: number; money?: boolean }[]).map((x) => [x.name, x] as const));
     expect(fieldsOf(inv.body).get('total')).toMatchObject({ kind: 'decimal', money: true, scale: 0 });
     const line = fieldsOf((await call('GET', '/meta/entities/sales_invoice_line')).body);
     expect(line.get('amount')).toMatchObject({ money: true, scale: 0 });
     expect(line.get('quantity')).toMatchObject({ scale: 6 });
     expect(line.get('quantity')?.money).toBeUndefined();
-    const usd = (await db.owner.sql`select id from companies where tenant_id = ${db.tenantId} and currency = 'USD' limit 1`)[0]?.id as string;
+    const usd = (
+      await db.owner.sql`select id from companies where tenant_id = ${db.tenantId} and currency = 'USD' limit 1`
+    )[0]?.id as string;
     const inUsd = await call('GET', '/meta/entities/sales_invoice', { headers: { 'x-company-id': usd } });
     expect(fieldsOf(inUsd.body).get('total')).toMatchObject({ money: true, scale: 2 });
-    const appWide = (await call('GET', '/meta', { headers: { 'x-company-id': usd } })).body.entities as { name: string; fields: { name: string; scale?: number }[]; extFields: unknown[] }[];
+    const appWide = (await call('GET', '/meta', { headers: { 'x-company-id': usd } })).body.entities as {
+      name: string;
+      fields: { name: string; scale?: number }[];
+      extFields: unknown[];
+    }[];
     const invMeta = appWide.find((e) => e.name === 'sales_invoice');
     expect(invMeta?.fields.find((x) => x.name === 'balance')?.scale).toBe(2);
     expect(invMeta?.extFields).toEqual([]);

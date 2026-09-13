@@ -64,16 +64,27 @@ function extError(entity: EntityDef, issues: ValidationIssue[]): ValidationError
  * kept. `insert`: required ext fields must be present even when `ext` is omitted. `update`: `ext` replaces the stored
  * object as a whole, so it is checked only when the patch carries it. Returns the value to store (undefined = leave out).
  */
-export function validateExt(entity: EntityDef, ext: unknown, mode: 'insert' | 'update', appliedPacks?: readonly string[]): Raw | undefined {
+export function validateExt(
+  entity: EntityDef,
+  ext: unknown,
+  mode: 'insert' | 'update',
+  appliedPacks?: readonly string[],
+): Raw | undefined {
   const c = compiled(entity, appliedPacks);
   if (!c) return ext as Raw | undefined;
   if (ext === undefined) {
     if (mode === 'update' || c.required.length === 0) return undefined;
-    throw extError(entity, c.required.map((k) => ({ path: `ext.${k}`, message: 'required' })));
+    throw extError(
+      entity,
+      c.required.map((k) => ({ path: `ext.${k}`, message: 'required' })),
+    );
   }
   const parsed = c.object.safeParse(ext);
   if (!parsed.success) {
-    throw extError(entity, parsed.error.issues.map((i) => ({ path: ['ext', ...i.path.map(String)].join('.'), message: i.message })));
+    throw extError(
+      entity,
+      parsed.error.issues.map((i) => ({ path: ['ext', ...i.path.map(String)].join('.'), message: i.message })),
+    );
   }
   return canonical(parsed.data as Raw, c.keys);
 }

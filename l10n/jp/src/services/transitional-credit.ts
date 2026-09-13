@@ -49,11 +49,19 @@ function inPeriod(p: CreditRatioPeriod, date: LocalDate): boolean {
 }
 
 /** The 経過措置 ratio for a business date, looked up in `table` (defaults to the statutory table above). */
-export function transitionalCreditRatio(date: LocalDate, table: readonly CreditRatioPeriod[] = EXEMPT_SUPPLIER_CREDIT_RATIOS): Decimal {
-  if (!isLocalDate(date)) throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
+export function transitionalCreditRatio(
+  date: LocalDate,
+  table: readonly CreditRatioPeriod[] = EXEMPT_SUPPLIER_CREDIT_RATIOS,
+): Decimal {
+  if (!isLocalDate(date))
+    throw new ValidationError(`invalid date "${date}"`, [{ path: 'date', message: 'must be YYYY-MM-DD' }]);
   const row = table.find((p) => inPeriod(p, date));
   if (!row) {
-    throw new ValidationError(`no exempt-supplier credit ratio is defined for ${date}`, [{ path: 'date', message: 'outside every validity period' }], 'Add a row to EXEMPT_SUPPLIER_CREDIT_RATIOS (l10n/jp/src/services/transitional-credit.ts)');
+    throw new ValidationError(
+      `no exempt-supplier credit ratio is defined for ${date}`,
+      [{ path: 'date', message: 'outside every validity period' }],
+      'Add a row to EXEMPT_SUPPLIER_CREDIT_RATIOS (l10n/jp/src/services/transitional-credit.ts)',
+    );
   }
   return Decimal.from(row.ratio);
 }
@@ -62,7 +70,9 @@ export function transitionalCreditRatio(date: LocalDate, table: readonly CreditR
 export const exemptSupplierCreditRatio: ExemptSupplierCreditRatioFn = (input) => {
   if (input.supplierTaxStatus === 'registered') return FULL_CREDIT;
   if (input.supplierTaxStatus !== 'exempt') {
-    throw new ValidationError(`unknown supplierTaxStatus "${String(input.supplierTaxStatus)}"`, [{ path: 'supplierTaxStatus', message: `must be one of ${SUPPLIER_TAX_STATUSES.join(', ')}` }]);
+    throw new ValidationError(`unknown supplierTaxStatus "${String(input.supplierTaxStatus)}"`, [
+      { path: 'supplierTaxStatus', message: `must be one of ${SUPPLIER_TAX_STATUSES.join(', ')}` },
+    ]);
   }
   return transitionalCreditRatio(input.date);
 };

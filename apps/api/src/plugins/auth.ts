@@ -1,6 +1,27 @@
 // Authentication (spec AC-1, AC-2, AC-7): JWT login, per-request principal reload, ContextParams builder.
 // The principal is re-read from the users table on every request so role changes take effect immediately.
-import { authenticate, changeOwnPassword, changeOwnPasswordSchema, companyBelongsToTenant, DaifukuError, findCompany, isUuid, loadPrincipal, PermissionDenied, resolveCompanyAccess, revokeOwnSessions, revokeOwnSessionsSchema, selectableCompanies, ValidationError, withContext, type ContextParams, type Database, type Locale, type Logger, type Principal } from '@daifuku/kernel';
+import {
+  authenticate,
+  changeOwnPassword,
+  changeOwnPasswordSchema,
+  companyBelongsToTenant,
+  DaifukuError,
+  findCompany,
+  isUuid,
+  loadPrincipal,
+  PermissionDenied,
+  resolveCompanyAccess,
+  revokeOwnSessions,
+  revokeOwnSessionsSchema,
+  selectableCompanies,
+  ValidationError,
+  withContext,
+  type ContextParams,
+  type Database,
+  type Locale,
+  type Logger,
+  type Principal,
+} from '@daifuku/kernel';
 import fastifyJwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -38,24 +59,57 @@ declare module 'fastify' {
 
 /** Paths that do not require a token. */
 const PUBLIC_PREFIXES = ['/auth/login', '/openapi.json', '/docs', '/health'];
-const RELAY_PATHS = new Set(['/relay/pair', '/relay/session', '/relay/credentials/rotate', '/relay/jobs/claim', '/relay/jobs/start', '/relay/jobs/heartbeat', '/relay/jobs/complete', '/relay/events', '/relay/notifications', '/ready']);
-const PUBLIC_IDENTITY = new Set(['/auth/mfa/verify', '/auth/oidc/providers', '/auth/oidc/start', '/auth/oidc/complete', '/auth/password-reset/request', '/auth/password-reset/complete', '/auth/invitations/accept']);
+const RELAY_PATHS = new Set([
+  '/relay/pair',
+  '/relay/session',
+  '/relay/credentials/rotate',
+  '/relay/jobs/claim',
+  '/relay/jobs/start',
+  '/relay/jobs/heartbeat',
+  '/relay/jobs/complete',
+  '/relay/events',
+  '/relay/notifications',
+  '/ready',
+]);
+const PUBLIC_IDENTITY = new Set([
+  '/auth/mfa/verify',
+  '/auth/oidc/providers',
+  '/auth/oidc/start',
+  '/auth/oidc/complete',
+  '/auth/password-reset/request',
+  '/auth/password-reset/complete',
+  '/auth/invitations/accept',
+]);
 
 export const TOKEN_TTL = '12h';
 
 export class Unauthorized extends DaifukuError {
   constructor(message: string) {
-    super('PERMISSION_DENIED', message, 'Log in with POST /auth/login and send `Authorization: Bearer <token>`.', undefined, 401);
+    super(
+      'PERMISSION_DENIED',
+      message,
+      'Log in with POST /auth/login and send `Authorization: Bearer <token>`.',
+      undefined,
+      401,
+    );
     this.name = 'Unauthorized';
   }
 }
 
-const loginBody = z.object({ email: z.string().min(1).max(200), password: z.string().min(1).max(200), tenantId: z.uuid().optional() });
-
+const loginBody = z.object({
+  email: z.string().min(1).max(200),
+  password: z.string().min(1).max(200),
+  tenantId: z.uuid().optional(),
+});
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
-  return RELAY_PATHS.has(path) || PUBLIC_IDENTITY.has(path) || /^\/webhooks\/square\/[a-zA-Z0-9_-]+$/.test(path) || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+  return (
+    RELAY_PATHS.has(path) ||
+    PUBLIC_IDENTITY.has(path) ||
+    /^\/webhooks\/square\/[a-zA-Z0-9_-]+$/.test(path) ||
+    PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+  );
 }
 
 function localeOf(header: string | undefined): Locale {
@@ -81,7 +135,12 @@ const COMPANY_HINT = 'Send the id of a company in your tenant, or omit the heade
 function resolveCompany(req: FastifyRequest, principal: Principal): string | null {
   const header = headerString(req, 'x-company-id') ?? principal.defaultCompanyId;
   if (header === null) return null;
-  if (!isUuid(header)) throw new ValidationError('x-company-id must be a uuid', [{ path: 'headers.x-company-id', message: 'invalid uuid' }], COMPANY_HINT);
+  if (!isUuid(header))
+    throw new ValidationError(
+      'x-company-id must be a uuid',
+      [{ path: 'headers.x-company-id', message: 'invalid uuid' }],
+      COMPANY_HINT,
+    );
   return header;
 }
 
@@ -114,9 +173,16 @@ async function verifyRequest(req: FastifyRequest, owner: Database): Promise<Prin
   } catch (e) {
     throw new Unauthorized(e instanceof Error ? e.message : 'invalid token');
   }
-  if (typeof claims.sub !== 'string' || typeof claims.tenantId !== 'string') throw new Unauthorized('malformed token payload');
+  if (typeof claims.sub !== 'string' || typeof claims.tenantId !== 'string')
+    throw new Unauthorized('malformed token payload');
   const principal = await loadPrincipal(owner, claims.sub);
-  if (!principal || principal.tenantId !== claims.tenantId || principal.sessionVersion !== claims.sessionVersion || (principal.mfaEnabled && claims.mfa !== true)) throw new Unauthorized('user is inactive, unknown, or the session was revoked');
+  if (
+    !principal ||
+    principal.tenantId !== claims.tenantId ||
+    principal.sessionVersion !== claims.sessionVersion ||
+    (principal.mfaEnabled && claims.mfa !== true)
+  )
+    throw new Unauthorized('user is inactive, unknown, or the session was revoked');
   return principal;
 }
 
@@ -127,7 +193,10 @@ export interface PublicCompany {
   currency: string;
 }
 
-export async function registerAuth(app: FastifyInstance, opts: { owner: Database; db: Database; jwtSecret: string; identity?: IdentityOptions }): Promise<void> {
+export async function registerAuth(
+  app: FastifyInstance,
+  opts: { owner: Database; db: Database; jwtSecret: string; identity?: IdentityOptions },
+): Promise<void> {
   await app.register(fastifyJwt, { secret: opts.jwtSecret, sign: { expiresIn: TOKEN_TTL } });
   app.addHook('onSend', async (req, reply, payload) => {
     if (req.headers.authorization || req.url.startsWith('/auth/')) reply.header('cache-control', 'private, no-store');
@@ -143,55 +212,110 @@ export async function registerAuth(app: FastifyInstance, opts: { owner: Database
     if (isPublic(req.url)) return;
     req.principal = await verifyRequest(req, opts.owner);
     // Account security belongs to the authenticated tenant identity, even with no company or a stale selection.
-    if (req.url.startsWith('/auth/') && !['/auth/me', '/auth/companies'].includes(req.url.split('?')[0] ?? req.url)) return;
+    if (req.url.startsWith('/auth/') && !['/auth/me', '/auth/companies'].includes(req.url.split('?')[0] ?? req.url))
+      return;
     req.companyId = resolveCompany(req, req.principal);
-    try { req.principal = await resolveCompanyAccess(opts.owner, req.principal, req.companyId); }
-    catch (error) {
+    try {
+      req.principal = await resolveCompanyAccess(opts.owner, req.principal, req.companyId);
+    } catch (error) {
       if (req.url.split('?')[0] !== '/auth/companies' || !(error instanceof PermissionDenied)) throw error;
       // Recovery is for a stale membership in this tenant, never for an invalid company identity.
       if (!req.companyId || !(await companyBelongsToTenant(opts.owner, req.principal.tenantId, req.companyId))) {
-        throw new ValidationError('x-company-id is not a company in your tenant', [{ path: 'headers.x-company-id', message: 'unknown company' }], COMPANY_HINT);
+        throw new ValidationError(
+          'x-company-id is not a company in your tenant',
+          [{ path: 'headers.x-company-id', message: 'unknown company' }],
+          COMPANY_HINT,
+        );
       }
       req.companyId = req.principal.defaultCompanyId;
       req.principal = await resolveCompanyAccess(opts.owner, req.principal, req.companyId);
     }
   });
 
-  app.post('/auth/login', { schema: { tags: ['auth'], summary: 'Log in and receive a JWT (12h)', body: loginBody } }, async (req) => {
-    const { email, password, tenantId } = parse(loginBody, req.body, 'body');
-    return verifyAttempt(opts.owner, req, 'login', async () => {
-      const principal = await authenticate(opts.owner, email, password, tenantId);
-      if (!principal) throw new Unauthorized('invalid email or password');
-      return identityLoginReply(app, opts, { userId: principal.userId, tenantId: principal.tenantId, sessionVersion: principal.sessionVersion });
-    }, `${tenantId ?? ''}:${email.toLowerCase()}`);
-  });
+  app.post(
+    '/auth/login',
+    { schema: { tags: ['auth'], summary: 'Log in and receive a JWT (12h)', body: loginBody } },
+    async (req) => {
+      const { email, password, tenantId } = parse(loginBody, req.body, 'body');
+      return verifyAttempt(
+        opts.owner,
+        req,
+        'login',
+        async () => {
+          const principal = await authenticate(opts.owner, email, password, tenantId);
+          if (!principal) throw new Unauthorized('invalid email or password');
+          return identityLoginReply(app, opts, {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            sessionVersion: principal.sessionVersion,
+          });
+        },
+        `${tenantId ?? ''}:${email.toLowerCase()}`,
+      );
+    },
+  );
 
   registerIdentityRoutes(app, opts);
 
-  app.post('/auth/password', { schema: { tags: ['auth'], summary: 'Change own password and revoke all sessions', body: changeOwnPasswordSchema } }, async (req) => {
-    if (!req.principal) throw new Unauthorized('authentication required');
-    const sessionVersion = req.principal.sessionVersion;
-    return verifyAttempt(opts.owner, req, 'password', () => withContext(opts.db, req.contextParams(), (ctx) => changeOwnPassword(ctx, sessionVersion, req.body)), req.principal.userId);
-  });
+  app.post(
+    '/auth/password',
+    {
+      schema: { tags: ['auth'], summary: 'Change own password and revoke all sessions', body: changeOwnPasswordSchema },
+    },
+    async (req) => {
+      if (!req.principal) throw new Unauthorized('authentication required');
+      const sessionVersion = req.principal.sessionVersion;
+      return verifyAttempt(
+        opts.owner,
+        req,
+        'password',
+        () => withContext(opts.db, req.contextParams(), (ctx) => changeOwnPassword(ctx, sessionVersion, req.body)),
+        req.principal.userId,
+      );
+    },
+  );
 
-  app.post('/auth/logout-all', { schema: { tags: ['auth'], summary: 'Revoke all sessions for the current user', body: revokeOwnSessionsSchema } }, async (req) => {
-    if (!req.principal) throw new Unauthorized('authentication required');
-    const sessionVersion = req.principal.sessionVersion;
-    return withContext(opts.db, req.contextParams(), (ctx) => revokeOwnSessions(ctx, sessionVersion, req.body));
-  });
+  app.post(
+    '/auth/logout-all',
+    { schema: { tags: ['auth'], summary: 'Revoke all sessions for the current user', body: revokeOwnSessionsSchema } },
+    async (req) => {
+      if (!req.principal) throw new Unauthorized('authentication required');
+      const sessionVersion = req.principal.sessionVersion;
+      return withContext(opts.db, req.contextParams(), (ctx) => revokeOwnSessions(ctx, sessionVersion, req.body));
+    },
+  );
 
-  app.get('/auth/me', { schema: { tags: ['auth'], summary: 'Current user, roles, effective context and company (id, name, currency; null without one)' } }, async (req) => {
-    const params = req.contextParams();
-    if (!req.principal) throw new Unauthorized('authentication required');
-    // read in a request context (RLS), like every other company read; null when the request has no company
-    const found = await withContext(opts.db, params, (ctx) => findCompany(ctx));
-    const company: PublicCompany | null = found ? { id: found.id, name: found.name, currency: found.currency } : null;
-    return { user: publicUser(req.principal), companyId: params.companyId, company, actor: params.actor, locale: params.locale };
-  });
+  app.get(
+    '/auth/me',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Current user, roles, effective context and company (id, name, currency; null without one)',
+      },
+    },
+    async (req) => {
+      const params = req.contextParams();
+      if (!req.principal) throw new Unauthorized('authentication required');
+      // read in a request context (RLS), like every other company read; null when the request has no company
+      const found = await withContext(opts.db, params, (ctx) => findCompany(ctx));
+      const company: PublicCompany | null = found ? { id: found.id, name: found.name, currency: found.currency } : null;
+      return {
+        user: publicUser(req.principal),
+        companyId: params.companyId,
+        company,
+        actor: params.actor,
+        locale: params.locale,
+      };
+    },
+  );
 
-  app.get('/auth/companies', { schema: { tags: ['auth'], summary: 'Companies selectable in the authenticated tenant' } }, async (req) => {
-    if (!req.principal) throw new Unauthorized('authentication required');
-    const items = await selectableCompanies(opts.owner, req.principal);
-    return { items, companyId: req.companyId };
-  });
+  app.get(
+    '/auth/companies',
+    { schema: { tags: ['auth'], summary: 'Companies selectable in the authenticated tenant' } },
+    async (req) => {
+      if (!req.principal) throw new Unauthorized('authentication required');
+      const items = await selectableCompanies(opts.owner, req.principal);
+      return { items, companyId: req.companyId };
+    },
+  );
 }

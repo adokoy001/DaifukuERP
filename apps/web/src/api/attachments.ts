@@ -2,7 +2,13 @@
 //   POST /actions/attachment.for_record { entity, recordId }   -> attachments of a record ({ items } or a bare array tolerated)
 //   POST /api/attachments/upload  multipart: file + kind/txnDate/amount/partnerId/linkedEntity/linkedId/note -> attachment row
 //   GET  /api/attachments/:id/download                          -> bytes with Content-Disposition (RFC 5987)
-import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { filenameFromDisposition, saveBlob } from '../lib/download.ts';
 import { download, request, upload } from './client.ts';
 import type { AppMeta, AttachmentJson } from './types.ts';
@@ -15,7 +21,10 @@ export const attachmentKeys = {
 
 /** The panel only renders when the attachments module is installed and readable by the caller. */
 export function attachmentsAvailable(meta: AppMeta | undefined): boolean {
-  return (meta?.entities ?? []).some((e) => e.name === ATTACHMENT_ENTITY) && (meta?.actions ?? []).some((a) => a.name === 'attachment.for_record');
+  return (
+    (meta?.entities ?? []).some((e) => e.name === ATTACHMENT_ENTITY) &&
+    (meta?.actions ?? []).some((a) => a.name === 'attachment.for_record')
+  );
 }
 
 function normalize(raw: unknown): AttachmentJson[] {
@@ -28,10 +37,17 @@ function normalize(raw: unknown): AttachmentJson[] {
   return [];
 }
 
-export function useAttachmentsFor(entity: string, id: string | undefined, enabled: boolean): UseQueryResult<AttachmentJson[]> {
+export function useAttachmentsFor(
+  entity: string,
+  id: string | undefined,
+  enabled: boolean,
+): UseQueryResult<AttachmentJson[]> {
   return useQuery({
     queryKey: attachmentKeys.forRecord(entity, id ?? ''),
-    queryFn: async () => normalize(await request<unknown>('/actions/attachment.for_record', { method: 'POST', body: { entity, recordId: id } })),
+    queryFn: async () =>
+      normalize(
+        await request<unknown>('/actions/attachment.for_record', { method: 'POST', body: { entity, recordId: id } }),
+      ),
     enabled: enabled && id !== undefined,
   });
 }

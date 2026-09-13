@@ -55,7 +55,12 @@ export function shapeSummary(summary: SummaryLike): InvoiceTaxSummaryRow[] {
 
 /** Header totals from a summary: subtotal = Σtaxable (税抜), taxTotal = Σ rounded tax, total = Σgross (税込). */
 export function totalsFrom(summary: SummaryLike): InvoiceTotals {
-  return { subtotal: summary.totals.taxable, taxTotal: summary.totals.tax, total: summary.totals.gross, taxSummary: shapeSummary(summary) };
+  return {
+    subtotal: summary.totals.taxable,
+    taxTotal: summary.totals.tax,
+    total: summary.totals.gross,
+    taxSummary: shapeSummary(summary),
+  };
 }
 
 export function balanceOf(total: DecimalInput, paidAmount: DecimalInput): Decimal {

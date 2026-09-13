@@ -1,5 +1,13 @@
 // Bridges a Fastify request to a kernel Context: one transaction per request, tenant set for RLS (ADR-0004).
-import { DaifukuError, registry, runAction, ValidationError, withContext, type Context, type Database } from '@daifuku/kernel';
+import {
+  DaifukuError,
+  registry,
+  runAction,
+  ValidationError,
+  withContext,
+  type Context,
+  type Database,
+} from '@daifuku/kernel';
 import type { FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 

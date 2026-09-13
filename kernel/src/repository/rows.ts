@@ -3,7 +3,11 @@ import { Decimal } from '../decimal.ts';
 import type { EntityDef } from '../dsl/entity.ts';
 
 /** DB -> domain: numeric strings become Decimal. Masked fields are removed. */
-export function fromDb(entity: EntityDef, raw: Record<string, unknown>, masked: ReadonlySet<string>): Record<string, unknown> {
+export function fromDb(
+  entity: EntityDef,
+  raw: Record<string, unknown>,
+  masked: ReadonlySet<string>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (masked.has(k)) continue;

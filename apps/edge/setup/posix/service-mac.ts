@@ -6,55 +6,94 @@ import { rootFile } from './security.js';
 import { saveDefinition } from './service-files.js';
 export const macPlistPath = '/Library/LaunchDaemons/' + MAC_SERVICE + '.plist';
 const target = 'system/' + MAC_SERVICE;
-interface MacStatus { loaded: boolean; running: boolean; text: string }
+interface MacStatus {
+  loaded: boolean;
+  running: boolean;
+  text: string;
+}
 export async function macStatus(host: PosixHost): Promise<MacStatus> {
   const result = await host.run('/bin/launchctl', ['print', target]);
   if (result.code !== 0) {
-    if (result.stderr.includes('Could not find service "' + MAC_SERVICE + '"') && result.stderr.includes('system')) return { loaded: false, running: false, text: '' };
+    if (result.stderr.includes('Could not find service "' + MAC_SERVICE + '"') && result.stderr.includes('system'))
+      return { loaded: false, running: false, text: '' };
     throw new Error('Cannot inspect the system LaunchDaemon.');
   }
   if (!result.stdout.includes(target + ' = {')) throw new Error('Unrecognized LaunchDaemon status.');
   return { loaded: true, running: /^\s*pid = [1-9]\d*$/m.test(result.stdout), text: result.stdout };
 }
 function property(text: string, name: string): string | undefined {
-  const line = text.split('\n').map((part) => part.trim()).find((part) => part.startsWith(name + ' = '));
+  const line = text
+    .split('\n')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(name + ' = '));
   return line?.slice(name.length + 3);
 }
 export function daemonEnvironment(text: string): Record<string, string> {
   const lines = text.split('\n');
-  const starts = lines.map((line, index) => line.trim() === 'environment = {' ? index : -1).filter((index) => index >= 0);
+  const starts = lines
+    .map((line, index) => (line.trim() === 'environment = {' ? index : -1))
+    .filter((index) => index >= 0);
   const start = starts[0];
-  if (starts.length !== 1 || start === undefined) throw new Error('Loaded LaunchDaemon environment is missing or ambiguous.');
+  if (starts.length !== 1 || start === undefined)
+    throw new Error('Loaded LaunchDaemon environment is missing or ambiguous.');
   const result: Record<string, string> = {};
-  for (const line of lines.slice(start + 1).map((value) => value.trim()).filter(Boolean)) {
+  for (const line of lines
+    .slice(start + 1)
+    .map((value) => value.trim())
+    .filter(Boolean)) {
     if (line === '}') return result;
     // Modern launchctl uses => inside environment dictionaries, unlike top-level = properties.
     const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?:=>|=) (.*)$/.exec(line);
-    if (!match?.[1] || match[2] === undefined || result[match[1]] !== undefined) throw new Error('Loaded LaunchDaemon environment is malformed or ambiguous.');
+    if (!match?.[1] || match[2] === undefined || result[match[1]] !== undefined)
+      throw new Error('Loaded LaunchDaemon environment is malformed or ambiguous.');
     result[match[1]] = match[2];
   }
   throw new Error('Loaded LaunchDaemon environment is incomplete.');
 }
 
 export function validateLoadedDaemon(text: string, context: ServiceContext): void {
-  const args = /(?:^|\n)\s*arguments = \{\n([\s\S]*?)\n\s*\}/.exec(text)?.[1]?.split('\n').map((line) => line.trim()).filter(Boolean);
-  if (property(text, 'path') !== macPlistPath || property(text, 'program') !== context.nodePath || property(text, 'username') !== '_daifukuedge' || property(text, 'group') !== 'nobody' || JSON.stringify(args) !== JSON.stringify(serviceArguments(context))) throw new Error('Loaded LaunchDaemon differs from the owned service definition.');
+  const args = /(?:^|\n)\s*arguments = \{\n([\s\S]*?)\n\s*\}/
+    .exec(text)?.[1]
+    ?.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (
+    property(text, 'path') !== macPlistPath ||
+    property(text, 'program') !== context.nodePath ||
+    property(text, 'username') !== '_daifukuedge' ||
+    property(text, 'group') !== 'nobody' ||
+    JSON.stringify(args) !== JSON.stringify(serviceArguments(context))
+  )
+    throw new Error('Loaded LaunchDaemon differs from the owned service definition.');
   const environment = daemonEnvironment(text);
-  if (environment.DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY !== '1') throw new Error('Loaded LaunchDaemon unprivileged identity differs from this installation.');
+  if (environment.DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY !== '1')
+    throw new Error('Loaded LaunchDaemon unprivileged identity differs from this installation.');
   const ca = environment.NODE_EXTRA_CA_CERTS;
   if (ca !== context.caPath) throw new Error('Loaded LaunchDaemon CA configuration differs from this installation.');
 }
-export async function inspectMacService(host: PosixHost, context: ServiceContext): Promise<{ exists: boolean; running: boolean; owned: boolean; processId?: number }> {
-  const body = await rootFile(host, macPlistPath), state = await macStatus(host);
+export async function inspectMacService(
+  host: PosixHost,
+  context: ServiceContext,
+): Promise<{ exists: boolean; running: boolean; owned: boolean; processId?: number }> {
+  const body = await rootFile(host, macPlistPath),
+    state = await macStatus(host);
   if (body === null && !state.loaded) return { exists: false, running: false, owned: false };
-  if (body !== renderLaunchDaemon(context)) throw new Error('The registered LaunchDaemon differs from this installation.');
+  if (body !== renderLaunchDaemon(context))
+    throw new Error('The registered LaunchDaemon differs from this installation.');
   if (state.loaded) validateLoadedDaemon(state.text, context);
-  return { exists: true, running: state.running, owned: true, ...(state.running ? { processId: Number(property(state.text, 'pid')) } : {}) };
+  return {
+    exists: true,
+    running: state.running,
+    owned: true,
+    ...(state.running ? { processId: Number(property(state.text, 'pid')) } : {}),
+  };
 }
 export async function registerMac(host: PosixHost, context: ServiceContext): Promise<void> {
-  const state = await macStatus(host), body = await rootFile(host, macPlistPath);
+  const state = await macStatus(host),
+    body = await rootFile(host, macPlistPath);
   if (state.loaded) throw new Error('Boot out the old LaunchDaemon before changing its definition.');
-  if (body !== null && !body.includes(ownershipTag(context))) throw new Error('Cannot replace an unowned LaunchDaemon.');
+  if (body !== null && !body.includes(ownershipTag(context)))
+    throw new Error('Cannot replace an unowned LaunchDaemon.');
   await saveDefinition(host, context, MAC_SERVICE + '.plist', macPlistPath, renderLaunchDaemon(context));
   await command(host, '/usr/bin/plutil', ['-lint', macPlistPath]);
 }
@@ -84,6 +123,7 @@ export async function uninstallMac(host: PosixHost, context: ServiceContext): Pr
   const state = await inspectMacService(host, context);
   if (!state.exists) return;
   await stopMac(host, context);
-  if (await rootFile(host, macPlistPath) !== renderLaunchDaemon(context)) throw new Error('LaunchDaemon definition changed during removal.');
+  if ((await rootFile(host, macPlistPath)) !== renderLaunchDaemon(context))
+    throw new Error('LaunchDaemon definition changed during removal.');
   await host.remove(macPlistPath);
 }

@@ -6,7 +6,9 @@ import { inheritContext } from './write-capability.ts';
 
 /** Serialize a business key, including absent rows, until the outer transaction ends. */
 export async function withLock<T>(ctx: Context, key: string, work: () => Promise<T>): Promise<T> {
-  await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:${ctx.companyId ?? ''}:${key}`}, 0))`);
+  await ctx.db.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:${ctx.companyId ?? ''}:${key}`}, 0))`,
+  );
   return work();
 }
 

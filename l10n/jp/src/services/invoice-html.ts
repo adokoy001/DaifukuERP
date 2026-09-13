@@ -4,7 +4,11 @@
 import { ValidationError, label, t, type Label, type Locale } from '@daifuku/kernel';
 import { formatJpy, formatNumber, formatRatePercent } from './format.ts';
 import { INVOICE_CSS } from './invoice-html-style.ts';
-import { invoiceRenderDataSchema, type InvoiceHtmlRenderer, type ParsedInvoiceRenderData } from './invoice-render-data.ts';
+import {
+  invoiceRenderDataSchema,
+  type InvoiceHtmlRenderer,
+  type ParsedInvoiceRenderData,
+} from './invoice-render-data.ts';
 import { formatDateJa, toWareki } from './wareki.ts';
 
 type Line = ParsedInvoiceRenderData['lines'][number];
@@ -54,7 +58,10 @@ const CATEGORY_LABELS: Record<string, Label> = {
 
 /** HTML-escapes text nodes and attribute values (XSS: every string from the render data passes through here). */
 export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  );
 }
 
 const esc = escapeHtml;
@@ -139,7 +146,10 @@ function metaSection(d: ParsedInvoiceRenderData, locale: Locale): string {
 
 function linesSection(d: ParsedInvoiceRenderData, locale: Locale): string {
   const incl = d.invoice.priceIncludesTax ? t(L.taxIncl, locale) : '';
-  const body = d.lines.length === 0 ? `<tr><td colspan="6" class="center">${t(L.noLines, locale)}</td></tr>` : d.lines.map((l) => lineRow(l, locale)).join('');
+  const body =
+    d.lines.length === 0
+      ? `<tr><td colspan="6" class="center">${t(L.noLines, locale)}</td></tr>`
+      : d.lines.map((l) => lineRow(l, locale)).join('');
   return [
     '<table class="lines">',
     `<thead><tr><th>${t(L.seq, locale)}</th><th>${t(L.description, locale)}</th><th>${t(L.quantity, locale)}</th><th>${t(L.unitPrice, locale)}${incl}</th><th>${t(L.amount, locale)}${incl}</th><th>${t(L.taxCategory, locale)}</th></tr></thead>`,
@@ -165,8 +175,12 @@ function footerSections(d: ParsedInvoiceRenderData, locale: Locale): string {
   const bank = d.issuer.bankInfo;
   const note = d.invoice.note;
   return [
-    bank === undefined || bank === '' ? '' : `<section class="bank"><h2>${t(L.bank, locale)}</h2><p>${esc(bank)}</p></section>`,
-    note === null || note === '' ? '' : `<section class="remarks"><h2>${t(L.remarks, locale)}</h2><p>${esc(note)}</p></section>`,
+    bank === undefined || bank === ''
+      ? ''
+      : `<section class="bank"><h2>${t(L.bank, locale)}</h2><p>${esc(bank)}</p></section>`,
+    note === null || note === ''
+      ? ''
+      : `<section class="remarks"><h2>${t(L.remarks, locale)}</h2><p>${esc(note)}</p></section>`,
   ].join('');
 }
 

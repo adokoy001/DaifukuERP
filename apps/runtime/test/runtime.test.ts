@@ -15,7 +15,11 @@ function catalog(setting: string, schema = false, shell?: string) {
   const env = { ...process.env };
   delete env.DAIFUKU_PACKS;
   if (shell !== undefined) env.DAIFUKU_PACKS = shell;
-  const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), fixture, ...(schema ? ['--schema'] : [])], { cwd, env, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(
+    process.execPath,
+    ['--import', import.meta.resolve('tsx'), fixture, ...(schema ? ['--schema'] : [])],
+    { cwd, env, encoding: 'utf8', timeout: 30000 },
+  );
   if (result.status !== 0) throw new Error(result.stderr || String(result.error));
   return JSON.parse(result.stdout) as { packs: string[]; entities: string[] };
 }
@@ -29,8 +33,37 @@ describe('foundation-refresh runtime catalog', () => {
 
   it('AC-3 retains every installed schema when runtime capabilities are disabled', () => {
     const schema = catalog('none', true);
-    expect(schema.packs).toEqual(['example', 'retail', 'real_estate', 'appliance_store', 'farm', 'restaurant_chain', 'wholesale', 'manufacturing', 'construction', 'logistics', 'hospitality', 'clinic', 'care_service', 'education', 'professional_service', 'beauty_salon']);
-    expect(schema.entities).toEqual(expect.arrayContaining(['real_estate_deposit', 'retail_month_close', 'appliance_store_service', 'farm_harvest', 'restaurant_chain_closing', 'workforce_employee', 'workforce_receipt', 'wholesale_job', 'beauty_salon_job']));
+    expect(schema.packs).toEqual([
+      'example',
+      'retail',
+      'real_estate',
+      'appliance_store',
+      'farm',
+      'restaurant_chain',
+      'wholesale',
+      'manufacturing',
+      'construction',
+      'logistics',
+      'hospitality',
+      'clinic',
+      'care_service',
+      'education',
+      'professional_service',
+      'beauty_salon',
+    ]);
+    expect(schema.entities).toEqual(
+      expect.arrayContaining([
+        'real_estate_deposit',
+        'retail_month_close',
+        'appliance_store_service',
+        'farm_harvest',
+        'restaurant_chain_closing',
+        'workforce_employee',
+        'workforce_receipt',
+        'wholesale_job',
+        'beauty_salon_job',
+      ]),
+    );
     expect(catalog('none').entities).not.toContain('real_estate_deposit');
     expect(catalog('none').entities).not.toContain('farm_harvest');
     expect(catalog('none').entities).not.toContain('wholesale_job');

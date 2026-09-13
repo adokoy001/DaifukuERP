@@ -23,7 +23,18 @@ export interface RegisterExtOptions {
 }
 
 /** Kinds a JSONB value can hold. `ref` is stored as a uuid string (no FK inside JSONB). */
-const EXT_KINDS: ReadonlySet<FieldKind> = new Set<FieldKind>(['text', 'int', 'decimal', 'bool', 'date', 'timestamp', 'enum', 'ref', 'json', 'uuid']);
+const EXT_KINDS: ReadonlySet<FieldKind> = new Set<FieldKind>([
+  'text',
+  'int',
+  'decimal',
+  'bool',
+  'date',
+  'timestamp',
+  'enum',
+  'ref',
+  'json',
+  'uuid',
+]);
 /** Options that only make sense for real columns (or would silently do nothing inside JSONB). */
 const COLUMN_ONLY_OPTS = ['unique', 'index', 'immutable'] as const;
 const KEY_RE = /^[a-z][A-Za-z0-9]*$/;
@@ -36,8 +47,10 @@ function keyIssues(entity: EntityDef, key: string, fd: AnyField): string[] {
   if (key in entity.config.fields) out.push(`"${key}" is already a field of ${entity.name}`);
   if (!EXT_KINDS.has(fd.kind)) out.push(`kind "${String(fd.kind)}" cannot live in JSONB ext`);
   const opts = fd.opts as Record<string, unknown>;
-  for (const o of COLUMN_ONLY_OPTS) if (opts[o] === true) out.push(`option "${o}" is not supported for ext fields (no column)`);
-  if (fd.hasDefault) out.push('option "default" is not supported for ext fields; set the value in a before_validate hook');
+  for (const o of COLUMN_ONLY_OPTS)
+    if (opts[o] === true) out.push(`option "${o}" is not supported for ext fields (no column)`);
+  if (fd.hasDefault)
+    out.push('option "default" is not supported for ext fields; set the value in a before_validate hook');
   return out;
 }
 
@@ -45,16 +58,29 @@ function keyIssues(entity: EntityDef, key: string, fd: AnyField): string[] {
  * Checks a registration against the entity and the keys already registered for it, returning the definitions to add.
  * All-or-nothing: throws ValidationError (bad names/kinds/options, AC-12) or Conflict (key taken, AC-1) before any change.
  */
-export function checkExtFields(entity: EntityDef, fields: FieldMap, existing: ReadonlyMap<string, ExtFieldDef>, source: string): ExtFieldDef[] {
+export function checkExtFields(
+  entity: EntityDef,
+  fields: FieldMap,
+  existing: ReadonlyMap<string, ExtFieldDef>,
+  source: string,
+): ExtFieldDef[] {
   if (!entity.hasExt) {
-    throw new ValidationError(`${entity.name} has no ext column`, [{ path: 'entity', message: 'declared with ext: false' }], `Enable ext on ${entity.name} (EntityConfig.ext) or add a real field in its module.`);
+    throw new ValidationError(
+      `${entity.name} has no ext column`,
+      [{ path: 'entity', message: 'declared with ext: false' }],
+      `Enable ext on ${entity.name} (EntityConfig.ext) or add a real field in its module.`,
+    );
   }
   const issues: ValidationIssue[] = [];
   for (const [key, fd] of Object.entries(fields)) {
     for (const message of keyIssues(entity, key, fd)) issues.push({ path: `ext.${key}`, message });
   }
   if (issues.length > 0) {
-    throw new ValidationError(`registerExt(${entity.name}) from "${source}": invalid ext field definition`, issues, 'Rename the ext keys so they do not collide with system or entity fields, and use a JSONB-compatible kind without column-only options.');
+    throw new ValidationError(
+      `registerExt(${entity.name}) from "${source}": invalid ext field definition`,
+      issues,
+      'Rename the ext keys so they do not collide with system or entity fields, and use a JSONB-compatible kind without column-only options.',
+    );
   }
   const taken = Object.keys(fields).flatMap((key) => {
     const prev = existing.get(key);

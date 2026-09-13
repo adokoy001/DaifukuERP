@@ -17,5 +17,14 @@ export default {
   incremental: false,
   // No reviewed equivalent survivors in this scope. Timeouts are rejected by the report checker too.
   thresholds: { high: 100, low: 100, break: 100 },
-  ignorePatterns: ['**/.env', '**/.env.*', '**/dist/**', '**/.runtime/**', '**/.local/**', '**/test-results/**', '**/playwright-report/**', '.cache/**'],
+  ignorePatterns: [
+    '**/.env',
+    '**/.env.*',
+    '**/dist/**',
+    '**/.runtime/**',
+    '**/.local/**',
+    '**/test-results/**',
+    '**/playwright-report/**',
+    '.cache/**',
+  ],
 };

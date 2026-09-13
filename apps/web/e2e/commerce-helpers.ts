@@ -4,24 +4,125 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { api, PASSWORD, type Headers, type Row } from './operations-helpers.ts';
 import { BUSINESS_DATE } from './environment.ts';
 export { PASSWORD };
-export function commercePeriod() { const end = new Date(`${BUSINESS_DATE.slice(0, 7)}-01T00:00:00Z`); end.setUTCDate(0); const to = end.toISOString().slice(0, 10); return { from: to.slice(0, 7) + '-01', to, month: to.slice(0, 7), year: to.slice(0, 4) }; }
+export function commercePeriod() {
+  const end = new Date(`${BUSINESS_DATE.slice(0, 7)}-01T00:00:00Z`);
+  end.setUTCDate(0);
+  const to = end.toISOString().slice(0, 10);
+  return { from: to.slice(0, 7) + '-01', to, month: to.slice(0, 7), year: to.slice(0, 4) };
+}
 export async function commerceFixture(request: APIRequestContext) {
- const session = await api<{ token: string; user: { id: string; tenantId: string; defaultCompanyId: string } }>(request, {}, '/auth/login', { email: process.env.E2E_EMAIL ?? 'admin@example.com', password: process.env.E2E_PASSWORD ?? 'password' });
- const runId = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
- const text = execFileSync(process.execPath, [fileURLToPath(new URL('../../../node_modules/tsx/dist/cli.mjs', import.meta.url)), fileURLToPath(new URL('../../api/test/commerce-e2e-fixture.ts', import.meta.url)), session.user.tenantId, session.user.id, runId], { env: process.env, encoding: 'utf8' });
- const companies = JSON.parse(text) as { id: string; code: string; name: string }[], first = companies[0], second = companies[1]; if (!first || !second) throw new Error('Two synthetic companies are required.');
- const admin = { authorization: 'Bearer ' + session.token, 'x-company-id': session.user.defaultCompanyId }, email = `commerce-${runId}@example.invalid`, user = await api(request, admin, '/admin/users', { name: 'Commerce検証 ' + runId, email, password: PASSWORD });
- for (const company of companies) await api(request, admin, `/admin/users/${user.id}/companies/${company.id}`, { expectedVersion: 0, roles: ['admin'], accessScope: 'all', storeIds: [], siteIds: [] }, 'PUT');
- const own = await api<{ token: string }>(request, {}, '/auth/login', { email, password: PASSWORD }), headers: Headers = { authorization: 'Bearer ' + own.token, 'x-company-id': first.id };
- const period = commercePeriod();
- const defs = [{ code: '1100', name: '普通預金', type: 'asset' }, { code: '1000', name: '現金', type: 'asset' }, { code: '1300', name: '売掛金', type: 'asset', partnerRequired: true }, { code: '2100', name: '買掛金', type: 'liability', partnerRequired: true }, { code: '2400', name: '前受金', type: 'liability' }, { code: '1900', name: '前払金', type: 'asset' }, { code: '4000', name: '売上', type: 'revenue' }, { code: '5000', name: '費用', type: 'expense' }, { code: '2200', name: '仮受消費税', type: 'liability', taxRole: 'output_tax' }, { code: '1500', name: '仮払消費税', type: 'asset', taxRole: 'input_tax' }];
- const accounts: Record<string, string> = {};
- for (const company of companies) { const h = { ...headers, 'x-company-id': company.id }; await api(request, h, '/actions/accounting.open_fiscal_year', { startDate: period.year + '-01-01' }); if (period.year !== BUSINESS_DATE.slice(0, 4)) await api(request, h, '/actions/accounting.open_fiscal_year', { startDate: BUSINESS_DATE.slice(0, 4) + '-01-01' }); const ids: Record<string,string> = {}; for (const def of defs) { const row = await api(request, h, '/api/account', def); ids[def.code] = row.id; if (company.id === first.id) accounts[def.code] = row.id; } const entry = await api(request, h, '/api/journal_entry', { date: period.to, description: 'Commerce E2E standalone', lines: { journal_line: [{ accountId: ids['1000'], debit: '1000' }, { accountId: ids['4000'], credit: '1000' }] } }); const current = await api(request, h, '/api/journal_entry/' + entry.id); await api(request, h, '/actions/journal_entry.submit', { id: entry.id, expectedVersion: current.version }); }
- const partner = await api(request, headers, '/api/partner', { name: '合成加盟店 ' + runId, isCustomer: true });
- const agreement = await api(request, headers, '/api/franchise_agreement', { code: 'FC-' + runId, name: '加盟店月次契約 ' + runId, partnerId: partner.id, direction: 'bill', startDate: period.year + '-01-01', endDate: BUSINESS_DATE.slice(0,4) + '-12-31', basis: 'net', rate: '0.05', fixedAmount: '1000', rounding: 'down', taxCategory: 'exempt' });
- const pos = await api(request, headers, '/api/pos_integration_location', { code: 'POS-' + runId, name: '合成Square店舗', merchantId: 'SYNTHETIC-' + runId, externalLocationId: 'LOCATION-' + runId, settlementAccountId: accounts['1100'], suspenseAccountId: accounts['2400'] });
- return { first, second, companies, headers, email, agreement, accounts, period, runId, pos };
+  const session = await api<{ token: string; user: { id: string; tenantId: string; defaultCompanyId: string } }>(
+    request,
+    {},
+    '/auth/login',
+    { email: process.env.E2E_EMAIL ?? 'admin@example.com', password: process.env.E2E_PASSWORD ?? 'password' },
+  );
+  const runId = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
+  const text = execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../../../node_modules/tsx/dist/cli.mjs', import.meta.url)),
+      fileURLToPath(new URL('../../api/test/commerce-e2e-fixture.ts', import.meta.url)),
+      session.user.tenantId,
+      session.user.id,
+      runId,
+    ],
+    { env: process.env, encoding: 'utf8' },
+  );
+  const companies = JSON.parse(text) as { id: string; code: string; name: string }[],
+    first = companies[0],
+    second = companies[1];
+  if (!first || !second) throw new Error('Two synthetic companies are required.');
+  const admin = { authorization: 'Bearer ' + session.token, 'x-company-id': session.user.defaultCompanyId },
+    email = `commerce-${runId}@example.invalid`,
+    user = await api(request, admin, '/admin/users', { name: 'Commerce検証 ' + runId, email, password: PASSWORD });
+  for (const company of companies)
+    await api(
+      request,
+      admin,
+      `/admin/users/${user.id}/companies/${company.id}`,
+      { expectedVersion: 0, roles: ['admin'], accessScope: 'all', storeIds: [], siteIds: [] },
+      'PUT',
+    );
+  const own = await api<{ token: string }>(request, {}, '/auth/login', { email, password: PASSWORD }),
+    headers: Headers = { authorization: 'Bearer ' + own.token, 'x-company-id': first.id };
+  const period = commercePeriod();
+  const defs = [
+    { code: '1100', name: '普通預金', type: 'asset' },
+    { code: '1000', name: '現金', type: 'asset' },
+    { code: '1300', name: '売掛金', type: 'asset', partnerRequired: true },
+    { code: '2100', name: '買掛金', type: 'liability', partnerRequired: true },
+    { code: '2400', name: '前受金', type: 'liability' },
+    { code: '1900', name: '前払金', type: 'asset' },
+    { code: '4000', name: '売上', type: 'revenue' },
+    { code: '5000', name: '費用', type: 'expense' },
+    { code: '2200', name: '仮受消費税', type: 'liability', taxRole: 'output_tax' },
+    { code: '1500', name: '仮払消費税', type: 'asset', taxRole: 'input_tax' },
+  ];
+  const accounts: Record<string, string> = {};
+  for (const company of companies) {
+    const h = { ...headers, 'x-company-id': company.id };
+    await api(request, h, '/actions/accounting.open_fiscal_year', { startDate: period.year + '-01-01' });
+    if (period.year !== BUSINESS_DATE.slice(0, 4))
+      await api(request, h, '/actions/accounting.open_fiscal_year', {
+        startDate: BUSINESS_DATE.slice(0, 4) + '-01-01',
+      });
+    const ids: Record<string, string> = {};
+    for (const def of defs) {
+      const row = await api(request, h, '/api/account', def);
+      ids[def.code] = row.id;
+      if (company.id === first.id) accounts[def.code] = row.id;
+    }
+    const entry = await api(request, h, '/api/journal_entry', {
+      date: period.to,
+      description: 'Commerce E2E standalone',
+      lines: {
+        journal_line: [
+          { accountId: ids['1000'], debit: '1000' },
+          { accountId: ids['4000'], credit: '1000' },
+        ],
+      },
+    });
+    const current = await api(request, h, '/api/journal_entry/' + entry.id);
+    await api(request, h, '/actions/journal_entry.submit', { id: entry.id, expectedVersion: current.version });
+  }
+  const partner = await api(request, headers, '/api/partner', { name: '合成加盟店 ' + runId, isCustomer: true });
+  const agreement = await api(request, headers, '/api/franchise_agreement', {
+    code: 'FC-' + runId,
+    name: '加盟店月次契約 ' + runId,
+    partnerId: partner.id,
+    direction: 'bill',
+    startDate: period.year + '-01-01',
+    endDate: BUSINESS_DATE.slice(0, 4) + '-12-31',
+    basis: 'net',
+    rate: '0.05',
+    fixedAmount: '1000',
+    rounding: 'down',
+    taxCategory: 'exempt',
+  });
+  const pos = await api(request, headers, '/api/pos_integration_location', {
+    code: 'POS-' + runId,
+    name: '合成Square店舗',
+    merchantId: 'SYNTHETIC-' + runId,
+    externalLocationId: 'LOCATION-' + runId,
+    settlementAccountId: accounts['1100'],
+    suspenseAccountId: accounts['2400'],
+  });
+  return { first, second, companies, headers, email, agreement, accounts, period, runId, pos };
 }
 export type CommerceFixture = Awaited<ReturnType<typeof commerceFixture>>;
-export async function closeCommercePeriods(request: APIRequestContext, fixture: CommerceFixture) { for (const company of fixture.companies) { const headers = { ...fixture.headers, 'x-company-id': company.id }, periods = await api<{ items: Row[] }>(request, headers, '/api/fiscal_period?limit=500'); for (const p of periods.items.filter((row) => String(row.endDate) <= fixture.period.to && !row.isClosed)) await api(request, headers, '/actions/accounting.close_period', { periodId: p.id }); } }
-export async function commerceAction(page: Page, name: string, click: () => Promise<void>) { const pending = page.waitForResponse((r) => r.url().endsWith('/actions/' + name) && r.request().method() === 'POST'); await click(); const response = await pending; expect(response.ok(), await response.text()).toBe(true); return response.json() as Promise<{ id: string; version: number; status: string }>; }
+export async function closeCommercePeriods(request: APIRequestContext, fixture: CommerceFixture) {
+  for (const company of fixture.companies) {
+    const headers = { ...fixture.headers, 'x-company-id': company.id },
+      periods = await api<{ items: Row[] }>(request, headers, '/api/fiscal_period?limit=500');
+    for (const p of periods.items.filter((row) => String(row.endDate) <= fixture.period.to && !row.isClosed))
+      await api(request, headers, '/actions/accounting.close_period', { periodId: p.id });
+  }
+}
+export async function commerceAction(page: Page, name: string, click: () => Promise<void>) {
+  const pending = page.waitForResponse((r) => r.url().endsWith('/actions/' + name) && r.request().method() === 'POST');
+  await click();
+  const response = await pending;
+  expect(response.ok(), await response.text()).toBe(true);
+  return response.json() as Promise<{ id: string; version: number; status: string }>;
+}

@@ -3,10 +3,13 @@ import { FarmCrop, FarmField } from '../entities/masters.ts';
 import { FarmSeason } from '../entities/season.ts';
 import { goods, invalid } from '../services/validation.ts';
 
-async function crop(ctx: Context, { row, previous }: HookArgs): Promise<void> { await goods(ctx, row.productId ?? previous?.productId); }
+async function crop(ctx: Context, { row, previous }: HookArgs): Promise<void> {
+  await goods(ctx, row.productId ?? previous?.productId);
+}
 async function season(_ctx: Context, { row, previous }: HookArgs): Promise<void> {
   const merged = { ...previous, ...row };
-  if (String(merged.startDate) > String(merged.endDate)) invalid('endDate', 'The planned end date must be on or after the start date.');
+  if (String(merged.startDate) > String(merged.endDate))
+    invalid('endDate', 'The planned end date must be on or after the start date.');
 }
 async function submitSeason(ctx: Context, { row }: HookArgs): Promise<void> {
   const field = await repo(ctx, FarmField).get(String(row.fieldId));

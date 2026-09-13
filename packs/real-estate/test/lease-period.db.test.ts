@@ -22,10 +22,19 @@ beforeAll(async () => {
   unitId = String(units.items.find((r) => r.code === '201')?.id);
   otherUnitId = String(units.items.find((r) => r.code === '101')?.id);
 });
-afterAll(async () => { await db.close(); });
+afterAll(async () => {
+  await db.close();
+});
 
 async function draft(startDate: string, endDate: string, unit = unitId): Promise<string> {
-  const row = await s.act<Row>(D, 'contract.create', { partnerId, title: 'Lease', startDate, endDate, ext: { unitId: unit }, lines: { contract_line: [{ description: 'Rent', quantity: '1', unitPrice: '1000', taxCategory: 'non_taxable' }] } });
+  const row = await s.act<Row>(D, 'contract.create', {
+    partnerId,
+    title: 'Lease',
+    startDate,
+    endDate,
+    ext: { unitId: unit },
+    lines: { contract_line: [{ description: 'Rent', quantity: '1', unitPrice: '1000', taxCategory: 'non_taxable' }] },
+  });
   return String(row.id);
 }
 const submit = (id: string) => s.act(D, 'contract.submit', { id });
@@ -47,7 +56,11 @@ describe('lease occupancy intervals', () => {
     await expect(submit(boundary)).rejects.toMatchObject({ code: 'CONFLICT' });
     await submit(await draft('2027-05-01', '2027-05-31'));
     await submit(await draft('2027-04-01', '2027-04-30', otherUnitId));
-    await expect(s.act(D, 'contract.update', { id, patch: { ext: { unitId: otherUnitId } } })).rejects.toMatchObject({ code: 'INVALID_STATE' });
-    await expect(s.act(D, 'contract.update', { id, patch: { endDate: '2027-05-01' } })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(s.act(D, 'contract.update', { id, patch: { ext: { unitId: otherUnitId } } })).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+    await expect(s.act(D, 'contract.update', { id, patch: { endDate: '2027-05-01' } })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
   });
 });

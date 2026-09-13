@@ -2,47 +2,91 @@ import { findScreen, openScreen } from './navigation-helpers.ts';
 import { expect, test } from '@playwright/test';
 import { PASSWORD, api, login, openOperations, type Row } from './operations-helpers.ts';
 
-test('access recovery: a revoked selected company can be replaced by a remaining membership', async ({ page, request }) => {
+test('access recovery: a revoked selected company can be replaced by a remaining membership', async ({
+  page,
+  request,
+}) => {
   test.setTimeout(120_000);
   page.setDefaultTimeout(20_000);
-  const admin = await api<{ token: string; user: { defaultCompanyId: string } }>(request, {}, '/auth/login', { email: process.env.E2E_EMAIL ?? 'admin@example.com', password: process.env.E2E_PASSWORD ?? 'password' });
+  const admin = await api<{ token: string; user: { defaultCompanyId: string } }>(request, {}, '/auth/login', {
+    email: process.env.E2E_EMAIL ?? 'admin@example.com',
+    password: process.env.E2E_PASSWORD ?? 'password',
+  });
   const adminHeaders = { authorization: 'Bearer ' + admin.token, 'x-company-id': admin.user.defaultCompanyId };
-  const directory = await api<{ companies: { id: string; code: string; name: string }[] }>(request, adminHeaders, '/admin/access');
+  const directory = await api<{ companies: { id: string; code: string; name: string }[] }>(
+    request,
+    adminHeaders,
+    '/admin/access',
+  );
   const demo = directory.companies.find((company) => company.code === 'DEMO');
   const restaurant = directory.companies.find((company) => company.code === 'DEMO_RESTAURANT');
-  expect(demo).toBeDefined(); expect(restaurant).toBeDefined();
+  expect(demo).toBeDefined();
+  expect(restaurant).toBeDefined();
   if (!demo || !restaurant) throw new Error('Separate Demo and restaurant sample companies are required.');
-  const stores = await api<{ items: Row[] }>(request, { ...adminHeaders, 'x-company-id': restaurant.id }, '/api/restaurant_chain_store?limit=500');
-  const store = stores.items.find((item) => item.code === 'RC-A'); expect(store).toBeDefined();
+  const stores = await api<{ items: Row[] }>(
+    request,
+    { ...adminHeaders, 'x-company-id': restaurant.id },
+    '/api/restaurant_chain_store?limit=500',
+  );
+  const store = stores.items.find((item) => item.code === 'RC-A');
+  expect(store).toBeDefined();
   if (!store) throw new Error('A seeded restaurant store is required.');
   const email = 'access-recovery.' + Date.now() + '@example.com';
   const user = await api(request, adminHeaders, '/admin/users', { name: '会社復帰UI検証', email, password: PASSWORD });
   // Demo remains the default; the browser's explicit restaurant selection will later become stale.
-  await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + demo.id, { expectedVersion: 0, roles: ['viewer'], accessScope: 'all', storeIds: [] }, 'PUT');
-  await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + restaurant.id, { expectedVersion: 0, roles: ['chain_staff'], accessScope: 'stores', storeIds: [store.id] }, 'PUT');
+  await api(
+    request,
+    adminHeaders,
+    '/admin/users/' + user.id + '/companies/' + demo.id,
+    { expectedVersion: 0, roles: ['viewer'], accessScope: 'all', storeIds: [] },
+    'PUT',
+  );
+  await api(
+    request,
+    adminHeaders,
+    '/admin/users/' + user.id + '/companies/' + restaurant.id,
+    { expectedVersion: 0, roles: ['chain_staff'], accessScope: 'stores', storeIds: [store.id] },
+    'PUT',
+  );
   await login(page, email, PASSWORD);
   await openScreen(page, '/templates');
   const picker = page.getByLabel('対象の会社', { exact: true });
   await expect(picker).toHaveValue(demo.id);
-  const selectedMeta = page.waitForResponse((r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === restaurant.id);
-  await picker.selectOption(restaurant.id); expect((await selectedMeta).status()).toBe(200);
+  const selectedMeta = page.waitForResponse(
+    (r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === restaurant.id,
+  );
+  await picker.selectOption(restaurant.id);
+  expect((await selectedMeta).status()).toBe(200);
   await findScreen(page, '/operations');
   await expect(page.locator('main a[href="/operations"]')).toBeVisible();
   await openOperations(page);
   await expect(page.getByLabel('対象店舗', { exact: true }).locator('option')).toHaveCount(2);
-  await api(request, adminHeaders, '/admin/users/' + user.id + '/companies/' + restaurant.id, { expectedVersion: 1 }, 'DELETE');
+  await api(
+    request,
+    adminHeaders,
+    '/admin/users/' + user.id + '/companies/' + restaurant.id,
+    { expectedVersion: 1 },
+    'DELETE',
+  );
 
-  const deniedMeta = page.waitForResponse((r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === restaurant.id);
+  const deniedMeta = page.waitForResponse(
+    (r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === restaurant.id,
+  );
   const remainingCompanies = page.waitForResponse((r) => r.url().endsWith('/auth/companies'));
-  await page.reload(); expect((await deniedMeta).status()).toBe(403);
-  const choices = await remainingCompanies; expect(choices.status()).toBe(200);
+  await page.reload();
+  expect((await deniedMeta).status()).toBe(403);
+  const choices = await remainingCompanies;
+  expect(choices.status()).toBe(200);
   expect(await choices.json()).toMatchObject({ companyId: demo.id, items: [{ id: demo.id }] });
   await expect(page.getByRole('alert').filter({ hasText: '利用できる会社を選び直してください' })).toBeVisible();
   await expect(page.getByTestId('operations-board')).toHaveCount(0);
   await expect(picker).toHaveValue('');
   await expect(picker.locator('option')).toHaveText(['会社を選択', demo.name]);
-  const recoveredMeta = page.waitForResponse((r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === demo.id);
-  await picker.selectOption(demo.id); expect((await recoveredMeta).status()).toBe(200);
+  const recoveredMeta = page.waitForResponse(
+    (r) => r.url().endsWith('/meta') && r.request().headers()['x-company-id'] === demo.id,
+  );
+  await picker.selectOption(demo.id);
+  expect((await recoveredMeta).status()).toBe(200);
   await expect(page).toHaveURL(/\/templates$/);
   await expect(page.getByRole('heading', { name: 'あなたの仕事に、ぴったりの入口を。', exact: true })).toBeVisible();
   await expect(picker).toHaveValue(demo.id);

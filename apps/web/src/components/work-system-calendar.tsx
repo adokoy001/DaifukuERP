@@ -1,8 +1,111 @@
 import type { WorkSystemDay } from '../lib/work-system-form.ts';
 import { timeInput, timeMinute } from '../lib/work-system-form.ts';
 import { useLocale } from '../i18n.tsx';
-export function WorkSystemCalendar({ days, onChange, readOnly = false }: { days: WorkSystemDay[]; onChange?: (days: WorkSystemDay[]) => void; readOnly?: boolean }) {
+export function WorkSystemCalendar({
+  days,
+  onChange,
+  readOnly = false,
+}: {
+  days: WorkSystemDay[];
+  onChange?: (days: WorkSystemDay[]) => void;
+  readOnly?: boolean;
+}) {
   const { t, locale } = useLocale();
-  const update = (date: string, patch: Partial<WorkSystemDay>) => onChange?.(days.map((day) => day.date === date ? { ...day, ...patch } : day));
-  return <div className="table-scroll work-system-calendar"><table className="data-table"><thead><tr><th>{t({ ja: '日付', en: 'Date' })}</th><th>{t({ ja: '予定開始', en: 'Starts' })}</th><th>{t({ ja: '予定終了', en: 'Ends' })}</th><th>{t({ ja: '所定（分）', en: 'Scheduled minutes' })}</th><th>{t({ ja: '法定休日', en: 'Statutory holiday' })}</th></tr></thead><tbody>{days.map((day) => <tr key={day.date}><th>{day.date}<small> {new Date(day.date + 'T00:00:00Z').toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'en-US', { weekday: 'short', timeZone: 'UTC' })}</small></th><td><input className="input" type="time" aria-label={`${day.date} ${t({ ja: '予定開始', en: 'start' })}`} value={timeInput(day.startMinute)} onChange={(event) => update(day.date, { startMinute: timeMinute(event.target.value) })} readOnly={readOnly} required /></td><td><select className="input" aria-label={`${day.date} ${t({ ja: '終了の扱い', en: 'end boundary' })}`} value={day.endMinute === 1440 ? 'midnight' : 'time'} disabled={readOnly} onChange={(event) => update(day.date, { endMinute: event.target.value === 'midnight' ? 1440 : 1080 })}><option value="time">{t({ ja: '当日の時刻', en: 'Same-day time' })}</option><option value="midnight">{t({ ja: '24:00', en: '24:00' })}</option></select>{day.endMinute !== 1440 ? <input className="input" type="time" aria-label={`${day.date} ${t({ ja: '予定終了', en: 'end' })}`} value={timeInput(day.endMinute)} onChange={(event) => update(day.date, { endMinute: timeMinute(event.target.value) })} readOnly={readOnly} required /> : null}</td><td><input className="input" type="number" min={0} max={960} step={1} aria-label={`${day.date} ${t({ ja: '所定分数', en: 'scheduled minutes' })}`} value={day.scheduledMinutes} onChange={(event) => update(day.date, { scheduledMinutes: event.target.value === '' ? 0 : Number(event.target.value) })} readOnly={readOnly} required /></td><td><input type="checkbox" aria-label={`${day.date} ${t({ ja: '法定休日', en: 'statutory holiday' })}`} checked={day.statutoryHoliday} onChange={(event) => update(day.date, { statutoryHoliday: event.target.checked, ...(event.target.checked ? { scheduledMinutes: 0 } : {}) })} disabled={readOnly} /></td></tr>)}</tbody></table></div>;
+  const update = (date: string, patch: Partial<WorkSystemDay>) =>
+    onChange?.(days.map((day) => (day.date === date ? { ...day, ...patch } : day)));
+  return (
+    <div className="table-scroll work-system-calendar">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>{t({ ja: '日付', en: 'Date' })}</th>
+            <th>{t({ ja: '予定開始', en: 'Starts' })}</th>
+            <th>{t({ ja: '予定終了', en: 'Ends' })}</th>
+            <th>{t({ ja: '所定（分）', en: 'Scheduled minutes' })}</th>
+            <th>{t({ ja: '法定休日', en: 'Statutory holiday' })}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((day) => (
+            <tr key={day.date}>
+              <th>
+                {day.date}
+                <small>
+                  {' '}
+                  {new Date(day.date + 'T00:00:00Z').toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'en-US', {
+                    weekday: 'short',
+                    timeZone: 'UTC',
+                  })}
+                </small>
+              </th>
+              <td>
+                <input
+                  className="input"
+                  type="time"
+                  aria-label={`${day.date} ${t({ ja: '予定開始', en: 'start' })}`}
+                  value={timeInput(day.startMinute)}
+                  onChange={(event) => update(day.date, { startMinute: timeMinute(event.target.value) })}
+                  readOnly={readOnly}
+                  required
+                />
+              </td>
+              <td>
+                <select
+                  className="input"
+                  aria-label={`${day.date} ${t({ ja: '終了の扱い', en: 'end boundary' })}`}
+                  value={day.endMinute === 1440 ? 'midnight' : 'time'}
+                  disabled={readOnly}
+                  onChange={(event) => update(day.date, { endMinute: event.target.value === 'midnight' ? 1440 : 1080 })}
+                >
+                  <option value="time">{t({ ja: '当日の時刻', en: 'Same-day time' })}</option>
+                  <option value="midnight">{t({ ja: '24:00', en: '24:00' })}</option>
+                </select>
+                {day.endMinute !== 1440 ? (
+                  <input
+                    className="input"
+                    type="time"
+                    aria-label={`${day.date} ${t({ ja: '予定終了', en: 'end' })}`}
+                    value={timeInput(day.endMinute)}
+                    onChange={(event) => update(day.date, { endMinute: timeMinute(event.target.value) })}
+                    readOnly={readOnly}
+                    required
+                  />
+                ) : null}
+              </td>
+              <td>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={960}
+                  step={1}
+                  aria-label={`${day.date} ${t({ ja: '所定分数', en: 'scheduled minutes' })}`}
+                  value={day.scheduledMinutes}
+                  onChange={(event) =>
+                    update(day.date, { scheduledMinutes: event.target.value === '' ? 0 : Number(event.target.value) })
+                  }
+                  readOnly={readOnly}
+                  required
+                />
+              </td>
+              <td>
+                <input
+                  type="checkbox"
+                  aria-label={`${day.date} ${t({ ja: '法定休日', en: 'statutory holiday' })}`}
+                  checked={day.statutoryHoliday}
+                  onChange={(event) =>
+                    update(day.date, {
+                      statutoryHoliday: event.target.checked,
+                      ...(event.target.checked ? { scheduledMinutes: 0 } : {}),
+                    })
+                  }
+                  disabled={readOnly}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

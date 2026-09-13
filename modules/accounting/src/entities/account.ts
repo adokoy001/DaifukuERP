@@ -46,22 +46,34 @@ export const Account = defineEntity({
     }),
     subtype: f.text({
       label: label('小区分', 'Subtype'),
-      description: label('現金預金／売掛金／買掛金／仮受消費税／仮払消費税／売上／仕入／販管費 など', 'e.g. cash, receivable, payable, output tax, input tax, sales, purchases, SG&A'),
+      description: label(
+        '現金預金／売掛金／買掛金／仮受消費税／仮払消費税／売上／仕入／販管費 など',
+        'e.g. cash, receivable, payable, output tax, input tax, sales, purchases, SG&A',
+      ),
       maxLength: 50,
       index: true,
     }),
     isActive: f.bool({ label: label('有効', 'Active'), required: true, default: true }),
-    taxCategoryDefault: f.enum(TAX_CATEGORIES, { label: label('既定の税区分', 'Default tax category'), labels: TAX_CATEGORY_LABELS }),
+    taxCategoryDefault: f.enum(TAX_CATEGORIES, {
+      label: label('既定の税区分', 'Default tax category'),
+      labels: TAX_CATEGORY_LABELS,
+    }),
     taxRole: f.enum(TAX_ROLES, {
       label: label('消費税の役割', 'Consumption tax role'),
-      description: label('仮受消費税は output_tax、仮払消費税は input_tax（消費税集計表が税額行として扱う）', 'output_tax for 仮受消費税, input_tax for 仮払消費税 (the tax period summary reads these lines as tax amounts)'),
+      description: label(
+        '仮受消費税は output_tax、仮払消費税は input_tax（消費税集計表が税額行として扱う）',
+        'output_tax for 仮受消費税, input_tax for 仮払消費税 (the tax period summary reads these lines as tax amounts)',
+      ),
       required: true,
       default: 'none',
       labels: TAX_ROLE_LABELS,
     }),
     partnerRequired: f.bool({
       label: label('取引先必須', 'Partner required'),
-      description: label('売掛金・買掛金は true（明細に取引先が無いと転記不可）', 'true for receivables/payables: lines must carry a partner'),
+      description: label(
+        '売掛金・買掛金は true（明細に取引先が無いと転記不可）',
+        'true for receivables/payables: lines must carry a partner',
+      ),
       required: true,
       default: false,
     }),

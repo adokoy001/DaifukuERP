@@ -25,7 +25,9 @@ describe('entity DSL (ADR-0002)', () => {
 
   it('AC-2 derives DB columns (snake_case) and system columns', () => {
     expect(TPartner.columnNames.nameKana).toBe('name_kana');
-    expect(Object.keys(TPartner.columns)).toEqual(expect.arrayContaining(['id', 'tenantId', 'companyId', 'createdAt', 'version', 'ext', 'name']));
+    expect(Object.keys(TPartner.columns)).toEqual(
+      expect.arrayContaining(['id', 'tenantId', 'companyId', 'createdAt', 'version', 'ext', 'name']),
+    );
     expect(Object.keys(TMemo.columns)).toEqual(expect.arrayContaining(['docstatus', 'number', 'amendedFrom']));
     expect(TPartner.displayField).toBe('name');
   });
@@ -50,16 +52,31 @@ describe('entity DSL (ADR-0002)', () => {
   it('AC-4 registers entities, actions and module in the registry', () => {
     expect(registry.entity('test_partner').module).toBe('test');
     expect(registry.action('test.echo').module).toBe('test');
-    expect(registry.module('test').entities.map((e) => e.name)).toEqual(['test_partner', 'test_memo', 'test_memo_line']);
+    expect(registry.module('test').entities.map((e) => e.name)).toEqual([
+      'test_partner',
+      'test_memo',
+      'test_memo_line',
+    ]);
     expect(registry.hooksFor('test_partner', 'before_validate')).toHaveLength(1);
   });
 
   it('AC-5 rejects invalid definitions with actionable errors', async () => {
     const { defineEntity } = await import('../src/dsl/entity.ts');
     const { f } = await import('../src/dsl/fields.ts');
-    expect(() => defineEntity({ name: 'BadName', label: { ja: 'x', en: 'x' }, fields: {}, permissions: { roles: {} } })).toThrow(/snake_case/);
-    expect(() => defineEntity({ name: 'x_reserved', label: { ja: 'x', en: 'x' }, fields: { id: f.text() }, permissions: { roles: {} } })).toThrow(/reserved/);
-    expect(() => defineEntity({ name: 'test_partner', label: { ja: 'x', en: 'x' }, fields: {}, permissions: { roles: {} } })).toThrow(/already registered/);
+    expect(() =>
+      defineEntity({ name: 'BadName', label: { ja: 'x', en: 'x' }, fields: {}, permissions: { roles: {} } }),
+    ).toThrow(/snake_case/);
+    expect(() =>
+      defineEntity({
+        name: 'x_reserved',
+        label: { ja: 'x', en: 'x' },
+        fields: { id: f.text() },
+        permissions: { roles: {} },
+      }),
+    ).toThrow(/reserved/);
+    expect(() =>
+      defineEntity({ name: 'test_partner', label: { ja: 'x', en: 'x' }, fields: {}, permissions: { roles: {} } }),
+    ).toThrow(/already registered/);
   });
 });
 

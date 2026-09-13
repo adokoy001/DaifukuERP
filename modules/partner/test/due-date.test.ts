@@ -7,7 +7,11 @@ const ymd = (y: number, m: number, d: number) => `${pad(y, 4)}-${pad(m, 2)}-${pa
 
 /** Any valid calendar date in 2000..2099 (leap years included). */
 const arbDate = fc
-  .record({ y: fc.integer({ min: 2000, max: 2099 }), m: fc.integer({ min: 1, max: 12 }), dayFrac: fc.integer({ min: 1, max: 31 }) })
+  .record({
+    y: fc.integer({ min: 2000, max: 2099 }),
+    m: fc.integer({ min: 1, max: 12 }),
+    dayFrac: fc.integer({ min: 1, max: 31 }),
+  })
   .map(({ y, m, dayFrac }) => ymd(y, m, Math.min(dayFrac, daysInMonth(y, m))));
 const arbTerms = fc.record({
   closingDay: fc.integer({ min: 1, max: 31 }),
@@ -31,7 +35,10 @@ describe('computeDueDate (spec AC-10, AC-5) — examples', () => {
   it('20日締め翌月10日払い: on/before the 20th belongs to this period, after it to the next', () => {
     expect(computeDueDate('2026-09-20', 20, 1, 10)).toBe('2026-10-10');
     expect(computeDueDate('2026-09-21', 20, 1, 10)).toBe('2026-11-10');
-    expect(resolveDueDate('2026-09-21', { closingDay: 20, paymentMonthOffset: 1, paymentDay: 10 })).toEqual({ closingDate: '2026-10-20', dueDate: '2026-11-10' });
+    expect(resolveDueDate('2026-09-21', { closingDay: 20, paymentMonthOffset: 1, paymentDay: 10 })).toEqual({
+      closingDate: '2026-10-20',
+      dueDate: '2026-11-10',
+    });
   });
 
   it('offset 0 (当月払い): a payment day before the closing date rolls to the following month', () => {

@@ -8,7 +8,14 @@ import { TaxRate } from '../entities/tax-rate.ts';
 type TaxRateInsert = InsertInput<typeof TaxRate>;
 
 export const SEED_TAX_RATES: readonly TaxRateInsert[] = [
-  { code: 'STD8', category: 'standard', rate: '0.08', validFrom: '2014-04-01', validTo: '2019-09-30', label: '標準8%（2014-04〜2019-09）' },
+  {
+    code: 'STD8',
+    category: 'standard',
+    rate: '0.08',
+    validFrom: '2014-04-01',
+    validTo: '2019-09-30',
+    label: '標準8%（2014-04〜2019-09）',
+  },
   { code: 'STD10', category: 'standard', rate: '0.10', validFrom: '2019-10-01', validTo: null, label: '標準10%' },
   { code: 'RED8', category: 'reduced', rate: '0.08', validFrom: '2019-10-01', validTo: null, label: '軽減8%' },
   { code: 'EXEMPT', category: 'exempt', rate: '0', validFrom: '2019-10-01', validTo: null, label: '免税' },

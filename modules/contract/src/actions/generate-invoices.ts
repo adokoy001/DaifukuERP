@@ -32,7 +32,12 @@ export const generateInvoicesInput = z.object({
 });
 export type GenerateInvoicesInput = z.output<typeof generateInvoicesInput>;
 
-const createdItem = z.object({ contractId: z.uuid(), invoiceId: z.uuid(), number: z.string().nullable(), total: z.string() });
+const createdItem = z.object({
+  contractId: z.uuid(),
+  invoiceId: z.uuid(),
+  number: z.string().nullable(),
+  total: z.string(),
+});
 const skippedItem = z.object({
   contractId: z.uuid(),
   reason: z.enum(SKIP_REASONS),
@@ -50,7 +55,13 @@ export function invoiceNote(contractNumber: string, period: Period): string {
   return `契約 ${contractNumber} ${period} 分`;
 }
 
-async function createInvoice(ctx: Context, contract: ContractRow, plan: DuePlan, period: Period, submit: boolean): Promise<CreatedItem> {
+async function createInvoice(
+  ctx: Context,
+  contract: ContractRow,
+  plan: DuePlan,
+  period: Period,
+  submit: boolean,
+): Promise<CreatedItem> {
   const invoices = repo(ctx, SalesInvoice);
   const head = await invoices.create({
     partnerId: contract.partnerId,
@@ -60,22 +71,53 @@ async function createInvoice(ctx: Context, contract: ContractRow, plan: DuePlan,
     priceIncludesTax: false,
     note: invoiceNote(contract.number ?? contract.id, period),
   });
-  const lines = plan.lines.map((l) => ({ productId: l.productId, description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, taxCategory: l.taxCategory, ext: postingDimensions('contract_line', SalesInvoiceLine.name, l.ext) }));
+  const lines = plan.lines.map((l) => ({
+    productId: l.productId,
+    description: l.description,
+    quantity: l.quantity,
+    unitPrice: l.unitPrice,
+    taxCategory: l.taxCategory,
+    ext: postingDimensions('contract_line', SalesInvoiceLine.name, l.ext),
+  }));
   await saveLines(ctx, SalesInvoice, head.id, { [SalesInvoiceLine.name]: lines });
-  await withBillingWrite(ctx, (ctx) => repo(ctx, ContractBilling).create({ contractId: contract.id, period, invoiceId: head.id }));
+  await withBillingWrite(ctx, (ctx) =>
+    repo(ctx, ContractBilling).create({ contractId: contract.id, period, invoiceId: head.id }),
+  );
   if (submit) await runAction(ctx, 'sales_invoice.submit', { id: head.id });
   await repo(ctx, Contract).update(contract.id, {});
   const invoice = await invoices.get(head.id);
-  const item = { contractId: contract.id, invoiceId: invoice.id, number: invoice.number, total: invoice.total.toString() };
-  await ctx.emit(INVOICE_GENERATED_EVENT, { ...item, contractNumber: contract.number, period, factor: formatFraction(plan.factor), submitted: submit });
+  const item = {
+    contractId: contract.id,
+    invoiceId: invoice.id,
+    number: invoice.number,
+    total: invoice.total.toString(),
+  };
+  await ctx.emit(INVOICE_GENERATED_EVENT, {
+    ...item,
+    contractNumber: contract.number,
+    period,
+    factor: formatFraction(plan.factor),
+    submitted: submit,
+  });
   return item;
 }
 
-async function createLogged(ctx: Context, contract: ContractRow, plan: DuePlan, period: Period, submit: boolean): Promise<CreatedItem> {
+async function createLogged(
+  ctx: Context,
+  contract: ContractRow,
+  plan: DuePlan,
+  period: Period,
+  submit: boolean,
+): Promise<CreatedItem> {
   try {
     return await createInvoice(ctx, contract, plan, period, submit);
   } catch (err) {
-    ctx.log.warn('contract invoice generation failed; the whole run is rolled back', { contractId: contract.id, contractNumber: contract.number, period, error: err instanceof Error ? err.message : String(err) });
+    ctx.log.warn('contract invoice generation failed; the whole run is rolled back', {
+      contractId: contract.id,
+      contractNumber: contract.number,
+      period,
+      error: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }
@@ -85,7 +127,8 @@ export async function generateInvoices(ctx: Context, input: GenerateInvoicesInpu
   const submit = input.submit ?? (await loadAutoSubmit(ctx));
   const candidates = await loadCandidates(ctx, input.period, input.contractId);
   const contracts: ContractRow[] = [];
-  for (const candidate of candidates.sort((a, b) => a.id.localeCompare(b.id))) contracts.push(await repo(ctx, Contract).lock(candidate.id));
+  for (const candidate of candidates.sort((a, b) => a.id.localeCompare(b.id)))
+    contracts.push(await repo(ctx, Contract).lock(candidate.id));
   const ids = contracts.map((c) => c.id);
   const billings = await billingsForPeriod(ctx, ids, input.period);
   const lines = await linesByContract(ctx, ids);
@@ -97,13 +140,28 @@ export async function generateInvoices(ctx: Context, input: GenerateInvoicesInpu
   const result: GenerateInvoicesResult = { created: [], skipped: [] };
   for (const contract of contracts) {
     const billing = billings.get(contract.id);
-    const plan = planPeriod({ terms: termsOf(contract), lines: lines.get(contract.id) ?? [], period: input.period, alreadyGenerated: billing !== undefined, scale });
+    const plan = planPeriod({
+      terms: termsOf(contract),
+      lines: lines.get(contract.id) ?? [],
+      period: input.period,
+      alreadyGenerated: billing !== undefined,
+      scale,
+    });
     if (plan.status === 'due') {
       result.created.push(await createLogged(ctx, contract, plan, input.period, submit));
       continue;
     }
     const { reason } = plan;
-    result.skipped.push(billing ? { contractId: contract.id, reason, invoiceId: billing.invoiceId, number: existing.get(billing.invoiceId)?.number ?? null } : { contractId: contract.id, reason });
+    result.skipped.push(
+      billing
+        ? {
+            contractId: contract.id,
+            reason,
+            invoiceId: billing.invoiceId,
+            number: existing.get(billing.invoiceId)?.number ?? null,
+          }
+        : { contractId: contract.id, reason },
+    );
   }
   return result;
 }

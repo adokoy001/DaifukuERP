@@ -161,7 +161,8 @@ export interface SettingMeta {
   value: unknown;
 }
 
-export type ErrorCode = 'VALIDATION' | 'PERMISSION_DENIED' | 'NOT_FOUND' | 'CONFLICT' | 'INVALID_STATE' | 'HAS_DEPENDENTS' | 'INTERNAL';
+export type ErrorCode =
+  'VALIDATION' | 'PERMISSION_DENIED' | 'NOT_FOUND' | 'CONFLICT' | 'INVALID_STATE' | 'HAS_DEPENDENTS' | 'INTERNAL';
 
 export interface ErrorBody {
   code: ErrorCode;

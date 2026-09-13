@@ -2,7 +2,18 @@
 // monthly rent (the lease's monthly lines for an occupied unit, the asking rent for a vacant one), tenant, lease start/end,
 // status and tax category; totals of the occupied rent split 課税 / 非課税 by the lease lines' tax categories.
 // Read-only (tx none); every read goes through the repository in the caller's context.
-import { defineAction, label, MAX_REPORT_ROWS, column, repo, tableResult, todayLocal, type Context, type LocalDate, type TableResult } from '@daifuku/kernel';
+import {
+  defineAction,
+  label,
+  MAX_REPORT_ROWS,
+  column,
+  repo,
+  tableResult,
+  todayLocal,
+  type Context,
+  type LocalDate,
+  type TableResult,
+} from '@daifuku/kernel';
 import { ContractLine } from '@daifuku/mod-contract';
 import { Partner } from '@daifuku/mod-partner';
 import { z } from 'zod';
@@ -50,7 +61,9 @@ async function loadLeases(ctx: Context, unitIds: readonly string[]): Promise<Ren
   const contracts = await leasesOfUnits(ctx, unitIds);
   const ids = contracts.map((c) => c.id);
   const lr = repo(ctx, ContractLine);
-  const lines = await inChunks(ids, (chunk) => allPages((offset) => lr.list({ where: { contractId: { $in: chunk } }, limit: 500, offset })));
+  const lines = await inChunks(ids, (chunk) =>
+    allPages((offset) => lr.list({ where: { contractId: { $in: chunk } }, limit: 500, offset })),
+  );
   const names = await partnerNames(
     ctx,
     contracts.map((c) => c.partnerId),
@@ -58,8 +71,20 @@ async function loadLeases(ctx: Context, unitIds: readonly string[]): Promise<Ren
   return contracts.flatMap((c) => {
     const unitId = unitIdOf(c);
     if (unitId === null) return [];
-    const own = lines.filter((l) => l.contractId === c.id).map((l) => ({ amount: l.amount, taxCategory: l.taxCategory }));
-    return [{ contractId: c.id, unitId, partnerId: c.partnerId, partnerName: names.get(c.partnerId) ?? c.partnerId, startDate: c.startDate, endDate: c.endDate, lines: own }];
+    const own = lines
+      .filter((l) => l.contractId === c.id)
+      .map((l) => ({ amount: l.amount, taxCategory: l.taxCategory }));
+    return [
+      {
+        contractId: c.id,
+        unitId,
+        partnerId: c.partnerId,
+        partnerName: names.get(c.partnerId) ?? c.partnerId,
+        startDate: c.startDate,
+        endDate: c.endDate,
+        lines: own,
+      },
+    ];
   });
 }
 
