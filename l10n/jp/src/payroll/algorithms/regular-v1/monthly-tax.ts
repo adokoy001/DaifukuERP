@@ -1,10 +1,15 @@
 import { Decimal } from '@daifuku/kernel';
-import { MONTHLY_TAX_2026 } from './fiscal-data.ts';
+import type { JapanPayrollRules } from '../../schema.ts';
 const D = Decimal.from;
 export const positive = (value: Decimal): Decimal => (value.isNegative() ? D(0) : value);
-export function monthlyWithholding(taxablePay: Decimal, socialPremium: Decimal, dependents: number) {
+export function monthlyWithholding(
+  rules: JapanPayrollRules,
+  taxablePay: Decimal,
+  socialPremium: Decimal,
+  dependents: number,
+) {
   const a = positive(taxablePay.minus(socialPremium));
-  const rule = MONTHLY_TAX_2026,
+  const rule = rules.data.monthlyTax,
     salary = rule.salary.find((row) => row.to === null || a.lte(row.to));
   if (!salary) throw new Error('Incomplete versioned monthly tax table');
   const salaryDeduction = a.times(salary.rate).plus(salary.fixed).roundUp(0);
@@ -26,6 +31,6 @@ export function monthlyWithholding(taxablePay: Decimal, socialPremium: Decimal, 
     dependentDeduction,
     taxableIncome: b,
     incomeTax,
-    method: '2026-ko-electronic-exception',
+    method: rules.data.monthlyMethod,
   };
 }

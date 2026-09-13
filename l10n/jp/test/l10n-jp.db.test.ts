@@ -15,6 +15,7 @@ import {
 } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { filingProfiles } from '@daifuku/mod-tax-filing';
+import { PAYROLL_RULE_PROVIDERS_OVERRIDE, type PayrollRuleProviders } from '@daifuku/mod-workforce';
 import { Account } from '@daifuku/mod-accounting';
 import {
   SEED_TAX_RATES,
@@ -50,11 +51,11 @@ afterAll(async () => {
 });
 
 describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
-  it('AC-6 registers module l10n_jp with no entities, depending on accounting, tax and tax-filing, with country overrides', () => {
+  it('AC-6 registers module l10n_jp with no entities, depending on accounting, tax, tax-filing and workforce, with country overrides', () => {
     const m = registry.module('l10n_jp');
     expect(m).toBe(JapanModule);
     expect(m.label).toEqual({ ja: '日本ローカライズ', en: 'Japan localisation' });
-    expect([...m.depends]).toEqual(['accounting', 'tax', 'tax_filing']);
+    expect([...m.depends]).toEqual(['accounting', 'tax', 'tax_filing', 'workforce']);
     expect(m.entities).toHaveLength(0);
     expect(registry.allEntities().filter((e) => e.module === 'l10n_jp')).toHaveLength(0);
     expect(registry.allActions().filter((a) => a.module === 'l10n_jp')).toHaveLength(0);
@@ -65,6 +66,10 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
         .sort(),
     ).toEqual(['accounting', 'l10n_jp', 'partner', 'tax', 'tax_filing', 'workforce']);
     expect(filingProfiles().map((p) => p.option.code)).toEqual(['jp-hot010-general-v3', 'jp-payroll-preparation-2026']);
+    const payrollProviders = registry.override<PayrollRuleProviders>(PAYROLL_RULE_PROVIDERS_OVERRIDE, () => [])();
+    expect(
+      payrollProviders.map((provider) => ({ id: provider.id, country: provider.country, currency: provider.currency })),
+    ).toEqual([{ id: 'jp-regular', country: 'JP', currency: 'JPY' }]);
 
     const ratioFallback: ExemptSupplierCreditRatioFn = () => Decimal.zero();
     const ratio = registry.override(EXEMPT_SUPPLIER_CREDIT_RATIO_OVERRIDE, ratioFallback);

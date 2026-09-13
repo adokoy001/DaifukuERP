@@ -79,12 +79,14 @@ function MembershipField({
   );
 }
 function ConditionDialog({
+  taxYear,
   employee,
   original,
   current,
   future = false,
   onClose,
 }: {
+  taxYear: number;
   employee: FiscalBoard['employees'][number];
   original?: Condition;
   current?: Condition | undefined;
@@ -159,7 +161,7 @@ function ConditionDialog({
               className="input"
               type="date"
               name="validFrom"
-              defaultValue={future ? businessToday() : (original?.validFrom ?? '2026-01-01')}
+              defaultValue={future ? businessToday() : (original?.validFrom ?? `${taxYear}-01-01`)}
               required
             />
           </label>
@@ -170,7 +172,7 @@ function ConditionDialog({
               type="date"
               name="validTo"
               readOnly={future}
-              defaultValue={original?.validTo ?? '2026-12-31'}
+              defaultValue={original?.validTo ?? `${taxYear}-12-31`}
               required
             />
           </label>
@@ -366,6 +368,7 @@ export function FiscalConditions({ data, employeeId }: { data: FiscalBoard; empl
       )}
       {editing ? (
         <ConditionDialog
+          taxYear={data.taxYear}
           employee={editing.employee}
           future={editing.future ?? false}
           {...(editing.original

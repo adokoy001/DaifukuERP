@@ -41,6 +41,7 @@ flowchart TD
 - [文書の管理方法](documentation-contract.md): AIと人が同じ情報を使う仕組み。
 - [シフト推薦](shift-planning.md): 社員条件、週次希望、Worker、最新資料の再検査。
 - [企業運営拡張](enterprise-operations.md): OIDC/MFA/配送、POS、会社横断認可、連結/FC、給与税保険と勤務制度。
+- [給与制度の版と算定](payroll-automation.md): 国別データ、会社別導入、適用期間、旧記録の互換と確定時の再検査。[ADR-0024](../adr/0024-payroll-rule-releases.md) に採用理由を記録。
 - [商流・銀行・申告準備](commerce-finance.md): 分納/分割請求、明細と消込、振込出力、根拠を固定した財務諸表/給与資料。
 - [共通配備と店舗中継](deployment.md): クラウド/オンプレ同一配布物と外向きLAN連携。
 - [エッジサービス](edge-services.md): Windows/Linux/macOSの導入、専用アカウント、耐久更新とOS別検証。

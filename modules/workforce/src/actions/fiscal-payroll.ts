@@ -7,20 +7,15 @@ import {
   statutoryPayrollInput,
   supersedePayrollConditionInput,
 } from '../fiscal-contract.ts';
-import {
-  WorkforceEmployee,
-  WorkforcePayroll,
-  WorkforcePayrollCondition,
-  WorkforcePayrollRules,
-} from '../entities/index.ts';
+import { WorkforceEmployee, WorkforcePayroll, WorkforcePayrollCondition } from '../entities/index.ts';
 import { P } from '../entities/common.ts';
 import { allRows, command, D, employeeLock, expectVersion, requireOther } from '../common.ts';
 import { internalWrite } from '../internal.ts';
 import { assertYearOpen, statutoryEnvelope, statutorySource } from '../fiscal-source.ts';
-import { FISCAL_CODE, FISCAL_DATA, FISCAL_SOURCES } from '../services/fiscal-data.ts';
+import { initializeLegacyPayrollRules } from '../payroll-rules/actions.ts';
+import { validatePayrollCondition } from '../payroll-rules/resolver.ts';
 import { stableJson } from '../services/json.ts';
 import { addDays, periodBounds } from '../services/time.ts';
-import { validateCondition } from '../services/social-insurance.ts';
 import { createTaxEvidence } from '../fiscal-evidence.ts';
 import { calculatePayroll } from './payroll.ts';
 import { workflowAction } from './define.ts';
@@ -29,22 +24,7 @@ export const initializePayrollRulesAction = workflowAction(
   '2026年の給与制度資料を準備',
   z.object({}).strict(),
   [P],
-  (ctx) =>
-    withLock(ctx, 'workforce:policies', async () => {
-      const found = (await allRows(ctx, WorkforcePayrollRules, { code: FISCAL_CODE }))[0];
-      if (found) return command(found);
-      return command(
-        await internalWrite(ctx, WorkforcePayrollRules, (write) =>
-          repo(write, WorkforcePayrollRules).create({
-            code: FISCAL_CODE,
-            taxYear: 2026,
-            data: FISCAL_DATA,
-            sources: FISCAL_SOURCES,
-            verifiedOn: FISCAL_DATA.verifiedOn,
-          }),
-        ),
-      );
-    }),
+  (ctx) => initializeLegacyPayrollRules(ctx),
   false,
 );
 export const savePayrollConditionAction = workflowAction(
@@ -57,7 +37,7 @@ export const savePayrollConditionAction = workflowAction(
       await repo(ctx, WorkforceEmployee).get(input.employeeId);
       const { conditionId, employeeId, expectedVersion, ...raw } = input,
         condition = payrollConditionData.parse(raw);
-      validateCondition(condition);
+      await validatePayrollCondition(ctx, condition);
       const prior = conditionId ? await repo(ctx, WorkforcePayrollCondition).get(conditionId) : null;
       if (prior && prior.employeeId !== employeeId)
         throw new StateError('本人条件の社員が一致しません', '対象の社員を選び直してください。');
@@ -91,7 +71,7 @@ export const savePayrollConditionAction = workflowAction(
 );
 export const calculateStatutoryPayrollAction = workflowAction(
   'calculate_statutory_payroll',
-  '勤怠給与と2026年の税・保険料を自動計算',
+  '勤怠給与と導入済み制度の税・保険料を自動計算',
   statutoryPayrollInput,
   [P],
   (ctx, input) =>
@@ -108,7 +88,7 @@ export const calculateStatutoryPayrollAction = workflowAction(
           source = await statutorySource(ctx, input, row);
         const calculation = {
           ...(row.calculation as Record<string, unknown>),
-          statutory: { input, evidence: source.evidence },
+          statutory: { input, evidence: source.evidence, snapshotSchema: source.snapshotSchema },
         };
         return command(
           await internalWrite(ctx, WorkforcePayroll, (write) =>
@@ -178,7 +158,7 @@ export const supersedePayrollConditionAction = workflowAction(
         );
       const { conditionId: _id, employeeId, expectedVersion: _version, ...raw } = input,
         condition = payrollConditionData.parse(raw);
-      validateCondition(condition);
+      await validatePayrollCondition(ctx, condition);
       const frozen = await allRows(ctx, WorkforcePayroll, { employeeId, docstatus: 1 });
       for (const payroll of frozen) {
         const envelope = statutoryEnvelope(payroll.calculation);

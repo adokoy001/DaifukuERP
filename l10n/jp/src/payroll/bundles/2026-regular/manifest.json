@@ -1,0 +1,19 @@
+{
+  "manifestSchema": 1,
+  "packageCode": "jp-2026-regular-20260912-v1",
+  "revision": 1,
+  "country": "JP",
+  "currency": "JPY",
+  "regime": "regular-ko-year-end",
+  "taxYear": 2026,
+  "dataSchema": "jp-payroll-data-v1",
+  "algorithmVersion": "jp-regular-v1",
+  "applicability": {
+    "paymentDates": { "from": "2026-01-01", "to": "2026-12-31" },
+    "insuranceMonths": { "from": "2025-12", "to": "2026-12" },
+    "wageCutoffDates": { "from": "2025-12-01", "to": "2026-12-31" },
+    "adjustmentDates": { "from": "2026-12-01", "to": "2027-01-31" },
+    "yearEndFactsOn": "2026-12-31",
+    "requiredFinalPaymentFrom": "2026-12-01"
+  }
+}

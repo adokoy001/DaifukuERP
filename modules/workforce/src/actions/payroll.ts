@@ -113,11 +113,14 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
       const envelope = statutoryEnvelope(row.calculation);
       if (envelope) {
         await assertYearOpen(ctx, row.employeeId, Number(envelope.input.paymentDate.slice(0, 4)));
-        const statutory = await statutorySource(ctx, envelope.input, row);
+        const statutory = await statutorySource(ctx, envelope.input, row, envelope.snapshotSchema);
         if (
           stableJson(statutory.evidence) !== stableJson(envelope.evidence) ||
           stableJson(input.deductions) !== stableJson(statutory.deductions) ||
-          stableJson(input.allowances) !== stableJson(statutory.allowances)
+          stableJson(input.allowances) !== stableJson(statutory.allowances) ||
+          !statutory.grossPay.eq(row.grossPay) ||
+          !statutory.deductionTotal.eq(row.deductionTotal) ||
+          !statutory.netPay.eq(row.netPay)
         )
           throw new StateError(
             '自動計算の条件・税保険料・手当が変更されています',
@@ -181,7 +184,7 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
         }),
       );
       if (envelope) {
-        const statutory = await statutorySource(ctx, envelope.input, row);
+        const statutory = await statutorySource(ctx, envelope.input, row, envelope.snapshotSchema);
         await createTaxEvidence(
           ctx,
           { ...row, deductions: input.deductions },
@@ -189,7 +192,7 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
             payrollId: row.id,
             paymentDate: envelope.input.paymentDate,
             taxablePay: statutory.evidence.taxablePay.toString(),
-            basis: '2026年の版管理された税・保険料自動計算。給与確定時の原資料を参照。',
+            basis: `${envelope.input.paymentDate.slice(0, 4)}年の版管理された税・保険料自動計算。給与確定時の原資料を参照。`,
             verified: true,
           },
         );

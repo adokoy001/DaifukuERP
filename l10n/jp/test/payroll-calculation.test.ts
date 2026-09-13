@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { Decimal } from '@daifuku/kernel';
-import { annualAdjustment, annualBasic, annualSalaryIncome } from '../src/services/annual-tax.ts';
-import { monthlyWithholding } from '../src/services/monthly-tax.ts';
-import { attainedAge, payrollInsuranceRound, socialInsurance } from '../src/services/social-insurance.ts';
-import { declarationDeductions } from '../src/services/annual-deductions.ts';
-import { FISCAL_DATA, HEALTH_GRADES, PENSION_GRADES } from '../src/services/fiscal-data.ts';
-import { condition, declaration } from './fiscal-fixtures.ts';
+import { annualAdjustment, annualBasic, annualSalaryIncome } from '../src/payroll/algorithms/regular-v1/annual-tax.ts';
+import { monthlyWithholding } from '../src/payroll/algorithms/regular-v1/monthly-tax.ts';
+import {
+  attainedAge,
+  payrollInsuranceRound,
+  socialInsurance,
+} from '../src/payroll/algorithms/regular-v1/social-insurance.ts';
+import { declarationDeductions } from '../src/payroll/algorithms/regular-v1/annual-deductions.ts';
+import { JAPAN_PAYROLL_PROVIDER } from '../src/payroll/provider.ts';
+import { parseJapanPayrollRules } from '../src/payroll/schema.ts';
+import { condition, declaration } from './payroll-fixtures.ts';
 const D = Decimal.from;
+const bundle = JAPAN_PAYROLL_PROVIDER.bundles()[0];
+if (!bundle) throw new Error('Missing legacy distribution fixture');
+const rules = parseJapanPayrollRules(bundle);
+const FISCAL_DATA = rules.data,
+  HEALTH_GRADES = rules.data.healthGrades,
+  PENSION_GRADES = rules.data.pensionGrades;
 describe('2026 official regular payroll calculation', () => {
   it.each([
     ['740999', '0'],
@@ -25,10 +36,10 @@ describe('2026 official regular payroll calculation', () => {
     ['6600001', '4840000'],
     ['20000000', '18050000'],
   ])('annual published table boundary %s => %s', (pay, expected) => {
-    expect(annualSalaryIncome(D(pay)).toString()).toBe(expected);
+    expect(annualSalaryIncome(rules, D(pay)).toString()).toBe(expected);
   });
   it('rejects salary beyond the statutory year-end adjustment limit', () => {
-    expect(() => annualSalaryIncome(D(20000001))).toThrow(/exceeds/);
+    expect(() => annualSalaryIncome(rules, D(20000001))).toThrow(/exceeds/);
   });
   it.each([
     ['4890000', '1040000'],
@@ -40,11 +51,11 @@ describe('2026 official regular payroll calculation', () => {
     ['24500001', '160000'],
     ['25000001', '0'],
   ])('December basic deduction boundary %s', (income, expected) => {
-    expect(annualBasic(D(income)).toString()).toBe(expected);
+    expect(annualBasic(rules, D(income)).toString()).toBe(expected);
   });
   it('keeps monthly old deduction distinct from the December annual amendment', () => {
-    const monthly = monthlyWithholding(D(300000), D(45000), 0),
-      annual = annualAdjustment(declaration(), D(3600000), D(600000), D(90000));
+    const monthly = monthlyWithholding(rules, D(300000), D(45000), 0),
+      annual = annualAdjustment(rules, declaration(), D(3600000), D(600000), D(90000));
     expect(monthly.salaryDeduction.toString()).toBe('83167');
     expect(monthly.basicDeduction.toString()).toBe('48334');
     expect(monthly.incomeTax.toString()).toBe('6300');
@@ -58,11 +69,11 @@ describe('2026 official regular payroll calculation', () => {
     ['66.49', '66'],
     ['1279.7', '1280'],
   ])('uses wage deduction rounding %s => %s', (raw, expected) => {
-    expect(payrollInsuranceRound(D(raw)).toString()).toBe(expected);
+    expect(payrollInsuranceRound(rules.manifest.parameters, D(raw)).toString()).toBe(expected);
   });
   it('uses insurance months and the wage cutoff independently of the eventual payment month', () => {
-    const march = socialInsurance(condition(), '2026-03', '2026-03-31', D(300000)),
-      april = socialInsurance(condition(), '2026-04', '2026-04-30', D(300000));
+    const march = socialInsurance(rules, condition(), '2026-03', '2026-03-31', D(300000)),
+      april = socialInsurance(rules, condition(), '2026-04', '2026-04-30', D(300000));
     expect(march.health.toString()).toBe('14775');
     expect(march.nursing.toString()).toBe('2430');
     expect(march.childSupport.toString()).toBe('0');
@@ -75,29 +86,54 @@ describe('2026 official regular payroll calculation', () => {
   it('applies the age-40/65 preceding-day rule to March 1 birthdays in February', () => {
     expect(attainedAge('1986-03-01', '2026-02-28')).toBe(40);
     expect(
-      socialInsurance(condition({ birthDate: '1986-03-01' }), '2026-01', '2026-01-31', D(300000)).nursing.toString(),
+      socialInsurance(
+        rules,
+        condition({ birthDate: '1986-03-01' }),
+        '2026-01',
+        '2026-01-31',
+        D(300000),
+      ).nursing.toString(),
     ).toBe('0');
     expect(
-      socialInsurance(condition({ birthDate: '1986-03-01' }), '2026-02', '2026-02-28', D(300000)).nursing.toString(),
+      socialInsurance(
+        rules,
+        condition({ birthDate: '1986-03-01' }),
+        '2026-02',
+        '2026-02-28',
+        D(300000),
+      ).nursing.toString(),
     ).toBe('2385');
     expect(
-      socialInsurance(condition({ birthDate: '1961-03-01' }), '2026-02', '2026-02-28', D(300000)).nursing.toString(),
+      socialInsurance(
+        rules,
+        condition({ birthDate: '1961-03-01' }),
+        '2026-02',
+        '2026-02-28',
+        D(300000),
+      ).nursing.toString(),
     ).toBe('0');
     expect(
-      socialInsurance(condition({ birthDate: '1961-03-02' }), '2026-02', '2026-02-28', D(300000)).nursing.toString(),
+      socialInsurance(
+        rules,
+        condition({ birthDate: '1961-03-02' }),
+        '2026-02',
+        '2026-02-28',
+        D(300000),
+      ).nursing.toString(),
     ).toBe('2385');
   });
   it('does not invent enrollment grades or unsupported-year rates', () => {
     expect(() =>
-      socialInsurance(condition({ healthStandardMonthly: '310000' }), '2026-08', '2026-08-31', D(300000)),
+      socialInsurance(rules, condition({ healthStandardMonthly: '310000' }), '2026-08', '2026-08-31', D(300000)),
     ).toThrow(/conditions/);
-    expect(() => socialInsurance(condition(), '2027-01', '2027-01-31', D(300000))).toThrow(/conditions/);
+    expect(() => socialInsurance(rules, condition(), '2027-01', '2027-01-31', D(300000))).toThrow(/conditions/);
     expect(HEALTH_GRADES).toHaveLength(50);
     expect(PENSION_GRADES).toHaveLength(32);
     expect(FISCAL_DATA.health.every((row) => row.percentages.length === 47)).toBe(true);
   });
   it('requires explicit exemption and keeps the agriculture employment worker rate', () => {
     const amounts = socialInsurance(
+      rules,
       condition({
         healthMembership: 'exempt',
         healthStandardMonthly: null,
@@ -132,15 +168,17 @@ describe('2026 official regular payroll calculation', () => {
       lifeNew: '120000',
       incomeAdjustmentEligible: true,
     });
-    const result = annualAdjustment(facts, D(8765432), D(1000000), D(500000));
+    const result = annualAdjustment(rules, facts, D(8765432), D(1000000), D(500000));
     expect(result.deductions.relatives.toString()).toBe('0');
     expect(result.deductions.disability.toString()).toBe('0');
     expect(result.deductions.insurance.generalLife.toString()).toBe('60000');
     expect(result.incomeAdjustment.toString()).toBe('26544');
   });
   it('calculates student, insurance, child and housing deductions from verified declaration facts', () => {
-    expect(declarationDeductions(declaration({ student: true }), D(890000), D(0)).student.toString()).toBe('270000');
-    expect(() => declarationDeductions(declaration({ student: true }), D(890001), D(0))).toThrow(/inconsistent/);
+    expect(declarationDeductions(rules, declaration({ student: true }), D(890000), D(0)).student.toString()).toBe(
+      '270000',
+    );
+    expect(() => declarationDeductions(rules, declaration({ student: true }), D(890001), D(0))).toThrow(/inconsistent/);
     const facts = declaration({
       relatives: [
         {
@@ -160,7 +198,7 @@ describe('2026 official regular payroll calculation', () => {
       pensionLifeNew: '80000',
       housingTaxCredit: '100000',
     });
-    const result = annualAdjustment(facts, D(3600000), D(600000), D(90000));
+    const result = annualAdjustment(rules, facts, D(3600000), D(600000), D(90000));
     expect(result.deductions.relatives.toString()).toBe('380000');
     expect(result.deductions.insurance.generalLife.toString()).toBe('60000');
     expect(result.deductions.life.toString()).toBe('120000');

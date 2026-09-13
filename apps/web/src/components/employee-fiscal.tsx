@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMyFiscal } from '../api/fiscal.ts';
 import { useLocale } from '../i18n.tsx';
 import { canRetainData } from '../lib/read-recovery.ts';
@@ -15,8 +15,12 @@ import {
 import type { MyFiscal } from '../api/fiscal.ts';
 export function EmployeeFiscal() {
   const { t } = useLocale(),
-    portal = useMyFiscal(true),
-    [editing, setEditing] = useState<{ declaration: MyFiscal['declaration'] }>();
+    [taxYear, setTaxYear] = useState<number>(),
+    portal = useMyFiscal(true, taxYear),
+    [editing, setEditing] = useState<{ taxYear: number; declaration: MyFiscal['declaration'] }>();
+  useEffect(() => {
+    if (taxYear === undefined && portal.data) setTaxYear(portal.data.taxYear);
+  }, [portal.data, taxYear]);
   if (portal.isError && !canRetainData(portal))
     return <WorkforceError error={portal.error} onRetry={() => void portal.refetch()} />;
   if (!portal.data) return <p role="status">{t({ ja: '読込中…', en: 'Loading…' })}</p>;
@@ -27,13 +31,32 @@ export function EmployeeFiscal() {
       <div className="workforce-stack">
         <ReadRefreshNotice />
         <WorkforcePanel
-          title={t({ ja: '2026年の年末調整', en: '2026 year-end adjustment' })}
+          title={t({ ja: `${data.taxYear}年の年末調整`, en: `${data.taxYear} year-end adjustment` })}
           icon="document"
           note={t({
             ja: '申告から還付・追加徴収まで、自分の内容を確認できます。',
             en: 'Review your own declaration, refund and additional withholding.',
           })}
         >
+          <div className="fiscal-toolbar">
+            <label>
+              {t({ ja: '税年', en: 'Tax year' })}
+              <select
+                className="input"
+                aria-label={t({ ja: '税年', en: 'Tax year' })}
+                value={data.taxYear}
+                onChange={(event) => setTaxYear(Number(event.target.value))}
+              >
+                {[...new Set([data.taxYear, ...data.availableTaxYears])]
+                  .sort((a, b) => b - a)
+                  .map((year) => (
+                    <option value={year} key={year}>
+                      {year}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
           {!data.employeeId ? (
             <WorkforceEmpty>
               {t({ ja: '先にこの会社の従業員登録が必要です。', en: 'An employee record in this company is required.' })}
@@ -61,8 +84,8 @@ export function EmployeeFiscal() {
               )}
               <button
                 className="btn btn-primary"
-                disabled={frozen}
-                onClick={() => setEditing({ declaration: data.declaration })}
+                disabled={frozen || !data.supportedTaxYears.includes(data.taxYear)}
+                onClick={() => setEditing({ taxYear: data.taxYear, declaration: data.declaration })}
               >
                 {t(
                   data.declaration
@@ -70,6 +93,14 @@ export function EmployeeFiscal() {
                     : { ja: '年末調整を申告', en: 'Start declaration' },
                 )}
               </button>
+              {!data.supportedTaxYears.includes(data.taxYear) ? (
+                <p className="workforce-notice">
+                  {t({
+                    ja: 'この税年の制度資料はこの会社に準備されていません。保存済みの結果は確認できます。申告の準備について給与担当へお問い合わせください。',
+                    en: 'This company has no installed rules for this tax year. Saved results remain available. Contact payroll about preparing a declaration.',
+                  })}
+                </p>
+              ) : null}
               {frozen ? (
                 <p className="account-help">
                   {t({
@@ -107,6 +138,8 @@ export function EmployeeFiscal() {
         ))}
         {editing ? (
           <FiscalDeclaration
+            taxYear={editing.taxYear}
+            readOnly={data.taxYear !== editing.taxYear || !data.supportedTaxYears.includes(editing.taxYear)}
             original={editing.declaration}
             current={data.declaration}
             onClose={() => setEditing(undefined)}
