@@ -18,7 +18,8 @@
 - [実測] JSのstatic/dynamic import、JSON/ファイルURL、public subpath、通常APIの実module graph、独立したsetup helpを検査した。ソースからのAPI buildとWeb buildは成功した。
 - [実測] format、全体/API/Webの型、lint/依存境界、単体123ファイル1,019件、配布16件、文書110件1,044リンク、assurance15条件が成功。API/Web/edge buildも成功した。
 - [実測] 一括 `pnpm gate` のDB段階は113ファイル680件が成功し、エッジ実APIの準備1ファイルで停止した。専用DB名が安全確認に必要な `test` を含まなかった環境設定が原因で、アプリ修正は不要だった。所有するDB名とprivate接続設定だけを直した後、同じエッジ試験の4件が成功した。合計114ファイル684件のDB試験と残りのgate項目を確認したが、この初回コマンド自体をexit0とは記録しない。完全な一括gateは公開CIの当該commitで確認する。
-- [進行中] 最終migrationを含む固定配布物と起動検査。実装の検証用checkpointから作成し、結果を追記する。
+- [実測] 実装checkpoint `16f06ead7303e9d83713791f7c97ecca6f19efa3` からoffline/frozenのLinux x64候補配布物を作成し、別ディレクトリへ展開した。新しい空DBへ同梱17 migrationを適用し、JAN索引の有効性、`--env-file` とビルド済みJSだけでのAPI起動、health/ready200、誤パスワード401、正しいログイン200、認証付き本人取得200、SIGTERM終了0を確認した。検査前後のmanifestは同一。後続コミットはこの検証記録だけの変更である。
+- [公開CI] 一括 `pnpm gate` を含む公開チェックの成否は、この変更のPRのChecksと対象head commitを証拠とする。ローカルの環境修正前の失敗を消したり、CI実行前に成功と記録したりしない。
 
 ## 検査で発見した問題
 
