@@ -113,6 +113,8 @@ jobs:
         run: echo "E2E_INVOICE_DATE=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_ENV"
       - name: Prepare empty database and unapplied industry companies
         run: pnpm --filter @daifuku/api exec tsx src/db/e2e-fixture.ts
+      - name: Build the compiled API used by browser workflows
+        run: pnpm build:api
       - name: Start isolated API and Web
         run: bash .github/ci/start-e2e.sh
       - name: Run industry UI prerequisites, then the remaining browser tests
