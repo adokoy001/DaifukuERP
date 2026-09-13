@@ -30,6 +30,7 @@
 | UI・フォーム・レポート | [UI規約](docs/conventions/ui.md)、[report規約](docs/conventions/reports.md) | [router](apps/web/src/router.tsx)、[Web API](apps/web/src/api/)、[pages](apps/web/src/pages/) |
 | 店舗LAN・機器連携 | [機器仕様](docs/specs/deployment-edge.md)、[機械認可ADR](docs/adr/0023-outbound-relay-principal-and-fencing.md)、[中継運用](docs/operations/edge-agent.md)、[操作](docs/manual/appendix-j-store-devices.md) | [純粋contract](modules/edge-integration/src/contract.ts)、[業務module](modules/edge-integration/src/index.ts)、[API](apps/api/src/edge/routes.ts)、[agent](apps/edge/src/main.ts) |
 | クラウド・オンプレ配備 | [構成](docs/architecture/deployment.md)、[導入](docs/operations/deployment.md) | [配布](scripts/build-release.mjs)、[manifest検査](deploy/files.mjs)、[構成生成](deploy/profile.mjs) |
+| AWS の独立試用 | [仕様](docs/specs/aws-trial.md)、[運用手順](docs/operations/aws-trial.md) | [専用 CloudFormation](deploy/aws/trial.cloudformation.json)、[境界回帰](deploy/aws/trial.test.mjs) |
 | スキーマ・導入・更新 | [検証と公開](docs/architecture/verification-and-release.md)、[安全なsetup](docs/operations/setup.md) | [schema同期](kernel/src/db/schema-sync.ts)、[setup](apps/api/src/setup/) |
 | 日本制度の修正 | [国内税](docs/domain/japan-tax.md)、[労務・給与](docs/domain/japan-workforce.md) | 対象l10n/moduleの期間付き設定・算定処理 |
 | 不変条件・生成検査・検査自身の品質 | [検証設計](docs/architecture/practical-verification.md)、[台帳](docs/verification/invariants.md)、[仕様](docs/specs/practical-verification.md) | [台帳検査](verification/assurance.mjs)、[mutation](verification/mutation/README.md)、[エッジモデル](verification/edge/README.md) |

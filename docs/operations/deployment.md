@@ -45,7 +45,10 @@ PORT=3000
 TRUSTED_PROXY_CIDRS=127.0.0.1/32
 DAIFUKU_STORAGE_DIR=/home/daifuku/operations/evidence
 PUBLIC_WEB_URL=https://erp.example.jp
+IDENTITY_ENCRYPTION_KEY=<別途生成した32バイト乱数の標準Base64>
 ```
+
+`PUBLIC_WEB_URL` を設定する場合は `IDENTITY_ENCRYPTION_KEY` も同時に必須です。上の鍵プレースホルダーを、JWT とは別に生成した暗号学的乱数32バイトの標準 Base64 表現に置き換えてください。URL だけの設定、不正な鍵、path/query 付きの URL は API 起動時に拒否されます。鍵を Git・ログ・shell 引数に残さず、0600 の runtime.env と秘密保管先で保護します。暗号化した MFA 等の情報と対応するため、更新・復元時にも同じ鍵を保持し、既存 DB に対して無条件に生成し直さないでください。詳細は [認証運用](enterprise-identity.md) を参照してください。
 
 生成済みの DB URL と JWT を保持する。Node の環境変数は env-file より優先されるため、手動起動時には同名の古い shell 変数を残さない。systemd の専用 service はログイン shell の env を読み込まない。必要に応じ SMTP/OIDC/Square 設定を同じ保護 env へ追加する。Web に秘密を渡す `VITE_*` は使わない。
 

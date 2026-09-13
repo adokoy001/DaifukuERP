@@ -86,6 +86,8 @@ pnpm run setup --help
 
 [クラウド・オンプレ共通配備](docs/operations/deployment.md) で固定依存を含む配布物とCaddy/systemd構成を生成できます。Linuxの単一API構成を対象とし、OS/TLSの導入、監視、バックアップ運用は導入先で確認します。店舗LANの機器接続は [機器の操作](docs/manual/appendix-j-store-devices.md) と [中継の設置](docs/operations/edge-agent.md) を参照してください。ソースをGitHubへ公開しても、アプリや業務DBが自動で公開されることはありません。
 
+AWSで既存システムからリソースを分けて試す場合は、[AWS試用の運用手順](docs/operations/aws-trial.md) と [CloudFormationの入口](deploy/aws/README.md) を参照してください。専用VPC・VM・DB・IAM・保存先と別FQDNを使い、ゲーム等の既存Terraform stateへ追加しない構成です。実際の接続先と秘密は公開リポジトリへ含めません。
+
 ログイン後はメニューの「自分のアカウント」から、本人のパスワード変更と全端末ログアウトを行えます。会社未所属でも利用できます。[基本の本人設定](docs/operations/account-security.md) を参照してください。SSO・MFA・招待/再設定メールを導入する場合は [認証とメールの設定](docs/operations/enterprise-identity.md)、Squareと企業運営は [導入・操作ガイド](docs/manual/appendix-h-enterprise-operations.md) を追加で確認します。外部IdP・Squareの実利用者/実加盟店への接続は未検証です。
 
 ## 開発と検証
