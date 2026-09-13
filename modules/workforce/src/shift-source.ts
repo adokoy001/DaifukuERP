@@ -18,8 +18,8 @@ import { stableJson } from './services/json.ts';
 export const planSummary = (row: Infer<typeof WorkforceShiftPlan>) =>
   shiftPlanSummary.parse({ ...row, publishedAt: row.publishedAt?.toISOString() ?? null });
 export async function shiftSource(ctx: Context, siteId: string, weekStart: string) {
-  const site = await repo(ctx, WorkforceSite).get(siteId),
-    end = addDays(weekStart, 6);
+  const site = await repo(ctx, WorkforceSite).get(siteId);
+  const end = addDays(weekStart, 6);
   if (!site.active) throw new StateError('The work site is inactive', 'Choose an active site.');
   const employees = await allRows(ctx, WorkforceEmployee, { siteId }, [{ field: 'id' }]);
   if (employees.length > 100)
@@ -27,8 +27,8 @@ export async function shiftSource(ctx: Context, siteId: string, weekStart: strin
       'Shift planning supports up to 100 employees per site',
       'Use an appropriately sized work site.',
     );
-  const ids = employees.map((row) => row.id),
-    people = { employeeId: { $in: ids } };
+  const ids = employees.map((row) => row.id);
+  const people = { employeeId: { $in: ids } };
   const profiles = await allRows(ctx, WorkforceShiftProfile, people);
   const availability = await allRows(ctx, WorkforceShiftAvailability, { ...people, weekStart });
   const leave = await allRows(ctx, WorkforceLeaveRequest, {
@@ -48,11 +48,11 @@ export async function shiftSource(ctx: Context, siteId: string, weekStart: strin
     plans.filter((row) => row.status === 'published').length > 1
   )
     throw new StateError('Multiple current shift plans exist', 'Ask headquarters to review plan history.');
-  const profileDtos = profiles.map((row) => shiftProfileSummary.parse(row)),
-    availabilityDtos = availability.map((row) => shiftAvailabilitySummary.parse(row));
+  const profileDtos = profiles.map((row) => shiftProfileSummary.parse(row));
+  const availabilityDtos = availability.map((row) => shiftAvailabilitySummary.parse(row));
   const rules = Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(weekStart, index),
-      found = policies.filter((row) => row.validFrom <= date && row.validTo >= date);
+    const date = addDays(weekStart, index);
+    const found = policies.filter((row) => row.validFrom <= date && row.validTo >= date);
     const policy = found[0];
     if (found.length !== 1 || !policy)
       throw new StateError(

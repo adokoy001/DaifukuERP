@@ -89,8 +89,8 @@ async function policy(ctx: Context, args: HookArgs): Promise<void> {
       invalid('validFrom', 'Working-time policy intervals cannot overlap.');
     if (args.previous) {
       const previous = args.previous as unknown as Infer<typeof WorkforcePayPolicy>;
-      const start = row.validFrom < previous.validFrom ? row.validFrom : previous.validFrom,
-        end = row.validTo > previous.validTo ? row.validTo : previous.validTo;
+      const start = row.validFrom < previous.validFrom ? row.validFrom : previous.validFrom;
+      const end = row.validTo > previous.validTo ? row.validTo : previous.validTo;
       const locks = await allRows(ctx, WorkforcePeriodLock, {
         active: true,
         periodStart: { $lte: end },
@@ -133,8 +133,8 @@ async function terms(ctx: Context, args: HookArgs): Promise<void> {
     )
       invalid('validFrom', 'Pay term intervals cannot overlap for the employee.');
     const previous = args.previous as unknown as Infer<typeof WorkforcePayTerms> | undefined;
-    const start = previous && previous.validFrom < row.validFrom ? previous.validFrom : row.validFrom,
-      end = previous && previous.validTo > row.validTo ? previous.validTo : row.validTo;
+    const start = previous && previous.validFrom < row.validFrom ? previous.validFrom : row.validFrom;
+    const end = previous && previous.validTo > row.validTo ? previous.validTo : row.validTo;
     const locks = await allRows(ctx, WorkforcePeriodLock, {
       employeeId: row.employeeId,
       active: true,

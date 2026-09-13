@@ -12,9 +12,14 @@ import {
 import { at, call, fixture, type Command, type Fixture } from './helpers.ts';
 import { condition, declaration } from './fiscal-fixtures.ts';
 import type { FiscalBoard, MyFiscal } from '../src/fiscal-contract.ts';
-let f: Fixture, conditionRow: Command, august: Command, november: Command, annual: Command, declarationRow: Command;
-const late = '2027-01-15T09:00:00+09:00',
-  december = '2026-12-15T09:00:00+09:00';
+let f: Fixture;
+let conditionRow: Command;
+let august: Command;
+let november: Command;
+let annual: Command;
+let declarationRow: Command;
+const late = '2027-01-15T09:00:00+09:00';
+const december = '2026-12-15T09:00:00+09:00';
 beforeAll(async () => {
   f = await fixture();
   await call(f.db, f.payroll.params, 'initialize_payroll_rules', {});
@@ -127,10 +132,10 @@ describe('statutory payroll and year-end integrity', () => {
     expect(row.basePay.toString()).toBe('300000');
     expect(row.deductionTotal.toString()).toBe('67750');
     expect(row.netPay.toString()).toBe('232250');
-    const input = await confirmation(august),
-      altered = (input.deductions as { kind: string; amount: string }[]).map((item) =>
-        item.kind === 'income_tax' ? { ...item, amount: '0' } : item,
-      );
+    const input = await confirmation(august);
+    const altered = (input.deductions as { kind: string; amount: string }[]).map((item) =>
+      item.kind === 'income_tax' ? { ...item, amount: '0' } : item,
+    );
     await expect(
       call(f.db, f.payroll.params, 'confirm_payroll', { ...input, deductions: altered }),
     ).rejects.toBeInstanceOf(StateError);
@@ -147,11 +152,11 @@ describe('statutory payroll and year-end integrity', () => {
       'calculate_statutory_payroll',
       calculation(f.employee.id, '2026-08', august.version),
     );
-    const confirm = await confirmation(august),
-      results = await Promise.allSettled([
-        call(f.db, f.payroll.params, 'confirm_payroll', confirm),
-        call(f.db, f.payroll.params, 'confirm_payroll', confirm),
-      ]);
+    const confirm = await confirmation(august);
+    const results = await Promise.allSettled([
+      call(f.db, f.payroll.params, 'confirm_payroll', confirm),
+      call(f.db, f.payroll.params, 'confirm_payroll', confirm),
+    ]);
     expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     august = (results.find((row) => row.status === 'fulfilled') as PromiseFulfilledResult<Command>).value;
     const evidence = await f.db.run(f.payroll.params, (ctx) =>

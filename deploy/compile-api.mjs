@@ -21,14 +21,14 @@ function compiledPath(value) {
 
 /** Preserve module/file layout: import.meta.url assets and native dependency resolution remain valid. */
 export async function compileWorkspace(directory, ts) {
-  const source = join(directory, 'src'),
-    output = join(directory, 'dist');
+  const source = join(directory, 'src');
+  const output = join(directory, 'dist');
   let count = 0;
   async function walk(input, destination) {
     await mkdir(destination, { recursive: true });
     for (const entry of await readdir(input, { withFileTypes: true })) {
-      const path = join(input, entry.name),
-        target = join(destination, entry.name);
+      const path = join(input, entry.name);
+      const target = join(destination, entry.name);
       if (entry.isSymbolicLink()) throw new Error('Workspace source links are not supported in compiled runtime.');
       if (entry.isDirectory()) {
         if (!['__tests__', '__snapshots__'].includes(entry.name)) await walk(path, target);

@@ -17,12 +17,12 @@ export function IdentityStepUp({
   children?: ReactNode;
   onBusy?: (busy: boolean) => void;
 }) {
-  const { t } = useLocale(),
-    [password, setPassword] = useState(''),
-    [code, setCode] = useState(''),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(false),
-    inFlight = useRef(false);
+  const { t } = useLocale();
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const inFlight = useRef(false);
   const submit = async () => {
     if (inFlight.current) return;
     inFlight.current = true;

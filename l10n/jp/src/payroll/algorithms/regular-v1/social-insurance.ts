@@ -38,20 +38,20 @@ export function socialInsurance(
 ) {
   validateCondition(rules, condition);
   const parameters = rules.manifest.parameters;
-  const healthTable = rules.data.health.find((row) => row.from <= insurancePeriod && row.to >= insurancePeriod),
-    nursingTable = rules.data.nursing.find((row) => row.from <= insurancePeriod && row.to >= insurancePeriod);
+  const healthTable = rules.data.health.find((row) => row.from <= insurancePeriod && row.to >= insurancePeriod);
+  const nursingTable = rules.data.nursing.find((row) => row.from <= insurancePeriod && row.to >= insurancePeriod);
   const employmentTable = rules.data.employment.find((row) => row.from <= wageCutoff && row.to >= wageCutoff);
   if (!healthTable || !nursingTable || !employmentTable)
     fail('insurancePeriod', 'The insurance month and wage cutoff must be covered by the selected rules version.');
   const healthPercent = healthTable.percentages[Number(condition.healthBranch) - 1];
   if (!healthPercent) fail('healthBranch', 'Select a Kyokai Kenpo prefecture.');
-  const age = attainedAge(condition.birthDate, periodBounds(insurancePeriod).end),
-    nursing = age >= parameters.insurance.nursingAgeFrom && age < parameters.insurance.nursingAgeToExclusive;
-  const monthEnd = periodBounds(insurancePeriod).end,
-    birthdayAge =
-      Number(monthEnd.slice(0, 4)) -
-      Number(condition.birthDate.slice(0, 4)) -
-      (monthEnd.slice(5) < condition.birthDate.slice(5) ? 1 : 0);
+  const age = attainedAge(condition.birthDate, periodBounds(insurancePeriod).end);
+  const nursing = age >= parameters.insurance.nursingAgeFrom && age < parameters.insurance.nursingAgeToExclusive;
+  const monthEnd = periodBounds(insurancePeriod).end;
+  const birthdayAge =
+    Number(monthEnd.slice(0, 4)) -
+    Number(condition.birthDate.slice(0, 4)) -
+    (monthEnd.slice(5) < condition.birthDate.slice(5) ? 1 : 0);
   if (condition.healthMembership === 'enrolled' && birthdayAge >= parameters.insurance.healthAgeToExclusive)
     fail(
       'healthMembership',

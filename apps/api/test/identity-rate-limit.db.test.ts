@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
-let db: TestDb, app: FastifyInstance;
+let db: TestDb;
+let app: FastifyInstance;
 const login = (password = 'password', email = 'admin@example.com', ip = '192.0.2.1') =>
   app.inject({ method: 'POST', url: '/auth/login', payload: { email, password }, remoteAddress: ip });
 beforeAll(async () => {

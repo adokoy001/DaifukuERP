@@ -28,9 +28,9 @@ function samePath(actual: string, expected: string): void {
 export function validateWindowsContext(context: ServiceContext): void {
   if (context.platform !== 'win32' || !/^[0-9a-f-]{36}$/i.test(context.installationId))
     throw new Error('windows_service_context_invalid');
-  const root = windowsPath(context.installRoot),
-    state = windowsPath(context.statePath),
-    release = windowsPath(context.releaseDir);
+  const root = windowsPath(context.installRoot);
+  const state = windowsPath(context.statePath);
+  const release = windowsPath(context.releaseDir);
   if (
     root.length <= 3 ||
     state.length <= 3 ||

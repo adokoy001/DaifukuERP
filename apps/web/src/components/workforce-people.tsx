@@ -20,12 +20,12 @@ export function WorkforcePeople({
   actions: string[];
   entities: EntityMeta[];
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
-  const [form, setForm] = useState<'employee' | 'leave'>(),
-    [search, setSearch] = useState(''),
-    [status, setStatus] = useState('active'),
-    [siteId, setSiteId] = useState('');
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [form, setForm] = useState<'employee' | 'leave'>();
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('active');
+  const [siteId, setSiteId] = useState('');
   const employees = data.employees.filter(
     (row) =>
       (!search || `${row.code} ${row.name}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) &&
@@ -296,8 +296,8 @@ export function WorkforceCalculate({
   data: Pick<People, 'employees'> & Pick<ManagementPortal, 'payrolls'>;
   period: string;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [open, setOpen] = useState(false);
   return (
     <>

@@ -29,10 +29,10 @@ describe('outbound agent durable execution and recovery', () => {
     const relay = await relayFixture();
     try {
       const value = job({
-          kind: 'print.text',
-          payload: { title: 'Private title', text: 'DO_NOT_STORE_PRINT_BODY_123', copies: 1 },
-        }),
-        prepared = await prepare(relay, value);
+        kind: 'print.text',
+        payload: { title: 'Private title', text: 'DO_NOT_STORE_PRINT_BODY_123', copies: 1 },
+      });
+      const prepared = await prepare(relay, value);
       relay.state.queued = value;
       const agent = new EdgeAgent(prepared.credentials, prepared.journal);
       await agent.tick(new AbortController().signal);
@@ -51,8 +51,8 @@ describe('outbound agent durable execution and recovery', () => {
   it.each(['start_response_lost', 'already_started'] as const)(
     'never prints when start permission is ambiguous: %s',
     async (kind) => {
-      const relay = await relayFixture(),
-        printer = await printerFixture();
+      const relay = await relayFixture();
+      const printer = await printerFixture();
       try {
         const prepared = await prepare(
           relay,
@@ -72,8 +72,8 @@ describe('outbound agent durable execution and recovery', () => {
     },
   );
   it('never resends Print-Job after a printer accepted it but its response was lost', async () => {
-    const relay = await relayFixture(),
-      printer = await printerFixture();
+    const relay = await relayFixture();
+    const printer = await printerFixture();
     printer.state.lost = true;
     try {
       const prepared = await prepare(
@@ -97,8 +97,8 @@ describe('outbound agent durable execution and recovery', () => {
     }
   });
   it('recovers an accepted printer job by its fixed endpoint and stored job-id without reprinting', async () => {
-    const relay = await relayFixture(),
-      printer = await printerFixture();
+    const relay = await relayFixture();
+    const printer = await printerFixture();
     try {
       const prepared = await prepare(
         relay,
@@ -117,8 +117,8 @@ describe('outbound agent durable execution and recovery', () => {
     }
   });
   it('does not query a different printer after the local destination changes', async () => {
-    const relay = await relayFixture(),
-      printer = await printerFixture();
+    const relay = await relayFixture();
+    const printer = await printerFixture();
     try {
       const prepared = await prepare(
         relay,
@@ -174,8 +174,8 @@ describe('outbound agent durable execution and recovery', () => {
     }
   });
   it('uses verified WSS with native Authorization and small notifications', async () => {
-    const relay = await relayFixture(),
-      abort = new AbortController();
+    const relay = await relayFixture();
+    const abort = new AbortController();
     let wakeups = 0;
     try {
       const prepared = await prepare(relay);
@@ -197,8 +197,8 @@ describe('outbound agent durable execution and recovery', () => {
     }
   });
   it('finds a job by periodic HTTPS claim while all WebSocket notifications are unavailable', async () => {
-    const relay = await relayFixture(),
-      abort = new AbortController();
+    const relay = await relayFixture();
+    const abort = new AbortController();
     try {
       const prepared = await prepare(relay);
       relay.server.removeAllListeners('upgrade');

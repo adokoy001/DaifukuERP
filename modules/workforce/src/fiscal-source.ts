@@ -55,10 +55,10 @@ export async function statutorySource(
       '旧形式給与の制度版が変更されています',
       '現在の制度と元資料を確認して給与を再計算してください。',
     );
-  const rules = selected.row,
-    tax = await conditionOn(ctx, input.employeeId, input.paymentDate),
-    insurance = await conditionOn(ctx, input.employeeId, periodBounds(input.insurancePeriod).end),
-    employment = await conditionOn(ctx, input.employeeId, bounds.end);
+  const rules = selected.row;
+  const tax = await conditionOn(ctx, input.employeeId, input.paymentDate);
+  const insurance = await conditionOn(ctx, input.employeeId, periodBounds(input.insurancePeriod).end);
+  const employment = await conditionOn(ctx, input.employeeId, bounds.end);
   const taxablePay = payroll.basePay
     .plus(payroll.premiumPay)
     .plus(input.taxableAllowances.reduce((sum, row) => sum.plus(row.amount), D(0)));
@@ -100,8 +100,8 @@ export async function statutorySource(
   const allowances = [...input.taxableAllowances, ...input.nonTaxableAllowances];
   if (allowances.length > 30)
     throw new StateError('手当の合計件数が上限を超えます', '課税・非課税を合わせて30件以内に整理してください。');
-  const deductionTotal = Object.values(amounts).reduce((sum, value) => sum.plus(value), D(0)),
-    netPay = grossPay.minus(deductionTotal);
+  const deductionTotal = Object.values(amounts).reduce((sum, value) => sum.plus(value), D(0));
+  const netPay = grossPay.minus(deductionTotal);
   if (netPay.lt(0))
     throw new StateError(
       '自動計算した控除額が支給額を超えます',

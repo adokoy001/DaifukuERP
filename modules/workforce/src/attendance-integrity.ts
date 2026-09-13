@@ -5,8 +5,8 @@ import { addDays, dateMs, jstDate, type BreakInterval } from './services/time.ts
 
 /** Exact elapsed work inside a JST calendar date; an end at midnight belongs only to the previous date. */
 function worksOnDate(start: Date, end: Date, breaks: readonly BreakInterval[], date: string): boolean {
-  const from = Math.max(start.getTime(), dateMs(date)),
-    to = Math.min(end.getTime(), dateMs(addDays(date, 1)));
+  const from = Math.max(start.getTime(), dateMs(date));
+  const to = Math.min(end.getTime(), dateMs(addDays(date, 1)));
   if (to <= from) return false;
   const breakMs = breaks.reduce(
     (sum, interval) =>
@@ -44,8 +44,8 @@ export async function assertNoAttendanceOnLeaveDate(ctx: Context, employeeId: st
     $or: [{ workDate: { $gte: addDays(date, -1) } }, { clockOut: null }],
   });
   const overlaps = rows.some((row) => {
-    const end = row.clockOut ?? ctx.now(),
-      breaks = row.breaks as BreakInterval[];
+    const end = row.clockOut ?? ctx.now();
+    const breaks = row.breaks as BreakInterval[];
     const actualBreaks = row.breakStartedAt
       ? [...breaks, { start: row.breakStartedAt.toISOString(), end: end.toISOString() }]
       : breaks;

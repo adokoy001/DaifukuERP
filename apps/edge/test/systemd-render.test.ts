@@ -18,12 +18,12 @@ it('uses the literal single-path WorkingDirectory syntax, while keeping command 
 if (process.platform === 'linux')
   for (const name of ['plain', 'paths with spaces'])
     it('systemd accepts the rendered unit for ' + name + ' without registering or starting a service', async () => {
-      const temporary = await realpath(tmpdir()),
-        directory = await mkdtemp(join(temporary, 'daifuku-systemd-verify-'));
+      const temporary = await realpath(tmpdir());
+      const directory = await mkdtemp(join(temporary, 'daifuku-systemd-verify-'));
       try {
-        const installRoot = join(directory, name),
-          statePath = join(directory, name + ' state'),
-          releaseDir = join(installRoot, 'releases/v1');
+        const installRoot = join(directory, name);
+        const statePath = join(directory, name + ' state');
+        const releaseDir = join(installRoot, 'releases/v1');
         const context: ServiceContext = {
           platform: 'linux',
           installationId: '11111111-1111-4111-8111-111111111111',
@@ -41,8 +41,8 @@ if (process.platform === 'linux')
         await mkdir(statePath);
         // The parser checks executable existence, but never executes this fixture binary.
         await copyFile('/usr/bin/true', context.nodePath);
-        const path = join(directory, 'daifuku-parser-fixture.service'),
-          unit = renderSystemd(context, 'nogroup');
+        const path = join(directory, 'daifuku-parser-fixture.service');
+        const unit = renderSystemd(context, 'nogroup');
         await writeFile(path, unit);
         const accepted = await execute('/usr/bin/systemd-analyze', ['verify', path], {
           timeout: 15000,

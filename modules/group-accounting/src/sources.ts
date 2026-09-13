@@ -40,8 +40,8 @@ export async function collectSources(
     throw new StateError('Invalid consolidation period or companies', 'Use an ordered period and unique company IDs.');
   if (requireClosed && input.to > todayLocal(ctx.now()))
     throw new StateError('Consolidation period has not ended', 'Confirm only a completed period.');
-  const available = await authorizedCompanies(ctx),
-    result: CompanySource[] = [];
+  const available = await authorizedCompanies(ctx);
+  const result: CompanySource[] = [];
   for (const companyId of [...input.companyIds].sort()) {
     const company = available.find((row) => row.id === companyId);
     if (!company || company.currency !== 'JPY')
@@ -64,8 +64,8 @@ export async function collectSources(
           'Use the same full-period boundaries in every company.',
         );
       for (let index = 1; index < inRange.length; index++) {
-        const current = inRange[index],
-          previous = inRange[index - 1];
+        const current = inRange[index];
+        const previous = inRange[index - 1];
         if (
           current &&
           previous &&
@@ -86,8 +86,8 @@ export async function collectSources(
         { where: { posted: true, entryDate: { $lte: input.to } }, orderBy: [{ field: 'id', dir: 'asc' }] },
         20000,
       );
-      const opening = await movementsByAccount(child, { entryDate: { $lt: input.from } }),
-        movement = await movementsByAccount(child, { entryDate: { $gte: input.from, $lte: input.to } });
+      const opening = await movementsByAccount(child, { entryDate: { $lt: input.from } });
+      const movement = await movementsByAccount(child, { entryDate: { $gte: input.from, $lte: input.to } });
       const calculated = trialBalanceRows(accounts, opening, movement);
       if (!Decimal.from(calculated.totals.closingBalance ?? '1').isZero())
         throw new StateError(

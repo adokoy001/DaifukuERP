@@ -48,8 +48,8 @@ afterEach(() => {
 
 describe('quality-foundation AC-3: session identity on delayed unauthorized responses', () => {
   it('preserves a new login when an old authenticated request completes with 401', async () => {
-    const respond = delayedUnauthorized(),
-      pending = request('/meta');
+    const respond = delayedUnauthorized();
+    const pending = request('/meta');
     setSession('new-session', { ...user, id: 'second-user' });
     respond();
     await expect(pending).rejects.toBeInstanceOf(ApiError);
@@ -58,8 +58,8 @@ describe('quality-foundation AC-3: session identity on delayed unauthorized resp
     expect(unauthorized).not.toHaveBeenCalled();
   });
   it('clears the current session and routes to login when its own request gets 401', async () => {
-    const respond = delayedUnauthorized(),
-      pending = request('/meta');
+    const respond = delayedUnauthorized();
+    const pending = request('/meta');
     respond();
     await expect(pending).rejects.toMatchObject({ status: 401 });
     expect(getToken()).toBeNull();
@@ -67,8 +67,8 @@ describe('quality-foundation AC-3: session identity on delayed unauthorized resp
     expect(unauthorized).toHaveBeenCalledOnce();
   });
   it('does not redirect a signed-out user again after a late old response', async () => {
-    const respond = delayedUnauthorized(),
-      pending = request('/meta');
+    const respond = delayedUnauthorized();
+    const pending = request('/meta');
     clearSession();
     respond();
     await expect(pending).rejects.toMatchObject({ status: 401 });

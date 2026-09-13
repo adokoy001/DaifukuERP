@@ -65,8 +65,8 @@ export class EdgeAgent {
   async tick(signal: AbortSignal): Promise<boolean> {
     await this.recovery(signal);
     if (signal.aborted) return false;
-    const response = await this.credentials.client.claim(),
-      job = response.job;
+    const response = await this.credentials.client.claim();
+    const job = response.job;
     if (!job) return false;
     if (this.journal.records().some((row) => row.jobId === job.id)) {
       await this.credentials.client.complete(
@@ -81,8 +81,8 @@ export class EdgeAgent {
   }
   async run(signal: AbortSignal): Promise<void> {
     await this.credentials.session();
-    const wake = new Wakeup(),
-      notificationAbort = new AbortController();
+    const wake = new Wakeup();
+    const notificationAbort = new AbortController();
     const stop = () => notificationAbort.abort();
     signal.addEventListener('abort', stop, { once: true });
     const notified = notifications(

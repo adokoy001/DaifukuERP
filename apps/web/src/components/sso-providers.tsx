@@ -4,9 +4,9 @@ import { identityProviders } from '../api/identity.ts';
 import { startSso } from '../lib/identity-flow.ts';
 import { useLocale } from '../i18n.tsx';
 export function SsoProviders() {
-  const { t } = useLocale(),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(false);
+  const { t } = useLocale();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
   const providers = useQuery({ queryKey: ['identity-providers'], queryFn: identityProviders, retry: false, gcTime: 0 });
   const start = async (id: string) => {
     if (busy) return;

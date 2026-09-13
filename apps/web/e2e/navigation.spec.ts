@@ -110,8 +110,8 @@ test('navigation AC-1/2/4/5/11: compact areas, complete paged directory and bili
     .getByRole('button', { name: '次へ', exact: true })
     .click();
   await expect(page).toHaveURL(/[?&]page=2(?:&|$)/);
-  const historyUrl = page.url(),
-    firstRecord = await screenLinks(page).first().getAttribute('href');
+  const historyUrl = page.url();
+  const firstRecord = await screenLinks(page).first().getAttribute('href');
   await screenLinks(page).first().click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(firstRecord);
   await page.goBack();
@@ -177,8 +177,8 @@ test('navigation AC-8: 390px modal drawer traps focus, closes with Escape and re
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute('aria-modal', 'true');
   await expect(page.getByRole('main', { includeHidden: true })).toHaveAttribute('inert', '');
-  const first = drawer.locator('a.brand'),
-    last = drawer.getByRole('button', { name: '言語: en', exact: true });
+  const first = drawer.locator('a.brand');
+  const last = drawer.getByRole('button', { name: '言語: en', exact: true });
   await expect(first).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(last).toBeFocused();
@@ -206,8 +206,8 @@ test('navigation AC-3/10: a store employee finds permitted operations but no pri
   browser,
 }) => {
   await login(page);
-  const companyId = await restaurant(page),
-    headers = await adminHeaders(request, companyId);
+  const companyId = await restaurant(page);
+  const headers = await adminHeaders(request, companyId);
   const stores = await api<{ items: Row[] }>(request, headers, '/api/restaurant_chain_store?limit=500');
   const store = stores.items.find((item) => item.code === 'RC-A');
   expect(store).toBeDefined();
@@ -245,12 +245,12 @@ test('navigation AC-9: home fetches no document totals until opened, then only t
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const countRequests: { entity: string; status: number }[] = [],
-    counts = new Map<string, number>(),
-    pending: Promise<void>[] = [];
+  const countRequests: { entity: string; status: number }[] = [];
+  const counts = new Map<string, number>();
+  const pending: Promise<void>[] = [];
   page.on('response', (response) => {
-    const url = new URL(response.url()),
-      entity = /^\/api\/([a-z_]+)$/.exec(url.pathname)?.[1];
+    const url = new URL(response.url());
+    const entity = /^\/api\/([a-z_]+)$/.exec(url.pathname)?.[1];
     if (!entity || url.searchParams.get('limit') !== '1' || !url.searchParams.has('where')) return;
     const where = JSON.parse(url.searchParams.get('where') ?? '{}') as { docstatus?: number };
     if (typeof where.docstatus !== 'number') return;

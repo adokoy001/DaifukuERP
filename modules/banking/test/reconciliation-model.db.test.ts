@@ -44,8 +44,8 @@ const parameters = {
   ...(process.env['PBT_PATH'] ? { path: process.env['PBT_PATH'] } : {}),
 };
 async function bankNet(ctx: Context) {
-  let offset = 0,
-    total = 0n;
+  let offset = 0;
+  let total = 0n;
   while (true) {
     const page = await repo(ctx, JournalLine).list({
       where: { accountId: f.ledgerId, posted: true },
@@ -108,13 +108,13 @@ async function traceFixture(direction: 'receive' | 'pay', existing: boolean, amo
       await runAction(ctx, 'payment.submit', { id: draft.id });
       return draft.id;
     });
-  const externalId = newId(),
-    imported = await f.importRows(`${externalId},2026-09-02,${direction},${amount},generated`);
+  const externalId = newId();
+  const imported = await f.importRows(`${externalId},2026-09-02,${direction},${amount},generated`);
   const duplicate = await f.importRows(`${newId()},2026-09-02,${direction},${amount},same payment different statement`);
-  const statementId = required(imported.statements[0]).id,
-    otherStatementId = required(duplicate.statements[0]).id;
-  const statementIds = [statementId, otherStatementId],
-    baseline = await effects(invoice.id, direction, statementIds);
+  const statementId = required(imported.statements[0]).id;
+  const otherStatementId = required(duplicate.statements[0]).id;
+  const statementIds = [statementId, otherStatementId];
+  const baseline = await effects(invoice.id, direction, statementIds);
   return {
     invoiceId: invoice.id,
     direction,
@@ -148,8 +148,8 @@ async function inputFor(t: Trace, other = false): Promise<Match> {
   };
 }
 async function assertModel(m: Model, t: Trace) {
-  const actual = await effects(t.invoiceId, t.direction, t.statementIds),
-    paid = t.existing || m.active ? t.amount : 0;
+  const actual = await effects(t.invoiceId, t.direction, t.statementIds);
+  const paid = t.existing || m.active ? t.amount : 0;
   expect(actual.paid).toBe(String(paid));
   expect(actual.balance).toBe(String(t.amount * 3 - paid));
   expect(actual.payments - t.baseline.payments).toBe(m.created);
@@ -180,8 +180,8 @@ async function match(m: Model, t: Trace, invalid: boolean, duplicate: boolean) {
     m.rejected++;
     return;
   }
-  const row = await f.action('reconcile', input, bankReconciliationView),
-    history = { row, input };
+  const row = await f.action('reconcile', input, bankReconciliationView);
+  const history = { row, input };
   m.history.push(history);
   m.active = history;
   if (!t.existing) m.created++;
@@ -207,8 +207,8 @@ async function undo(m: Model, t: Trace, old: boolean) {
   m.success++;
 }
 async function execute(m: Model, t: Trace, op: Op) {
-  const before = await effects(t.invoiceId, t.direction, t.statementIds),
-    rejected = m.rejected;
+  const before = await effects(t.invoiceId, t.direction, t.statementIds);
+  const rejected = m.rejected;
   if (op === 'match' || op === 'badBalance' || op === 'duplicatePayment')
     await match(m, t, op === 'badBalance', op === 'duplicatePayment');
   if (op === 'undo' || op === 'oldUndo') await undo(m, t, op === 'oldUndo');
@@ -253,16 +253,16 @@ describe('AC-3 / BANK-RECON-01 generated bank histories', () => {
           fc.integer({ min: 1, max: 999_999 }),
           fc.array(fc.constantFrom(...choices), { minLength: 3, maxLength: 8 }),
           async (amount, tail) => {
-            const t = await traceFixture(direction, existing, amount),
-              m: Model = {
-                balanceRejected: 0,
-                history: [],
-                created: 0,
-                reversed: 0,
-                success: 0,
-                rejected: 0,
-                replayed: 0,
-              };
+            const t = await traceFixture(direction, existing, amount);
+            const m: Model = {
+              balanceRejected: 0,
+              history: [],
+              created: 0,
+              reversed: 0,
+              success: 0,
+              rejected: 0,
+              replayed: 0,
+            };
             const prefix: Op[] = [
               'importRetry',
               'changedImport',

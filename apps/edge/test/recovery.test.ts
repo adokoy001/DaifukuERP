@@ -6,9 +6,9 @@ import { Journal } from '../src/journal.ts';
 import { deviceBindingHash } from '../src/config.ts';
 import { job, relayFixture } from './fixtures.ts';
 async function prepared() {
-  const relay = await relayFixture(),
-    config = relay.config(),
-    value = job();
+  const relay = await relayFixture();
+  const config = relay.config();
+  const value = job();
   config.devices = [
     { deviceId: value.deviceId, localDeviceId: value.localDeviceId, driver: 'simulator', simulationConfirmed: true },
   ];
@@ -23,8 +23,8 @@ describe('explicit server acknowledgement of obsolete durable records', () => {
   it.each(['obsolete_attempt', 'manually_resolved'] as const)(
     'settles only the old local result for %s without sending physical status or starting',
     async (ignored) => {
-      const f = await prepared(),
-        codes: string[] = [];
+      const f = await prepared();
+      const codes: string[] = [];
       try {
         f.relay.state.completeAccepted = false;
         f.relay.state.completeIgnored = ignored;
@@ -79,8 +79,8 @@ describe('explicit server acknowledgement of obsolete durable records', () => {
     },
   );
   it('removes an expired observation only after the server acknowledges that disposition', async () => {
-    const f = await prepared(),
-      codes: string[] = [];
+    const f = await prepared();
+    const codes: string[] = [];
     try {
       f.relay.state.completeAccepted = false;
       f.relay.state.completeIgnored = 'obsolete_attempt';

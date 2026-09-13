@@ -6,8 +6,8 @@ async function dependency(stage, directory, name) {
   for (let current = directory; within(stage, current); current = dirname(current)) {
     const path = join(current, 'node_modules', name);
     try {
-      const info = await lstat(path),
-        target = await realpath(path);
+      const info = await lstat(path);
+      const target = await realpath(path);
       return { path, target, link: info.isSymbolicLink() };
     } catch (error) {
       if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;
@@ -25,8 +25,8 @@ async function copyHoistedLinks(stage, destination, visited) {
       throw error;
     }
     for (const name of entries) {
-      const link = join(path, name),
-        info = await lstat(link);
+      const link = join(path, name);
+      const info = await lstat(link);
       if (name.startsWith('@') && info.isDirectory()) {
         await directory(link);
         continue;
@@ -34,8 +34,8 @@ async function copyHoistedLinks(stage, destination, visited) {
       if (!info.isSymbolicLink()) continue;
       const actual = await realpath(link);
       if (!visited.has(actual)) continue;
-      const output = join(destination, relative(stage, link)),
-        target = join(destination, relative(stage, actual));
+      const output = join(destination, relative(stage, link));
+      const target = join(destination, relative(stage, actual));
       await mkdir(dirname(output), { recursive: true });
       try {
         await symlink(relative(dirname(output), target), output);
@@ -53,9 +53,9 @@ async function copyHoistedLinks(stage, destination, visited) {
 export async function copyRuntime(stage, destination) {
   stage = resolve(stage);
   await mkdir(destination);
-  const pending = [join(stage, 'apps/api')],
-    visited = new Set(),
-    packages = [];
+  const pending = [join(stage, 'apps/api')];
+  const visited = new Set();
+  const packages = [];
   for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json'])
     await cp(join(stage, name), join(destination, name));
   while (pending.length) {
@@ -63,9 +63,9 @@ export async function copyRuntime(stage, destination) {
     if (visited.has(directory)) continue;
     if (!within(stage, directory)) throw new Error('Installed dependency escapes the frozen build.');
     visited.add(directory);
-    const path = relative(stage, directory),
-      target = join(destination, path),
-      metadata = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    const path = relative(stage, directory);
+    const target = join(destination, path);
+    const metadata = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     await mkdir(dirname(target), { recursive: true });
     await cp(directory, target, {
       recursive: true,
@@ -73,9 +73,9 @@ export async function copyRuntime(stage, destination) {
       filter: (entry) => !relative(directory, entry).split('/').includes('node_modules'),
     });
     packages.push({ name: metadata.name, version: metadata.version, path });
-    const required = metadata.dependencies ?? {},
-      optional = metadata.optionalDependencies ?? {},
-      peers = metadata.peerDependencies ?? {};
+    const required = metadata.dependencies ?? {};
+    const optional = metadata.optionalDependencies ?? {};
+    const peers = metadata.peerDependencies ?? {};
     for (const name of new Set([...Object.keys(required), ...Object.keys(optional), ...Object.keys(peers)])) {
       const found = await dependency(stage, directory, name);
       if (!found) {
@@ -85,8 +85,8 @@ export async function copyRuntime(stage, destination) {
       }
       if (!within(stage, found.target)) throw new Error('Installed dependency points outside the build.');
       if (found.link) {
-        const link = join(destination, relative(stage, found.path)),
-          output = join(destination, relative(stage, found.target));
+        const link = join(destination, relative(stage, found.path));
+        const output = join(destination, relative(stage, found.target));
         await mkdir(dirname(link), { recursive: true });
         try {
           await symlink(relative(dirname(link), output), link);

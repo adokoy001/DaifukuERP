@@ -14,14 +14,14 @@ export async function qualityEmployee(
   request: APIRequestContext,
   role: 'workforce_employee' | 'workforce_manager' = 'workforce_employee',
 ) {
-  const { headers, companyId } = await qualitySession(request),
-    suffix = crypto.randomUUID().slice(0, 8);
+  const { headers, companyId } = await qualitySession(request);
+  const suffix = crypto.randomUUID().slice(0, 8);
   const site = await api(request, headers, '/api/workforce_site', {
     code: 'Q-' + suffix,
     name: '品質検証拠点 ' + suffix,
   });
-  const email = `quality-${suffix}@example.com`,
-    user = await api(request, headers, '/admin/users', { name: '品質検証 ' + suffix, email, password: PASSWORD });
+  const email = `quality-${suffix}@example.com`;
+  const user = await api(request, headers, '/admin/users', { name: '品質検証 ' + suffix, email, password: PASSWORD });
   await api(
     request,
     headers,

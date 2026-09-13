@@ -41,9 +41,9 @@ export async function validateClosing(ctx: Context, row: Record<string, unknown>
       ]);
   }
   const totals = await closingTotals(ctx, String(row.id), row.date as LocalDate);
-  const cash = decimal(row.cashAmount),
-    card = decimal(row.cardAmount),
-    qr = decimal(row.qrAmount);
+  const cash = decimal(row.cashAmount);
+  const card = decimal(row.cardAmount);
+  const qr = decimal(row.qrAmount);
   if ((row.dayStatus ?? 'sales') === 'sales') {
     if (!totals.lineCount || !totals.total.gt(0))
       throw new ValidationError('売上明細と正の合計を入力してください', [

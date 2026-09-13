@@ -29,13 +29,13 @@ export function OperationsPlan({
   const { t, locale } = useLocale();
   const toast = useToast();
   const task = useOperationsTask();
-  const [storeId, setStoreId] = useState(initialStoreId ?? stores[0]?.id ?? ''),
-    [from, setFrom] = useState(mode === 'status' ? (initialDate ?? businessToday()) : businessToday()),
-    [to, setTo] = useState(businessToday()),
-    [target, setTarget] = useState('0');
-  const [days, setDays] = useState<string[]>(weekdays.map(([value]) => value)),
-    [dayStatus, setDayStatus] = useState('no_sales'),
-    [reason, setReason] = useState('');
+  const [storeId, setStoreId] = useState(initialStoreId ?? stores[0]?.id ?? '');
+  const [from, setFrom] = useState(mode === 'status' ? (initialDate ?? businessToday()) : businessToday());
+  const [to, setTo] = useState(businessToday());
+  const [target, setTarget] = useState('0');
+  const [days, setDays] = useState<string[]>(weekdays.map(([value]) => value));
+  const [dayStatus, setDayStatus] = useState('no_sales');
+  const [reason, setReason] = useState('');
   const title = t(
     mode === 'plan'
       ? { ja: '営業計画を作成', en: 'Create a trading plan' }

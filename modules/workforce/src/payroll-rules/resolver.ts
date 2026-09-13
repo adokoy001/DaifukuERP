@@ -37,8 +37,8 @@ export async function getCompanyPayrollProvider(ctx: Context): Promise<CountryPa
 }
 export function distributedBundles(provider: CountryPayrollProvider): readonly PayrollRuleBundle[] {
   const bundles = provider.bundles();
-  const packages = new Set<string>(),
-    codes = new Set<string>();
+  const packages = new Set<string>();
+  const codes = new Set<string>();
   for (const bundle of bundles) {
     const manifest = parseManifest(bundle.manifest);
     if (
@@ -111,8 +111,8 @@ export async function installedPayrollRules(ctx: Context): Promise<{
   installed: InstalledPayrollRule[];
   available: readonly PayrollRuleBundle[];
 }> {
-  const provider = await getCompanyPayrollProvider(ctx),
-    available = distributedBundles(provider);
+  const provider = await getCompanyPayrollProvider(ctx);
+  const available = distributedBundles(provider);
   const [rows, releases] = await Promise.all([
     allRows(ctx, WorkforcePayrollRules),
     allRows(ctx, WorkforcePayrollRuleRelease),
@@ -142,8 +142,8 @@ export function activePayrollRules(installed: readonly InstalledPayrollRule[]): 
   if (byPackage.size !== installed.length) ruleError('制度承認版が重複しています');
   const superseded = new Set<string>();
   for (const rule of installed) {
-    const manifest = rule.bundle.manifest,
-      priorCode = manifest.supersedesPackageCode;
+    const manifest = rule.bundle.manifest;
+    const priorCode = manifest.supersedesPackageCode;
     if (!priorCode) {
       if (rule.release?.supersedesReleaseId) ruleError('制度版の置換参照が不正です');
       continue;
@@ -161,8 +161,8 @@ export function activePayrollRules(installed: readonly InstalledPayrollRule[]): 
     )
       ruleError('制度版の置換関係が不足・競合しています');
     for (const key of ['paymentDates', 'insuranceMonths', 'wageCutoffDates', 'adjustmentDates'] as const) {
-      const old = prior.bundle.manifest.applicability[key],
-        next = manifest.applicability[key];
+      const old = prior.bundle.manifest.applicability[key];
+      const next = manifest.applicability[key];
       if (next.from > old.from || next.to < old.to) ruleError('訂正版が旧版の適用期間を覆っていません');
     }
     superseded.add(priorCode);

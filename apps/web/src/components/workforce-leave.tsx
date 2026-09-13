@@ -16,8 +16,8 @@ function LeaveForm({
   onSaved: (date: string) => void;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   return (
     <WorkforceDialog
@@ -85,10 +85,10 @@ export function WorkforceLeave({
   registered: boolean;
   onPeriod: (period: string) => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
-  const [creating, setCreating] = useState(false),
-    [cancel, setCancel] = useState<LeaveSummary>();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [creating, setCreating] = useState(false);
+  const [cancel, setCancel] = useState<LeaveSummary>();
   return (
     <WorkforcePanel
       title={t({ ja: '有給休暇', en: 'Paid leave' })}

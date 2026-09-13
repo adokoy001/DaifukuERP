@@ -15,17 +15,17 @@ describe('identity cryptographic boundaries', () => {
       expect(totp(secret, Math.floor(seconds / 30), 8)).toBe(code);
   });
   it('accepts only the bounded unused TOTP window', () => {
-    const secret = base32(Buffer.alloc(20, 1)),
-      now = new Date(3000000),
-      step = 100;
+    const secret = base32(Buffer.alloc(20, 1));
+    const now = new Date(3000000);
+    const step = 100;
     expect(matchingTotpStep(secret, totp(secret, step), now)).toBe(step);
     expect(matchingTotpStep(secret, totp(secret, step), now, step)).toBeNull();
     expect(matchingTotpStep(secret, totp(secret, step - 2), now)).toBeNull();
     expect(matchingTotpStep(secret, 'bad', now)).toBeNull();
   });
   it('authenticates ciphertext against tenant/user/purpose and rejects tampering', () => {
-    const first = seal('private', key, 'tenant:user:mfa'),
-      second = seal('private', key, 'tenant:user:mfa');
+    const first = seal('private', key, 'tenant:user:mfa');
+    const second = seal('private', key, 'tenant:user:mfa');
     expect(first).not.toBe(second);
     expect(unseal(first, key, 'tenant:user:mfa')).toBe('private');
     expect(() => unseal(first, key, 'other:user:mfa')).toThrow();

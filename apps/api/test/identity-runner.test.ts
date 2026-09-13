@@ -50,14 +50,14 @@ describe('identity fixture runner isolation', () => {
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const)
     it(`stops and awaits its detached service descendants on ${signal}`, async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'daifuku-identity-runner-')),
-        cli = join(directory, 'fixture.mjs');
+      const directory = await mkdtemp(join(tmpdir(), 'daifuku-identity-runner-'));
+      const cli = join(directory, 'fixture.mjs');
       await writeFile(cli, fixture);
       await available(3109);
       await available(5189);
       const child = spawn(process.execPath, [runner], { env: environment(cli), stdio: ['ignore', 'pipe', 'pipe'] });
-      const finished = once(child, 'exit'),
-        serviceIds: number[] = [];
+      const finished = once(child, 'exit');
+      const serviceIds: number[] = [];
       let output = '';
       let signalReady: () => void = () => {};
       const ready = new Promise<void>((resolve) => {

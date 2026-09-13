@@ -54,8 +54,8 @@ export async function runService(
   signal: AbortSignal,
   log: (code: string) => void,
 ): Promise<void> {
-  const status = new ServiceStatus(join(directory, 'service-status.json')),
-    local = new AbortController();
+  const status = new ServiceStatus(join(directory, 'service-status.json'));
+  const local = new AbortController();
   const stop = () => local.abort();
   signal.addEventListener('abort', stop, { once: true });
   if (signal.aborted) stop();

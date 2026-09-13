@@ -20,16 +20,16 @@ export const inboxResult = (row: Infer<typeof PosInbox>) => ({
   error: row.error,
 });
 export async function processInbox(ctx: Context, id: string, expectedVersion?: number) {
-  const first = await repo(ctx, PosInbox).get(id),
-    e = normalizedPosEvent.parse(first.event);
+  const first = await repo(ctx, PosInbox).get(id);
+  const e = normalizedPosEvent.parse(first.event);
   return withLock(ctx, 'pos-payment:' + paymentKey(e.merchantId, e.paymentId ?? e.externalId), async () => {
     const row = await repo(ctx, PosInbox).lock(id);
     if (expectedVersion !== undefined && row.version !== expectedVersion)
       throw new Conflict('POS inbox changed', 'Reload the current inbox version.');
     if (row.status === 'posted' || row.status === 'ignored') return inboxResult(row);
-    let status: Infer<typeof PosInbox>['status'] = 'posted',
-      error: string | null = null,
-      transactionId: string | null = null;
+    let status: Infer<typeof PosInbox>['status'] = 'posted';
+    let error: string | null = null;
+    let transactionId: string | null = null;
     try {
       transactionId = await withSavepoint(ctx, (inner) => postEvent(inner, row));
       if (!transactionId) status = 'ignored';
@@ -54,8 +54,8 @@ export async function processInbox(ctx: Context, id: string, expectedVersion?: n
 }
 /** Signed adapter entry point; not exposed as a public action or permission bypass. */
 export async function receivePosEvent(ctx: Context, locationId: string, raw: NormalizedPosEvent) {
-  const event = normalizedPosEvent.parse(raw),
-    location = await repo(ctx, PosLocation).get(locationId);
+  const event = normalizedPosEvent.parse(raw);
+  const location = await repo(ctx, PosLocation).get(locationId);
   if (
     !location.active ||
     location.provider !== event.provider ||

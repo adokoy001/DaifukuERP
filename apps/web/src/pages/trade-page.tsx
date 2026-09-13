@@ -24,32 +24,32 @@ export function TradePage() {
   return <TradeWorkspace key={financeIdentity()} />;
 }
 function TradeWorkspace() {
-  const { t } = useLocale(),
-    access = useFinanceAccess(),
-    actions = access.data?.actions.map((action) => action.name) ?? [],
-    allowed = actions.includes('trade.board');
-  const [direction, setDirection] = useState<'sales' | 'purchase'>('sales'),
-    [all, setAll] = useState(false),
-    [offset, setOffset] = useState(0),
-    [quotationOffset, setQuotationOffset] = useState(0),
-    [orderId, setOrderId] = useState(''),
-    [selection, setSelection] = useState<TradeSelection>();
+  const { t } = useLocale();
+  const access = useFinanceAccess();
+  const actions = access.data?.actions.map((action) => action.name) ?? [];
+  const allowed = actions.includes('trade.board');
+  const [direction, setDirection] = useState<'sales' | 'purchase'>('sales');
+  const [all, setAll] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [quotationOffset, setQuotationOffset] = useState(0);
+  const [orderId, setOrderId] = useState('');
+  const [selection, setSelection] = useState<TradeSelection>();
   const board = useFinanceRead(
-      'trade.board',
-      { direction, status: all ? 'all' : 'open', limit: 100, offset },
-      allowed,
-      boardOutput.parse,
-    ),
-    detail = useFinanceRead('trade.order_detail', { orderId }, allowed && Boolean(orderId), detailOutput.parse);
+    'trade.board',
+    { direction, status: all ? 'all' : 'open', limit: 100, offset },
+    allowed,
+    boardOutput.parse,
+  );
+  const detail = useFinanceRead('trade.order_detail', { orderId }, allowed && Boolean(orderId), detailOutput.parse);
   const quotations = useFinanceList(
-      'trade_quotation',
-      { docstatus: 1 },
-      allowed && direction === 'sales' && actions.includes('trade.convert_quotation'),
-      quotationOffset,
-    ),
-    sources = [access, board, detail, quotations],
-    busy = sources.some((source) => source.isFetching || source.isError),
-    close = () => setSelection(undefined);
+    'trade_quotation',
+    { docstatus: 1 },
+    allowed && direction === 'sales' && actions.includes('trade.convert_quotation'),
+    quotationOffset,
+  );
+  const sources = [access, board, detail, quotations];
+  const busy = sources.some((source) => source.isFetching || source.isError);
+  const close = () => setSelection(undefined);
   return (
     <FinanceShell
       title={{ ja: '商流・受発注', en: 'Trade and orders' }}
@@ -275,9 +275,9 @@ function TradeDetail({
   actions: string[];
   onSelect: (selection: TradeSelection) => void;
 }) {
-  const { t } = useLocale(),
-    order = detail.order,
-    active = order.docstatus === 1 && order.status !== 'closed';
+  const { t } = useLocale();
+  const order = detail.order;
+  const active = order.docstatus === 1 && order.status !== 'closed';
   return (
     <FinancePanel
       title={`${order.number} · ${order.partner}`}

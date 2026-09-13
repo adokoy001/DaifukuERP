@@ -35,8 +35,8 @@ type Model = {
 };
 const latest = (m: Model) => required(m.packs.at(-1));
 async function prepare(m: Model, f: FilingFixture) {
-  const previous = m.packs.at(-1),
-    request = { ...f.request, idempotencyKey: newId(), ...(previous ? { previousId: previous.id } : {}) };
+  const previous = m.packs.at(-1);
+  const request = { ...f.request, idempotencyKey: newId(), ...(previous ? { previousId: previous.id } : {}) };
   const result = await f.action('prepare_accounting', request);
   expect(m.packs.map((p) => p.id)).not.toContain(result.id);
   m.packs.push({
@@ -50,8 +50,8 @@ async function prepare(m: Model, f: FilingFixture) {
   m.success++;
 }
 async function verify(m: Model, f: FilingFixture, capital: number, sale: number) {
-  const p = latest(m),
-    d = await f.action<FilingDetail>('get', { kind: 'accounting', id: p.id });
+  const p = latest(m);
+  const d = await f.action<FilingDetail>('get', { kind: 'accounting', id: p.id });
   expect(d).toMatchObject({
     version: p.version,
     status: p.status,
@@ -71,8 +71,8 @@ async function verify(m: Model, f: FilingFixture, capital: number, sale: number)
   }
 }
 async function state(m: Model, f: FilingFixture, op: 'review' | 'creatorReview' | 'cancel') {
-  const p = latest(m),
-    confirming = op !== 'cancel';
+  const p = latest(m);
+  const confirming = op !== 'cancel';
   const allowed = confirming
     ? op === 'review' && p.status === 'draft' && p.generation === m.generation && p.closed
     : p.status !== 'cancelled';
@@ -97,8 +97,8 @@ async function state(m: Model, f: FilingFixture, op: 'review' | 'creatorReview' 
   }
 }
 async function exportPack(m: Model, f: FilingFixture) {
-  const p = latest(m),
-    allowed = p.status === 'confirmed' && p.generation === m.generation && p.closed;
+  const p = latest(m);
+  const allowed = p.status === 'confirmed' && p.generation === m.generation && p.closed;
   const call = f.action<FilingExport>('export', { kind: 'accounting', id: p.id, expectedVersion: p.version });
   if (allowed) {
     const output = await call;
@@ -157,17 +157,17 @@ it('AC-9 / FILING-SOURCE-01 compares saved evidence and current-source gates ove
       fc.integer({ min: 1, max: 9_999_999 }),
       fc.array(fc.constantFrom(...choices), { minLength: 3, maxLength: 8 }),
       async (capital, sale, tail) => {
-        const f = await filingModelFixture(capital, sale),
-          m: Model = {
-            packs: [],
-            generation: 0,
-            closed: true,
-            profileVersion: 1,
-            success: 0,
-            rejected: 0,
-            exports: 0,
-            staleRejected: 0,
-          };
+        const f = await filingModelFixture(capital, sale);
+        const m: Model = {
+          packs: [],
+          generation: 0,
+          closed: true,
+          profileVersion: 1,
+          success: 0,
+          rejected: 0,
+          exports: 0,
+          staleRejected: 0,
+        };
         try {
           await prepare(m, f);
           const prefix: Op[] = [

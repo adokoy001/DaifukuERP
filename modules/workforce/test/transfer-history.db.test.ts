@@ -65,8 +65,8 @@ describe('employee transfer preserves scoped leave and published payslip history
       eligibilityConfirmed: true,
       basis: '資格確認済み',
     });
-    const before = await employee(f.employee.id),
-      members = await membershipSnapshot();
+    const before = await employee(f.employee.id);
+    const members = await membershipSnapshot();
     // Removing the original site from a membership would hide the remaining balance under the current scope model.
     expect(
       await f.db.run({ ...f.alice.params, siteIds: [f.otherSiteId] }, async (ctx) =>
@@ -88,9 +88,9 @@ describe('employee transfer preserves scoped leave and published payslip history
     );
   });
   it('uses the minimal closed-period projection to protect payslips without exposing wages to HR', async () => {
-    const payroll = await payslip(),
-      before = await employee(f.otherEmployee.id),
-      members = await membershipSnapshot();
+    const payroll = await payslip();
+    const before = await employee(f.otherEmployee.id);
+    const members = await membershipSnapshot();
     expect(await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforcePayroll).count())).toBe(0);
     expect(
       await f.db.run(f.hr.params, (ctx) =>

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ShiftProblem, ShiftRecommendation } from '@daifuku/mod-workforce/scheduling';
 import { createShiftRunner, type ShiftWorkerPort } from './shift-worker-client.ts';
-const problem = {} as ShiftProblem,
-  recommendation = { seed: 7 } as ShiftRecommendation;
+const problem = {} as ShiftProblem;
+const recommendation = { seed: 7 } as ShiftRecommendation;
 function port(): ShiftWorkerPort {
   return { onmessage: null, onerror: null, postMessage: vi.fn(), terminate: vi.fn() };
 }
@@ -12,11 +12,11 @@ function callbacks() {
 afterEach(() => vi.useRealTimers());
 describe('shift worker lifecycle', () => {
   it('terminates completed workers and delivers only the current result', () => {
-    const first = port(),
-      second = port(),
-      cb = callbacks(),
-      factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
-      runner = createShiftRunner(factory, cb);
+    const first = port();
+    const second = port();
+    const cb = callbacks();
+    const factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const runner = createShiftRunner(factory, cb);
     runner.run(problem, { seed: 7 });
     runner.run(problem, { seed: 8 });
     expect(first.terminate).toHaveBeenCalledOnce();
@@ -28,9 +28,9 @@ describe('shift worker lifecycle', () => {
     expect(cb.pending).toHaveBeenLastCalledWith(false);
   });
   it('cancels a running request and ignores its late reply', () => {
-    const worker = port(),
-      cb = callbacks(),
-      runner = createShiftRunner(() => worker, cb);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createShiftRunner(() => worker, cb);
     runner.run(problem, { seed: 7 });
     runner.cancel();
     worker.onmessage?.({ data: { kind: 'result', result: recommendation } });
@@ -40,9 +40,9 @@ describe('shift worker lifecycle', () => {
   });
   it('bounds computation time and terminates before reporting a timeout', () => {
     vi.useFakeTimers();
-    const worker = port(),
-      cb = callbacks(),
-      runner = createShiftRunner(() => worker, cb, 500);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createShiftRunner(() => worker, cb, 500);
     runner.run(problem, { seed: 7 });
     vi.advanceTimersByTime(501);
     expect(worker.terminate).toHaveBeenCalledOnce();
@@ -66,9 +66,9 @@ describe('shift worker lifecycle', () => {
     expect(cb.failed).toHaveBeenLastCalledWith('failed');
   });
   it('disposes on navigation without accepting future errors or updating a removed view', () => {
-    const worker = port(),
-      cb = callbacks(),
-      runner = createShiftRunner(() => worker, cb);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createShiftRunner(() => worker, cb);
     runner.run(problem, { seed: 7 });
     cb.pending.mockClear();
     runner.dispose();

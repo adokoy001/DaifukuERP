@@ -71,8 +71,8 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
     jsonOnly: action.inputSchema !== undefined && action.inputSchema.type !== 'object',
   });
   const run = useRunReport(action.name);
-  const [snapshot, setSnapshot] = useState<Snapshot>(),
-    [pending, setPending] = useState<RunInput>();
+  const [snapshot, setSnapshot] = useState<Snapshot>();
+  const [pending, setPending] = useState<RunInput>();
   const fingerprint = JSON.stringify(form.state.jsonMode ? form.state.json : form.state.values);
   const stale = snapshot !== undefined && snapshot.fingerprint !== fingerprint;
   const execute = (captured: RunInput) => {

@@ -27,13 +27,13 @@ export function summary(kind: FilingKind, row: FilingPack) {
 }
 export async function filingBoard(ctx: Context, kind: FilingKind) {
   requireKind(ctx, kind);
-  const packs = await repo(ctx, packEntity(kind)).list({ limit: 100, orderBy: [{ field: 'createdAt', dir: 'desc' }] }),
-    profiles = await allRows(ctx, profileEntity(kind));
-  const accounts = kind === 'accounting' ? await allRows(ctx, Account, {}, 2000) : [],
-    years = kind === 'accounting' ? await allRows(ctx, FiscalYear) : [],
-    employees = kind === 'payroll' ? await allRows(ctx, WorkforceEmployee, {}, 2000) : [];
-  const saved = profiles[0],
-    periods = kind === 'accounting' ? await allRows(ctx, FiscalPeriod) : [];
+  const packs = await repo(ctx, packEntity(kind)).list({ limit: 100, orderBy: [{ field: 'createdAt', dir: 'desc' }] });
+  const profiles = await allRows(ctx, profileEntity(kind));
+  const accounts = kind === 'accounting' ? await allRows(ctx, Account, {}, 2000) : [];
+  const years = kind === 'accounting' ? await allRows(ctx, FiscalYear) : [];
+  const employees = kind === 'payroll' ? await allRows(ctx, WorkforceEmployee, {}, 2000) : [];
+  const saved = profiles[0];
+  const periods = kind === 'accounting' ? await allRows(ctx, FiscalPeriod) : [];
   const closed = (year: { id: string; startDate: string; endDate: string }) => {
     const relevant = periods.filter((p) => p.fiscalYearId === year.id);
     return (
@@ -60,8 +60,8 @@ export async function filingBoard(ctx: Context, kind: FilingKind) {
 }
 export async function filingDetail(ctx: Context, kind: FilingKind, id: string) {
   return sourceLocks(ctx, kind, async () => {
-    const row = await repo(ctx, packEntity(kind)).get(id),
-      latest = await currentSource(ctx, kind, row);
+    const row = await repo(ctx, packEntity(kind)).get(id);
+    const latest = await currentSource(ctx, kind, row);
     assertEvidence(row);
     return filingDetailOutput.parse({
       ...summary(kind, row),

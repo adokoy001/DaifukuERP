@@ -30,8 +30,8 @@ const amountLabels: Record<string, FiscalLabel> = {
   total: { ja: '所得控除合計', en: 'Total income deductions' },
 };
 export function FiscalCalculation({ row }: { row: FiscalBoard['adjustments'][number] }) {
-  const { t } = useLocale(),
-    calculation = row.calculation;
+  const { t } = useLocale();
+  const calculation = row.calculation;
   const deductions =
     typeof calculation.deductions === 'object' && calculation.deductions !== null
       ? (calculation.deductions as Record<string, unknown>)

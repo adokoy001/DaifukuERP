@@ -17,11 +17,11 @@ export function WorkforceReceipts({
   canUpload: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    qc = useQueryClient();
+  const { t } = useLocale();
+  const qc = useQueryClient();
   const [error, setError] = useState<unknown>();
-  const user = getUser(),
-    companyId = getCompanyId();
+  const user = getUser();
+  const companyId = getCompanyId();
   const path = '/api/workforce/expenses/' + expense.id + '/receipts';
   const query = useQuery({
     queryKey: ['workforce', user?.tenantId, user?.id, companyId, 'receipts', expense.id],

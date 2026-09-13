@@ -18,8 +18,8 @@ function disability(rules: JapanPayrollRules, kind: keyof JapanPayrollData['dedu
 }
 function spouseDeduction(rules: JapanPayrollRules, input: YearEndDeclaration, income: Decimal): Decimal {
   const rule = rules.data.deductions;
-  const spouse = input.spouse,
-    column = rule.spouseTaxpayerBands.findIndex((upper) => income.lte(upper));
+  const spouse = input.spouse;
+  const column = rule.spouseTaxpayerBands.findIndex((upper) => income.lte(upper));
   if (!spouse || column < 0) return D(0);
   const amount = D(spouse.income);
   if (amount.lte(rule.dependentIncomeLimit))
@@ -29,8 +29,8 @@ function spouseDeduction(rules: JapanPayrollRules, input: YearEndDeclaration, in
 
 function relativeDeduction(rules: JapanPayrollRules, relative: YearEndDeclaration['relatives'][number]): Decimal {
   const rule = rules.data.deductions;
-  const years = age(rules, relative.birthDate),
-    income = D(relative.income);
+  const years = age(rules, relative.birthDate);
+  const income = D(relative.income);
   if (income.lte(rule.dependentIncomeLimit))
     return D(
       years < rule.dependentMinimumAge
@@ -51,8 +51,8 @@ function relativeDeduction(rules: JapanPayrollRules, relative: YearEndDeclaratio
 
 function life(rules: JapanPayrollRules, premium: string, old = false, child = false): Decimal {
   const rule = rules.data.deductions;
-  const a = D(premium),
-    unit = old ? rule.life.oldUnit : child ? rule.life.childUnit : rule.life.modernUnit;
+  const a = D(premium);
+  const unit = old ? rule.life.oldUnit : child ? rule.life.childUnit : rule.life.modernUnit;
   const parameters = rules.manifest.parameters.life;
   return (
     a.lte(unit)
@@ -66,9 +66,9 @@ function life(rules: JapanPayrollRules, premium: string, old = false, child = fa
 }
 function combinedLife(rules: JapanPayrollRules, newPremium: string, oldPremium: string, child = false): Decimal {
   const rule = rules.data.deductions;
-  const modern = life(rules, newPremium, false, child),
-    old = life(rules, oldPremium, true),
-    combined = min(modern.plus(old), child ? rule.life.childCombinedCap : rule.life.modernCombinedCap);
+  const modern = life(rules, newPremium, false, child);
+  const old = life(rules, oldPremium, true);
+  const combined = min(modern.plus(old), child ? rule.life.childCombinedCap : rule.life.modernCombinedCap);
   return old.gt(combined) ? old : combined;
 }
 function insuranceDeduction(rules: JapanPayrollRules, input: YearEndDeclaration) {
@@ -77,11 +77,11 @@ function insuranceDeduction(rules: JapanPayrollRules, input: YearEndDeclaration)
     (person) =>
       age(rules, person.birthDate) < rule.childLifeAgeLimit && D(person.income).lte(rule.dependentIncomeLimit),
   );
-  const general = combinedLife(rules, input.lifeNew, input.lifeOld, child),
-    nursing = life(rules, input.nursingLife),
-    pension = combinedLife(rules, input.pensionLifeNew, input.pensionLifeOld);
-  const earthquake = min(D(input.earthquakePremium), rule.earthquake.cap),
-    old = D(input.oldLongTermPremium);
+  const general = combinedLife(rules, input.lifeNew, input.lifeOld, child);
+  const nursing = life(rules, input.nursingLife);
+  const pension = combinedLife(rules, input.pensionLifeNew, input.pensionLifeOld);
+  const earthquake = min(D(input.earthquakePremium), rule.earthquake.cap);
+  const old = D(input.oldLongTermPremium);
   const oldDeduction = old.lte(rule.earthquake.oldFirst)
     ? old
     : old.lte(rule.earthquake.oldSecond)
@@ -139,8 +139,8 @@ export function declarationDeductions(
     input.spouse && D(input.spouse.income).lte(rule.dependentIncomeLimit)
       ? disability(rules, input.spouse.disability)
       : D(0);
-  const insurance = insuranceDeduction(rules, input),
-    social = payrollSocial.plus(input.personalSocialPremium);
+  const insurance = insuranceDeduction(rules, input);
+  const social = payrollSocial.plus(input.personalSocialPremium);
   const amounts = {
     basic: annualBasic(rules, income),
     spouse: spouseDeduction(rules, input, income),

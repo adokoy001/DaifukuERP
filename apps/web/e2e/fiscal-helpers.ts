@@ -27,8 +27,8 @@ export async function fiscalFixture(request: APIRequestContext) {
   const headers = { authorization: 'Bearer ' + session.token, 'x-company-id': company.id };
   const site = await api(request, headers, '/api/workforce_site', { code: 'FISCAL', name: '給与検証拠点 ' + runId });
   const member = async (role: string, name: string) => {
-    const email = `fiscal-${role}-${runId}@example.invalid`,
-      row = await api(request, headers, '/admin/users', { email, name, password: PASSWORD });
+    const email = `fiscal-${role}-${runId}@example.invalid`;
+    const row = await api(request, headers, '/admin/users', { email, name, password: PASSWORD });
     await api(
       request,
       headers,
@@ -44,9 +44,9 @@ export async function fiscalFixture(request: APIRequestContext) {
     );
     return { ...row, email };
   };
-  const person = await member('workforce_employee', '給与本人 ' + runId),
-    payroll = await member('workforce_payroll', '給与本部 ' + runId),
-    manager = await member('workforce_manager', '勤務制度管理 ' + runId);
+  const person = await member('workforce_employee', '給与本人 ' + runId);
+  const payroll = await member('workforce_payroll', '給与本部 ' + runId);
+  const manager = await member('workforce_manager', '勤務制度管理 ' + runId);
   const employee = await api(request, headers, '/actions/workforce.register_employee', {
     userId: person.id,
     siteId: site.id,

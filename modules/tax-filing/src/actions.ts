@@ -34,12 +34,12 @@ async function saveProfile(
 ) {
   requireKind(ctx, kind);
   return withLock(ctx, 'tax-filing', async () => {
-    const entity = profileEntity(kind),
-      key = kind === 'accounting' ? 'singleton' : String(input.taxYear),
-      prior = (await allRows(ctx, entity, { key }))[0];
+    const entity = profileEntity(kind);
+    const key = kind === 'accounting' ? 'singleton' : String(input.taxYear);
+    const prior = (await allRows(ctx, entity, { key }))[0];
     expectVersion(prior?.version ?? 0, input.expectedVersion);
-    const { expectedVersion: _v, ...data } = input,
-      country = filingProfile(input.countryProfile);
+    const { expectedVersion: _v, ...data } = input;
+    const country = filingProfile(input.countryProfile);
     if (country.kind !== kind || (kind === 'payroll' && !country.option.taxYears.includes(input.taxYear ?? 0)))
       throw new StateError('指定した準備形式または年度は未対応です', '対応する国別形式を選んでください。');
     if (kind === 'accounting') {

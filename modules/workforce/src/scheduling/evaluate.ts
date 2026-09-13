@@ -23,9 +23,9 @@ export function invalidEvaluation(): ShiftEvaluation {
 export function employeeMetrics(ctx: Prepared, assignments: ShiftAssignment[]): ShiftEmployeeMetric[] {
   const rows = assignmentRows(ctx, assignments);
   return ctx.problem.employees.map((employee) => {
-    let minutes = 0,
-      preferred = 0,
-      assigned = 0;
+    let minutes = 0;
+    let preferred = 0;
+    let assigned = 0;
     const dates = new Set<string>();
     for (const row of ctx.existing.get(employee.id) ?? [])
       if (dayIndex(row.date) >= ctx.start && dayIndex(row.date) < ctx.start + 7) {
@@ -57,8 +57,8 @@ export function softMetrics(ctx: Prepared, metrics: ShiftEmployeeMetric[]) {
   const ratios = eligible.map((metric) => metric.minutes / Math.max(60, metric.targetMinutes));
   const mean = ratios.reduce((sum, ratio) => sum + ratio, 0) / Math.max(1, ratios.length);
   const fairness = Math.sqrt(ratios.reduce((sum, ratio) => sum + (ratio - mean) ** 2, 0) / Math.max(1, ratios.length));
-  const preferred = metrics.reduce((sum, metric) => sum + metric.preferred, 0),
-    count = metrics.reduce((sum, metric) => sum + metric.assignments, 0);
+  const preferred = metrics.reduce((sum, metric) => sum + metric.preferred, 0);
+  const count = metrics.reduce((sum, metric) => sum + metric.assignments, 0);
   const deviation =
     eligible.reduce(
       (sum, metric) => sum + ((metric.minutes - metric.targetMinutes) / Math.max(60, metric.targetMinutes)) ** 2,
@@ -73,8 +73,8 @@ export function softMetrics(ctx: Prepared, metrics: ShiftEmployeeMetric[]) {
 function coverage(ctx: Prepared, assignments: ShiftAssignment[], exclusions: boolean): ShiftCoverage[] {
   const byEmployee = assignmentRows(ctx, assignments);
   return ctx.problem.slots.map((slot) => {
-    const placed = assignments.filter((a) => a.slotId === slot.id),
-      reasons: Partial<Record<ShiftIssueCode, number>> = {};
+    const placed = assignments.filter((a) => a.slotId === slot.id);
+    const reasons: Partial<Record<ShiftIssueCode, number>> = {};
     if (exclusions)
       for (const employee of ctx.problem.employees) {
         if (placed.some((a) => a.employeeId === employee.id)) continue;
@@ -97,11 +97,11 @@ function coverage(ctx: Prepared, assignments: ShiftAssignment[], exclusions: boo
   });
 }
 export function evaluatePrepared(ctx: Prepared, assignments: ShiftAssignment[], exclusions = false): ShiftEvaluation {
-  const issues = hardIssues(ctx, assignments),
-    employees = employeeMetrics(ctx, assignments),
-    covered = coverage(ctx, assignments, exclusions);
-  const shortage = covered.reduce((sum, slot) => sum + slot.shortage, 0),
-    soft = softMetrics(ctx, employees);
+  const issues = hardIssues(ctx, assignments);
+  const employees = employeeMetrics(ctx, assignments);
+  const covered = coverage(ctx, assignments, exclusions);
+  const shortage = covered.reduce((sum, slot) => sum + slot.shortage, 0);
+  const soft = softMetrics(ctx, employees);
   return {
     issues,
     coverage: covered,

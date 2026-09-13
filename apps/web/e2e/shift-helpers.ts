@@ -9,15 +9,15 @@ export const SHIFT_WEEK = '2026-09-14';
 export const shiftDays = (preference: 'preferred' | 'available' | 'unavailable' = 'preferred') =>
   Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-${14 + i}`, preference, startMinute: 540, endMinute: 1080 }));
 export async function shiftFixture(request: APIRequestContext) {
-  const { headers, companyId } = await qualitySession(request),
-    suffix = crypto.randomUUID().slice(0, 8);
+  const { headers, companyId } = await qualitySession(request);
+  const suffix = crypto.randomUUID().slice(0, 8);
   const site = await api(request, headers, '/api/workforce_site', {
     code: 'SHIFT-' + suffix,
     name: 'シフト検証拠点 ' + suffix,
   });
   async function member(name: string, role: string) {
-    const email = `shift-${crypto.randomUUID()}@example.com`,
-      user = await api(request, headers, '/admin/users', { name: `${name} ${suffix}`, email, password: PASSWORD });
+    const email = `shift-${crypto.randomUUID()}@example.com`;
+    const user = await api(request, headers, '/admin/users', { name: `${name} ${suffix}`, email, password: PASSWORD });
     await api(
       request,
       headers,
@@ -36,10 +36,10 @@ export async function shiftFixture(request: APIRequestContext) {
     const own: Headers = { authorization: 'Bearer ' + session.token, 'x-company-id': companyId };
     return { email, employee, user, name: `${name} ${suffix}`, headers: own };
   }
-  const alice = await member('青木', 'workforce_employee'),
-    bob = await member('林', 'workforce_employee'),
-    missing = await member('未提出', 'workforce_employee'),
-    manager = await member('店長', 'workforce_manager');
+  const alice = await member('青木', 'workforce_employee');
+  const bob = await member('林', 'workforce_employee');
+  const missing = await member('未提出', 'workforce_employee');
+  const manager = await member('店長', 'workforce_manager');
   const profile = {
     skills: ['接客'],
     employmentType: 'part_time',

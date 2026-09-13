@@ -30,13 +30,13 @@ export function TradeQuantityForm({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    [warehouseId, setWarehouseId] = useState(''),
-    [requestId] = useState(() => crypto.randomUUID()),
-    command = useFinanceCommand();
-  const billing = selection.type === 'bill',
-    order = selection.detail.order,
-    sales = order.direction === 'sales';
+  const { t } = useLocale();
+  const [warehouseId, setWarehouseId] = useState('');
+  const [requestId] = useState(() => crypto.randomUUID());
+  const command = useFinanceCommand();
+  const billing = selection.type === 'bill';
+  const order = selection.detail.order;
+  const sales = order.direction === 'sales';
   const lines =
     billing && 'fulfillment' in selection
       ? selection.fulfillment.lines
@@ -183,8 +183,8 @@ export function TradeConvertForm({
   onCreated: (id: string) => void;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand();
+  const { t } = useLocale();
+  const command = useFinanceCommand();
   return (
     <FinanceDialog
       title={t({ ja: '見積から受注を作成', en: 'Create order from quotation' })}
@@ -218,9 +218,9 @@ export function TradeCancelForm({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    closing = selection.type === 'close';
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const closing = selection.type === 'close';
   return (
     <FinanceDialog
       title={t(
@@ -232,8 +232,8 @@ export function TradeCancelForm({
       stale={stale}
       onClose={onClose}
       onSubmit={async (data) => {
-        const reason = String(data.get('reason') ?? ''),
-          correctionDate = String(data.get('correctionDate') ?? '');
+        const reason = String(data.get('reason') ?? '');
+        const correctionDate = String(data.get('correctionDate') ?? '');
         if (selection.type === 'close')
           await command.mutateAsync({
             action: 'trade.close_order',

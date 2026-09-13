@@ -128,9 +128,9 @@ function calendarValue(input: string, grain: Exclude<PivotGrain, 'value'>): stri
   // Use the recorded calendar date, never the browser's time zone. Reject impossible dates.
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2}))?$/.exec(input);
   if (!match) throw new PivotError('invalid_date');
-  const year = Number(match[1]),
-    month = Number(match[2]),
-    day = Number(match[3]);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (
@@ -195,9 +195,9 @@ function root(): PivotNode {
 function ensurePath(nodes: Map<string, PivotNode>, path: (string | null)[]): string[] {
   const keys = [PIVOT_ROOT_KEY];
   for (let depth = 1; depth <= path.length; depth++) {
-    const prefix = path.slice(0, depth),
-      key = JSON.stringify(prefix),
-      parent = defined(keys[depth - 1]);
+    const prefix = path.slice(0, depth);
+    const key = JSON.stringify(prefix);
+    const parent = defined(keys[depth - 1]);
     keys.push(key);
     if (nodes.has(key)) continue;
     const value = defined(prefix[depth - 1]);
@@ -217,8 +217,8 @@ const collator = new Intl.Collator('ja', { numeric: true });
 function sortedNodes(nodes: Map<string, PivotNode>): PivotNode[] {
   for (const node of nodes.values())
     node.children.sort((a, b) => {
-      const va = defined(defined(nodes.get(a)).path.at(-1)),
-        vb = defined(defined(nodes.get(b)).path.at(-1));
+      const va = defined(defined(nodes.get(a)).path.at(-1));
+      const vb = defined(defined(nodes.get(b)).path.at(-1));
       if (va === null) return vb === null ? 0 : 1;
       if (vb === null) return -1;
       return collator.compare(va, vb) || (a < b ? -1 : a > b ? 1 : 0);
@@ -234,8 +234,8 @@ function sortedNodes(nodes: Map<string, PivotNode>): PivotNode[] {
 }
 /** Root is always open. Expand a node to show its immediate children and expanded descendants. */
 export function visibleNodes(nodes: readonly PivotNode[], expanded: ReadonlySet<string>): PivotNode[] {
-  const index = new Map(nodes.map((node) => [node.key, node])),
-    visible: PivotNode[] = [];
+  const index = new Map(nodes.map((node) => [node.key, node]));
+  const visible: PivotNode[] = [];
   const visit = (key: string) => {
     const node = index.get(key);
     if (!node) return;
@@ -274,8 +274,8 @@ export function pivot(rows: readonly Record<string, unknown>[], config: PivotCon
   validatePivotConfig(config);
   if (!Array.isArray(rows)) throw new PivotError('invalid_value');
   if (rows.length > MAX_PIVOT_ROWS) throw new PivotError('row_limit');
-  const rowNodes = new Map([[PIVOT_ROOT_KEY, root()]]),
-    columnNodes = new Map([[PIVOT_ROOT_KEY, root()]]);
+  const rowNodes = new Map([[PIVOT_ROOT_KEY, root()]]);
+  const columnNodes = new Map([[PIVOT_ROOT_KEY, root()]]);
   const states = new Map<string, Aggregate[]>();
   const getCell = (rowKey: string, columnKey: string): Aggregate[] => {
     const key = cellKey(rowKey, columnKey);

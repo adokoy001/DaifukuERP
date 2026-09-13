@@ -82,8 +82,8 @@ async function main() {
       request,
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
     });
-  const pair = await issue(),
-    job = await enqueue();
+  const pair = await issue();
+  const job = await enqueue();
   const write = (data: Record<string, unknown>) => process.stdout.write(JSON.stringify(data) + '\n');
   write({
     type: 'ready',
@@ -119,8 +119,8 @@ async function main() {
         result = { expired: rows.length === 1 };
       } else if (message.operation === 'resolve') {
         if (!message.jobId || !isUuid(message.jobId)) throw new Error('Invalid fixture job');
-        const jobId = message.jobId,
-          job = await db.run({}, (ctx) => repo(ctx, EdgeJob).get(jobId));
+        const jobId = message.jobId;
+        const job = await db.run({}, (ctx) => repo(ctx, EdgeJob).get(jobId));
         if (job.gatewayId !== gateway.id) throw new Error('Fixture job outside gateway');
         result = await post('/actions/edge.resolve', {
           jobId,

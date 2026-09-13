@@ -6,11 +6,11 @@ import { identityFixtureDatabase } from './identity-e2e-database.ts';
 import { oidcFixture } from './identity-oidc-helper.ts';
 import { smtpFixture } from './identity-smtp-helper.ts';
 async function main() {
-  const key = Buffer.alloc(32, 7).toString('base64'),
-    webUrl = 'http://localhost:5189';
-  const db = await identityFixtureDatabase(),
-    smtp = await smtpFixture(),
-    transport = smtpTransport(smtp.options);
+  const key = Buffer.alloc(32, 7).toString('base64');
+  const webUrl = 'http://localhost:5189';
+  const db = await identityFixtureDatabase();
+  const smtp = await smtpFixture();
+  const transport = smtpTransport(smtp.options);
   const oidc = await oidcFixture({ port: 3110, webUrl, inbox: () => smtp.messages });
   const api = await buildServer({
     owner: db.owner,

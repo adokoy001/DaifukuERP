@@ -2,10 +2,11 @@ import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { beginMfa, changeMfa, confirmMfa, stepUpIdentity, totp, type Logger } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { openAgentSession, refreshAgentContext } from '../src/session.ts';
-let db: TestDb, codes: string[];
-const key = Buffer.alloc(32, 7).toString('base64'),
-  now = new Date(),
-  log: Logger = { info() {}, warn() {}, error() {} };
+let db: TestDb;
+let codes: string[];
+const key = Buffer.alloc(32, 7).toString('base64');
+const now = new Date();
+const log: Logger = { info() {}, warn() {}, error() {} };
 beforeAll(async () => {
   db = await freshDb();
   const params = { companyId: null, now: () => now };

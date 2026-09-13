@@ -15,14 +15,14 @@ type AccountReason = 'password-changed' | 'signed-out-all';
 
 function useAccountSecurity() {
   const [passwords, setPasswords] = useState<Passwords>(EMPTY);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const inFlight = useRef(false),
-    exitAllowed = useRef(false);
-  const qc = useQueryClient(),
-    navigate = useNavigate(),
-    { t } = useLocale();
+  const inFlight = useRef(false);
+  const exitAllowed = useRef(false);
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { t } = useLocale();
   const dirty = Object.values(passwords).some(Boolean);
   useBlocker({
     shouldBlockFn: () =>
@@ -242,9 +242,9 @@ function SessionCard({ security }: { security: SecurityState }) {
 }
 
 export function AccountPage() {
-  const security = useAccountSecurity(),
-    { t, locale, setLocale } = useLocale(),
-    user = getUser();
+  const security = useAccountSecurity();
+  const { t, locale, setLocale } = useLocale();
+  const user = getUser();
   return (
     <main className="account-page" data-testid="account-security">
       <div className="account-frame">

@@ -14,9 +14,9 @@ export function FiscalRuleEvidence({
   savedRule: unknown;
   annual?: boolean;
 }) {
-  const { t } = useLocale(),
-    chosen = object(selection),
-    data = object(object(savedRule).data);
+  const { t } = useLocale();
+  const chosen = object(selection);
+  const data = object(object(savedRule).data);
   const code = typeof chosen.packageCode === 'string' ? chosen.packageCode : data.code;
   const method =
     typeof chosen.algorithmVersion === 'string'

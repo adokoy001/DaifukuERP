@@ -110,11 +110,11 @@ function ExtraTotals({ result, currencyScale }: { result: TableResult; currencyS
 export function ReportTable({ result }: { result: TableResult }) {
   const currencyScale = useCurrencyScale();
   const { t, locale } = useLocale();
-  const searchId = useId(),
-    pageId = useId();
-  const [query, setQuery] = useState(''),
-    [page, setPage] = useState(0),
-    [pageSize, setPageSize] = useState(50);
+  const searchId = useId();
+  const pageId = useId();
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [sort, setSort] = useState<ReportSort>();
   useEffect(() => {
     setQuery('');

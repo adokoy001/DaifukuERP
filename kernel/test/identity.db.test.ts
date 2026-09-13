@@ -18,9 +18,9 @@ import { identityRateLimit } from '../src/identity/common.ts';
 import { identityChallenges, identityFactors, identityMail } from '../src/db/identity-tables.ts';
 import { totp, tokenHash, unseal } from '../src/identity/crypto.ts';
 let db: TestDb;
-const key = Buffer.alloc(32, 7).toString('base64'),
-  now = new Date('2026-09-12T09:00:00Z'),
-  params = { companyId: null, now: () => now };
+const key = Buffer.alloc(32, 7).toString('base64');
+const now = new Date('2026-09-12T09:00:00Z');
+const params = { companyId: null, now: () => now };
 const config = { encryptionKey: key, webUrl: 'https://erp.example.com', mailConfigured: false };
 beforeAll(async () => {
   db = await freshDb();
@@ -49,12 +49,12 @@ async function mailToken(kind: 'password_reset' | 'invitation') {
   throw new Error('Missing synthetic mail');
 }
 describe('MFA and one-use identity state', () => {
-  let secret = '',
-    codes: string[] = [];
+  let secret = '';
+  let codes: string[] = [];
   it('requires current verification, confirms a secret, revokes sessions and stores no raw recovery codes', async () => {
     await expect(stepup('000000')).resolves.toHaveProperty('stepUpToken');
-    const step = await stepup(),
-      identity = await current();
+    const step = await stepup();
+    const identity = await current();
     const setup = await db.run(params, (ctx) => beginMfa(ctx, identity.sessionVersion, step.stepUpToken, key));
     secret = setup.secret;
     expect((await db.run(params, (ctx) => identitySecurity(ctx, identity.sessionVersion))).mfaEnabled).toBe(false);
@@ -95,8 +95,8 @@ describe('MFA and one-use identity state', () => {
     expect(stored?.attempts).toBe(5);
   });
   it('uses a recovery code once under racing independent login challenges and excludes reused TOTP', async () => {
-    const first = await login(),
-      second = await login();
+    const first = await login();
+    const second = await login();
     const results = await Promise.allSettled(
       [first, second].map((challenge) =>
         completeMfaLogin(db.owner, challenge.challengeToken, codes[0] ?? '', key, now),
@@ -113,8 +113,8 @@ describe('MFA and one-use identity state', () => {
   });
   it('requires MFA for step-up and invalidates an earlier challenge on factor removal', async () => {
     await expect(stepup()).rejects.toMatchObject({ code: 'VALIDATION' });
-    const challenge = await login(),
-      step = await stepup(codes[1]);
+    const challenge = await login();
+    const step = await stepup(codes[1]);
     await db.run(params, async (ctx) => changeMfa(ctx, (await current()).sessionVersion, step.stepUpToken, 'disable'));
     await expect(completeMfaLogin(db.owner, challenge.challengeToken, codes[2] ?? '', key, now)).rejects.toMatchObject({
       httpStatus: 401,
@@ -152,8 +152,8 @@ describe('invitation, reset and encrypted delivery', () => {
     ).toEqual([]);
   });
   it('reinvites only its original pending account and invalidates the old invitation generation', async () => {
-    const firstStep = await stepup(),
-      identity = await current();
+    const firstStep = await stepup();
+    const identity = await current();
     const invite = (stepUpToken: string) =>
       db.run(params, (ctx) =>
         inviteIdentity(
@@ -163,8 +163,8 @@ describe('invitation, reset and encrypted delivery', () => {
           config,
         ),
       );
-    const first = await invite(firstStep.stepUpToken),
-      oldToken = (await mailToken('invitation')).token;
+    const first = await invite(firstStep.stepUpToken);
+    const oldToken = (await mailToken('invitation')).token;
     const second = await invite((await stepup()).stepUpToken);
     expect(second.userId).toBe(first.userId);
     const newToken = (await mailToken('invitation')).token;
@@ -218,12 +218,12 @@ describe('invitation, reset and encrypted delivery', () => {
     expect(result.failed).toBeGreaterThan(0);
     const failed = await db.owner.drizzle.select().from(identityMail);
     expect(JSON.stringify(failed)).not.toContain('private-password');
-    const messages: string[] = [],
-      transport = {
-        send: async (message: { messageId: string }) => {
-          messages.push(message.messageId);
-        },
-      };
+    const messages: string[] = [];
+    const transport = {
+      send: async (message: { messageId: string }) => {
+        messages.push(message.messageId);
+      },
+    };
     const delivered = await Promise.all(
       [1, 2].map(() => deliverIdentityMail(db.owner, key, transport, 20, new Date(now.getTime() + 61000))),
     );

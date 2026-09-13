@@ -24,8 +24,8 @@ async function hold(
   child: ReturnType<typeof posixHelper> | ReturnType<typeof windowsHelper>,
   onLost: () => void,
 ): Promise<() => Promise<void>> {
-  let released = false,
-    acquired = false;
+  let released = false;
+  let acquired = false;
   child.stderr?.resume();
   child.stdin.on('error', () => undefined);
   child.once('exit', () => {

@@ -32,7 +32,8 @@ const profile: CountryFilingProfile = {
   export: () => [],
 };
 registry.registerOverride(FILING_PROFILE_OVERRIDE, () => [profile]);
-let db: TestDb, employeeId: string;
+let db: TestDb;
+let employeeId: string;
 type Command = { id: string; version: number };
 const reviewer = { actor: { type: 'user' as const, id: newId() }, roles: ['workforce_payroll'] };
 const run = <T>(name: string, input: unknown, params: Partial<ContextParams> = {}) =>

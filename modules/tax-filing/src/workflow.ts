@@ -51,8 +51,8 @@ export async function createPreparation(
   },
 ) {
   return sourceLocks(ctx, kind, async () => {
-    const entity = packEntity(kind),
-      prior = (await allRows(ctx, entity, { idempotencyKey: input.idempotencyKey }))[0];
+    const entity = packEntity(kind);
+    const prior = (await allRows(ctx, entity, { idempotencyKey: input.idempotencyKey }))[0];
     if (prior) {
       if (stableJson(prior.request) !== stableJson(input))
         throw new Conflict('再試行キーが別の準備で使われています', '新しい準備には新しいキーを使用してください。');
@@ -99,8 +99,8 @@ export async function changeState(
   status: 'confirmed' | 'cancelled',
 ) {
   return sourceLocks(ctx, input.kind, async () => {
-    const entity = packEntity(input.kind),
-      row = await repo(ctx, entity).lock(input.id);
+    const entity = packEntity(input.kind);
+    const row = await repo(ctx, entity).lock(input.id);
     expectVersion(row.version, input.expectedVersion);
     if (row.status === 'cancelled' || (status === 'confirmed' && row.status !== 'draft'))
       throw new StateError('準備資料の状態が変わっています', '現在の状態を確認してください。');

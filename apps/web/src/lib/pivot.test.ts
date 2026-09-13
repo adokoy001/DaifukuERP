@@ -183,8 +183,8 @@ describe('hierarchical axes', () => {
       { site: '店舗2', team: 'A' },
       { site: null, team: 'C' },
     ];
-    const forward = pivot(rows, config),
-      backward = pivot([...rows].reverse(), config);
+    const forward = pivot(rows, config);
+    const backward = pivot([...rows].reverse(), config);
     expect(forward.rowNodes).toEqual(backward.rowNodes);
     expect(forward.rowNodes[0]?.children).toEqual(['["店舗2"]', '["店舗10"]', '[null]']);
     expect(visibleNodes(forward.rowNodes, new Set()).map((node) => node.key)).toEqual([

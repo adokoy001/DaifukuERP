@@ -5,8 +5,8 @@ export function legalPeriodMs(weeklyMinutes: number, days: number): number {
   return Number((BigInt(weeklyMinutes) * 60000n * BigInt(days)) / 7n);
 }
 export function validateWorkSystem(input: WorkSystemInput): void {
-  const starts = periodBounds(input.startsOn.slice(0, 7)),
-    ends = periodBounds(input.endsOn.slice(0, 7));
+  const starts = periodBounds(input.startsOn.slice(0, 7));
+  const ends = periodBounds(input.endsOn.slice(0, 7));
   const months =
     (Number(input.endsOn.slice(0, 4)) - Number(input.startsOn.slice(0, 4))) * 12 +
     Number(input.endsOn.slice(5, 7)) -
@@ -21,8 +21,8 @@ export function validateWorkSystem(input: WorkSystemInput): void {
     throw new ValidationError('勤務制度の期間が未対応です', [
       { path: 'startsOn', message: '通常・1か月変形は暦月1か月、フレックスは連続した暦月1～3か月を指定してください。' },
     ]);
-  const days = (dateMs(input.endsOn) - dateMs(input.startsOn)) / 86400000 + 1,
-    sorted = [...input.days].sort((a, b) => a.date.localeCompare(b.date));
+  const days = (dateMs(input.endsOn) - dateMs(input.startsOn)) / 86400000 + 1;
+  const sorted = [...input.days].sort((a, b) => a.date.localeCompare(b.date));
   if (
     sorted.length !== days ||
     sorted.some(

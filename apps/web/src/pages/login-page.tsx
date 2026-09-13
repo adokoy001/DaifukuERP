@@ -38,8 +38,8 @@ export function TenantChoice({ value, onChange }: { value: string; onChange: (va
 }
 
 export function useCompleteLogin() {
-  const qc = useQueryClient(),
-    navigate = useNavigate();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   return async (res: LoginResponse) => {
     setSession(res.token, res.user);
     qc.clear();
@@ -51,8 +51,8 @@ export function useCompleteLogin() {
 }
 
 function LoginNotice() {
-  const { t } = useLocale(),
-    search = useSearch({ strict: false }) as { reason?: string };
+  const { t } = useLocale();
+  const search = useSearch({ strict: false }) as { reason?: string };
   if (search.reason === 'expired')
     return (
       <p role="status" className="notice">
@@ -81,13 +81,13 @@ function LoginNotice() {
 }
 
 export function LoginPage() {
-  const { t } = useLocale(),
-    complete = useCompleteLogin();
-  const [email, setEmail] = useState(''),
-    [password, setPassword] = useState(''),
-    [tenantId, setTenantId] = useState('');
-  const [challenge, setChallenge] = useState<Challenge | null>(null),
-    initialized = useRef(false);
+  const { t } = useLocale();
+  const complete = useCompleteLogin();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [tenantId, setTenantId] = useState('');
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const initialized = useRef(false);
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;

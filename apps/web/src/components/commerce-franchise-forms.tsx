@@ -111,10 +111,10 @@ export function CommerceFranchisePayment({
   onClose: () => void;
 }) {
   const copy = useCommerceCopy();
-  const task = useCommerceTask(),
-    meta = useMeta(),
-    id = useId(),
-    [accountId, setAccountId] = useState('');
+  const task = useCommerceTask();
+  const meta = useMeta();
+  const id = useId();
+  const [accountId, setAccountId] = useState('');
   const field = meta.data?.entities.find((e) => e.name === 'payment')?.fields.find((f) => f.name === 'accountId');
   return (
     <CommerceDialog

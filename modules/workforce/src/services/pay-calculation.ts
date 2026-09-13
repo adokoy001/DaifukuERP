@@ -24,8 +24,8 @@ function monthlyBase(input: PayInput): Decimal {
   return total.div(monthDays);
 }
 function validateDays(input: PayInput): void {
-  const seen = new Set<string>(),
-    weeks = new Set<number>();
+  const seen = new Set<string>();
+  const weeks = new Set<number>();
   for (const day of input.days) {
     if (
       seen.has(day.date) ||
@@ -54,19 +54,19 @@ function validateDays(input: PayInput): void {
 }
 function attendanceCosts(input: PayInput) {
   const classified = classifyWorkTime(input);
-  let overtimeMs = 0,
-    base = D(0),
-    premium = D(0),
-    workedMs = 0;
+  let overtimeMs = 0;
+  let base = D(0);
+  let premium = D(0);
+  let workedMs = 0;
   const details: Record<string, unknown>[] = [];
   for (const day of [...input.days].sort((a, b) => a.date.localeCompare(b.date))) {
-    const policy = day.policy,
-      classification = classified.get(day.date);
+    const policy = day.policy;
+    const classification = classified.get(day.date);
     const holidayMs = day.dayKind === 'statutory_holiday' ? day.workedMs : 0;
     if (day.date < input.employmentStart || day.date > input.employmentEnd) continue;
-    const term = termsOn(input.terms, day.date),
-      rate = hourlyRate(term),
-      extraMs = classification?.overtimeMs ?? 0;
+    const term = termsOn(input.terms, day.date);
+    const rate = hourlyRate(term);
+    const extraMs = classification?.overtimeMs ?? 0;
     const highMs =
       Math.max(0, overtimeMs + extraMs - policy.monthlyOvertimeThresholdMinutes * 60000) -
       Math.max(0, overtimeMs - policy.monthlyOvertimeThresholdMinutes * 60000);
@@ -109,8 +109,8 @@ function attendanceCosts(input: PayInput) {
 export function calculatePay(input: PayInput) {
   validateDays(input);
   const work = attendanceCosts(input);
-  let leavePay = D(0),
-    paidLeaveDays = D(0);
+  let leavePay = D(0);
+  let paidLeaveDays = D(0);
   for (const leave of input.leaves) {
     if (leave.date < input.employmentStart || leave.date > input.employmentEnd)
       throw new StateError(
@@ -127,9 +127,9 @@ export function calculatePay(input: PayInput) {
           .div(60),
       );
   }
-  const monthly = monthlyBase(input),
-    basePay = monthly.plus(work.base).plus(leavePay).roundUp(0),
-    premiumPay = work.premium.roundUp(0);
+  const monthly = monthlyBase(input);
+  const basePay = monthly.plus(work.base).plus(leavePay).roundUp(0);
+  const premiumPay = work.premium.roundUp(0);
   return {
     basePay,
     premiumPay,

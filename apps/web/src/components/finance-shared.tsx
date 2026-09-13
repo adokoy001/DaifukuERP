@@ -34,8 +34,8 @@ export function FinanceShell({
   sources: ReadSource[];
   children: ReactNode;
 }) {
-  const { t } = useLocale(),
-    failed = sources.find((source) => source.isError && !canRetainData(source));
+  const { t } = useLocale();
+  const failed = sources.find((source) => source.isError && !canRetainData(source));
   return (
     <div className="workspace-page finance-page">
       <header className="finance-hero">
@@ -75,8 +75,8 @@ export function FinanceShell({
 }
 
 export function FinanceField({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: Label }) {
-  const { t } = useLocale(),
-    id = useId();
+  const { t } = useLocale();
+  const id = useId();
   return (
     <label className="finance-field" htmlFor={id}>
       <span>{t(label)}</span>
@@ -100,8 +100,8 @@ export function FinanceRef({
   onChange: (value: string) => void;
   required?: boolean;
 }) {
-  const { t } = useLocale(),
-    id = useId();
+  const { t } = useLocale();
+  const id = useId();
   return (
     <div className="finance-field">
       <label htmlFor={id}>{t(label)}</label>

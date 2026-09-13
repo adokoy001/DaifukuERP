@@ -13,9 +13,9 @@ afterAll(async () => {
   await db.close();
 });
 it('does not hold the user row while waiting for a membership being removed', async () => {
-  const userId = newId(),
-    gatewayId = newId(),
-    application = 'relay-lock-' + newId();
+  const userId = newId();
+  const gatewayId = newId();
+  const application = 'relay-lock-' + newId();
   await db.owner.drizzle.insert(users).values({
     id: userId,
     tenantId: db.tenantId,

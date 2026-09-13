@@ -26,13 +26,13 @@ export function ShiftPlanner({
   refresh: () => Promise<ShiftBoard | undefined>;
   onGuard: (guarded: boolean, busy: boolean) => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
-  const [draft, setDraft] = useState(() => draftFromBoard(board)),
-    [editing, setEditing] = useState(Boolean(board.draft) || !board.published),
-    [dirty, setDirty] = useState(false),
-    [error, setError] = useState<unknown>(),
-    [confirm, setConfirm] = useState<{ plan: ShiftPlanSummary; mode: 'publish' | 'cancel' }>();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [draft, setDraft] = useState(() => draftFromBoard(board));
+  const [editing, setEditing] = useState(Boolean(board.draft) || !board.published);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const [confirm, setConfirm] = useState<{ plan: ShiftPlanSummary; mode: 'publish' | 'cancel' }>();
   useEffect(() => {
     if (!editing && !dirty) {
       setDraft(draftFromBoard(board));
@@ -70,10 +70,10 @@ export function ShiftPlanner({
           ))),
     enableBeforeUnload: dirty || worker.running || task.isPending,
   });
-  const sourceChanged = editing && draft.sourceRevision !== board.sourceRevision,
-    planChanged = draftWasReplaced(draft, board, editing);
-  const canSave = actions.includes('workforce.save_shift_plan'),
-    disabled = !editing || !canSave || worker.running || task.isPending;
+  const sourceChanged = editing && draft.sourceRevision !== board.sourceRevision;
+  const planChanged = draftWasReplaced(draft, board, editing);
+  const canSave = actions.includes('workforce.save_shift_plan');
+  const disabled = !editing || !canSave || worker.running || task.isPending;
   const saved = async () => {
     const latest = await refresh();
     if (latest) {

@@ -55,8 +55,8 @@ function installationIssues(state: State, bundle: PayrollRuleBundle): string[] {
   const manifest = bundle.manifest;
   const existing = state.installed.find((rule) => rule.bundle.manifest.packageCode === manifest.packageCode);
   if (existing) return [];
-  const active = activePayrollRules(state.installed),
-    issues: string[] = [];
+  const active = activePayrollRules(state.installed);
+  const issues: string[] = [];
   const previous = active.find((rule) => rule.bundle.manifest.packageCode === manifest.supersedesPackageCode);
   if (manifest.supersedesPackageCode) {
     if (!previous?.release) issues.push('置換元の有効な承認版を先に導入してください。');
@@ -68,8 +68,8 @@ function installationIssues(state: State, bundle: PayrollRuleBundle): string[] {
       issues.push('置換元の税年・制度区分・版番号が一致しません。');
     else
       for (const key of ['paymentDates', 'insuranceMonths', 'wageCutoffDates', 'adjustmentDates'] as const) {
-        const old = previous.bundle.manifest.applicability[key],
-          next = manifest.applicability[key];
+        const old = previous.bundle.manifest.applicability[key];
+        const next = manifest.applicability[key];
         if (next.from > old.from || next.to < old.to) issues.push('訂正版の適用範囲が置換元の全期間を覆っていません。');
       }
   }
@@ -77,9 +77,9 @@ function installationIssues(state: State, bundle: PayrollRuleBundle): string[] {
     if (rule === previous || rule.bundle.taxYear !== bundle.taxYear) continue;
     if (
       ['paymentDates', 'adjustmentDates'].some((key) => {
-        const k = key as 'paymentDates' | 'adjustmentDates',
-          a = rule.bundle.manifest.applicability[k],
-          b = manifest.applicability[k];
+        const k = key as 'paymentDates' | 'adjustmentDates';
+        const a = rule.bundle.manifest.applicability[k];
+        const b = manifest.applicability[k];
         return a.from <= b.to && b.from <= a.to;
       })
     )
@@ -94,9 +94,9 @@ function selectedBundle(state: State, packageCode: string): PayrollRuleBundle {
 }
 export async function previewPayrollRule(ctx: Context, packageCode: string): Promise<PayrollRulePreview> {
   requirePayrollRuleAdmin(ctx);
-  const state = await installedPayrollRules(ctx),
-    bundle = selectedBundle(state, packageCode),
-    row = summary(state, bundle);
+  const state = await installedPayrollRules(ctx);
+  const bundle = selectedBundle(state, packageCode);
+  const row = summary(state, bundle);
   const issues = installationIssues(state, bundle);
   const pays = await allRows(ctx, WorkforcePayroll, {
     docstatus: 0,
@@ -125,8 +125,8 @@ export async function previewPayrollRule(ctx: Context, packageCode: string): Pro
 async function install(ctx: Context, input: z.infer<typeof installPayrollRuleInput>) {
   requirePayrollRuleAdmin(ctx);
   return withLock(ctx, 'workforce:policies', async () => {
-    const state = await installedPayrollRules(ctx),
-      bundle = selectedBundle(state, input.packageCode);
+    const state = await installedPayrollRules(ctx);
+    const bundle = selectedBundle(state, input.packageCode);
     if (
       input.expectedPayloadHash !== payloadHash(bundle) ||
       input.expectedManifestHash !== manifestHash(bundle.manifest)
@@ -172,8 +172,8 @@ async function install(ctx: Context, input: z.infer<typeof installPayrollRuleInp
 }
 export async function initializeLegacyPayrollRules(ctx: Context) {
   requirePayrollRuleAdmin(ctx);
-  const state = await installedPayrollRules(ctx),
-    legacy = state.available.filter((bundle) => bundle.manifest.parameters['legacySnapshotSchema'] === 1);
+  const state = await installedPayrollRules(ctx);
+  const legacy = state.available.filter((bundle) => bundle.manifest.parameters['legacySnapshotSchema'] === 1);
   if (legacy.length !== 1 || !legacy[0]) ruleError('互換導入に対応する旧制度資料がありません');
   const bundle = legacy[0];
   const result = await install(ctx, {

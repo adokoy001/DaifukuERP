@@ -15,11 +15,11 @@ const amount = (value: unknown): string | null =>
 
 /** Render only documented calculation fields; employee/account/internal identifiers are never dumped as JSON. */
 export function WorkforceCalculation({ row }: { row: PayrollSummary }) {
-  const { t, locale } = useLocale(),
-    calculation = row.calculation;
-  const terms = records(calculation.terms),
-    days = records(calculation.details),
-    policies = records(calculation.policies);
+  const { t, locale } = useLocale();
+  const calculation = row.calculation;
+  const terms = records(calculation.terms);
+  const days = records(calculation.details);
+  const policies = records(calculation.policies);
   const duration = (value: unknown) => (typeof value === 'number' ? minutesLabel(value / 60000, locale) : '—');
   return (
     <details className="workforce-calculation">

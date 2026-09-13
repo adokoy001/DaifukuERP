@@ -32,12 +32,12 @@ export function maximumMagnitude(values: string[]): string {
 }
 /** Decimal amounts stay exact; only a bounded ratio becomes a number for SVG coordinates. */
 export function chartRatio(value: string, max: string): number {
-  const a = parseDecimalString(value),
-    b = parseDecimalString(max);
+  const a = parseDecimalString(value);
+  const b = parseDecimalString(max);
   if (!a || !b) return 0;
   const scale = Math.max(a.frac.length, b.frac.length);
-  const av = BigInt(a.int + a.frac.padEnd(scale, '0')),
-    bv = BigInt(b.int + b.frac.padEnd(scale, '0'));
+  const av = BigInt(a.int + a.frac.padEnd(scale, '0'));
+  const bv = BigInt(b.int + b.frac.padEnd(scale, '0'));
   if (bv === 0n) return 0;
   const bounded = av > bv ? bv : av;
   return (Number((bounded * 10_000n) / bv) / 10_000) * (a.neg ? -1 : 1);

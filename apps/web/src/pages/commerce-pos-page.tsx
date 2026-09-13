@@ -28,27 +28,27 @@ export function CommercePosPage() {
 }
 function PosWorkspace() {
   const copy = useCommerceCopy();
-  const { allowed, actions } = useCommerceAccess('pos_integration.inbox'),
-    [offset, setOffset] = useState(0),
-    [sourceOffset, setSourceOffset] = useState(0),
-    [dialog, setDialog] = useState<{
-      row: RecordJson;
-      mode: 'retry' | 'correct';
-    }>();
-  const inbox = useCommerceList('pos_integration_inbox', allowed, offset),
-    locations = useCommerceList('pos_integration_location', allowed),
-    sources = useCommerceList('pos_integration_transaction', allowed, sourceOffset),
-    readers = [inbox, locations, sources],
-    busy = readers.some((r) => r.isFetching),
-    task = useCommerceTask();
+  const { allowed, actions } = useCommerceAccess('pos_integration.inbox');
+  const [offset, setOffset] = useState(0);
+  const [sourceOffset, setSourceOffset] = useState(0);
+  const [dialog, setDialog] = useState<{
+    row: RecordJson;
+    mode: 'retry' | 'correct';
+  }>();
+  const inbox = useCommerceList('pos_integration_inbox', allowed, offset);
+  const locations = useCommerceList('pos_integration_location', allowed);
+  const sources = useCommerceList('pos_integration_transaction', allowed, sourceOffset);
+  const readers = [inbox, locations, sources];
+  const busy = readers.some((r) => r.isFetching);
+  const task = useCommerceTask();
   const locationName = (id: unknown) => {
-      const row = locations.data?.items.find((l) => l.id === id);
-      return row ? String(row.name) : copy('連携店舗');
-    },
-    selected =
-      dialog?.mode === 'retry'
-        ? inbox.data?.items.find((r) => r.id === dialog.row.id)
-        : sources.data?.items.find((r) => r.id === dialog?.row.id);
+    const row = locations.data?.items.find((l) => l.id === id);
+    return row ? String(row.name) : copy('連携店舗');
+  };
+  const selected =
+    dialog?.mode === 'retry'
+      ? inbox.data?.items.find((r) => r.id === dialog.row.id)
+      : sources.data?.items.find((r) => r.id === dialog?.row.id);
   return (
     <CommerceShell
       title={copy('POS決済の自動連携')}

@@ -131,8 +131,8 @@ export function OperationsPage() {
   const search = useSearch({ from: '/app/operations' });
   const applied = parseOperationsSearch(search);
   const appliedKey = JSON.stringify(applied);
-  const [draft, setDraft] = useState(applied),
-    [dialog, setDialog] = useState<'plan' | 'status'>();
+  const [draft, setDraft] = useState(applied);
+  const [dialog, setDialog] = useState<'plan' | 'status'>();
   useEffect(() => {
     setDraft(parseOperationsSearch(search));
   }, [appliedKey]);

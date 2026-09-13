@@ -55,14 +55,14 @@ function candidateKey(event: KeyboardEvent<HTMLInputElement>, state: KeyboardOpt
   }
 }
 export function RefField({ id, field, value, onChange, onSelectRecord, disabled, invalid, ariaLabel }: WidgetProps) {
-  const { t } = useLocale(),
-    listId = useId();
+  const { t } = useLocale();
+  const listId = useId();
   const selectedId = typeof value === 'string' ? value : '';
-  const [open, setOpen] = useState(false),
-    [text, setText] = useState(''),
-    [active, setActive] = useState(-1);
-  const wrap = useRef<HTMLDivElement>(null),
-    debounced = useDebounced(text, 250);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [active, setActive] = useState(-1);
+  const wrap = useRef<HTMLDivElement>(null);
+  const debounced = useDebounced(text, 250);
   const current = useRecord(field.ref ?? '', selectedId || undefined);
   const results = useRefSearch(field.ref, debounced, open);
   const waiting = text !== debounced || results.isFetching || results.isPending;

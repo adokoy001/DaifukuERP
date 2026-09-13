@@ -104,8 +104,8 @@ function PayrollConfirm({
   current: PayrollSummary | undefined;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [allowances, setAllowances] = useState(0);
   if (row.calculation.statutory)
     return (
@@ -236,11 +236,11 @@ export function WorkforcePayroll({
   self?: boolean;
   selfEmployeeId?: string;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
-  const [expanded, setExpanded] = useState<string>(),
-    [confirm, setConfirm] = useState<PayrollSummary>(),
-    [cancel, setCancel] = useState<PayrollSummary>();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [expanded, setExpanded] = useState<string>();
+  const [confirm, setConfirm] = useState<PayrollSummary>();
+  const [cancel, setCancel] = useState<PayrollSummary>();
   const visible = self ? rows.filter((row) => row.status === 'confirmed') : rows;
   return (
     <WorkforcePanel

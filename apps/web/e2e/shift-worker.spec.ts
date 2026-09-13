@@ -14,9 +14,9 @@ test('shift recommendation runs the full 100-person case in a real worker withou
       const fixtures = await import(/* @vite-ignore */ sourceUrl);
       const workerModule = await import(/* @vite-ignore */ workerUrl);
       const problem = fixtures.benchmarkProblem();
-      let ticks = 0,
-        largestGap = 0,
-        previous = performance.now();
+      let ticks = 0;
+      let largestGap = 0;
+      let previous = performance.now();
       const ticker = setInterval(() => {
         const now = performance.now();
         largestGap = Math.max(largestGap, now - previous);
@@ -29,11 +29,11 @@ test('shift recommendation runs the full 100-person case in a real worker withou
           evaluation: { issues: unknown[]; shortage: number };
           iterations: number;
         }>((resolve, reject) => {
-          const worker = new workerModule.default(),
-            timer = setTimeout(() => {
-              worker.terminate();
-              reject(new Error('Worker timed out'));
-            }, 20000);
+          const worker = new workerModule.default();
+          const timer = setTimeout(() => {
+            worker.terminate();
+            reject(new Error('Worker timed out'));
+          }, 20000);
           worker.onerror = () => {
             clearTimeout(timer);
             worker.terminate();
@@ -48,9 +48,9 @@ test('shift recommendation runs the full 100-person case in a real worker withou
           worker.postMessage({ problem, options: { seed: 20260912 } });
         });
       try {
-        const start = performance.now(),
-          result = await run(),
-          elapsedMs = performance.now() - start;
+        const start = performance.now();
+        const result = await run();
+        const elapsedMs = performance.now() - start;
         const second = await run();
         return {
           elapsedMs,

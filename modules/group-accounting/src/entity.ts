@@ -1,7 +1,7 @@
 import { defineEntity, f, label } from '@daifuku/kernel';
 import type { CompanySource, GroupMapping, GroupAdjustment, GroupResult } from './contract.ts';
-const owned = { serverOwned: true },
-  privateSource = { serverOwned: true, hidden: true, outputHidden: true };
+const owned = { serverOwned: true };
+const privateSource = { serverOwned: true, hidden: true, outputHidden: true };
 export const GroupRun = defineEntity({
   name: 'group_accounting_run',
   label: label('連結精算表', 'Consolidation worksheet'),

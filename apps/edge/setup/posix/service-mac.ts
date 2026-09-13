@@ -75,8 +75,8 @@ export async function inspectMacService(
   host: PosixHost,
   context: ServiceContext,
 ): Promise<{ exists: boolean; running: boolean; owned: boolean; processId?: number }> {
-  const body = await rootFile(host, macPlistPath),
-    state = await macStatus(host);
+  const body = await rootFile(host, macPlistPath);
+  const state = await macStatus(host);
   if (body === null && !state.loaded) return { exists: false, running: false, owned: false };
   if (body !== renderLaunchDaemon(context))
     throw new Error('The registered LaunchDaemon differs from this installation.');
@@ -89,8 +89,8 @@ export async function inspectMacService(
   };
 }
 export async function registerMac(host: PosixHost, context: ServiceContext): Promise<void> {
-  const state = await macStatus(host),
-    body = await rootFile(host, macPlistPath);
+  const state = await macStatus(host);
+  const body = await rootFile(host, macPlistPath);
   if (state.loaded) throw new Error('Boot out the old LaunchDaemon before changing its definition.');
   if (body !== null && !body.includes(ownershipTag(context)))
     throw new Error('Cannot replace an unowned LaunchDaemon.');

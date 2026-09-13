@@ -136,8 +136,8 @@ test('payroll rules: switching companies isolates installation status and review
   request,
 }) => {
   test.setTimeout(180_000);
-  const first = await fiscalFixture(request),
-    second = await fiscalFixture(request);
+  const first = await fiscalFixture(request);
+  const second = await fiscalFixture(request);
   await api(
     request,
     second.headers,

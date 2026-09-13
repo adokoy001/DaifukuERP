@@ -48,8 +48,8 @@ async function publish(ctx: Context, input: z.infer<typeof publishShiftPlanInput
   return shiftPlanLock(ctx, initial.siteId, initial.weekStart, async () => {
     const row = await currentPlan(ctx, initial.id, input.expectedVersion);
     assertDraft(row.status);
-    const source = await checkedSource(ctx, row.siteId, row.weekStart, input.sourceRevision),
-      draft = planSummary(row);
+    const source = await checkedSource(ctx, row.siteId, row.weekStart, input.sourceRevision);
+    const draft = planSummary(row);
     if (row.sourceRevision !== source.sourceRevision)
       throw new StateError(
         '下書きの基礎情報が更新されています',
@@ -69,8 +69,8 @@ async function publish(ctx: Context, input: z.infer<typeof publishShiftPlanInput
       );
     }
     for (const assignment of draft.assignments) {
-      const employee = source.employees.find((person) => person.id === assignment.employeeId),
-        slot = draft.slots.find((item) => item.id === assignment.slotId);
+      const employee = source.employees.find((person) => person.id === assignment.employeeId);
+      const slot = draft.slots.find((item) => item.id === assignment.slotId);
       if (!employee || !slot)
         throw new StateError('割当の社員または勤務枠が見つかりません', '最新の計画を読み直してください。');
       await internalWrite(ctx, WorkforceShiftAssignment, (write) =>

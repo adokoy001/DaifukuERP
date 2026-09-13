@@ -3,12 +3,12 @@ import { useMeta } from '../api/queries.ts';
 import { useLocale } from '../i18n.tsx';
 import { isWorkforceManaged } from '../lib/workforce-entity.ts';
 export function WorkforceWorkflowLink({ entity }: { entity: string }) {
-  const { t } = useLocale(),
-    meta = useMeta();
+  const { t } = useLocale();
+  const meta = useMeta();
   if (!isWorkforceManaged(entity)) return null;
-  const actions = meta.data?.actions ?? [],
-    manager = actions.some((a) => a.name === 'workforce.management_portal'),
-    employee = actions.some((a) => a.name === 'workforce.my_portal');
+  const actions = meta.data?.actions ?? [];
+  const manager = actions.some((a) => a.name === 'workforce.management_portal');
+  const employee = actions.some((a) => a.name === 'workforce.my_portal');
   return (
     <div className="workforce-notice">
       <p>

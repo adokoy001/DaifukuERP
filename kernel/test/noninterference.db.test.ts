@@ -3,7 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyPack, companies, entityMeta, newId, repo, type ContextParams } from '../src/index.ts';
 import { freshDb, type TestDb } from '../src/testing.ts';
 import { observe, observerAt, scopePack, ScopeChild, ScopeSite, ScopeWork } from './noninterference-fixture.ts';
-let db: TestDb, allowedSite: string, forbiddenSite: string, visibleId: string;
+let db: TestDb;
+let allowedSite: string;
+let forbiddenSite: string;
+let visibleId: string;
 const outsider = fc.record({
   label: fc.constantFrom('needle alpha', 'needle beta', 'other'),
   category: fc.constantFrom('a' as const, 'b' as const),
@@ -112,14 +115,14 @@ describe('AC-4 / PV-SCOPE-01 two-state Repository noninterference', () => {
   it.each(['company', 'site'] as const)(
     'generated changes behind the %s boundary preserve every authorized observation',
     async (boundary) => {
-      let writes = 0,
-        rejected = 0;
+      let writes = 0;
+      let rejected = 0;
       const scope =
         boundary === 'company' ? { roles: ['observer'], accessScope: 'all' as const } : observerAt(allowedSite);
       await fc.assert(
         fc.asyncProperty(cases, async (changes) => {
-          const before = await assertBaseline(scope),
-            companyId = boundary === 'company' ? await newCompany() : db.companyId;
+          const before = await assertBaseline(scope);
+          const companyId = boundary === 'company' ? await newCompany() : db.companyId;
           const siteId =
             boundary === 'company'
               ? await db.run(
@@ -148,12 +151,12 @@ describe('AC-4 / PV-SCOPE-01 two-state Repository noninterference', () => {
     },
   );
   it('generated pack application in another company changes its metadata/hooks without changing this user or company', async () => {
-    let applied = 0,
-      rejected = 0;
+    let applied = 0;
+    let rejected = 0;
     await fc.assert(
       fc.asyncProperty(cases, async (changes) => {
-        const before = await assertBaseline(),
-          companyId = await newCompany();
+        const before = await assertBaseline();
+        const companyId = await newCompany();
         const siteId = await db.run(
           { companyId },
           async (ctx) => (await repo(ctx, ScopeSite).create({ name: 'Pack company' })).id,

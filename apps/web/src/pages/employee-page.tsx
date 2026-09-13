@@ -30,8 +30,8 @@ const tabs: WorkforceTab[] = [
 export function EmployeePage() {
   const { t } = useLocale();
   const meta = useMeta();
-  const [tab, setTab] = useState('today'),
-    [period, setPeriod] = useState(() => businessToday().slice(0, 7));
+  const [tab, setTab] = useState('today');
+  const [period, setPeriod] = useState(() => businessToday().slice(0, 7));
   const actions = meta.data?.actions.map((a) => a.name) ?? [];
   const allowed = actions.includes('workforce.my_portal');
   const portal = useMyPortal(period, allowed);

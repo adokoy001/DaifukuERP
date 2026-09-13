@@ -63,9 +63,9 @@ export async function sampleRestaurantChain(ctx: Context): Promise<void> {
   const ids = await sampleProducts(ctx);
   await sampleStores(ctx);
   if (await repo(ctx, RestaurantRecipe).count({ code: 'RC-CURRY-V1' })) return;
-  const curry = ids.get('RC-CURRY'),
-    rice = ids.get('RC-RICE'),
-    chicken = ids.get('RC-CHICKEN');
+  const curry = ids.get('RC-CURRY');
+  const rice = ids.get('RC-RICE');
+  const chicken = ids.get('RC-CHICKEN');
   if (!curry || !rice || !chicken) throw new TypeError('Restaurant sample product missing');
   const recipe = await repo(ctx, RestaurantRecipe).create({
     code: 'RC-CURRY-V1',

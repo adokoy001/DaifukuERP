@@ -28,24 +28,24 @@ export async function payrollSource(ctx: Context, employeeId: string, period: st
       'Workforce payroll supports JPY only',
       'Use a separately verified payroll calculation for other currencies.',
     );
-  const employee = await repo(ctx, WorkforceEmployee).get(employeeId),
-    bounds = periodBounds(period);
+  const employee = await repo(ctx, WorkforceEmployee).get(employeeId);
+  const bounds = periodBounds(period);
   const employmentStart = employee.hiredOn > bounds.start ? employee.hiredOn : bounds.start;
   const employmentEnd =
     employee.terminatedOn && employee.terminatedOn < bounds.end ? employee.terminatedOn : bounds.end;
   if (employmentStart > employmentEnd)
     throw new StateError('Employee was not employed in this payroll month', 'Choose an employment period.');
   const policies = await allRows(ctx, WorkforcePayPolicy, {}, [{ field: 'validFrom' }]);
-  const firstPolicy = policyFor(policies, employmentStart),
-    weekBoundary = weekStart(employmentStart, firstPolicy.weekStartsOn);
+  const firstPolicy = policyFor(policies, employmentStart);
+  const weekBoundary = weekStart(employmentStart, firstPolicy.weekStartsOn);
   const systemRows = await allRows(
     ctx,
     WorkforceWorkSystemPeriod,
     { employeeId, status: 'confirmed', startsOn: { $lte: addDays(bounds.end, 6) }, endsOn: { $gte: weekBoundary } },
     [{ field: 'startsOn' }],
   );
-  const workSystems = systemRows.map((row) => workSystemData.strip().parse(row)),
-    relevant = workSystems.filter((row) => row.startsOn <= employmentEnd && row.endsOn >= employmentStart);
+  const workSystems = systemRows.map((row) => workSystemData.strip().parse(row));
+  const relevant = workSystems.filter((row) => row.startsOn <= employmentEnd && row.endsOn >= employmentStart);
   const boundary = relevant.reduce((date, row) => (row.startsOn < date ? row.startsOn : date), weekBoundary);
   const terms = await allRows(
     ctx,

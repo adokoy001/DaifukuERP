@@ -87,9 +87,9 @@ export async function operate(request: OperationRequest, adapter: ServiceAdapter
     else if (request.operation === 'stop') await adapter.stop(context);
     else if (request.operation === 'start') await adapter.start(context);
     else if (request.operation === 'pair' && pairing) {
-      const target = join(context.statePath, 'pairing.json'),
-        staging = join(context.statePath, 'pairing.incoming.json'),
-        data = JSON.stringify(pairing);
+      const target = join(context.statePath, 'pairing.json');
+      const staging = join(context.statePath, 'pairing.incoming.json');
+      const data = JSON.stringify(pairing);
       if ((await jsonFile(target)) !== undefined) throw new Error('pairing_already_queued');
       try {
         await exclusiveWrite(staging, data);

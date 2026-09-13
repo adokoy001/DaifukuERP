@@ -17,9 +17,12 @@ import {
   type TradeCommand,
   type TradeOrderDetail,
 } from '../src/index.ts';
-let db: TestDb, partner: string, warehouse: string, bank: string;
-const day = '2026-09-12',
-  now = () => new Date('2026-09-13T03:00:00Z');
+let db: TestDb;
+let partner: string;
+let warehouse: string;
+let bank: string;
+const day = '2026-09-12';
+const now = () => new Date('2026-09-13T03:00:00Z');
 const run = <T>(work: (ctx: Context) => Promise<T>) => db.run({ now }, work);
 const action = (name: string, input: unknown) => run((ctx) => runAction(ctx, name, input)) as Promise<TradeCommand>;
 const detail = (orderId: string) =>
@@ -125,10 +128,10 @@ beforeAll(async () => {
 afterAll(async () => db.close());
 describe('trade fulfillment quantity and immutable sources', () => {
   it('runs purchase partial receipts and split invoices with exactly one inventory movement per receipt', async () => {
-    const o = await order(),
-      f = await fulfill(o, '6'),
-      b1 = await bill(o.order.id, f.id, '4'),
-      b2 = await bill(o.order.id, f.id, '2');
+    const o = await order();
+    const f = await fulfill(o, '6');
+    const b1 = await bill(o.order.id, f.id, '4');
+    const b2 = await bill(o.order.id, f.id, '2');
     let d = await detail(o.order.id);
     expect(d.lines[0]).toMatchObject({
       quantity: '10',
@@ -151,17 +154,17 @@ describe('trade fulfillment quantity and immutable sources', () => {
     expect(await balance(o.product.id)).toBe('10');
   });
   it('runs quotation to sales order, ships once, preserves agreement snapshots and invoices partial quantities', async () => {
-    const p = await product(true),
-      quote = await action('trade_quotation.create', {
-        partnerId: partner,
-        date: day,
-        validUntil: '2026-09-30',
-        lines: {
-          trade_quotation_line: [
-            { productId: p.id, description: '当初合意', quantity: '10', unitPrice: '1000', taxCategory: 'standard' },
-          ],
-        },
-      });
+    const p = await product(true);
+    const quote = await action('trade_quotation.create', {
+      partnerId: partner,
+      date: day,
+      validUntil: '2026-09-30',
+      lines: {
+        trade_quotation_line: [
+          { productId: p.id, description: '当初合意', quantity: '10', unitPrice: '1000', taxCategory: 'standard' },
+        ],
+      },
+    });
     const q = await action('trade_quotation.submit', { id: quote.id });
     const converted = await action('trade.convert_quotation', {
       quotationId: q.id,
@@ -171,8 +174,8 @@ describe('trade fulfillment quantity and immutable sources', () => {
     await action('trade_order.update', { id: converted.id, patch: { note: '希望納期確認' } });
     const ord = await action('trade_order.submit', { id: converted.id });
     await run((ctx) => repo(ctx, Product).update(p.id, { name: '後日名称', salePrice: '2000' }));
-    const o = { order: ord, product: p, detail: await detail(ord.id) },
-      f = await fulfill(o, '6');
+    const o = { order: ord, product: p, detail: await detail(ord.id) };
+    const f = await fulfill(o, '6');
     await bill(ord.id, f.id, '4');
     const d = await detail(ord.id);
     expect(d.lines[0]).toMatchObject({
@@ -188,8 +191,8 @@ describe('trade fulfillment quantity and immutable sources', () => {
     ).rejects.toThrow('存在');
   });
   it('replays identical requests and serializes concurrent over-fulfillment and over-billing', async () => {
-    const o = await order(),
-      requestId = newId();
+    const o = await order();
+    const requestId = newId();
     const replay = await Promise.all([fulfill(o, '6', requestId), fulfill(o, '6', requestId)]);
     expect(replay[0]?.id).toBe(replay[1]?.id);
     await expect(fulfill(o, '5', requestId)).rejects.toThrow('再送');
@@ -201,9 +204,9 @@ describe('trade fulfillment quantity and immutable sources', () => {
     expect(await balance(o.product.id)).toBe('9');
   });
   it('cancels billing before physical receipt, restores unbilled quantities and enforces effective-date order', async () => {
-    const o = await order(),
-      f = await fulfill(o, '6'),
-      b = await bill(o.order.id, f.id, '4');
+    const o = await order();
+    const f = await fulfill(o, '6');
+    const b = await bill(o.order.id, f.id, '4');
     await expect(
       action('trade.cancel_fulfillment', {
         fulfillmentId: f.id,
@@ -241,9 +244,9 @@ describe('trade fulfillment quantity and immutable sources', () => {
     await action('trade_order.cancel', { id: o.order.id, correctionDate: '2026-09-13' });
   });
   it('rolls back source cancellation when external payment remains, then permits cancellation after payment reversal', async () => {
-    const o = await order('sales'),
-      f = await fulfill(o, '4'),
-      b = await bill(o.order.id, f.id, '4');
+    const o = await order('sales');
+    const f = await fulfill(o, '4');
+    const b = await bill(o.order.id, f.id, '4');
     const source = await run((ctx) => repo(ctx, TradeBilling).get(b.id));
     const p = await action('payment.create', {
       direction: 'receive',
@@ -280,10 +283,10 @@ describe('trade fulfillment quantity and immutable sources', () => {
     expect(await balance(o.product.id)).toBe('96');
   });
   it('rejects source forgery, direct linked cancellation, frozen lines, foreign order lines and invalid quantities', async () => {
-    const o = await order(),
-      other = await order(),
-      f = await fulfill(o, '6'),
-      b = await bill(o.order.id, f.id, '4');
+    const o = await order();
+    const other = await order();
+    const f = await fulfill(o, '6');
+    const b = await bill(o.order.id, f.id, '4');
     await expect(
       run((ctx) =>
         repo(ctx, TradeOrder).create({ direction: 'sales', partnerId: partner, date: day, quotationId: newId() }),
@@ -314,8 +317,8 @@ describe('trade fulfillment quantity and immutable sources', () => {
     await expect(action('trade_fulfillment.cancel', { id: f.id })).rejects.toThrow();
   });
   it('closes the remaining order without changing delivered history and preserves legacy invoice-driven stock', async () => {
-    const o = await order(),
-      f = await fulfill(o, '6');
+    const o = await order();
+    const f = await fulfill(o, '6');
     await action('trade.close_order', { orderId: o.order.id, expectedVersion: o.order.version, reason: '残り4個不要' });
     await expect(fulfill(o, '1')).rejects.toThrow();
     const visible = (await run((ctx) => runAction(ctx, 'trade.board', { direction: 'purchase', status: 'open' }))) as {
@@ -326,17 +329,17 @@ describe('trade fulfillment quantity and immutable sources', () => {
     const d = await detail(o.order.id);
     expect(d.order).toMatchObject({ status: 'closed', closedReason: '残り4個不要' });
     expect(d.lines[0]?.remainingQuantity).toBe('4');
-    const p = await product(),
-      invoice = await action('purchase_invoice.create', {
-        partnerId: partner,
-        date: day,
-        priceIncludesTax: false,
-        lines: {
-          purchase_invoice_line: [
-            { productId: p.id, quantity: '3', unitPrice: '600', description: '従来請求', taxCategory: 'standard' },
-          ],
-        },
-      });
+    const p = await product();
+    const invoice = await action('purchase_invoice.create', {
+      partnerId: partner,
+      date: day,
+      priceIncludesTax: false,
+      lines: {
+        purchase_invoice_line: [
+          { productId: p.id, quantity: '3', unitPrice: '600', description: '従来請求', taxCategory: 'standard' },
+        ],
+      },
+    });
     await action('purchase_invoice.submit', { id: invoice.id });
     expect(await balance(p.id)).toBe('3');
     expect(
@@ -348,9 +351,9 @@ describe('trade fulfillment quantity and immutable sources', () => {
     ).toBe(1);
   });
   it('isolates companies and role directions in source documents, line CRUD and board reads', async () => {
-    const o = await order(),
-      sales = await order('sales'),
-      otherCompany = newId();
+    const o = await order();
+    const sales = await order('sales');
+    const otherCompany = newId();
     await db.owner
       .sql`insert into companies(id,tenant_id,code,name) values(${otherCompany},${db.tenantId},'TRADE-OTHER','Other')`;
     await expect(
@@ -386,13 +389,13 @@ describe('trade fulfillment quantity and immutable sources', () => {
         lines: [{ orderLineId: required(o.detail.lines[0]).id, quantity: '6' }],
       }),
     ).rejects.toThrow('未来');
-    const f = await fulfill(o, '6'),
-      issue = await action('stock_entry.create', {
-        type: 'issue',
-        date: day,
-        warehouseId: warehouse,
-        lines: { stock_entry_line: [{ productId: o.product.id, quantity: '5' }] },
-      });
+    const f = await fulfill(o, '6');
+    const issue = await action('stock_entry.create', {
+      type: 'issue',
+      date: day,
+      warehouseId: warehouse,
+      lines: { stock_entry_line: [{ productId: o.product.id, quantity: '5' }] },
+    });
     await action('stock_entry.submit', { id: issue.id });
     const before = await run((ctx) => repo(ctx, StockLedger).count({ productId: o.product.id }));
     await expect(
@@ -408,9 +411,9 @@ describe('trade fulfillment quantity and immutable sources', () => {
     expect(await balance(o.product.id)).toBe('1');
   });
   it('requires re-billing dates after cancellation and blocks detached amendments of generated invoices', async () => {
-    const o = await order(),
-      f = await fulfill(o, '4'),
-      b = await bill(o.order.id, f.id, '4');
+    const o = await order();
+    const f = await fulfill(o, '4');
+    const b = await bill(o.order.id, f.id, '4');
     const original = await run((ctx) => repo(ctx, TradeBilling).get(b.id));
     await action('trade.cancel_billing', {
       billingId: b.id,
@@ -438,24 +441,24 @@ describe('trade fulfillment quantity and immutable sources', () => {
     expect(await balance(o.product.id)).toBe('4');
   });
   it('does not cancel a quotation while an unsubmitted converted order still references it', async () => {
-    const p = await product(),
-      quote = await action('trade_quotation.create', {
-        partnerId: partner,
-        date: day,
-        lines: {
-          trade_quotation_line: [
-            { productId: p.id, description: p.name, quantity: '1', unitPrice: '1000', taxCategory: 'standard' },
-          ],
-        },
-      });
+    const p = await product();
+    const quote = await action('trade_quotation.create', {
+      partnerId: partner,
+      date: day,
+      lines: {
+        trade_quotation_line: [
+          { productId: p.id, description: p.name, quantity: '1', unitPrice: '1000', taxCategory: 'standard' },
+        ],
+      },
+    });
     const submitted = await action('trade_quotation.submit', { id: quote.id });
     await action('trade.convert_quotation', { quotationId: quote.id, expectedVersion: submitted.version, date: day });
     await expect(action('trade_quotation.cancel', { id: quote.id })).rejects.toThrow('受注が残って');
   });
   it('completes both directions using their ordinary roles, including fractional quantities', async () => {
     for (const direction of ['sales', 'purchase'] as const) {
-      const o = await order(direction, '1.5'),
-        roles = [direction === 'sales' ? 'sales' : 'purchasing'];
+      const o = await order(direction, '1.5');
+      const roles = [direction === 'sales' ? 'sales' : 'purchasing'];
       const f = (await db.run({ roles, now }, (ctx) =>
         runAction(ctx, 'trade.fulfill_order', {
           orderId: o.order.id,
@@ -484,16 +487,16 @@ describe('trade fulfillment quantity and immutable sources', () => {
     }
   });
   it('keeps quotation ownership across a generic order amendment and refuses a competing conversion', async () => {
-    const p = await product(),
-      quote = await action('trade_quotation.create', {
-        partnerId: partner,
-        date: day,
-        lines: {
-          trade_quotation_line: [
-            { productId: p.id, description: p.name, quantity: '1', unitPrice: '1000', taxCategory: 'standard' },
-          ],
-        },
-      });
+    const p = await product();
+    const quote = await action('trade_quotation.create', {
+      partnerId: partner,
+      date: day,
+      lines: {
+        trade_quotation_line: [
+          { productId: p.id, description: p.name, quantity: '1', unitPrice: '1000', taxCategory: 'standard' },
+        ],
+      },
+    });
     const submitted = await action('trade_quotation.submit', { id: quote.id });
     const converted = await action('trade.convert_quotation', {
       quotationId: quote.id,

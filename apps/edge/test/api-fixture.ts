@@ -24,9 +24,10 @@ export async function actualApiFixture() {
     env: { ...process.env, DAIFUKU_EDGE_TEST_FIXTURE: '1' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const lines = createInterface({ input: child.stdout }),
-    pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
-  let readyResolve: (value: z.infer<typeof readySchema>) => void, readyReject: (error: Error) => void;
+  const lines = createInterface({ input: child.stdout });
+  const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  let readyResolve: (value: z.infer<typeof readySchema>) => void;
+  let readyReject: (error: Error) => void;
   const ready = new Promise<z.infer<typeof readySchema>>((resolve, reject) => {
     readyResolve = resolve;
     readyReject = reject;
@@ -65,11 +66,11 @@ export async function actualApiFixture() {
   });
   const request = <T>(operation: string, extra: Record<string, unknown> = {}) =>
     new Promise<T>((resolve, reject) => {
-      const id = randomUUID(),
-        timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error('Synthetic API command timeout'));
-        }, 15000);
+      const id = randomUUID();
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('Synthetic API command timeout'));
+      }, 15000);
       pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer);
@@ -107,9 +108,9 @@ export async function actualApiFixture() {
 }
 /** HTTPS + raw WSS Upgrade reverse proxy, matching the deployed /api strip-prefix boundary. */
 export async function apiTlsProxy(address: string) {
-  const tls = await tlsFixture(),
-    upstream = new URL(address),
-    sockets = new Set<Duplex>();
+  const tls = await tlsFixture();
+  const upstream = new URL(address);
+  const sockets = new Set<Duplex>();
   const state = { dropNext: '', calls: new Map<string, number>(), upgrades: 0, closedUpgrades: 0 };
   const server = createServer(tls.tls, (incoming, outgoing) => {
     const path = (incoming.url ?? '').replace(/^\/api(?=\/)/, '');

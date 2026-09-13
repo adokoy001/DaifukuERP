@@ -43,8 +43,8 @@ export async function verifyFactor(
     .limit(1)
     .for('update');
   if (!factor || user.mfaEnabled !== 1) throw identityDenied();
-  const hash = tokenHash(code),
-    recovery = factor.recoveryHashes.includes(hash);
+  const hash = tokenHash(code);
+  const recovery = factor.recoveryHashes.includes(hash);
   const step = recovery
     ? null
     : matchingTotpStep(unseal(factor.secretCipher, key, aad(ctx.tenantId, user.id)), code, ctx.now(), factor.lastStep);
@@ -91,8 +91,8 @@ export async function beginMfa(ctx: Context, sessionVersion: number, stepUpToken
       'MFA is already enabled.',
       'Keep the existing authenticator or disable it with current verification first.',
     );
-  const secret = totpSecret(),
-    secretCipher = seal(secret, key, aad(ctx.tenantId, user.id, 'setup'));
+  const secret = totpSecret();
+  const secretCipher = seal(secret, key, aad(ctx.tenantId, user.id, 'setup'));
   const setupToken = await issueChallenge(ctx, 'mfa_setup', user.id, { sessionVersion, secretCipher }, 600);
   const label = encodeURIComponent(`Daifuku:${user.email}`);
   return {
@@ -123,8 +123,8 @@ export async function confirmMfa(
         throw identityDenied();
       const user = await lockIdentity(ctx, current.sessionVersion);
       if (user.mfaEnabled === 1 || typeof challenge.payload.secretCipher !== 'string') throw identityDenied();
-      const secret = unseal(challenge.payload.secretCipher, key, aad(ctx.tenantId, user.id, 'setup')),
-        step = matchingTotpStep(secret, code, ctx.now());
+      const secret = unseal(challenge.payload.secretCipher, key, aad(ctx.tenantId, user.id, 'setup'));
+      const step = matchingTotpStep(secret, code, ctx.now());
       if (step === null) throw invalidCode();
       const codes = recoveryCodes();
       await ctx.db.insert(identityFactors).values({

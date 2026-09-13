@@ -6,11 +6,11 @@ import { digest } from '../setup/io.ts';
 import { verifyBundle } from '../setup/bundle.ts';
 export async function setupFixture() {
   const temporary = await realpath(tmpdir());
-  const root = await mkdtemp(join(temporary, 'daifuku-setup-test-')),
-    source = join(root, 'source'),
-    installRoot = join(root, 'install'),
-    statePath = join(root, 'state'),
-    configSource = join(root, 'config-source.json');
+  const root = await mkdtemp(join(temporary, 'daifuku-setup-test-'));
+  const source = join(root, 'source');
+  const installRoot = join(root, 'install');
+  const statePath = join(root, 'state');
+  const configSource = join(root, 'config-source.json');
   await mkdir(source);
   const config = {
     apiBaseUrl: 'https://erp.example.test/api',

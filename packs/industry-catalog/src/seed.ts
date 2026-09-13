@@ -3,8 +3,8 @@ import { Product, Uom } from '@daifuku/mod-product';
 import type { IndustryProfile } from './profile.ts';
 export const productCode = (profile: IndustryProfile): string => `IND-${profile.job.name.toUpperCase()}`;
 export async function seedIndustry(ctx: Context, profile: IndustryProfile): Promise<void> {
-  const units = repo(ctx, Uom),
-    products = repo(ctx, Product);
+  const units = repo(ctx, Uom);
+  const products = repo(ctx, Product);
   const found = (await units.list({ where: { code: profile.job.unitCode }, limit: 1 })).items[0];
   const unit = found ?? (await units.create({ code: profile.job.unitCode, name: profile.unitName }));
   if (!(await products.count({ code: productCode(profile) })))

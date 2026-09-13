@@ -70,16 +70,16 @@ export function FiscalPayrollCalculate({
   onClose: () => void;
 }) {
   const prior = (original?.calculation.statutory as { input?: StatutoryPayrollInput } | undefined)?.input;
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    [taxable, setTaxable] = useState(prior?.taxableAllowances.length ?? 0),
-    [nonTaxable, setNonTaxable] = useState(prior?.nonTaxableAllowances.length ?? 0),
-    [reviewedRule] = useState(rule);
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [taxable, setTaxable] = useState(prior?.taxableAllowances.length ?? 0);
+  const [nonTaxable, setNonTaxable] = useState(prior?.nonTaxableAllowances.length ?? 0);
+  const [reviewedRule] = useState(rule);
   const range = reviewedRule && payrollPaymentRange(period, reviewedRule);
   const [paymentDate, setPaymentDate] = useState(
-      prior?.paymentDate ?? (range ? dateInRuleRange(businessToday(), range) : ''),
-    ),
-    [insurancePeriod, setInsurancePeriod] = useState(prior?.insurancePeriod ?? period);
+    prior?.paymentDate ?? (range ? dateInRuleRange(businessToday(), range) : ''),
+  );
+  const [insurancePeriod, setInsurancePeriod] = useState(prior?.insurancePeriod ?? period);
   const previousMonth = new Date(paymentDate.slice(0, 7) + '-01T00:00:00Z');
   previousMonth.setUTCDate(0);
   const datesSupported = Boolean(
@@ -223,8 +223,8 @@ export function StatutoryPayrollConfirm({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   return (
     <WorkforceDialog
       title={t({ ja: '自動算定した給与を確定', en: 'Confirm automatically calculated payroll' })}
@@ -273,8 +273,8 @@ export function StatutoryPayrollConfirm({
   );
 }
 export function FiscalPayrollEvidence({ row, onClose }: { row: PayrollSummary; onClose: () => void }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   return (
     <WorkforceDialog
       title={t({ ja: '既存給与の支払・課税証跡', en: 'Payment and tax evidence for existing payroll' })}

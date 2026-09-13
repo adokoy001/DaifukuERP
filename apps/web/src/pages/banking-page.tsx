@@ -32,26 +32,26 @@ export function BankingPage() {
   return <BankingWorkspace key={financeIdentity()} />;
 }
 function BankingWorkspace() {
-  const { t } = useLocale(),
-    access = useFinanceAccess(),
-    actions = access.data?.actions.map((action) => action.name) ?? [],
-    allowed = actions.includes('banking.board');
-  const [accountId, setAccountId] = useState(''),
-    [offset, setOffset] = useState(0),
-    [tab, setTab] = useState<'match' | 'transfers' | 'accounts'>('match'),
-    [dialog, setDialog] = useState<Dialog>();
+  const { t } = useLocale();
+  const access = useFinanceAccess();
+  const actions = access.data?.actions.map((action) => action.name) ?? [];
+  const allowed = actions.includes('banking.board');
+  const [accountId, setAccountId] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [tab, setTab] = useState<'match' | 'transfers' | 'accounts'>('match');
+  const [dialog, setDialog] = useState<Dialog>();
   const query = useFinanceRead(
-      'banking.board',
-      { ...(accountId ? { bankAccountId: accountId } : {}), offset },
-      allowed,
-      bankBoardOutput.parse,
-    ),
-    data = query.data,
-    account = data?.accounts.find((row) => row.id === accountId);
-  const sources = [access, query],
-    busy = sources.some((source) => source.isFetching || source.isError),
-    stale = !allowed || sources.some((source) => source.isError),
-    close = () => setDialog(undefined);
+    'banking.board',
+    { ...(accountId ? { bankAccountId: accountId } : {}), offset },
+    allowed,
+    bankBoardOutput.parse,
+  );
+  const data = query.data;
+  const account = data?.accounts.find((row) => row.id === accountId);
+  const sources = [access, query];
+  const busy = sources.some((source) => source.isFetching || source.isError);
+  const stale = !allowed || sources.some((source) => source.isError);
+  const close = () => setDialog(undefined);
   return (
     <FinanceShell
       title={{ ja: '銀行連携・消込', en: 'Banking and reconciliation' }}

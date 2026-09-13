@@ -11,9 +11,9 @@ import { copyRuntime } from '../runtime.mjs';
 import { writeWebNotices } from '../web-notices.mjs';
 import { renderProfile } from '../profile.mjs';
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'daifuku-deploy-test-')),
-    release = join(root, 'release'),
-    state = join(root, 'state');
+  const root = await mkdtemp(join(tmpdir(), 'daifuku-deploy-test-'));
+  const release = join(root, 'release');
+  const state = join(root, 'state');
   await mkdir(release);
   await mkdir(state, { mode: 0o700 });
   await mkdir(join(release, 'web'));
@@ -121,12 +121,12 @@ test('both profiles share byte-identical release; candidate, secret permissions,
 });
 
 test('runtime copies the installed production graph exactly, preserves portable links and omits unrelated dev packages', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'daifuku-runtime-test-')),
-    stage = join(root, 'stage'),
-    output = join(root, 'runtime');
+  const root = await mkdtemp(join(tmpdir(), 'daifuku-runtime-test-'));
+  const stage = join(root, 'stage');
+  const output = join(root, 'runtime');
   try {
-    const api = join(stage, 'apps/api'),
-      dep = join(stage, 'node_modules/.pnpm/dep@1.2.3/node_modules/dep');
+    const api = join(stage, 'apps/api');
+    const dep = join(stage, 'node_modules/.pnpm/dep@1.2.3/node_modules/dep');
     await mkdir(join(api, 'node_modules'), { recursive: true });
     await mkdir(dep, { recursive: true });
     for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json'])
@@ -171,9 +171,9 @@ test('all release command help paths exit successfully without reading a release
 });
 
 test('real main/worker Web build includes React/TanStack full licenses and fixed versions, without backend dependencies', async () => {
-  const stage = fileURLToPath(new URL('../../', import.meta.url)),
-    root = await mkdtemp(join(tmpdir(), 'daifuku-web-notices-')),
-    output = join(root, 'web');
+  const stage = fileURLToPath(new URL('../../', import.meta.url));
+  const root = await mkdtemp(join(tmpdir(), 'daifuku-web-notices-'));
+  const output = join(root, 'web');
   try {
     const env = { NODE_ENV: 'production', VITE_API_URL: '/api' };
     for (const key of ['PATH', 'HOME', 'USER', 'PNPM_HOME']) if (process.env[key]) env[key] = process.env[key];
@@ -221,13 +221,13 @@ test('real main/worker Web build includes React/TanStack full licenses and fixed
 });
 
 test('Web notices retain all contributing package NOTICEs and reject missing/empty licenses before emission', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'daifuku-web-license-test-')),
-    stage = join(root, 'stage'),
-    output = join(root, 'output');
+  const root = await mkdtemp(join(tmpdir(), 'daifuku-web-license-test-'));
+  const stage = join(root, 'stage');
+  const output = join(root, 'output');
   try {
-    const web = join(stage, 'apps/web'),
-      dep = join(web, 'node_modules/frozen'),
-      child = join(dep, 'node_modules/child');
+    const web = join(stage, 'apps/web');
+    const dep = join(web, 'node_modules/frozen');
+    const child = join(dep, 'node_modules/child');
     await mkdir(child, { recursive: true });
     await mkdir(join(output, '.license-inputs'), { recursive: true });
     await writeFile(join(stage, 'LICENSE'), 'synthetic project license');
@@ -275,9 +275,9 @@ test('Web notices retain all contributing package NOTICEs and reject missing/emp
 });
 
 test('Web release refuses absent build evidence or an input outside its frozen source', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'daifuku-web-evidence-test-')),
-    stage = join(root, 'stage'),
-    output = join(root, 'web');
+  const root = await mkdtemp(join(tmpdir(), 'daifuku-web-evidence-test-'));
+  const stage = join(root, 'stage');
+  const output = join(root, 'web');
   try {
     await mkdir(stage);
     await mkdir(output);

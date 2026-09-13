@@ -11,8 +11,8 @@ import { buildServer } from './server.ts';
 async function main(): Promise<void> {
   const cfg = apiConfig();
   const squarePosConnections = parseSquareConnections(process.env.SQUARE_POS_CONNECTIONS_JSON);
-  const identityConfig = readIdentityConfig(process.env),
-    smtp = readSmtpConfig(process.env);
+  const identityConfig = readIdentityConfig(process.env);
+  const smtp = readSmtpConfig(process.env);
   const identity = identityConfig
     ? { ...identityConfig, ...(smtp ? { mailTransport: smtpTransport(smtp) } : {}) }
     : undefined;

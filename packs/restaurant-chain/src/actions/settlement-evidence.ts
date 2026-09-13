@@ -47,10 +47,10 @@ export async function settlementEvidence(ctx: Context, input: OperationsInput): 
     )
       invoices.push(invoice);
   }
-  const balances = await invoiceBalancesAsOf(ctx, invoices, range.asOf),
-    byId = new Map(invoices.map((row) => [row.id, row]));
-  const stores = new Map<string, string>(),
-    totals = { sales: Decimal.zero(), settled: Decimal.zero(), balance: Decimal.zero() };
+  const balances = await invoiceBalancesAsOf(ctx, invoices, range.asOf);
+  const byId = new Map(invoices.map((row) => [row.id, row]));
+  const stores = new Map<string, string>();
+  const totals = { sales: Decimal.zero(), settled: Decimal.zero(), balance: Decimal.zero() };
   const rows = [];
   for (const closing of closings) {
     const invoice = closing.salesInvoiceId ? byId.get(closing.salesInvoiceId) : undefined;

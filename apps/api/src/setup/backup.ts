@@ -68,8 +68,8 @@ export async function backupAndVerify(
       ['--no-owner', '--no-privileges', '--exit-on-error', '--no-password', '--dbname', `dbname='${database}'`, path],
       directory,
     );
-    const actual = await tableCounts(restore),
-      restoredHistory = await history(restore);
+    const actual = await tableCounts(restore);
+    const restoredHistory = await history(restore);
     if (
       JSON.stringify(expected) !== JSON.stringify(actual) ||
       JSON.stringify(beforeHistory) !== JSON.stringify(restoredHistory)

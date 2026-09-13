@@ -10,8 +10,8 @@ test('bank account setup, CSV preview, duplicate import, reviewed receipt and re
   page,
   request,
 }) => {
-  const fixture = await financeFixture(request),
-    invoice = await financeInvoice(request, fixture, 'sales');
+  const fixture = await financeFixture(request);
+  const invoice = await financeInvoice(request, fixture, 'sales');
   await signInQuality(page, fixture.email, PASSWORD);
   await page.goto('/finance/banking');
   await expect(page.getByRole('heading', { name: '銀行連携・消込', exact: true })).toBeVisible();
@@ -91,8 +91,8 @@ async function downloadReviewedTransfer(page: Page) {
   const result = await financeAction<ExportResult>(page, 'banking.export_transfer', () =>
     dialog.getByRole('button', { name: '確認してファイルを保存', exact: true }).click(),
   );
-  const file = await pending,
-    path = await file.path();
+  const file = await pending;
+  const path = await file.path();
   if (!path) throw new Error('No download file');
   const bytes = await readFile(path);
   expect([...bytes]).toEqual(result.bytes);
@@ -136,9 +136,9 @@ for (const variant of [
     page,
     request,
   }) => {
-    const fixture = await financeFixture(request),
-      invoice = await financeInvoice(request, fixture, 'purchase', '2'),
-      { account } = await financeBank(request, fixture);
+    const fixture = await financeFixture(request);
+    const invoice = await financeInvoice(request, fixture, 'purchase', '2');
+    const { account } = await financeBank(request, fixture);
     expect(invoice.priceIncludesTax).toBe(false);
     expect(invoice.total).toBe('1320');
     await signInQuality(page, fixture.email, PASSWORD);
@@ -157,8 +157,8 @@ for (const variant of [
     await expect(dialog).toContainText('7654321');
     await expect(dialog).toContainText('1234567890');
     await expect(dialog).toContainText('ﾄﾘﾋｷｻｷ');
-    const format = dialog.getByRole('combobox', { name: '出力形式', exact: true }),
-      ending = dialog.getByRole('combobox', { name: '全銀の改行', exact: true });
+    const format = dialog.getByRole('combobox', { name: '出力形式', exact: true });
+    const ending = dialog.getByRole('combobox', { name: '全銀の改行', exact: true });
     await format.selectOption(variant.format);
     if (variant.format === 'zengin120') await ending.selectOption(variant.ending);
     await expect(ending).toHaveValue(variant.ending);

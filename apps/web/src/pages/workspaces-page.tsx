@@ -269,8 +269,8 @@ function DirectoryContent({
       (!search.kind || entry.kind === search.kind) &&
       !featuredIds.has(entry.id),
   );
-  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE)),
-    page = Math.min(search.page ?? 1, pages);
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const page = Math.min(search.page ?? 1, pages);
   return (
     <div className={`workspace-page directory-page workspace-${workspace?.id ?? 'other'}`}>
       <header className="directory-heading">

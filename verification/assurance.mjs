@@ -62,9 +62,9 @@ function localTarget(root, document, link) {
 }
 
 export function validateLedger(source, { root, document, minimum = 8 }) {
-  const entries = parseLedger(source),
-    ids = new Set(),
-    failures = [];
+  const entries = parseLedger(source);
+  const ids = new Set();
+  const failures = [];
   if (entries.length < minimum) failures.push(`At least ${minimum} invariant entries are required`);
   for (const entry of entries) {
     if (ids.has(entry.id)) failures.push(`${entry.id}: duplicate invariant ID`);

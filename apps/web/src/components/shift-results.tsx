@@ -79,8 +79,8 @@ export function ShiftResults({
             <span role="columnheader">{t({ ja: '社員の割当・固定', en: 'Employee assignments and locks' })}</span>
           </div>
           {problem.slots.map((slot) => {
-            const coverage = evaluation.coverage.find((row) => row.slotId === slot.id),
-              chosen = assignments.filter((row) => row.slotId === slot.id);
+            const coverage = evaluation.coverage.find((row) => row.slotId === slot.id);
+            const chosen = assignments.filter((row) => row.slotId === slot.id);
             return (
               <article className="shift-assignment-card" role="row" key={slot.id}>
                 <header role="cell">

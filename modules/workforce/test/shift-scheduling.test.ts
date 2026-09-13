@@ -98,8 +98,8 @@ describe('shift scheduling: hard eligibility and input boundaries', () => {
     );
   });
   it('accepts zero-time unavailable days but never treats them as available', () => {
-    const p = problem(),
-      day = present(p.availability[0]);
+    const p = problem();
+    const day = present(p.availability[0]);
     day.preference = 'unavailable';
     day.startMinute = 0;
     day.endMinute = 0;
@@ -153,8 +153,8 @@ describe('shift scheduling: calendar limits and breaks', () => {
     expect(codes(p, [assignment('first'), assignment('second')])).toEqual([]);
   });
   it.each(['before', 'after'] as const)('enforces rest across the %s week boundary', (edge) => {
-    const offset = edge === 'before' ? 0 : 6,
-      p = problem([employee()], [slot('morning', offset)]);
+    const offset = edge === 'before' ? 0 : 6;
+    const p = problem([employee()], [slot('morning', offset)]);
     present(present(p.employees[0]).profile).minRestMinutes = 1440;
     p.existing = [
       {
@@ -169,8 +169,8 @@ describe('shift scheduling: calendar limits and breaks', () => {
     expect(recommendShift(p, { seed: 8 }).assignments).toEqual([]);
   });
   it.each(['before', 'after'] as const)('enforces consecutive days across the %s week boundary', (edge) => {
-    const offset = edge === 'before' ? 0 : 6,
-      p = problem([employee()], [slot('morning', offset)]);
+    const offset = edge === 'before' ? 0 : 6;
+    const p = problem([employee()], [slot('morning', offset)]);
     p.existing = Array.from({ length: 6 }, (_, index) => ({
       employeeId: 'one',
       date: dateAt(edge === 'before' ? index - 6 : index + 7),
@@ -206,8 +206,8 @@ describe('shift scheduling: feasible recommendation and reproducibility', () => 
   it('preserves invalid fixed assignments, reports their violations, and never silently replaces them', () => {
     const p = problem([employee(), employee('two')]);
     present(p.availability[0]).preference = 'unavailable';
-    const fixed = assignment('morning', 'one', true),
-      result = recommendShift(p, { seed: 10, assignments: [fixed] });
+    const fixed = assignment('morning', 'one', true);
+    const result = recommendShift(p, { seed: 10, assignments: [fixed] });
     expect(result.assignments).toEqual([fixed]);
     expect(result.evaluation.issues.map((i) => i.code)).toContain('unavailable');
     expect(result.iterations).toBe(0);
@@ -226,9 +226,9 @@ describe('shift scheduling: feasible recommendation and reproducibility', () => 
       [employee(), employee('two'), employee('three')],
       Array.from({ length: 7 }, (_, day) => slot(String(day), day)),
     );
-    const before = structuredClone(p),
-      a = recommendShift(p, { seed: 123, iterations: 350 }),
-      b = recommendShift(p, { seed: 123, iterations: 350 });
+    const before = structuredClone(p);
+    const a = recommendShift(p, { seed: 123, iterations: 350 });
+    const b = recommendShift(p, { seed: 123, iterations: 350 });
     expect(p).toEqual(before);
     expect(a).toEqual(b);
     expect(a.iterations).toBe(350);
@@ -237,8 +237,8 @@ describe('shift scheduling: feasible recommendation and reproducibility', () => 
     expect(evaluateShift(p, a.assignments)).toEqual(a.evaluation);
   });
   it('prefers submitted preferences and balances time relative to individual targets', () => {
-    const first = employee(),
-      second = employee('two');
+    const first = employee();
+    const second = employee('two');
     present(first.profile).targetMinutes = 240;
     present(second.profile).targetMinutes = 480;
     const p = problem([first, second], [slot('first'), slot('second', 1), slot('third', 2)]);
@@ -260,16 +260,16 @@ describe('shift scheduling: feasible recommendation and reproducibility', () => 
           ? 'preferred'
           : 'available';
     const assignments = [assignment('first', 'two'), assignment('second', 'one')];
-    const initial = recommendShift(p, { seed: 12, iterations: 0, assignments }),
-      optimized = recommendShift(p, { seed: 12, iterations: 150, assignments });
+    const initial = recommendShift(p, { seed: 12, iterations: 0, assignments });
+    const optimized = recommendShift(p, { seed: 12, iterations: 150, assignments });
     expect(initial.evaluation.preferenceRate).toBe(0);
     expect(optimized.evaluation.preferenceRate).toBe(1);
     expect(optimized.evaluation.shortage).toBe(0);
     expect(optimized.evaluation.score).toBeLessThan(initial.evaluation.score);
   });
   it('handles100 employees and42 capacity20 slots within the supply bound', () => {
-    const p = benchmarkProblem(),
-      result = recommendShift(p, { seed: 20260912, iterations: 50 });
+    const p = benchmarkProblem();
+    const result = recommendShift(p, { seed: 20260912, iterations: 50 });
     expect(result.assignments).toHaveLength(500);
     expect(result.evaluation.shortage).toBe(340);
     expect(result.evaluation.issues).toEqual([]);

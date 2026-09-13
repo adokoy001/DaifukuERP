@@ -1,8 +1,8 @@
 import { z } from 'zod';
-const id = z.uuid(),
-  date = z.iso.date(),
-  version = z.number().int().min(1),
-  reason = z.string().trim().min(1).max(1000);
+const id = z.uuid();
+const date = z.iso.date();
+const version = z.number().int().min(1);
+const reason = z.string().trim().min(1).max(1000);
 export const workSystemDay = z
   .object({
     date,

@@ -15,13 +15,13 @@ export function AccessPage() {
   const { t } = useLocale();
   const me = useMe();
   const catalog = useAccessCatalog(me.data?.user.tenantAdmin === true);
-  const [query, setQuery] = useState(''),
-    [selected, setSelected] = useState(() => getUser()?.id ?? ''),
-    [creating, setCreating] = useState(false),
-    [inviting, setInviting] = useState(false);
-  const [profile, setProfile] = useState<AccessEditorStatus>({ dirty: false, busy: false }),
-    [membership, setMembership] = useState<AccessEditorStatus>({ dirty: false, busy: false }),
-    [creation, setCreation] = useState<AccessEditorStatus>({ dirty: false, busy: false });
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState(() => getUser()?.id ?? '');
+  const [creating, setCreating] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [profile, setProfile] = useState<AccessEditorStatus>({ dirty: false, busy: false });
+  const [membership, setMembership] = useState<AccessEditorStatus>({ dirty: false, busy: false });
+  const [creation, setCreation] = useState<AccessEditorStatus>({ dirty: false, busy: false });
   const profileStatus = useCallback((status: AccessEditorStatus) => setProfile(status), []);
   const membershipStatus = useCallback((status: AccessEditorStatus) => setMembership(status), []);
   const creationStatus = useCallback((status: AccessEditorStatus) => setCreation(status), []);

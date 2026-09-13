@@ -9,8 +9,8 @@ import { BUSINESS_DATE } from './environment.ts';
 
 test.setTimeout(120_000);
 async function filingFixture(request: APIRequestContext) {
-  const fixture = await commerceFixture(request),
-    year = Number(BUSINESS_DATE.slice(0, 4)) - 1;
+  const fixture = await commerceFixture(request);
+  const year = Number(BUSINESS_DATE.slice(0, 4)) - 1;
   const opened = await api<{ fiscalYear: Row }>(request, fixture.headers, '/actions/accounting.open_fiscal_year', {
     startDate: `${year}-01-01`,
   });
@@ -28,13 +28,13 @@ async function filingFixture(request: APIRequestContext) {
   const periods = await api<{ items: Row[] }>(request, fixture.headers, '/api/fiscal_period?limit=500');
   for (const period of periods.items.filter((row) => row.fiscalYearId === opened.fiscalYear.id))
     await api(request, fixture.headers, '/actions/accounting.close_period', { periodId: period.id });
-  const admin = await qualitySession(request),
-    email = `filing-review-${fixture.runId}@example.invalid`,
-    reviewer = await api(request, admin.headers, '/admin/users', {
-      name: '申告準備の別確認者',
-      email,
-      password: PASSWORD,
-    });
+  const admin = await qualitySession(request);
+  const email = `filing-review-${fixture.runId}@example.invalid`;
+  const reviewer = await api(request, admin.headers, '/admin/users', {
+    name: '申告準備の別確認者',
+    email,
+    password: PASSWORD,
+  });
   await api(
     request,
     admin.headers,
@@ -117,8 +117,8 @@ test('accounting preparation maps accounts, separates review, preserves encoded 
     for (const file of output.files) {
       const pending = review.waitForEvent('download');
       await reviewDialog.getByRole('button', { name: `${file.filename} · ${file.encoding}`, exact: true }).click();
-      const downloaded = await pending,
-        path = await downloaded.path();
+      const downloaded = await pending;
+      const path = await downloaded.path();
       if (!path) throw new Error('Missing filing download');
       expect(await readFile(path)).toEqual(Buffer.from(file.contentBase64, 'base64'));
     }

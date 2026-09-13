@@ -88,8 +88,8 @@ async function files(directory, prefix = '') {
   return found.sort();
 }
 async function bundle(path) {
-  const directory = resolve(path),
-    raw = await regular(join(directory, 'manifest.json'));
+  const directory = resolve(path);
+  const raw = await regular(join(directory, 'manifest.json'));
   const hash = (await regular(join(dirname(directory), basename(directory) + '.manifest.sha256'))).toString().trim();
   assert.match(hash, /^[a-f0-9]{64}$/);
   assert.equal(digest(raw), hash);
@@ -136,8 +136,8 @@ const defaults =
       ? { root: '/opt/daifuku-edge', state: '/var/lib/daifuku-edge' }
       : { root: '/Library/Application Support/DaifukuEdge', state: '/Library/Application Support/DaifukuEdgeData' };
 const markerPath = join(defaults.root, 'installation.json');
-const initial = await bundle(values.bundle),
-  update = await bundle(values['update-bundle']);
+const initial = await bundle(values.bundle);
+const update = await bundle(values['update-bundle']);
 assert.notEqual(initial.hash, update.hash);
 assert.notEqual(initial.manifest.releaseId, update.manifest.releaseId);
 assert.equal((await command(initial.node, ['--version'])).stdout.trim(), 'v22.23.2');
@@ -192,8 +192,8 @@ foreach($sid in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,
     { path: fixtureRoot },
   );
 } else await mkdir(fixtureRoot, { mode: 0o700 });
-const apiBaseUrl = 'https://erp.example.invalid',
-  configSource = join(fixtureRoot, 'config.json');
+const apiBaseUrl = 'https://erp.example.invalid';
+const configSource = join(fixtureRoot, 'config.json');
 async function exclusive(path, value, owner) {
   const handle = await open(path, 'wx', 0o600);
   try {
@@ -388,10 +388,10 @@ async function diagnostics(source) {
   }
   process.stderr.write(JSON.stringify({ type: 'native_acceptance_diagnostics', ...report }) + '\n');
 }
-let installationId,
-  activeSource = initial,
-  stage = 'plan',
-  installed = false;
+let installationId;
+let activeSource = initial;
+let stage = 'plan';
+let installed = false;
 try {
   const plan = await setup(initial, 'install', [...deployArgs(initial), '--config', configSource]);
   assert.equal(plan.execute, false);

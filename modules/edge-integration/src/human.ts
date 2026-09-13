@@ -36,9 +36,9 @@ export async function registerDevice(ctx: Context, i: z.infer<typeof registerEdg
 export async function enqueueJob(ctx: Context, i: z.infer<typeof enqueueEdgeJobInput>) {
   const target = await repo(ctx, EdgeDevice).get(i.deviceId);
   return withRelayLock(ctx, target.gatewayId, async () => {
-    const device = await liveDevice(ctx, i.deviceId),
-      request = i.request,
-      hash = relayHash(edgePayloadText(request));
+    const device = await liveDevice(ctx, i.deviceId);
+    const request = i.request;
+    const hash = relayHash(edgePayloadText(request));
     const [prior] = (await repo(ctx, EdgeJob).list({ where: { idempotencyKey: i.idempotencyKey }, limit: 1 })).items;
     if (prior) {
       if (

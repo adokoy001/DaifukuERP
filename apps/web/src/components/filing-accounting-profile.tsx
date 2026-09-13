@@ -13,9 +13,9 @@ export function FilingAccountingProfile({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    current = board.accountingProfile;
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const current = board.accountingProfile;
   const [profileCode, setProfileCode] = useState(current?.countryProfile ?? board.profiles[0]?.code ?? '');
   const [mapping, setMapping] = useState<Record<string, AccountingProfile['mappings'][number]>>(
     Object.fromEntries((current?.mappings ?? []).map((row) => [row.accountId, row])),

@@ -12,7 +12,8 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { OperationsSnapshot } from '../src/index.ts';
 import { closing, setup, stock, submit, type Fixture, type Page, type Row } from './fixture.ts';
-let s: Fixture, current: Row;
+let s: Fixture;
+let current: Row;
 const planningNow = { now: () => new Date('2026-09-10T15:00:00Z') };
 const input = { from: '2026-09-12', to: '2026-09-12', asOf: '2026-09-12' };
 const snapshot = (range = input) => s.act<OperationsSnapshot>('restaurant_chain.operations_snapshot', range);
@@ -165,9 +166,9 @@ describe('チェーン運営の予定母集団・期間比較・根拠', () => {
         lines: { restaurant_chain_closing_line: [{ recipeId: s.ids['RC-CURRY-V1'], quantity: '1' }] },
       }),
     );
-    let held: () => void = () => {},
-      release: () => void = () => {},
-      attempted: () => void = () => {};
+    let held: () => void = () => {};
+    let release: () => void = () => {};
+    let attempted: () => void = () => {};
     const atCancel = new Promise<void>((resolve) => {
       held = resolve;
     });

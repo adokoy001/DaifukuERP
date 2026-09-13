@@ -3,7 +3,9 @@ import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { newId, registerCrudActions, repo, runAction, type Context } from '@daifuku/kernel';
 import { Account, FiscalPeriod, JournalEntry, openFiscalYear } from '@daifuku/mod-accounting';
 import { GroupRun, type CompanySource, type GroupBoard, type GroupMapping } from '../src/index.ts';
-let db: TestDb, second: string, userId: string;
+let db: TestDb;
+let second: string;
+let userId: string;
 const run = <T>(fn: (ctx: Context) => Promise<T>, companyId?: string) =>
   db.run({ ...(companyId ? { companyId } : {}), now: () => new Date('2026-09-12T03:00:00Z') }, fn);
 type Result = { id: string; version: number; status: string };
@@ -64,8 +66,8 @@ beforeAll(async () => {
   for (const companyId of [db.companyId, second])
     await run(async (ctx) => {
       await openFiscalYear(ctx, { startDate: '2026-01-01' });
-      const cash = await repo(ctx, Account).create({ code: 'CASH', name: '現金', type: 'asset' }),
-        revenue = await repo(ctx, Account).create({ code: 'REVENUE', name: '売上', type: 'revenue' });
+      const cash = await repo(ctx, Account).create({ code: 'CASH', name: '現金', type: 'asset' });
+      const revenue = await repo(ctx, Account).create({ code: 'REVENUE', name: '売上', type: 'revenue' });
       const entry = (await runAction(ctx, 'journal_entry.create', {
         date: '2026-08-10',
         description: '単体確定仕訳',
@@ -87,8 +89,8 @@ describe('authorized group worksheet', () => {
     const before = await Promise.all(
       [db.companyId, second].map((id) => run(async (ctx) => (await repo(ctx, JournalEntry).list()).total, id)),
     );
-    const made = await prepare(),
-      board = (await act('board', { runId: made.id })) as GroupBoard;
+    const made = await prepare();
+    const board = (await act('board', { runId: made.id })) as GroupBoard;
     expect(board.result).toMatchObject({ debit: '1900', credit: '1900', balanced: true });
     expect(board.result.rows.find((r) => r.code === 'REVENUE')).toMatchObject({
       standalone: '-2000',
@@ -131,8 +133,8 @@ describe('authorized group worksheet', () => {
     expect(((await act('board', { runId: made.id })) as GroupBoard).result.debit).toBe('1900');
   });
   it('rechecks live memberships on saved snapshots and denies scoped users despite a copied role', async () => {
-    const made = await prepare(),
-      asUser = { actor: { type: 'user' as const, id: userId }, roles: ['accounting'], sessionVersion: 1 };
+    const made = await prepare();
+    const asUser = { actor: { type: 'user' as const, id: userId }, roles: ['accounting'], sessionVersion: 1 };
     await db.run(asUser, (ctx) => runAction(ctx, 'group_accounting.board', { runId: made.id }));
     await db.owner.sql`delete from user_company_memberships where user_id=${userId} and company_id=${second}`;
     await expect(

@@ -51,10 +51,10 @@ export async function pgTool(
 ): Promise<void> {
   const parsed = connection(url, true);
   const escape = (text: string) => text.replaceAll('\\', '\\\\').replaceAll(':', '\\:');
-  const host = parsed.hostname.replace(/^\[|\]$/g, ''),
-    port = parsed.port || '5432',
-    database = decodeURIComponent(parsed.pathname.slice(1)),
-    username = decodeURIComponent(parsed.username);
+  const host = parsed.hostname.replace(/^\[|\]$/g, '');
+  const port = parsed.port || '5432';
+  const database = decodeURIComponent(parsed.pathname.slice(1));
+  const username = decodeURIComponent(parsed.username);
   if ([host, database, username].some((value) => /[\r\n\0]/.test(value)))
     throw new SetupError('PGPASS_VALUE', '接続先の識別子に改行・NULを使用できません。');
   const passFile = join(privateDir, `.pgpass-${randomBytes(12).toString('hex')}`);

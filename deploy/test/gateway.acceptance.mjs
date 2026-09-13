@@ -21,10 +21,10 @@ if (!values.release || !values['manifest-sha256'] || !values.caddy)
   throw new Error('Specify --release, --manifest-sha256 and --caddy explicitly.');
 await verifyRelease(values.release, values['manifest-sha256']);
 const directory = await mkdtemp(join(tmpdir(), 'daifuku-gateway-acceptance-'));
-const servers = [],
-  children = [],
-  sockets = new Set(),
-  clients = new Set();
+const servers = [];
+const children = [];
+const sockets = new Set();
+const clients = new Set();
 const pause = (ms) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 async function freePort() {
   const s = createServer();
@@ -103,10 +103,10 @@ async function websocket(hostname, port, ca) {
 async function profile(kind, hostname, cert, key, ca) {
   const state = join(directory, kind);
   await mkdir(state, { mode: 0o700 });
-  const port = await upstream(kind),
-    tlsPort = await freePort(),
-    config = join(state, 'runtime.env'),
-    output = join(directory, `${kind}-profile`);
+  const port = await upstream(kind);
+  const tlsPort = await freePort();
+  const config = join(state, 'runtime.env');
+  const output = join(directory, `${kind}-profile`);
   await writeFile(
     config,
     `NODE_ENV=production\nHOST=127.0.0.1\nPORT=${port}\nTRUSTED_PROXY_CIDRS=127.0.0.1/32\nDAIFUKU_STORAGE_DIR=${state}/evidence\nISOLATED_SYNTHETIC_VALUE=${kind}\n`,
@@ -172,8 +172,8 @@ async function profile(kind, hostname, cert, key, ca) {
     forwardedFor: '127.0.0.1',
     proto: 'https',
   });
-  const connection = await websocket(hostname, tlsPort, ca),
-    closed = once(connection, 'close');
+  const connection = await websocket(hostname, tlsPort, ca);
+  const closed = once(connection, 'close');
   assert.doesNotMatch(generated, /ISOLATED_SYNTHETIC_VALUE/);
   assert.doesNotMatch(stderr, /relay\/connect/);
   child.kill('SIGTERM');
@@ -196,8 +196,8 @@ async function profile(kind, hostname, cert, key, ca) {
   };
 }
 try {
-  const cert = join(directory, 'test.crt'),
-    key = join(directory, 'test.key');
+  const cert = join(directory, 'test.crt');
+  const key = join(directory, 'test.key');
   execFileSync(
     'openssl',
     [
@@ -219,8 +219,8 @@ try {
     ],
     { stdio: 'pipe' },
   );
-  const ca = await readFile(cert),
-    results = [];
+  const ca = await readFile(cert);
+  const results = [];
   for (const kind of ['cloud', 'onprem']) results.push(await profile(kind, `${kind}.example.test`, cert, key, ca));
   await verifyRelease(values.release, values['manifest-sha256']);
   process.stdout.write(

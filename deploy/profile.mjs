@@ -25,11 +25,11 @@ function proxy({ release, hostname, profile, cert, key, port }) {
   return `{\n  admin off\n}\n${hostname} {${tls}\n  encode zstd gzip\n  header X-Content-Type-Options nosniff\n  header Referrer-Policy no-referrer\n  redir /api /api/ 308\n  handle_path /api/* {\n    reverse_proxy 127.0.0.1:${port} {\n      header_up X-Forwarded-For {remote_host}\n      header_up X-Forwarded-Proto {scheme}\n      header_up X-Forwarded-Host {host}\n      stream_close_delay 5m\n    }\n  }\n  root * ${release}/web\n  handle /assets/* {\n    header Cache-Control "public, max-age=31536000, immutable"\n    file_server\n  }\n  handle {\n    header Cache-Control "no-cache"\n    try_files {path} /index.html\n    file_server\n  }\n}\n`;
 }
 export async function renderProfile(input) {
-  const release = safePath(input.release),
-    state = safePath(input.state),
-    config = safePath(input.config),
-    output = safePath(input.output),
-    node = safePath(input.node);
+  const release = safePath(input.release);
+  const state = safePath(input.state);
+  const config = safePath(input.config);
+  const output = safePath(input.output);
+  const node = safePath(input.node);
   if (!['cloud', 'onprem'].includes(input.profile) || !/^[a-z_][a-z0-9_-]{0,31}$/.test(input.user ?? ''))
     throw new Error('Choose cloud/onprem and an existing dedicated service user.');
   if (!/^[a-f0-9]{64}$/.test(input.manifestHash ?? '')) throw new Error('Specify the approved manifest SHA256.');
@@ -62,9 +62,9 @@ export async function renderProfile(input) {
     throw new Error(
       'Configure production, loopback API, unprivileged PORT, state/evidence and TRUSTED_PROXY_CIDRS=127.0.0.1/32 explicitly in the private runtime.env.',
     );
-  const hostname = hostName(input.hostname),
-    cert = input.profile === 'onprem' ? safePath(input.cert) : undefined,
-    key = input.profile === 'onprem' ? safePath(input.key) : undefined;
+  const hostname = hostName(input.hostname);
+  const cert = input.profile === 'onprem' ? safePath(input.cert) : undefined;
+  const key = input.profile === 'onprem' ? safePath(input.key) : undefined;
   if (env.PUBLIC_WEB_URL && env.PUBLIC_WEB_URL !== `https://${hostname}`)
     throw new Error('PUBLIC_WEB_URL must match the selected HTTPS origin.');
   const selected = {

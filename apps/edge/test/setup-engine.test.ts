@@ -40,9 +40,9 @@ async function install(value: Awaited<ReturnType<typeof setupFixture>>, execute 
 }
 
 it('a valid dry-run inspects protected target ancestors but makes no files, account or service changes', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle(),
-    before = await f.snapshot();
+  const f = await fixture();
+  const bundle = await f.bundle();
+  const before = await f.snapshot();
   const request = {
     operation: 'install' as const,
     bundle,
@@ -59,8 +59,8 @@ it('a valid dry-run inspects protected target ancestors but makes no files, acco
   expect(pathChain).toHaveBeenCalledWith(dirname(f.fixture.statePath), true);
 });
 it('real administrative path policy and real link checks are not disabled by production code', async () => {
-  const f = await fixture(),
-    actual = await vi.importActual<typeof SetupIo>('../setup/io.ts');
+  const f = await fixture();
+  const actual = await vi.importActual<typeof SetupIo>('../setup/io.ts');
   if (process.platform !== 'win32')
     await expect(actual.pathChain(f.fixture.root, true)).rejects.toThrow(/administrator_owned/);
   const alias = join(f.fixture.root, 'source-alias');
@@ -68,8 +68,8 @@ it('real administrative path policy and real link checks are not disabled by pro
   await expect(actual.pathChain(alias)).rejects.toThrow(/unsafe_path_link/);
 });
 it('rejects manifest hash tampering, additional files and source hardlinks before a deployment is created', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle();
+  const f = await fixture();
+  const bundle = await f.bundle();
   await expect(verifyBundle(bundle.directory, '0'.repeat(64))).rejects.toThrow(/manifest_hash_mismatch/);
   const extra = join(bundle.directory, 'unexpected');
   await writeFile(extra, 'extra');
@@ -83,16 +83,16 @@ it('rejects manifest hash tampering, additional files and source hardlinks befor
   expect(f.fixture.events).toEqual([]);
 });
 it('rejects a source directory symlink even when the caller supplies the correct manifest digest', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle(),
-    alias = join(f.fixture.root, 'bundle-alias');
+  const f = await fixture();
+  const bundle = await f.bundle();
+  const alias = join(f.fixture.root, 'bundle-alias');
   await symlink(bundle.directory, alias, process.platform === 'win32' ? 'junction' : 'dir');
   await expect(verifyBundle(alias, bundle.manifestHash)).rejects.toThrow(/unsafe_path_link/);
   expect(f.fixture.events).toEqual([]);
 });
 it('refuses mixed state/install paths and unrelated contents instead of adopting or clearing them', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle();
+  const f = await fixture();
+  const bundle = await f.bundle();
   const base = {
     operation: 'install' as const,
     bundle,
@@ -112,8 +112,8 @@ it('refuses mixed state/install paths and unrelated contents instead of adopting
 
 describe.each(['prepare', 'protect', 'register', 'start'])('explicit resume after %s failure', (step) => {
   it('retains intent and completes only with the same operation, artifact and original configuration', async () => {
-    const f = await fixture(),
-      bundle = await f.bundle();
+    const f = await fixture();
+    const bundle = await f.bundle();
     const request = {
       operation: 'install' as const,
       bundle,
@@ -147,8 +147,8 @@ describe.each(['prepare', 'protect', 'register', 'start'])('explicit resume afte
   });
 });
 it('resumes a service registration that succeeded before its command reported failure', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle();
+  const f = await fixture();
+  const bundle = await f.bundle();
   const request = {
     operation: 'install' as const,
     bundle,
@@ -170,8 +170,8 @@ it('updates and uninstalls through the owned service while retaining old/new cod
   await install(f);
   const old = f.fixture.registered;
   if (!old) throw new Error('Expected installed fixture');
-  const credentials = join(f.fixture.statePath, 'credentials.json'),
-    journal = join(f.fixture.statePath, 'journal.json');
+  const credentials = join(f.fixture.statePath, 'credentials.json');
+  const journal = join(f.fixture.statePath, 'journal.json');
   await writeFile(credentials, 'synthetic private credentials');
   await writeFile(journal, 'unresolved device work');
   const config = await readFile(old.configPath);
@@ -209,8 +209,8 @@ it('updates and uninstalls through the owned service while retaining old/new cod
   expect(await lstat(updated.nodePath)).toBeDefined();
 });
 it('a changed source after verification does not register or start partially copied code', async () => {
-  const f = await fixture(),
-    bundle = await f.bundle();
+  const f = await fixture();
+  const bundle = await f.bundle();
   await writeFile(join(bundle.directory, 'app/edge.mjs'), 'changed unverified code');
   await expect(
     deploy(

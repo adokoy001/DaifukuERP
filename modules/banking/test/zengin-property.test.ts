@@ -83,8 +83,8 @@ describe('AC-3 / BANK-BYTES-01 independent Zengin reader', () => {
         fc.array(row, { minLength: 1, maxLength: 80 }),
         fc.integer({ min: 1, max: 28 }),
         (account, rows, day) => {
-          const source = snapshot(account, rows),
-            date = `2026-09-${String(day).padStart(2, '0')}`;
+          const source = snapshot(account, rows);
+          const date = `2026-09-${String(day).padStart(2, '0')}`;
           const none = exportBankFile(source, date, 'zengin120', 'none');
           const crlf = exportBankFile(source, date, 'zengin120', 'crlf');
           const records = readRecords(none.bytes, rows.length, false);
@@ -113,14 +113,14 @@ describe('AC-3 / BANK-BYTES-01 independent Zengin reader', () => {
   it('checks the 500-record boundary in bytes and refuses 501 records', () => {
     fc.assert(
       fc.property(identity, fc.integer({ min: 1, max: 999_999_999 }), (account, amount) => {
-        const value = { payee: account, amount: String(amount) },
-          source = snapshot(
-            account,
-            Array.from({ length: 500 }, () => value),
-          );
+        const value = { payee: account, amount: String(amount) };
+        const source = snapshot(
+          account,
+          Array.from({ length: 500 }, () => value),
+        );
         const file = exportBankFile(source, '2026-09-12', 'zengin120', 'crlf');
-        const records = readRecords(file.bytes, 500, true),
-          trailer = required(records[501]);
+        const records = readRecords(file.bytes, 500, true);
+        const trailer = required(records[501]);
         expect(numberAt(trailer, 1, 6)).toBe(500n);
         expect(numberAt(trailer, 7, 12)).toBe(BigInt(amount) * 500n);
         expect(() =>

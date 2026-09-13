@@ -51,8 +51,8 @@ export function localDate(date: Date): string {
 }
 export function periodDates(period: AnalyticsPeriod, now = new Date()): { from: string; to: string } {
   const today = businessToday(now);
-  const year = Number(today.slice(0, 4)),
-    month = Number(today.slice(5, 7)) - 1;
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7)) - 1;
   const months = period === '24-months' ? 23 : period === '12-months' ? 11 : period === 'previous-month' ? 1 : 0;
   return {
     from: new Date(Date.UTC(year, month - months, 1)).toISOString().slice(0, 10),

@@ -4,9 +4,9 @@ import { apiConfig } from '../config.ts';
 import { readIdentityConfig, readSmtpConfig } from './config.ts';
 import { smtpTransport } from './smtp.ts';
 async function main(): Promise<void> {
-  const config = apiConfig(),
-    identity = readIdentityConfig(process.env),
-    smtp = readSmtpConfig(process.env);
+  const config = apiConfig();
+  const identity = readIdentityConfig(process.env);
+  const smtp = readSmtpConfig(process.env);
   if (!identity || !smtp) {
     console.error('Identity mail is not configured; no messages were sent.');
     process.exitCode = 2;

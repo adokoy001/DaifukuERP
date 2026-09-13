@@ -83,8 +83,8 @@ async function privateTree(
     throw new Error('Private directory ownership or permissions changed.');
   await noAcl(host, path);
   for (const name of await host.list(path)) {
-    const item = join(path, name),
-      child = await host.stat(item);
+    const item = join(path, name);
+    const child = await host.stat(item);
     if (child?.kind === 'directory') await privateTree(host, item, owner, management, readOnly);
     else await privateFile(host, item, owner, management.has(item), readOnly);
   }

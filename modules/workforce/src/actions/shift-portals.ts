@@ -22,10 +22,10 @@ export const shiftBoardAction = defineAction({
   mutates: false,
   async handler(ctx, input) {
     const source = await shiftSource(ctx, input.siteId, input.weekStart);
-    const draftRow = source.plans.find((row) => row.status === 'draft'),
-      publishedRow = source.plans.find((row) => row.status === 'published');
-    const draft = draftRow ? planSummary(draftRow) : null,
-      published = publishedRow ? planSummary(publishedRow) : null;
+    const draftRow = source.plans.find((row) => row.status === 'draft');
+    const publishedRow = source.plans.find((row) => row.status === 'published');
+    const draft = draftRow ? planSummary(draftRow) : null;
+    const published = publishedRow ? planSummary(publishedRow) : null;
     return shiftBoardOutput.parse({
       ...source,
       weekStart: input.weekStart,

@@ -24,13 +24,13 @@ describe('bounded IPP protocol and device outcomes', () => {
     const references: string[] = [];
     try {
       const device = {
-          deviceId: randomUUID(),
-          localDeviceId: 'printer',
-          driver: 'ipp_text' as const,
-          printerUri: printer.uri,
-        },
-        config = parseConfig({ apiBaseUrl: 'https://erp.example', requestTimeoutMs: 1000, devices: [device] }),
-        signal = new AbortController().signal;
+        deviceId: randomUUID(),
+        localDeviceId: 'printer',
+        driver: 'ipp_text' as const,
+        printerUri: printer.uri,
+      };
+      const config = parseConfig({ apiBaseUrl: 'https://erp.example', requestTimeoutMs: 1000, devices: [device] });
+      const signal = new AbortController().signal;
       const result = await printText(
         printerTransport(device, config, signal),
         request,
@@ -56,13 +56,13 @@ describe('bounded IPP protocol and device outcomes', () => {
     printer.state.asciiOnly = true;
     try {
       const device = {
-          deviceId: randomUUID(),
-          localDeviceId: 'printer',
-          driver: 'ipp_text' as const,
-          printerUri: printer.uri,
-        },
-        config = parseConfig({ apiBaseUrl: 'https://erp.example', devices: [device] }),
-        signal = new AbortController().signal;
+        deviceId: randomUUID(),
+        localDeviceId: 'printer',
+        driver: 'ipp_text' as const,
+        printerUri: printer.uri,
+      };
+      const config = parseConfig({ apiBaseUrl: 'https://erp.example', devices: [device] });
+      const signal = new AbortController().signal;
       const result = await printText(
         printerTransport(device, config, signal),
         request,
@@ -76,8 +76,8 @@ describe('bounded IPP protocol and device outcomes', () => {
     }
   });
   it('does not send escape or device control sequences as plain text', async () => {
-    const calls: number[] = [],
-      signal = new AbortController().signal;
+    const calls: number[] = [];
+    const signal = new AbortController().signal;
     const result = await printText(
       async (operation) => {
         calls.push(operation);

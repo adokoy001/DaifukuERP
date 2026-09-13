@@ -16,20 +16,20 @@ const object = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 const money = (v: unknown): string | null => (typeof v === 'string' && /^-?\d{1,15}$/.test(v) ? v : null);
 export async function payrollSource(ctx: Context, taxYear: number): Promise<FilingSource> {
-  const company = await getCompany(ctx),
-    from = `${taxYear}-01-01`,
-    to = `${taxYear}-12-31`;
-  const profiles = await allRows(ctx, FilingPayrollProfile, { key: String(taxYear) }),
-    saved = profiles[0];
+  const company = await getCompany(ctx);
+  const from = `${taxYear}-01-01`;
+  const to = `${taxYear}-12-31`;
+  const profiles = await allRows(ctx, FilingPayrollProfile, { key: String(taxYear) });
+  const saved = profiles[0];
   if (!saved)
     throw new StateError('給与申告準備の設定がありません', '対応年度の支払者・受給者情報を保存してください。');
-  const profile = payrollProfileData.parse(saved.data),
-    employees = await allRows(ctx, WorkforceEmployee, { hiredOn: { $lte: to } }, 2000);
+  const profile = payrollProfileData.parse(saved.data);
+  const employees = await allRows(ctx, WorkforceEmployee, { hiredOn: { $lte: to } }, 2000);
   const payrolls = await allRows(ctx, WorkforcePayroll);
   const allEvidence = await allRows(ctx, WorkforcePayrollTaxEvidence);
   const evidence = allEvidence.filter((e) => e.paymentDate >= from && e.paymentDate <= to);
-  const adjustments = await allRows(ctx, WorkforceYearEndAdjustment, { taxYear }),
-    declarations = await allRows(ctx, WorkforceYearEndDeclaration, { taxYear });
+  const adjustments = await allRows(ctx, WorkforceYearEndAdjustment, { taxYear });
+  const declarations = await allRows(ctx, WorkforceYearEndDeclaration, { taxYear });
   const conditions = await allRows(ctx, WorkforcePayrollCondition, {
     validFrom: { $lte: to },
     validTo: { $gte: from },
@@ -38,18 +38,18 @@ export async function payrollSource(ctx: Context, taxYear: number): Promise<Fili
     (e) => !e.terminatedOn || e.terminatedOn >= from || evidence.some((r) => r.employeeId === e.id),
   );
   const rows: FilingPayrollRow[] = selected.map((employee) => {
-    const facts = profile.recipients.find((f) => f.employeeId === employee.id) ?? null,
-      issues = [];
-    const pay = payrolls.filter((r) => r.employeeId === employee.id),
-      paid = evidence.filter(
-        (e) => e.employeeId === employee.id && pay.some((p) => p.id === e.payrollId && p.docstatus === 1),
-      );
-    const confirmed = adjustments.filter((a) => a.employeeId === employee.id && a.docstatus === 1),
-      adjustment = confirmed.length === 1 ? confirmed[0] : undefined;
-    const calculation = object(adjustment?.calculation),
-      deduction = object(calculation.deductions);
-    const decl = declarations.find((r) => r.id === adjustment?.declarationId),
-      declared = object(decl?.declaration);
+    const facts = profile.recipients.find((f) => f.employeeId === employee.id) ?? null;
+    const issues = [];
+    const pay = payrolls.filter((r) => r.employeeId === employee.id);
+    const paid = evidence.filter(
+      (e) => e.employeeId === employee.id && pay.some((p) => p.id === e.payrollId && p.docstatus === 1),
+    );
+    const confirmed = adjustments.filter((a) => a.employeeId === employee.id && a.docstatus === 1);
+    const adjustment = confirmed.length === 1 ? confirmed[0] : undefined;
+    const calculation = object(adjustment?.calculation);
+    const deduction = object(calculation.deductions);
+    const decl = declarations.find((r) => r.id === adjustment?.declarationId);
+    const declared = object(decl?.declaration);
     const previous = Array.isArray(declared.previousEmployers) ? declared.previousEmployers : [];
     const previousKnown = previous.every((row) => money(object(row).taxablePay) !== null);
     const previousPay = previousKnown

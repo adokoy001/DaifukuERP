@@ -8,8 +8,8 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
 import { legacyMigrationFolder } from './legacy-fixture.ts';
-const owner = connect(OWNER_URL, { max: 1 }),
-  app = connect(APP_URL, { max: 1 });
+const owner = connect(OWNER_URL, { max: 1 });
+const app = connect(APP_URL, { max: 1 });
 const previous = legacyMigrationFolder(10);
 const tables = [
   'workforce_shift_profile',
@@ -17,11 +17,11 @@ const tables = [
   'workforce_shift_plan',
   'workforce_shift_assignment',
 ];
-const tenant = newId(),
-  company = newId(),
-  user = newId(),
-  site = newId(),
-  employee = newId();
+const tenant = newId();
+const company = newId();
+const user = newId();
+const site = newId();
+const employee = newId();
 type Sql = postgres.TransactionSql;
 const scoped = <T>(db: Database, tenantId: string, fn: (tx: Sql) => Promise<T>) =>
   db.sql.begin(async (tx) => {

@@ -71,9 +71,9 @@ async function accountingFixture(close = true) {
 }
 describe('filing preparation lifecycle and source integrity', () => {
   it('snapshots posted ledger, requires separate confirmation and exports official CSV only after review', async () => {
-    const f = await accountingFixture(),
-      created = await action('prepare_accounting', f.request),
-      ref = { kind: 'accounting', id: created.id };
+    const f = await accountingFixture();
+    const created = await action('prepare_accounting', f.request);
+    const ref = { kind: 'accounting', id: created.id };
     const detail = await action<FilingDetail>('get', ref);
     expect(detail).toMatchObject({
       status: 'draft',
@@ -109,8 +109,8 @@ describe('filing preparation lifecycle and source integrity', () => {
     await expect(run((ctx) => repo(ctx, FilingAccountingPack).delete(created.id))).rejects.toThrow();
   });
   it('detects changed source, retains cancellation history and deduplicates retries', async () => {
-    const f = await accountingFixture(),
-      created = await action('prepare_accounting', f.request);
+    const f = await accountingFixture();
+    const created = await action('prepare_accounting', f.request);
     expect(await action('prepare_accounting', f.request)).toEqual(created);
     await expect(action('prepare_accounting', { ...f.request, taxClassificationReview: '異なる根拠' })).rejects.toThrow(
       '再試行キー',
@@ -145,8 +145,8 @@ describe('filing preparation lifecycle and source integrity', () => {
     ).toBe('cancelled');
   });
   it('keeps unclosed or unclassified data reviewable but blocks invalid financial export', async () => {
-    const f = await accountingFixture(false),
-      created = await action('prepare_accounting', f.request);
+    const f = await accountingFixture(false);
+    const created = await action('prepare_accounting', f.request);
     expect(
       (await action<FilingDetail>('get', { kind: 'accounting', id: created.id })).issues.map((i) => i.code),
     ).toContain('period_open');
@@ -172,8 +172,8 @@ describe('filing preparation lifecycle and source integrity', () => {
     ).rejects.toThrow('会社内');
   });
   it('denies payroll/accounting role substitution and company/site/relay escapes', async () => {
-    const f = await accountingFixture(),
-      created = await action('prepare_accounting', f.request);
+    const f = await accountingFixture();
+    const created = await action('prepare_accounting', f.request);
     await expect(action('board', { kind: 'accounting' }, { roles: ['workforce_payroll'] })).rejects.toThrow();
     await expect(action('board', { kind: 'payroll' }, { roles: ['accounting'] })).rejects.toThrow();
     for (const params of [

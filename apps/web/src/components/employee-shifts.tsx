@@ -11,8 +11,8 @@ import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceEmpty, WorkforceError } from './workforce-shared.tsx';
 import '../shifts.css';
 function AvailabilityEditor({ data, stale, onClose }: { data: MyShifts; stale: boolean; onClose: () => void }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [days, setDays] = useState<ShiftAvailabilityDay[]>(
     data.availability?.days ?? emptyAvailability(data.weekStart),
   );
@@ -76,9 +76,9 @@ function AvailabilityEditor({ data, stale, onClose }: { data: MyShifts; stale: b
   );
 }
 function MyShiftWeek({ weekStart }: { weekStart: string }) {
-  const { t } = useLocale(),
-    query = useMyShifts(weekStart),
-    [editing, setEditing] = useState<MyShifts>();
+  const { t } = useLocale();
+  const query = useMyShifts(weekStart);
+  const [editing, setEditing] = useState<MyShifts>();
   if (query.isError && !canRetainData(query))
     return <WorkforceError error={query.error} onRetry={() => void query.refetch()} />;
   if (!query.data) return <p role="status">{t({ ja: 'シフトを読込中…', en: 'Loading shifts…' })}</p>;
@@ -193,8 +193,8 @@ function MyShiftWeek({ weekStart }: { weekStart: string }) {
   );
 }
 export function EmployeeShifts() {
-  const { t } = useLocale(),
-    [weekStart, setWeekStart] = useState(() => shiftMonday());
+  const { t } = useLocale();
+  const [weekStart, setWeekStart] = useState(() => shiftMonday());
   return (
     <div className="workforce-stack" data-testid="my-shifts">
       <label className="shift-week-filter">

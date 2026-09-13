@@ -19,10 +19,10 @@ export function EdgePairing({
   revoke?: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand(),
-    [result, setResult] = useState<Record<string, unknown>>(),
-    [reason, setReason] = useState('');
+  const { t } = useLocale();
+  const task = useEdgeCommand();
+  const [result, setResult] = useState<Record<string, unknown>>();
+  const [reason, setReason] = useState('');
   const security = useQuery({
     queryKey: ['account-security', getUser()?.id],
     queryFn: ({ signal }) => accountSecurity(signal),

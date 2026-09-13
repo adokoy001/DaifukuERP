@@ -17,15 +17,15 @@ export function monthEnd(period: string): string {
 }
 
 export function payrollPaymentRange(period: string, bundle: PayrollRuleSummary): Range | undefined {
-  const end = monthEnd(period),
-    applicable = bundle.manifest.applicability;
+  const end = monthEnd(period);
+  const applicable = bundle.manifest.applicability;
   if (!end || !withinRuleRange(end, applicable.wageCutoffDates)) return undefined;
   const next = new Date(end + 'T00:00:00Z');
   next.setUTCDate(1);
   next.setUTCMonth(next.getUTCMonth() + 2, 0);
-  const from = end > applicable.paymentDates.from ? end : applicable.paymentDates.from,
-    last = next.toISOString().slice(0, 10),
-    to = last < applicable.paymentDates.to ? last : applicable.paymentDates.to;
+  const from = end > applicable.paymentDates.from ? end : applicable.paymentDates.from;
+  const last = next.toISOString().slice(0, 10);
+  const to = last < applicable.paymentDates.to ? last : applicable.paymentDates.to;
   return from <= to ? { from, to } : undefined;
 }
 

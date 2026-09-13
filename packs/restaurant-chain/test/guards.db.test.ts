@@ -26,8 +26,8 @@ describe('飲食店の日次締め整合性', () => {
   });
   it('二件の同日同店舗の同時確定は一件だけ成功し、直接計算値・発生先の書換えも拒否する', async () => {
     await stock(s, 'RC-A');
-    const left = await closing(s),
-      right = await closing(s);
+    const left = await closing(s);
+    const right = await closing(s);
     const outcomes = await Promise.allSettled([submit(s, left), submit(s, right)]);
     expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(outcomes.filter((result) => result.status === 'rejected')).toHaveLength(1);

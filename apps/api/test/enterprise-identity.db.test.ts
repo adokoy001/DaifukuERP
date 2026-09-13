@@ -6,10 +6,10 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { JWTPayload } from 'jose';
 import { buildServer } from '../src/server.ts';
 import { oidcFixture } from './identity-oidc-helper.ts';
-let db: TestDb,
-  app: FastifyInstance,
-  oidc: Awaited<ReturnType<typeof oidcFixture>>,
-  token = '';
+let db: TestDb;
+let app: FastifyInstance;
+let oidc: Awaited<ReturnType<typeof oidcFixture>>;
+let token = '';
 let codes: string[] = [];
 const key = Buffer.alloc(32, 7).toString('base64');
 const post = (path: string, body: NonNullable<InjectOptions['payload']>, auth = '') =>
@@ -28,8 +28,8 @@ async function stepup() {
   return { stepUpToken: result.json<{ stepUpToken: string }>().stepUpToken };
 }
 async function start(link = false) {
-  const browserNonce = opaqueToken(),
-    step = link ? await stepup() : {};
+  const browserNonce = opaqueToken();
+  const step = link ? await stepup() : {};
   const result = await post(
     link ? 'oidc/link' : 'oidc/start',
     { providerId: 'fixture', browserNonce, ...step },
@@ -86,8 +86,8 @@ describe('OIDC HTTP boundaries with real signed local ID tokens', () => {
     expect(await db.owner.drizzle.select().from(users)).toHaveLength(1);
   });
   it('binds link state to this browser, uses PKCE and revokes sessions on explicit account linking', async () => {
-    const input = await start(true),
-      grant = oidc.code(input.authorizationUrl);
+    const input = await start(true);
+    const grant = oidc.code(input.authorizationUrl);
     const url = new URL(input.authorizationUrl);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('prompt')).toBe('login');
@@ -156,8 +156,8 @@ describe('MFA, invitation and reset HTTP boundaries', () => {
     expect(external.json()).not.toHaveProperty('token');
   });
   it('returns identical reset request responses and leaves MFA enabled after a single-use password reset', async () => {
-    const unknown = await post('password-reset/request', { email: 'unknown@example.com' }),
-      known = await post('password-reset/request', { email: 'admin@example.com' });
+    const unknown = await post('password-reset/request', { email: 'unknown@example.com' });
+    const known = await post('password-reset/request', { email: 'admin@example.com' });
     expect(known.json()).toEqual(unknown.json());
     expect(known.json()).toEqual({ ok: true });
     expect(known.headers['cache-control']).toBe('private, no-store');

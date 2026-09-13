@@ -17,16 +17,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/server.ts';
 import type { AnalyticsSnapshot } from '../src/analytics/snapshot.ts';
 
-let db: TestDb,
-  app: FastifyInstance,
-  admin: string,
-  employee: string,
-  manager: string,
-  managerId: string,
-  siteId: string,
-  otherSiteId: string;
-const from = '2026-09-01',
-  to = '2026-09-30';
+let db: TestDb;
+let app: FastifyInstance;
+let admin: string;
+let employee: string;
+let manager: string;
+let managerId: string;
+let siteId: string;
+let otherSiteId: string;
+const from = '2026-09-01';
+const to = '2026-09-30';
 const headers = (token: string) => ({ authorization: `Bearer ${token}` });
 const snapshot = (token: string, dataset = 'workforce_expense', state = 'all', extra: Record<string, string> = {}) =>
   app.inject({
@@ -52,9 +52,9 @@ beforeAll(async () => {
     otherSiteId = (await repo(ctx, WorkforceSite).create({ code: 'AN-B', name: '分析 第二拠点' })).id;
   });
   for (let index = 0; index < 4; index++) {
-    const id = newId(),
-      role = index === 3 ? 'workforce_manager' : 'workforce_employee',
-      site = index === 2 ? otherSiteId : siteId;
+    const id = newId();
+    const role = index === 3 ? 'workforce_manager' : 'workforce_employee';
+    const site = index === 2 ? otherSiteId : siteId;
     const email = `analytics-${index}@example.com`;
     await db.owner.drizzle.insert(users).values({
       id,
@@ -137,15 +137,15 @@ describe('authorized browser analytics HTTP', () => {
   });
 
   it('keeps employee self scope, site scope and field projection with distinct reference identities', async () => {
-    const own = await snapshot(employee),
-      site = await snapshot(manager),
-      all = await snapshot(admin);
+    const own = await snapshot(employee);
+    const site = await snapshot(manager);
+    const all = await snapshot(admin);
     expect(own.statusCode).toBe(200);
     expect(site.statusCode).toBe(200);
     expect(all.statusCode).toBe(200);
-    const selfRows = own.json<AnalyticsSnapshot>(),
-      siteRows = site.json<AnalyticsSnapshot>(),
-      allRows = all.json<AnalyticsSnapshot>();
+    const selfRows = own.json<AnalyticsSnapshot>();
+    const siteRows = site.json<AnalyticsSnapshot>();
+    const allRows = all.json<AnalyticsSnapshot>();
     expect(selfRows.rows.map((row) => row.amount)).toEqual(['1000']);
     expect(siteRows.rows.map((row) => row.amount).sort()).toEqual(['1000', '2000']);
     expect(allRows.rows).toHaveLength(3);
@@ -201,8 +201,8 @@ describe('authorized browser analytics HTTP', () => {
       actor: { type: 'user', id: db.adminUserId },
       roles: ['admin'],
     };
-    const target = registry.entity('partner'),
-      where = { name: 'During analytics snapshot' };
+    const target = registry.entity('partner');
+    const where = { name: 'During analytics snapshot' };
     await withContext(
       db.app,
       params,

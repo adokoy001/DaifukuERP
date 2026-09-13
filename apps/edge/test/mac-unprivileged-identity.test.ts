@@ -25,8 +25,8 @@ describe('macOS unprivileged process identity', () => {
     expect(unprivilegedServiceIdentity(undefined)).toBe(false);
   });
   it('requires measured identity, explicit enforcement and exact owned account for Mac readiness', () => {
-    const runtime = { identity: primary, unprivilegedIdentityRequired: true, unprivilegedIdentityVerified: true },
-      account = { uid: 400, gid: 4294967294, groups: primary.groups };
+    const runtime = { identity: primary, unprivilegedIdentityRequired: true, unprivilegedIdentityVerified: true };
+    const account = { uid: 400, gid: 4294967294, groups: primary.groups };
     expect(matchesMacServiceIdentity('darwin', runtime, account)).toBe(true);
     for (const altered of [
       {},
@@ -58,16 +58,16 @@ describe('macOS unprivileged process identity', () => {
       expect(() => daemonEnvironment(text)).toThrow('environment');
   });
   it('requires standard InitGroups=true on disk and the fixed guard in the loaded daemon', async () => {
-    const f = new PosixFixture('darwin'),
-      adapter = createPosixAdapter('darwin', f);
+    const f = new PosixFixture('darwin');
+    const adapter = createPosixAdapter('darwin', f);
     await adapter.prepare(f.context);
     f.addRelease();
     await adapter.protect(f.context);
     await adapter.register(f.context);
     await adapter.start(f.context);
     expect(renderLaunchDaemon(f.context)).toContain('<key>InitGroups</key><true/>');
-    const before = f.changes.length,
-      original = f.loaded;
+    const before = f.changes.length;
+    const original = f.loaded;
     if (!original) throw new Error('Expected synthetic daemon');
     f.loaded = original.replace('<key>DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY</key><string>1</string>', '');
     expect((await adapter.inspect(f.context)).conflicts).toEqual([expect.stringContaining('unprivileged identity')]);
@@ -80,8 +80,8 @@ describe('macOS unprivileged process identity', () => {
   it('compares the controller CA with the explicit loaded environment arrow value', async () => {
     const f = new PosixFixture('darwin');
     f.context = { ...f.context, caPath: join(f.context.statePath, 'ca-api.pem') };
-    const adapter = createPosixAdapter('darwin', f),
-      ca = f.context.caPath;
+    const adapter = createPosixAdapter('darwin', f);
+    const ca = f.context.caPath;
     if (!ca) throw new Error('Synthetic CA path required');
     await adapter.prepare(f.context);
     f.addRelease();
@@ -96,11 +96,11 @@ describe('macOS unprivileged process identity', () => {
     expect((await adapter.inspect(f.context)).conflicts).toEqual([expect.stringContaining('CA configuration')]);
   });
   it('runs unpaired with ordinary OS groups after verifying no explicit additions', async () => {
-    const relay = await relayFixture(),
-      abort = new AbortController(),
-      codes: string[] = [];
-    const credentials = await Credentials.open(relay.directory, relay.config()),
-      journal = await Journal.open(relay.directory);
+    const relay = await relayFixture();
+    const abort = new AbortController();
+    const codes: string[] = [];
+    const credentials = await Credentials.open(relay.directory, relay.config());
+    const journal = await Journal.open(relay.directory);
     const groups = [4294967294, 12, 61, 100, 701];
     vi.stubEnv('DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY', '1');
     const measured = vi.spyOn(identity, 'currentServiceIdentity').mockReturnValue({ ...primary, groups });
@@ -120,13 +120,13 @@ describe('macOS unprivileged process identity', () => {
     }
   });
   it('does not pair or execute work when runtime has a privileged membership', async () => {
-    const relay = await relayFixture(),
-      abort = new AbortController(),
-      codes: string[] = [];
-    const credentials = await Credentials.open(relay.directory, relay.config()),
-      journal = await Journal.open(relay.directory);
-    const pair = vi.spyOn(credentials, 'pair'),
-      session = vi.spyOn(credentials, 'session');
+    const relay = await relayFixture();
+    const abort = new AbortController();
+    const codes: string[] = [];
+    const credentials = await Credentials.open(relay.directory, relay.config());
+    const journal = await Journal.open(relay.directory);
+    const pair = vi.spyOn(credentials, 'pair');
+    const session = vi.spyOn(credentials, 'session');
     vi.stubEnv('DAIFUKU_EDGE_REQUIRE_UNPRIVILEGED_IDENTITY', '1');
     const measured = vi
       .spyOn(identity, 'currentServiceIdentity')

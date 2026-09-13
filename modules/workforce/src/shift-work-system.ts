@@ -6,23 +6,23 @@ import type { ShiftPeriodBudget, ShiftWorkRule } from './scheduling/types.ts';
 import { addDays, dateMs, periodBounds, weekStart } from './services/time.ts';
 import { legalPeriodMs } from './services/work-system.ts';
 export async function shiftWorkSystems(ctx: Context, employeeIds: string[], start: string) {
-  const end = addDays(start, 6),
-    rows = await allRows(ctx, WorkforceWorkSystemPeriod, {
-      employeeId: { $in: employeeIds },
-      status: 'confirmed',
-      startsOn: { $lte: end },
-      endsOn: { $gte: start },
-    });
-  const workRules: ShiftWorkRule[] = [],
-    periodBudgets: ShiftPeriodBudget[] = [],
-    assignments: Infer<typeof WorkforceShiftAssignment>[] = [];
+  const end = addDays(start, 6);
+  const rows = await allRows(ctx, WorkforceWorkSystemPeriod, {
+    employeeId: { $in: employeeIds },
+    status: 'confirmed',
+    startsOn: { $lte: end },
+    endsOn: { $gte: start },
+  });
+  const workRules: ShiftWorkRule[] = [];
+  const periodBudgets: ShiftPeriodBudget[] = [];
+  const assignments: Infer<typeof WorkforceShiftAssignment>[] = [];
   for (const row of rows) {
-    const system = workSystemData.strip().parse(row),
-      published = await allRows(ctx, WorkforceShiftAssignment, {
-        employeeId: row.employeeId,
-        active: true,
-        date: { $gte: row.startsOn, $lte: row.endsOn },
-      });
+    const system = workSystemData.strip().parse(row);
+    const published = await allRows(ctx, WorkforceShiftAssignment, {
+      employeeId: row.employeeId,
+      active: true,
+      date: { $gte: row.startsOn, $lte: row.endsOn },
+    });
     assignments.push(...published);
     const outside = published.filter((item) => item.date < start || item.date > end);
     const used = (from: string, to: string) =>
@@ -36,12 +36,12 @@ export async function shiftWorkSystems(ctx: Context, employeeIds: string[], star
       remainingMinutes: row.agreedTotalMinutes - used(row.startsOn, row.endsOn),
     });
     for (const day of system.days.filter((item) => item.date >= start && item.date <= end)) {
-      const week = weekStart(day.date, 1),
-        planned = rows
-          .filter((other) => other.employeeId === row.employeeId && other.mode === 'monthly_variable')
-          .flatMap((other) => workSystemData.strip().parse(other).days)
-          .filter((item) => item.date >= week && item.date <= addDays(week, 6))
-          .reduce((sum, item) => sum + item.scheduledMinutes, 0);
+      const week = weekStart(day.date, 1);
+      const planned = rows
+        .filter((other) => other.employeeId === row.employeeId && other.mode === 'monthly_variable')
+        .flatMap((other) => workSystemData.strip().parse(other).days)
+        .filter((item) => item.date >= week && item.date <= addDays(week, 6))
+        .reduce((sum, item) => sum + item.scheduledMinutes, 0);
       workRules.push({
         employeeId: row.employeeId,
         date: day.date,
@@ -59,8 +59,8 @@ export async function shiftWorkSystems(ctx: Context, employeeIds: string[], star
         system.days.filter((day) => day.date >= start && day.date <= end).map((day) => day.date.slice(0, 7)),
       );
       for (const month of months) {
-        const bounds = periodBounds(month),
-          count = (dateMs(bounds.end) - dateMs(bounds.start)) / 86400000 + 1;
+        const bounds = periodBounds(month);
+        const count = (dateMs(bounds.end) - dateMs(bounds.start)) / 86400000 + 1;
         periodBudgets.push({
           employeeId: row.employeeId,
           startsOn: bounds.start,

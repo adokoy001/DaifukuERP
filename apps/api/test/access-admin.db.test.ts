@@ -38,7 +38,9 @@ const Store = defineEntity({
   storeAccess: { kind: 'store', field: 'id' },
 });
 registerCrudActions();
-let db: TestDb, app: FastifyInstance, adminToken: string;
+let db: TestDb;
+let app: FastifyInstance;
+let adminToken: string;
 type User = { id: string; version: number; active: boolean; tenantAdmin: boolean; defaultCompanyId: string | null };
 const password = 'access-test-password';
 

@@ -45,8 +45,8 @@ describe('exact work intervals and domestic calendar boundaries', () => {
     }
   });
   it('rejects overlapping / external / reversed breaks, but accepts adjacent unsorted breaks', () => {
-    const start = time('2026-09-12T09:00:00+09:00'),
-      end = time('2026-09-12T18:00:00+09:00');
+    const start = time('2026-09-12T09:00:00+09:00');
+    const end = time('2026-09-12T18:00:00+09:00');
     const breaks = [
       { start: '2026-09-12T12:30:00+09:00', end: '2026-09-12T13:00:00+09:00' },
       { start: '2026-09-12T12:00:00+09:00', end: '2026-09-12T12:30:00+09:00' },
@@ -78,8 +78,8 @@ describe('exact work intervals and domestic calendar boundaries', () => {
     expect(() => assertBreaks({ workedMs: 480 * minute + 1, breakMs: 60 * minute }, policy)).not.toThrow();
   });
   it('refuses to auto-calculate payroll across a calendar-day holiday boundary while retaining measurable punches', () => {
-    const start = time('2026-09-12T22:00:00+09:00'),
-      end = time('2026-09-13T06:00:00+09:00');
+    const start = time('2026-09-12T22:00:00+09:00');
+    const end = time('2026-09-13T06:00:00+09:00');
     expect(measureWork(start, end, [], 1320, 300).workedMs).toBe(480 * minute);
     expect(() => assertPayrollCalendarDay(start, end)).toThrow();
     expect(() => assertPayrollCalendarDay(start, time('2026-09-13T00:00:00.001+09:00'))).toThrow();

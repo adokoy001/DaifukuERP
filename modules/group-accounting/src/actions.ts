@@ -62,8 +62,8 @@ export const groupCompaniesAction = defineAction({
   permission: { roles: ['accounting'] },
   mutates: false,
   handler: async (ctx) => {
-    const companies = await authorizedCompanies(ctx),
-      allowed = [];
+    const companies = await authorizedCompanies(ctx);
+    const allowed = [];
     for (const company of companies) {
       const canRead = await withAuthorizedCompany(
         ctx,
@@ -99,8 +99,8 @@ export const prepareGroupAction = defineAction({
           throw new Conflict('Consolidation draft changed or is finalized', 'Reload or create a new worksheet.');
       } else if (input.expectedVersion !== 0)
         throw new Conflict('New worksheet version must be zero', 'Omit runId for a new draft.');
-      const sources = await collectSources(ctx, input),
-        result = consolidate(sources, input.mapping, input.adjustments);
+      const sources = await collectSources(ctx, input);
+      const result = consolidate(sources, input.mapping, input.adjustments);
       return writeGroup(ctx, async (inner) => {
         const values = {
           name: input.name,
@@ -143,12 +143,12 @@ export const confirmGroupAction = defineAction({
     const row = await repo(ctx, GroupRun).lock(input.runId);
     if (row.status !== 'draft' || row.version !== input.expectedVersion)
       throw new Conflict('Worksheet changed or is not a draft', 'Reload the current worksheet.');
-    const original = await authorizeSnapshot(ctx, row),
-      current = await collectSources(
-        ctx,
-        { companyIds: original.map((s) => s.companyId), from: row.from, to: row.to },
-        true,
-      );
+    const original = await authorizeSnapshot(ctx, row);
+    const current = await collectSources(
+      ctx,
+      { companyIds: original.map((s) => s.companyId), from: row.from, to: row.to },
+      true,
+    );
     if (
       current.some((source) => original.find((old) => old.companyId === source.companyId)?.revision !== source.revision)
     )

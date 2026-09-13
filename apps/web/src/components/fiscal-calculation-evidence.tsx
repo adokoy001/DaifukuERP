@@ -9,11 +9,11 @@ const money = (value: unknown) => (typeof value === 'string' && /^\d+(?:\.\d+)?$
 /** Render the public evidence fields without dumping personnel IDs or internal snapshots. */
 export function FiscalCalculationEvidence({ calculation }: { calculation: Record<string, unknown> }) {
   const { t, locale } = useLocale();
-  const statutory = object(calculation.statutory),
-    input = object(statutory.input),
-    evidence = object(statutory.evidence),
-    withholding = object(evidence.withholding),
-    social = object(evidence.social);
+  const statutory = object(calculation.statutory);
+  const input = object(statutory.input);
+  const evidence = object(statutory.evidence);
+  const withholding = object(evidence.withholding);
+  const social = object(evidence.social);
   const systems = Array.isArray(calculation.workSystems) ? calculation.workSystems.map(object) : [];
   return (
     <>

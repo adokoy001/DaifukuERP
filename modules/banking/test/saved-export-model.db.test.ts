@@ -45,8 +45,8 @@ it.each([
               },
             ],
           };
-          const batch = await f.action('prepare_transfer', input, bankTransferDetail),
-            baseline = await ledger();
+          const batch = await f.action('prepare_transfer', input, bankTransferDetail);
+          const baseline = await ledger();
           const request = { batchId: batch.id, expectedVersion: batch.version, format, lineEnding };
           const original = await f.action('export_transfer', request, bankTransferExportOutput);
           expect(original.sentToBank).toBe(false);

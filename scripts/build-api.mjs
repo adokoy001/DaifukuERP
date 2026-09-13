@@ -6,8 +6,8 @@ import { copyRuntime } from '../deploy/runtime.mjs';
 import { compileApiRuntime, loadCompiler } from '../deploy/compile-api.mjs';
 
 const source = fileURLToPath(new URL('../', import.meta.url));
-const parent = join(source, '.runtime'),
-  output = join(parent, 'api');
+const parent = join(source, '.runtime');
+const output = join(parent, 'api');
 execFileSync('pnpm', ['typecheck'], { cwd: source, stdio: 'inherit' });
 await mkdir(parent, { recursive: true });
 const temporary = await mkdtemp(join(parent, 'api-build-'));

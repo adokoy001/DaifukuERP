@@ -87,10 +87,10 @@ async function prepare(owner: Database, day: string) {
 
 async function main() {
   // Explicit process environment only: never load a user's .env to select a mutation target.
-  const urls = fixtureUrls(),
-    day = businessDate();
-  const owner = connect(urls.owner, { max: 1 }),
-    app = connect(urls.app, { max: 1 });
+  const urls = fixtureUrls();
+  const day = businessDate();
+  const owner = connect(urls.owner, { max: 1 });
+  const app = connect(urls.app, { max: 1 });
   try {
     const [lock] = await owner.sql`select pg_try_advisory_lock(1785467, 18) as acquired`;
     if (!lock?.acquired) fail('another preparation is running');

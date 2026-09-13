@@ -42,8 +42,8 @@ const provider = z
   })
   .strict();
 export function safeIdentityUrl(value: string, loopback = false, originOnly = false): URL {
-  const url = new URL(value),
-    local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  const url = new URL(value);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   if (
     (url.protocol !== 'https:' && !(loopback && local && url.protocol === 'http:')) ||
     url.username ||
@@ -76,8 +76,8 @@ export function readIdentityConfig(
 ): Omit<IdentityOptions, 'mailTransport'> | undefined {
   if (!env.IDENTITY_ENCRYPTION_KEY && !env.PUBLIC_WEB_URL && !env.OIDC_PROVIDERS_JSON) return undefined;
   try {
-    const encryptionKey = env.IDENTITY_ENCRYPTION_KEY ?? '',
-      webUrl = env.PUBLIC_WEB_URL ?? '';
+    const encryptionKey = env.IDENTITY_ENCRYPTION_KEY ?? '';
+    const webUrl = env.PUBLIC_WEB_URL ?? '';
     const providers = z
       .array(provider)
       .max(10)
@@ -96,8 +96,8 @@ export function readIdentityConfig(
 }
 export function readSmtpConfig(env: Readonly<Record<string, string | undefined>>): SmtpOptions | undefined {
   if (!env.SMTP_HOST && !env.SMTP_USER && !env.SMTP_PASSWORD && !env.SMTP_FROM) return undefined;
-  const secure = env.SMTP_SECURE === 'true',
-    port = Number(env.SMTP_PORT ?? (secure ? 465 : 587));
+  const secure = env.SMTP_SECURE === 'true';
+  const port = Number(env.SMTP_PORT ?? (secure ? 465 : 587));
   if (
     !env.SMTP_HOST ||
     /[\s/\\]/.test(env.SMTP_HOST) ||

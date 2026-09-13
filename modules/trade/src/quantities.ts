@@ -23,8 +23,8 @@ export async function orderQuantities(ctx: Context, orderId: string) {
     where: { orderId },
     orderBy: [{ field: 'createdAt', dir: 'asc' }],
   });
-  const fulfilled = new Map<string, Decimal>(),
-    billed = new Map<string, Decimal>();
+  const fulfilled = new Map<string, Decimal>();
+  const billed = new Map<string, Decimal>();
   for (const fulfillment of fulfillments) {
     if (fulfillment.docstatus !== DOCSTATUS.submitted) continue;
     const q = await fulfillmentQuantities(ctx, fulfillment.id);

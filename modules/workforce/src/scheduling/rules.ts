@@ -33,11 +33,11 @@ function timeline(ctx: Prepared, employeeId: string, assignments: readonly Shift
 }
 function intervalIssues(rows: Timeline[], employee: ShiftEmployee): ShiftIssue[] {
   const result: ShiftIssue[] = [];
-  let previous: Timeline | undefined,
-    previousEnd = -Infinity;
+  let previous: Timeline | undefined;
+  let previousEnd = -Infinity;
   for (const row of rows) {
-    const start = dayIndex(row.date) * 1440 + row.startMinute,
-      end = dayIndex(row.date) * 1440 + row.endMinute;
+    const start = dayIndex(row.date) * 1440 + row.startMinute;
+    const end = dayIndex(row.date) * 1440 + row.endMinute;
     if (previous && (row.slotId !== undefined || previous.slotId !== undefined)) {
       const code =
         start < previousEnd ? 'overlap' : start - previousEnd < (employee.profile?.minRestMinutes ?? 0) ? 'rest' : null;
@@ -58,8 +58,8 @@ function intervalIssues(rows: Timeline[], employee: ShiftEmployee): ShiftIssue[]
 function calendarIssues(ctx: Prepared, rows: Timeline[], employee: ShiftEmployee): ShiftIssue[] {
   const profile = employee.profile;
   if (!profile) return [];
-  const issues: ShiftIssue[] = [],
-    add = (code: ShiftIssue['code']) => issues.push({ code, employeeId: employee.id });
+  const issues: ShiftIssue[] = [];
+  const add = (code: ShiftIssue['code']) => issues.push({ code, employeeId: employee.id });
   const dates = new Map<string, { minutes: number; breaks: number; assigned: boolean }>();
   for (const row of rows) {
     const current = dates.get(row.date) ?? { minutes: 0, breaks: 0, assigned: false };
@@ -68,11 +68,11 @@ function calendarIssues(ctx: Prepared, rows: Timeline[], employee: ShiftEmployee
     current.assigned ||= row.slotId !== undefined;
     dates.set(row.date, current);
   }
-  let minutes = 0,
-    days = 0,
-    consecutive = 0,
-    last = -Infinity,
-    runAssigned = false;
+  let minutes = 0;
+  let days = 0;
+  let consecutive = 0;
+  let last = -Infinity;
+  let runAssigned = false;
   for (const [date, value] of [...dates].sort(([a], [b]) => a.localeCompare(b))) {
     const index = dayIndex(date);
     if (index !== last + 1) {
@@ -86,8 +86,8 @@ function calendarIssues(ctx: Prepared, rows: Timeline[], employee: ShiftEmployee
     if (index < ctx.start || index >= ctx.start + 7) continue;
     minutes += value.minutes;
     days++;
-    const rule = ctx.rules.get(date),
-      workRule = ctx.workRules.get(keyOf(employee.id, date));
+    const rule = ctx.rules.get(date);
+    const workRule = ctx.workRules.get(keyOf(employee.id, date));
     if (
       rule &&
       value.minutes >
@@ -159,9 +159,9 @@ export function canAdd(ctx: Prepared, assignment: ShiftAssignment, plan: ShiftAs
   );
 }
 export function hardIssues(ctx: Prepared, assignments: ShiftAssignment[]): ShiftIssue[] {
-  const issues: ShiftIssue[] = [],
-    seen = new Set<string>(),
-    counts = new Map<string, number>();
+  const issues: ShiftIssue[] = [];
+  const seen = new Set<string>();
+  const counts = new Map<string, number>();
   for (const assignment of assignments) {
     const key = keyOf(assignment.employeeId, assignment.slotId);
     if (!ctx.employees.has(assignment.employeeId))

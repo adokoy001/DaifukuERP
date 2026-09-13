@@ -8,20 +8,20 @@ test('reference search: keyboard cannot select old candidates during debounce or
   page,
   request,
 }) => {
-  const { headers } = await qualitySession(request),
-    key = crypto.randomUUID().slice(0, 8);
-  const oldName = '旧候補-' + key,
-    newName = '最新候補-' + key;
+  const { headers } = await qualitySession(request);
+  const key = crypto.randomUUID().slice(0, 8);
+  const oldName = '旧候補-' + key;
+  const newName = '最新候補-' + key;
   await qualityPartner(request, headers, oldName);
   await qualityPartner(request, headers, newName);
-  let release = () => {},
-    started = () => {};
+  let release = () => {};
+  let started = () => {};
   const held = new Promise<void>((resolve) => {
-      release = resolve;
-    }),
-    seen = new Promise<void>((resolve) => {
-      started = resolve;
-    });
+    release = resolve;
+  });
+  const seen = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   await page.route('**/api/partner?*', async (route) => {
     if (new URL(route.request().url()).searchParams.get('search') === newName) {
       started();
@@ -58,8 +58,8 @@ test('reference search: failure preserves text, retry works and keyboard keeps t
   page,
   request,
 }) => {
-  const { headers } = await qualitySession(request),
-    key = '再検索-' + crypto.randomUUID().slice(0, 8);
+  const { headers } = await qualitySession(request);
+  const key = '再検索-' + crypto.randomUUID().slice(0, 8);
   for (let i = 0; i < 12; i++) await qualityPartner(request, headers, key + '-' + String(i).padStart(2, '0'));
   let fail = true;
   await page.route('**/api/partner?*', async (route) => {
@@ -89,11 +89,11 @@ test('reference search: failure preserves text, retry works and keyboard keeps t
   if (!active) throw new Error('Expected active option');
   expect(
     await page.evaluate((id) => {
-      const option = document.getElementById(id),
-        list = option?.closest('[role=listbox]');
+      const option = document.getElementById(id);
+      const list = option?.closest('[role=listbox]');
       if (!option || !list) return false;
-      const itemBox = option.getBoundingClientRect(),
-        listBox = list.getBoundingClientRect();
+      const itemBox = option.getBoundingClientRect();
+      const listBox = list.getBoundingClientRect();
       return itemBox.top >= listBox.top && itemBox.bottom <= listBox.bottom;
     }, active),
   ).toBe(true);
@@ -105,8 +105,8 @@ test('reference search: failure preserves text, retry works and keyboard keeps t
   await input.tap();
   await input.fill(key);
   await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(12);
-  const choice = page.getByRole('listbox').getByRole('option').first(),
-    chosen = (await choice.innerText()).split('Q')[0]?.trim();
+  const choice = page.getByRole('listbox').getByRole('option').first();
+  const chosen = (await choice.innerText()).split('Q')[0]?.trim();
   if (!chosen) throw new Error('Expected candidate label');
   await choice.tap();
   await expect(input).toHaveValue(chosen);

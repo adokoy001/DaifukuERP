@@ -22,13 +22,13 @@ function Board({
   actions: string[];
   onGuard: (value: boolean, busy: boolean) => void;
 }) {
-  const query = useShiftBoard(siteId, weekStart),
-    { t } = useLocale();
+  const query = useShiftBoard(siteId, weekStart);
+  const { t } = useLocale();
   if (query.isError && !canRetainData(query))
     return <WorkforceError error={query.error} onRetry={() => void query.refetch()} />;
   if (!query.data) return <p role="status">{t({ ja: 'シフト資料を読込中…', en: 'Loading planning sources…' })}</p>;
-  const user = getUser(),
-    key = `${user?.tenantId}:${user?.id}:${getCompanyId()}:${siteId}:${weekStart}`;
+  const user = getUser();
+  const key = `${user?.tenantId}:${user?.id}:${getCompanyId()}:${siteId}:${weekStart}`;
   return (
     <ReadRecoveryProvider sources={[query]}>
       <ReadRefreshNotice />
@@ -50,14 +50,14 @@ function Board({
   );
 }
 export function ShiftPage() {
-  const { t } = useLocale(),
-    meta = useMeta(),
-    allowed = Boolean(meta.data?.actions.some((action) => action.name === 'workforce.shift_board'));
-  const sites = useShiftSites(allowed),
-    [site, setSite] = useState(''),
-    [week, setWeek] = useState(() => shiftMonday()),
-    [guarded, setGuarded] = useState(false),
-    [busy, setBusy] = useState(false);
+  const { t } = useLocale();
+  const meta = useMeta();
+  const allowed = Boolean(meta.data?.actions.some((action) => action.name === 'workforce.shift_board'));
+  const sites = useShiftSites(allowed);
+  const [site, setSite] = useState('');
+  const [week, setWeek] = useState(() => shiftMonday());
+  const [guarded, setGuarded] = useState(false);
+  const [busy, setBusy] = useState(false);
   const onGuard = useCallback((value: boolean, locked: boolean) => {
     setGuarded(value);
     setBusy(locked);

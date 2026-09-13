@@ -22,7 +22,9 @@ const Record = defineEntity({
 });
 const capability = defineWriteCapability({ name: 'group-port-test', entity: Record.name, operations: ['create'] });
 let db: TestDb;
-let other: string, userId: string, foreign: string;
+let other: string;
+let userId: string;
+let foreign: string;
 const asUser = () => ({ actor: { type: 'user' as const, id: userId }, roles: ['admin'], sessionVersion: 1 });
 beforeAll(async () => {
   db = await freshDb();

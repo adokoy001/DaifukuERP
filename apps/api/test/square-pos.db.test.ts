@@ -7,7 +7,9 @@ import { PosLocation, PosInbox } from '@daifuku/mod-pos-integration';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import type { SquareConnection } from '../src/adapters/square-pos.ts';
-let db: TestDb, app: FastifyInstance, cfg: SquareConnection;
+let db: TestDb;
+let app: FastifyInstance;
+let cfg: SquareConnection;
 const body = (id: string, merchantId = 'MERCHANT', amount = 1000) =>
   JSON.stringify({
     event_id: 'E-' + id,
@@ -40,8 +42,8 @@ beforeAll(async () => {
   db = await freshDb();
   const locationId = await db.run({}, async (ctx) => {
     await openFiscalYear(ctx, { startDate: '2026-01-01' });
-    const asset = await repo(ctx, Account).create({ code: 'POS-A', name: 'Square未収', type: 'asset' }),
-      liability = await repo(ctx, Account).create({ code: 'POS-L', name: '未分類売上', type: 'liability' });
+    const asset = await repo(ctx, Account).create({ code: 'POS-A', name: 'Square未収', type: 'asset' });
+    const liability = await repo(ctx, Account).create({ code: 'POS-L', name: '未分類売上', type: 'liability' });
     return (
       await repo(ctx, PosLocation).create({
         code: 'SQUARE',
@@ -78,8 +80,8 @@ afterAll(async () => {
 });
 describe('signed Square API delivery', () => {
   it('accepts a verified event without JWT, persists safe evidence and returns one accounting source on replay', async () => {
-    const raw = body('route-payment'),
-      first = await post(raw);
+    const raw = body('route-payment');
+    const first = await post(raw);
     expect(first.statusCode, first.body).toBe(200);
     const replay = await post(raw);
     expect(replay.json().transactionId).toBe(first.json().transactionId);

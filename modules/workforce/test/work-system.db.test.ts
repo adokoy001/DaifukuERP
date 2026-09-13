@@ -12,9 +12,11 @@ import { deductionKinds } from '../src/contract.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
 import { workSystem } from './work-system-fixtures.ts';
 import { addDays } from '../src/services/time.ts';
-let f: Fixture, system: Command, published: Command;
-const weekStart = '2026-09-28',
-  endTime = '2026-11-02T09:00:00+09:00';
+let f: Fixture;
+let system: Command;
+let published: Command;
+const weekStart = '2026-09-28';
+const endTime = '2026-11-02T09:00:00+09:00';
 beforeAll(async () => {
   f = await fixture();
 });
@@ -56,19 +58,19 @@ describe('work-system approval, shift sources and payroll integration', () => {
         '2026-10-01T09:00:00+09:00',
       ),
     ).rejects.toBeInstanceOf(StateError);
-    const before = await board(),
-      results = await Promise.allSettled([
-        call(f.db, f.manager.params, 'confirm_work_system', {
-          periodId: system.id,
-          expectedVersion: system.version,
-          reason: '労使合意と所定を事前確認',
-        }),
-        call(f.db, f.manager.params, 'confirm_work_system', {
-          periodId: system.id,
-          expectedVersion: system.version,
-          reason: '二重確認',
-        }),
-      ]);
+    const before = await board();
+    const results = await Promise.allSettled([
+      call(f.db, f.manager.params, 'confirm_work_system', {
+        periodId: system.id,
+        expectedVersion: system.version,
+        reason: '労使合意と所定を事前確認',
+      }),
+      call(f.db, f.manager.params, 'confirm_work_system', {
+        periodId: system.id,
+        expectedVersion: system.version,
+        reason: '二重確認',
+      }),
+    ]);
     expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     system = (results.find((row) => row.status === 'fulfilled') as PromiseFulfilledResult<Command>).value;
     expect((await board()).sourceRevision).not.toBe(before.sourceRevision);
@@ -110,18 +112,18 @@ describe('work-system approval, shift sources and payroll integration', () => {
       mode: 'monthly_variable',
     });
     const slots = [
-        {
-          id: 'long',
-          date: '2026-10-01',
-          label: '事前10時間勤務',
-          startMinute: 540,
-          endMinute: 1200,
-          breakMinutes: 60,
-          required: 1,
-          skill: '',
-        },
-      ],
-      assignments = [{ employeeId: f.employee.id, slotId: 'long', locked: false }];
+      {
+        id: 'long',
+        date: '2026-10-01',
+        label: '事前10時間勤務',
+        startMinute: 540,
+        endMinute: 1200,
+        breakMinutes: 60,
+        required: 1,
+        skill: '',
+      },
+    ];
+    const assignments = [{ employeeId: f.employee.id, slotId: 'long', locked: false }];
     const draft = await call(f.db, f.manager.params, 'save_shift_plan', {
       siteId: f.siteId,
       weekStart,
@@ -150,8 +152,8 @@ describe('work-system approval, shift sources and payroll integration', () => {
     expect(updated.published?.id).toBe(published.id);
   });
   it('invalidates stale period budgets when a distant week publishes work', async () => {
-    const before = await board(),
-      distantWeek = '2026-10-19';
+    const before = await board();
+    const distantWeek = '2026-10-19';
     await call(f.db, f.alice.params, 'save_shift_availability', {
       weekStart: distantWeek,
       expectedVersion: 0,
@@ -165,18 +167,18 @@ describe('work-system approval, shift sources and payroll integration', () => {
     const distant = await board(distantWeek);
     expect(distant.problem.periodBudgets?.[0]?.remainingMinutes).toBe(9960);
     const slots = [
-        {
-          id: 'distant',
-          date: distantWeek,
-          label: '離れた週の勤務',
-          startMinute: 540,
-          endMinute: 1080,
-          breakMinutes: 60,
-          required: 1,
-          skill: '',
-        },
-      ],
-      assignments = [{ employeeId: f.employee.id, slotId: 'distant', locked: false }];
+      {
+        id: 'distant',
+        date: distantWeek,
+        label: '離れた週の勤務',
+        startMinute: 540,
+        endMinute: 1080,
+        breakMinutes: 60,
+        required: 1,
+        skill: '',
+      },
+    ];
+    const assignments = [{ employeeId: f.employee.id, slotId: 'distant', locked: false }];
     const draft = await call(f.db, f.manager.params, 'save_shift_plan', {
       siteId: f.siteId,
       weekStart: distantWeek,

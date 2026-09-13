@@ -40,8 +40,8 @@ async function eventuallyLock(path: string): Promise<() => Promise<void>> {
 }
 describe('native platform privacy and process-owned writer locks', () => {
   it('persists private Unicode documents and rejects an additional public permission', async () => {
-    const dir = await directory(),
-      path = join(dir, 'private.json');
+    const dir = await directory();
+    const path = join(dir, 'private.json');
     try {
       await syncJson(path, { text: '日本語の合成データ', version: 1 });
       await syncJson(path, { text: '日本語の合成データ', version: 2 });
@@ -62,9 +62,9 @@ describe('native platform privacy and process-owned writer locks', () => {
     }
   }, 60000);
   it('rejects a state-directory symlink or Windows junction before persisting a secret', async () => {
-    const dir = await directory(),
-      link = join(dir, 'linked'),
-      target = join(dir, 'target');
+    const dir = await directory();
+    const link = join(dir, 'linked');
+    const target = join(dir, 'target');
     try {
       await privateDirectory(target);
       await symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');

@@ -29,11 +29,11 @@ export async function fixture() {
   });
   const [site, otherSite] = sites;
   if (!site || !otherSite) throw new Error('Missing fixture sites');
-  const siteId = site.id,
-    otherSiteId = otherSite.id;
+  const siteId = site.id;
+  const otherSiteId = otherSite.id;
   async function person(name: string, role: string, siteIds: string[] = [siteId]) {
-    const id = newId(),
-      scoped = ['workforce_employee', 'workforce_manager'].includes(role);
+    const id = newId();
+    const scoped = ['workforce_employee', 'workforce_manager'].includes(role);
     await db.owner.drizzle.insert(users).values({
       id,
       tenantId: db.tenantId,
@@ -59,12 +59,12 @@ export async function fixture() {
     };
     return { id, params };
   }
-  const alice = await person('alice', 'workforce_employee'),
-    bob = await person('bob', 'workforce_employee');
-  const manager = await person('manager', 'workforce_manager'),
-    remote = await person('remote', 'workforce_manager', [otherSiteId]);
-  const hr = await person('hr', 'workforce_hr'),
-    payroll = await person('payroll', 'workforce_payroll');
+  const alice = await person('alice', 'workforce_employee');
+  const bob = await person('bob', 'workforce_employee');
+  const manager = await person('manager', 'workforce_manager');
+  const remote = await person('remote', 'workforce_manager', [otherSiteId]);
+  const hr = await person('hr', 'workforce_hr');
+  const payroll = await person('payroll', 'workforce_payroll');
   const employee = await call(db, hr.params, 'register_employee', {
     userId: alice.id,
     siteId,

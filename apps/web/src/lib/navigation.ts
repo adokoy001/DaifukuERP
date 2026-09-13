@@ -59,8 +59,8 @@ function dedicatedEntry(definition: DedicatedNavigation, meta: AppMeta): Navigat
   };
 }
 function recordEntry(entity: EntityMeta, meta: AppMeta, label = entity.label): NavigationEntry {
-  const href = `/e/${entity.name}`,
-    moduleLabel = meta.modules.find((module) => module.name === entity.module)?.label;
+  const href = `/e/${entity.name}`;
+  const moduleLabel = meta.modules.find((module) => module.name === entity.module)?.label;
   return {
     id: href,
     href,
@@ -74,9 +74,9 @@ function recordEntry(entity: EntityMeta, meta: AppMeta, label = entity.label): N
   };
 }
 function actionEntry(action: ActionMeta, meta: AppMeta, label = reportTitle(action)): NavigationEntry {
-  const report = action.resultKind === 'table',
-    href = `/${report ? 'r' : 'a'}/${action.name}`,
-    moduleLabel = meta.modules.find((module) => module.name === action.module)?.label;
+  const report = action.resultKind === 'table';
+  const href = `/${report ? 'r' : 'a'}/${action.name}`;
+  const moduleLabel = meta.modules.find((module) => module.name === action.module)?.label;
   return {
     id: href,
     href,
@@ -105,11 +105,11 @@ function menuEntry(
   if (!path) return undefined;
   const fixed = dedicated.get(path);
   if (fixed) return { ...fixed, label: item.label };
-  const entityMatch = /^\/e\/([a-z][a-z0-9_]*)$/.exec(path),
-    entity = entityMatch?.[1] ? entities.get(entityMatch[1]) : undefined;
+  const entityMatch = /^\/e\/([a-z][a-z0-9_]*)$/.exec(path);
+  const entity = entityMatch?.[1] ? entities.get(entityMatch[1]) : undefined;
   if (entity) return recordEntry(entity, meta, item.label);
-  const match = /^\/(r|a)\/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/.exec(path),
-    action = match?.[2] ? actions.get(match[2]) : undefined;
+  const match = /^\/(r|a)\/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/.exec(path);
+  const action = match?.[2] ? actions.get(match[2]) : undefined;
   if (!action) return undefined;
   if (match?.[1] === 'r') return action.resultKind === 'table' ? actionEntry(action, meta, item.label) : undefined;
   // Keep the generated action page's own visibility contract: internal/generic and pack setup are not forms here.

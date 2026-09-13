@@ -119,8 +119,8 @@ const localOnly = new Set([
 ]);
 
 async function serverStep(f: Fixture, replay: Replay, event: string): Promise<void> {
-  const [operation, workerText, argument] = event.split(':'),
-    worker = Number(workerText);
+  const [operation, workerText, argument] = event.split(':');
+  const worker = Number(workerText);
   if (operation === 'Claim') {
     const response = await f.machine(claimJob);
     assert(response.job);
@@ -196,14 +196,14 @@ async function serverStep(f: Fixture, replay: Replay, event: string): Promise<vo
 describe('AC-7/8: finite Edge model trace projections through real Repository transactions', () => {
   for (const trace of traces)
     it(trace.id, async () => {
-      const f = await fixture(),
-        replay: Replay = {
-          claims: new Map(),
-          results: new Map(),
-          grants: [0, 0],
-          completed: new Set(),
-          resolved: new Set(),
-        };
+      const f = await fixture();
+      const replay: Replay = {
+        claims: new Map(),
+        results: new Map(),
+        grants: [0, 0],
+        completed: new Set(),
+        resolved: new Set(),
+      };
       const observed: Step[] = [];
       for (const step of trace.steps) {
         await serverStep(f, replay, step.event);

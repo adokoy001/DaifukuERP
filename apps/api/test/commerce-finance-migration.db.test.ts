@@ -7,18 +7,18 @@ import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
 import { legacyMigrationFolder } from './legacy-fixture.ts';
 
-const owner = connect(OWNER_URL, { max: 1 }),
-  app = connect(APP_URL, { max: 1 }),
-  previous = legacyMigrationFolder(13);
-const tenant = newId(),
-  company = newId(),
-  user = newId(),
-  partner = newId(),
-  account = newId(),
-  invoice = newId(),
-  payment = newId(),
-  site = newId(),
-  gateway = newId();
+const owner = connect(OWNER_URL, { max: 1 });
+const app = connect(APP_URL, { max: 1 });
+const previous = legacyMigrationFolder(13);
+const tenant = newId();
+const company = newId();
+const user = newId();
+const partner = newId();
+const account = newId();
+const invoice = newId();
+const payment = newId();
+const site = newId();
+const gateway = newId();
 const newTables = [
   'trade_quotation',
   'trade_quotation_line',

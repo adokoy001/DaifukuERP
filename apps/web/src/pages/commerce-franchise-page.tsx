@@ -20,21 +20,21 @@ export function CommerceFranchisePage() {
 }
 function FranchiseWorkspace() {
   const copy = useCommerceCopy();
-  const { allowed, actions } = useCommerceAccess('franchise.board'),
-    [offset, setOffset] = useState(0),
-    [agreementOffset, setAgreementOffset] = useState(0),
-    [id, setId] = useState(''),
-    [generate, setGenerate] = useState<RecordJson>(),
-    [confirm, setConfirm] = useState<{
-      board: FranchiseBoard;
-      mode: 'settle' | 'cancel';
-    }>();
-  const agreements = useCommerceList('franchise_agreement', allowed, agreementOffset),
-    settlements = useCommerceList('franchise_settlement', allowed, offset),
-    board = useCommerceRead<FranchiseBoard>('franchise.board', { settlementId: id }, allowed && Boolean(id));
-  const readers = [agreements, settlements, board],
-    busy = readers.some((q) => q.isFetching),
-    value = board.data;
+  const { allowed, actions } = useCommerceAccess('franchise.board');
+  const [offset, setOffset] = useState(0);
+  const [agreementOffset, setAgreementOffset] = useState(0);
+  const [id, setId] = useState('');
+  const [generate, setGenerate] = useState<RecordJson>();
+  const [confirm, setConfirm] = useState<{
+    board: FranchiseBoard;
+    mode: 'settle' | 'cancel';
+  }>();
+  const agreements = useCommerceList('franchise_agreement', allowed, agreementOffset);
+  const settlements = useCommerceList('franchise_settlement', allowed, offset);
+  const board = useCommerceRead<FranchiseBoard>('franchise.board', { settlementId: id }, allowed && Boolean(id));
+  const readers = [agreements, settlements, board];
+  const busy = readers.some((q) => q.isFetching);
+  const value = board.data;
   return (
     <CommerceShell
       title={copy('FC月次精算')}

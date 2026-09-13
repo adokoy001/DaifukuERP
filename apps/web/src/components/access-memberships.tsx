@@ -36,10 +36,10 @@ function MembershipEditor({
   const mutation = useAccessMutation();
   const self = user.id === getUser()?.id;
   const [baseline, setBaseline] = useState(current);
-  const [roles, setRoles] = useState(current?.roles ?? []),
-    [scope, setScope] = useState<Membership['accessScope']>(current?.accessScope ?? 'all'),
-    [storeIds, setStoreIds] = useState(current?.storeIds ?? []),
-    [siteIds, setSiteIds] = useState(current?.siteIds ?? []);
+  const [roles, setRoles] = useState(current?.roles ?? []);
+  const [scope, setScope] = useState<Membership['accessScope']>(current?.accessScope ?? 'all');
+  const [storeIds, setStoreIds] = useState(current?.storeIds ?? []);
+  const [siteIds, setSiteIds] = useState(current?.siteIds ?? []);
   const [pending, setPending] = useState<'save' | 'remove'>();
   const company = catalog.companies.find((c) => c.id === companyId);
   const stores = catalog.stores.filter((store) => store.companyId === companyId);

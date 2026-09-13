@@ -4,13 +4,13 @@ import { evaluateShift, recommendShift, type ShiftAssignment, type ShiftProblem 
 import { denseProblem, smallProblem } from './shift-oracle-fixture.ts';
 import { enumerateAssignments, oracleFeasible, oracleShortage } from './shift-oracle.ts';
 function compare(problem: ShiftProblem, fixed: ShiftAssignment[] = []) {
-  let feasible = 0,
-    forbidden = 0,
-    examined = 0,
-    minimum = Infinity;
+  let feasible = 0;
+  let forbidden = 0;
+  let examined = 0;
+  let minimum = Infinity;
   for (const rows of enumerateAssignments(problem, fixed)) {
-    const valid = oracleFeasible(problem, rows),
-      actual = evaluateShift(problem, rows);
+    const valid = oracleFeasible(problem, rows);
+    const actual = evaluateShift(problem, rows);
     expect(
       actual.issues.some((issue) => issue.code === 'invalid_input'),
       'generator must stay inside the supported input contract',
@@ -35,29 +35,29 @@ function recommendAndMeasure(problem: ShiftProblem, minimum: number, fixed: Shif
 }
 describe('AC-5 / PV-SHIFT-01 independent bounded assignment oracle', () => {
   it('enumerates all4096 assignments, reaches valid/forbidden outcomes and measures the seeded quality gap', () => {
-    const problem = denseProblem(),
-      result = compare(problem);
+    const problem = denseProblem();
+    const result = compare(problem);
     expect(result.examined).toBe(4096);
     expect(result.feasible).toBeGreaterThan(1);
     expect(result.forbidden).toBeGreaterThan(1);
     expect(result.minimum).toBe(0);
     expect(recommendAndMeasure(problem, result.minimum)).toBe(0);
-    const fixed = [{ employeeId: 'p0', slotId: 's0', locked: true }],
-      constrained = compare(problem, fixed);
+    const fixed = [{ employeeId: 'p0', slotId: 's0', locked: true }];
+    const constrained = compare(problem, fixed);
     expect(constrained.examined).toBe(2048);
     expect(constrained.feasible).toBeGreaterThan(0);
     expect(constrained.forbidden).toBeGreaterThan(0);
     recommendAndMeasure(problem, constrained.minimum, fixed);
   }, 30000);
   it('compares generated ordinary problems with every bounded assignment and preserves input data', () => {
-    let examined = 0,
-      allowed = 0,
-      denied = 0,
-      gaps = 0;
+    let examined = 0;
+    let allowed = 0;
+    let denied = 0;
+    let gaps = 0;
     fc.assert(
       fc.property(smallProblem, (problem) => {
-        const before = structuredClone(problem),
-          result = compare(problem);
+        const before = structuredClone(problem);
+        const result = compare(problem);
         examined += result.examined;
         allowed += result.feasible;
         denied += result.forbidden;
@@ -151,16 +151,16 @@ describe('AC-5 / PV-SHIFT-01 independent bounded assignment oracle', () => {
         },
       };
     });
-    const oracle = compare(problem),
-      greedy = recommendShift(problem, { seed: 20260913, iterations: 0 });
+    const oracle = compare(problem);
+    const greedy = recommendShift(problem, { seed: 20260913, iterations: 0 });
     expect(oracle.minimum).toBe(0);
     expect(oracleFeasible(problem, greedy.assignments)).toBe(true);
     expect(oracleShortage(problem, greedy.assignments) - oracle.minimum).toBe(1);
     expect(recommendAndMeasure(problem, oracle.minimum)).toBeLessThanOrEqual(1);
   });
   it('independently rejects invalid fixed work and unsupported oracle extensions', () => {
-    const problem = denseProblem(),
-      fixed = [{ employeeId: 'p1', slotId: 's0', locked: true }];
+    const problem = denseProblem();
+    const fixed = [{ employeeId: 'p1', slotId: 's0', locked: true }];
     expect(oracleFeasible(problem, fixed)).toBe(false);
     const result = recommendShift(problem, { seed: 7, assignments: fixed });
     expect(result.assignments).toEqual(fixed);

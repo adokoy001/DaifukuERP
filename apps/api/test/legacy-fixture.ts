@@ -50,9 +50,9 @@ export async function seedLegacy(owner: Database, dir: string) {
 
 /** Historical Demo identity: do not call the current bootstrap against a pre-membership schema. */
 export async function seedLegacyDemo(owner: Database): Promise<SeedResult> {
-  const tenantId = newId(),
-    companyId = newId(),
-    userId = newId();
+  const tenantId = newId();
+  const companyId = newId();
+  const userId = newId();
   await owner.sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id', ${tenantId}, true)`;
     await tx`insert into tenants (id, name) values (${tenantId}, ${DEMO_TENANT.tenantName})`;

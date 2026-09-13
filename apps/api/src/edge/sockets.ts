@@ -7,8 +7,8 @@ import { relayContext, verifiedSocket, type EdgeOptions } from './context.ts';
 import { relaySocketHasCapacity, sendRelayNotification } from './socket-notifications.ts';
 export async function registerRelaySockets(server: FastifyInstance, opts: EdgeOptions) {
   await server.register(fastifyWebsocket, { options: { maxPayload: 1024, perMessageDeflate: false } });
-  const connected = new Set<WebSocket>(),
-    groups = new Map<string, Set<WebSocket>>();
+  const connected = new Set<WebSocket>();
+  const groups = new Map<string, Set<WebSocket>>();
   const pending = new WeakMap<object, RelayPrincipal>();
   server.get(
     edgeRoutes.notifications,
@@ -25,8 +25,8 @@ export async function registerRelaySockets(server: FastifyInstance, opts: EdgeOp
         socket.close(1008, 'Authentication required');
         return;
       }
-      const key = principal.gatewayId,
-        group = groups.get(key) ?? new Set<WebSocket>();
+      const key = principal.gatewayId;
+      const group = groups.get(key) ?? new Set<WebSocket>();
       if (connected.size >= 500 || group.size >= 3) {
         socket.close(1013, 'Connection limit');
         return;
@@ -34,8 +34,8 @@ export async function registerRelaySockets(server: FastifyInstance, opts: EdgeOp
       connected.add(socket);
       group.add(socket);
       groups.set(key, group);
-      let running = false,
-        alive = true;
+      let running = false;
+      let alive = true;
       socket.on('error', () => socket.close());
       socket.on('message', () => socket.close(1008, 'Notifications only'));
       socket.on('pong', () => {

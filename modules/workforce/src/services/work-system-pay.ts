@@ -31,13 +31,13 @@ function add(result: Map<string, TimeClassification>, date: string, extra: numbe
   });
 }
 function dailyWeekly(input: PayInput, result: Map<string, TimeClassification>): void {
-  const weeks = new Map<string, number>(),
-    modes = new Map<string, Set<string>>(),
-    systems = input.workSystems ?? [];
+  const weeks = new Map<string, number>();
+  const modes = new Map<string, Set<string>>();
+  const systems = input.workSystems ?? [];
   for (const day of [...input.days].sort((a, b) => a.date.localeCompare(b.date))) {
-    const system = workSystemOn(systems, day.date),
-      mode = system?.mode ?? 'ordinary',
-      week = weekStart(day.date, day.policy.weekStartsOn);
+    const system = workSystemOn(systems, day.date);
+    const mode = system?.mode ?? 'ordinary';
+    const week = weekStart(day.date, day.policy.weekStartsOn);
     const kinds = modes.get(week) ?? new Set<string>();
     if (day.workedMs > 0) kinds.add(mode === 'flex' ? 'flex' : 'fixed');
     modes.set(week, kinds);
@@ -59,11 +59,11 @@ function dailyWeekly(input: PayInput, result: Map<string, TimeClassification>): 
         '事前の法定休日と承認勤怠の休日区分が一致しません',
         '勤務制度と実際の休日勤務を確認して勤怠を訂正してください。',
       );
-    const holiday = day.dayKind === 'statutory_holiday',
-      candidate =
-        holiday || mode === 'flex'
-          ? 0
-          : Math.min(day.workedMs, Math.max(day.policy.dailyLimitMinutes, scheduled) * 60000);
+    const holiday = day.dayKind === 'statutory_holiday';
+    const candidate =
+      holiday || mode === 'flex'
+        ? 0
+        : Math.min(day.workedMs, Math.max(day.policy.dailyLimitMinutes, scheduled) * 60000);
     const daily = holiday || mode === 'flex' ? 0 : day.workedMs - candidate;
     const plannedWeek = systems
       .filter((row) => row.mode === 'monthly_variable')
@@ -81,24 +81,24 @@ function periodCosts(input: PayInput, system: WorkSystemInput, result: Map<strin
   const days = input.days
     .filter((day) => day.date >= system.startsOn && day.date <= system.endsOn && day.dayKind !== 'statutory_holiday')
     .sort((a, b) => a.date.localeCompare(b.date));
-  const length = (dateMs(system.endsOn) - dateMs(system.startsOn)) / 86400000 + 1,
-    multiple = system.startsOn.slice(0, 7) !== system.endsOn.slice(0, 7);
+  const length = (dateMs(system.endsOn) - dateMs(system.startsOn)) / 86400000 + 1;
+  const multiple = system.startsOn.slice(0, 7) !== system.endsOn.slice(0, 7);
   if (system.mode === 'flex') {
     const months = new Map<string, number>();
     for (const day of days) {
-      const month = day.date.slice(0, 7),
-        bounds = periodBounds(month),
-        count = (dateMs(bounds.end) - dateMs(bounds.start)) / 86400000 + 1;
-      const limit = legalPeriodMs(multiple ? 3000 : system.weeklyMinutes, count),
-        before = months.get(month) ?? 0,
-        after = before + day.workedMs;
+      const month = day.date.slice(0, 7);
+      const bounds = periodBounds(month);
+      const count = (dateMs(bounds.end) - dateMs(bounds.start)) / 86400000 + 1;
+      const limit = legalPeriodMs(multiple ? 3000 : system.weeklyMinutes, count);
+      const before = months.get(month) ?? 0;
+      const after = before + day.workedMs;
       add(result, day.date, Math.max(0, after - limit) - Math.max(0, before - limit));
       months.set(month, after);
     }
   }
   if (system.endsOn > periodBounds(input.period).end) return;
-  const worked = days.reduce((sum, day) => sum + day.workedMs, 0),
-    already = days.reduce((sum, day) => sum + (result.get(day.date)?.overtimeMs ?? 0), 0);
+  const worked = days.reduce((sum, day) => sum + day.workedMs, 0);
+  const already = days.reduce((sum, day) => sum + (result.get(day.date)?.overtimeMs ?? 0), 0);
   const extra = Math.max(0, worked - legalPeriodMs(system.weeklyMinutes, length) - already);
   add(result, system.endsOn, extra);
   // Paid leave is credited against agreed flex hours, but never becomes statutory actual-work overtime.

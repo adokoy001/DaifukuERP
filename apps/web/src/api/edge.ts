@@ -36,8 +36,8 @@ export function useEdgeBoard(enabled: boolean, gatewayId?: string) {
   });
 }
 export function useEdgeCommand() {
-  const qc = useQueryClient(),
-    identity = edgeIdentity();
+  const qc = useQueryClient();
+  const identity = edgeIdentity();
   return useMutation({
     mutationKey: ['edge-command', identity],
     gcTime: 0,

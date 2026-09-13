@@ -13,12 +13,12 @@ export function MfaSetupDialog({
   onComplete: (codes: string[]) => Promise<void>;
   onBusy?: (busy: boolean) => void;
 }) {
-  const { t } = useLocale(),
-    [code, setCode] = useState(''),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(false),
-    [qr, setQr] = useState(''),
-    inFlight = useRef(false);
+  const { t } = useLocale();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const [qr, setQr] = useState('');
+  const inFlight = useRef(false);
   useEffect(() => {
     let live = true;
     void import('qrcode')

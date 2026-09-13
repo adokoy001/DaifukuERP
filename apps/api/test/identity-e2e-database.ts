@@ -6,8 +6,8 @@ const fail = (): never => {
 };
 export function identityFixtureUrls(env: Readonly<Record<string, string | undefined>>) {
   if (env.NODE_ENV === 'production' || env.E2E_IDENTITY_PREPARE !== '1') fail();
-  const owner = new URL(env.TEST_DATABASE_URL_OWNER ?? 'invalid'),
-    app = new URL(env.TEST_DATABASE_URL ?? 'invalid');
+  const owner = new URL(env.TEST_DATABASE_URL_OWNER ?? 'invalid');
+  const app = new URL(env.TEST_DATABASE_URL ?? 'invalid');
   for (const url of [owner, app])
     if (
       !['postgres:', 'postgresql:'].includes(url.protocol) ||
@@ -42,9 +42,9 @@ async function assertEmpty(owner: Database, app: Database) {
   if (objects.length) fail();
 }
 export async function identityFixtureDatabase() {
-  const urls = identityFixtureUrls(process.env),
-    owner = connect(urls.owner, { max: 1 }),
-    app = connect(urls.app, { max: 4 });
+  const urls = identityFixtureUrls(process.env);
+  const owner = connect(urls.owner, { max: 1 });
+  const app = connect(urls.app, { max: 4 });
   try {
     await assertEmpty(owner, app);
     await loadRuntime({ schema: true });

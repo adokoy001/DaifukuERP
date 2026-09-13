@@ -34,9 +34,9 @@ const day = (date: string, hours: number): PayDay => ({
   policy,
 });
 function distributed(period: string, hours: number): PayDay[] {
-  const dates = workingDates(period),
-    total = hours * 3600000,
-    base = Math.floor(total / dates.length);
+  const dates = workingDates(period);
+  const total = hours * 3600000;
+  const base = Math.floor(total / dates.length);
   return dates.map((date, index) => ({
     ...day(date, 0),
     workedMs: base + (index === dates.length - 1 ? total - base * dates.length : 0),
@@ -79,8 +79,8 @@ describe('verified ordinary, monthly variable and flex settlement', () => {
     ).toBe(3600000);
   });
   it('adds only the remaining monthly-variable period excess and ordinary wage difference', () => {
-    const system = workSystem(employeeId),
-      days = [...workingDates('2026-10').map((date) => day(date, 8)), day('2026-10-03', 8), day('2026-10-31', 0)];
+    const system = workSystem(employeeId);
+    const days = [...workingDates('2026-10').map((date) => day(date, 8)), day('2026-10-03', 8), day('2026-10-31', 0)];
     const result = calculatePay({
       period: '2026-10',
       employmentStart: '2026-10-01',
@@ -108,9 +108,9 @@ describe('verified ordinary, monthly variable and flex settlement', () => {
     });
     system.agreedTotalMinutes = 480 * 60;
     validateWorkSystem(system);
-    const april = distributed('2026-04', 230),
-      may = distributed('2026-05', 180),
-      june = distributed('2026-06', 160);
+    const april = distributed('2026-04', 230);
+    const may = distributed('2026-05', 180);
+    const june = distributed('2026-06', 160);
     const first = calculatePay({
       period: '2026-04',
       employmentStart: '2026-04-01',
@@ -135,8 +135,8 @@ describe('verified ordinary, monthly variable and flex settlement', () => {
     expect(last.premiumPay.gt(0)).toBe(true);
   });
   it('keeps holiday overtime separate and paid leave out of statutory actual work', () => {
-    const system = workSystem(employeeId, '2026-02-01', '2026-02-28', 'flex'),
-      dates = workingDates('2026-02');
+    const system = workSystem(employeeId, '2026-02-01', '2026-02-28', 'flex');
+    const dates = workingDates('2026-02');
     const days = dates.slice(1).map((date) => day(date, 8));
     days.push({ ...day('2026-02-01', 8), dayKind: 'statutory_holiday' }, day('2026-02-28', 0));
     const result = calculatePay({

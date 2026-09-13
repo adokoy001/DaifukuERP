@@ -25,8 +25,8 @@ function ExpenseForm({
   onSaved: (date: string) => void;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   return (
     <WorkforceDialog
@@ -139,13 +139,13 @@ export function WorkforceExpenses({
   registered: boolean;
   onPeriod: (period: string) => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [receiptId, setReceiptId] = useState<string>();
   const receipt = rows.find((row) => row.id === receiptId);
-  const [editor, setEditor] = useState<ExpenseSummary | 'new'>(),
-    [cancel, setCancel] = useState<ExpenseSummary>(),
-    [error, setError] = useState<unknown>();
+  const [editor, setEditor] = useState<ExpenseSummary | 'new'>();
+  const [cancel, setCancel] = useState<ExpenseSummary>();
+  const [error, setError] = useState<unknown>();
   const submit = async (row: ExpenseSummary) => {
     setError(undefined);
     try {

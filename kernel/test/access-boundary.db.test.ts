@@ -77,7 +77,11 @@ defineAction({
   handler: async () => ({}),
 });
 let db: TestDb;
-let storeA: string, storeB: string, closingA: string, closingB: string, lineA: string;
+let storeA: string;
+let storeB: string;
+let closingA: string;
+let closingB: string;
+let lineA: string;
 const limited = () => ({ roles: ['chain_manager'], accessScope: 'stores' as const, storeIds: [storeA] });
 beforeAll(async () => {
   db = await freshDb();

@@ -34,8 +34,8 @@ export async function inspectTarget(db: Database, url: string): Promise<Target> 
     throw new SetupError('OWNER_ROLE', 'ownerはDB所有者・BYPASSRLSで、superuser以外の専用roleにしてください。');
   if (Number(row.version) < 160000) throw new SetupError('POSTGRES_VERSION', 'PostgreSQL16以上が必要です。');
   if (row.read_only) throw new SetupError('READ_ONLY_TARGET', '待機系または読取専用DBへは導入・更新できません。');
-  const host = row.address ?? parsed.hostname,
-    port = row.port ?? parsed.port ?? '5432';
+  const host = row.address ?? parsed.hostname;
+  const port = row.port ?? parsed.port ?? '5432';
   const id = createHash('sha256')
     .update(JSON.stringify([host, port, row.database, row.oid, row.owner]))
     .digest('hex')
@@ -107,9 +107,9 @@ export async function buildPlan(
   selectedSecrets?: SetupSecrets,
 ): Promise<SetupPlan> {
   await loadRuntime({ schema: true });
-  const secrets = selectedSecrets ?? (await readSecrets(options)),
-    catalog = await migrationCatalog(dir),
-    state = await readState(options.stateDir);
+  const secrets = selectedSecrets ?? (await readSecrets(options));
+  const catalog = await migrationCatalog(dir);
+  const state = await readState(options.stateDir);
   const owner = connect(secrets.ownerUrl, { max: 1 });
   try {
     const target = await inspectTarget(owner, secrets.ownerUrl);
@@ -123,10 +123,10 @@ export async function buildPlan(
     await checkApp(secrets, target);
     const applied = await history(owner);
     checkHistory(applied, catalog);
-    const relations = await relationNames(owner),
-      empty = relations.every((name) =>
-        ['drizzle.__drizzle_migrations', 'drizzle.__drizzle_migrations_id_seq'].includes(name),
-      );
+    const relations = await relationNames(owner);
+    const empty = relations.every((name) =>
+      ['drizzle.__drizzle_migrations', 'drizzle.__drizzle_migrations_id_seq'].includes(name),
+    );
     if ((!empty && !applied.length) || (options.mode === 'install' && !empty && !state?.identity))
       throw new SetupError(
         'EXISTING_DATABASE',

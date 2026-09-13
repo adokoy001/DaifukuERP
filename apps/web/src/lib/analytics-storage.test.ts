@@ -65,8 +65,8 @@ function serialLocks(): AnalysisLockManager {
 }
 describe('cross-tab analysis mutations', () => {
   it('reads the latest state inside an exclusive scope lock so concurrent tabs preserve unrelated saves', async () => {
-    const storage = memory(),
-      locks = serialLocks();
+    const storage = memory();
+    const locks = serialLocks();
     const requests = vi.spyOn(locks, 'request');
     await Promise.all([
       mutateAnalyses(storage, locks, key, { kind: 'save', entry: entry('tab-a') }),
@@ -76,9 +76,9 @@ describe('cross-tab analysis mutations', () => {
     expect(requests.mock.calls.every(([name, options]) => name === key && options.mode === 'exclusive')).toBe(true);
   });
   it('checks current content as well as timestamps and rejects stale save or delete without losing other analyses', async () => {
-    const storage = memory(),
-      locks = serialLocks(),
-      baseline = entry();
+    const storage = memory();
+    const locks = serialLocks();
+    const baseline = entry();
     writeAnalyses(storage, key, [baseline, entry('other')]);
     const updated = { ...baseline, name: '別タブで変更', settings: { ...baseline.settings, chart: 'bar' as const } };
     await mutateAnalyses(storage, locks, key, { kind: 'save', entry: updated, baseline });
@@ -94,9 +94,9 @@ describe('cross-tab analysis mutations', () => {
     expect(readAnalyses(storage, key)).toHaveLength(3);
   });
   it('only deletes the matching loaded version and refuses to resurrect an analysis another tab deleted', async () => {
-    const storage = memory(),
-      locks = serialLocks(),
-      baseline = entry();
+    const storage = memory();
+    const locks = serialLocks();
+    const baseline = entry();
     writeAnalyses(storage, key, [baseline, entry('other')]);
     await mutateAnalyses(storage, locks, key, { kind: 'delete', id: baseline.id, baseline });
     expect(readAnalyses(storage, key)).toEqual([entry('other')]);
@@ -108,9 +108,9 @@ describe('cross-tab analysis mutations', () => {
     });
   });
   it('does not overwrite an existing id as a new analysis or bypass limits using a stale list', async () => {
-    const storage = memory(),
-      locks = serialLocks(),
-      items = Array.from({ length: 30 }, (_, index) => entry(`id-${index}`));
+    const storage = memory();
+    const locks = serialLocks();
+    const items = Array.from({ length: 30 }, (_, index) => entry(`id-${index}`));
     writeAnalyses(storage, key, items);
     await expect(mutateAnalyses(storage, locks, key, { kind: 'save', entry: entry('id-0') })).rejects.toMatchObject({
       code: 'conflict',
@@ -138,8 +138,8 @@ function stored(value: unknown): AnalysisStorage {
 }
 describe('scoped analysis persistence', () => {
   it('round-trips named settings and expansion state without fetching or storing snapshots', () => {
-    const storage = memory(),
-      items = [entry()];
+    const storage = memory();
+    const items = [entry()];
     expect(readAnalyses(storage, key)).toEqual([]);
     writeAnalyses(storage, key, items);
     expect(readAnalyses(storage, key)).toEqual(items);

@@ -34,10 +34,10 @@ function candidatesOf(ctx: Prepared): Candidates {
   );
 }
 function greedy(ctx: Prepared, initial: ShiftAssignment[], candidates: Candidates, random: Random): ShiftAssignment[] {
-  const plan = [...initial],
-    minutes = new Map(employeeMetrics(ctx, plan).map((metric) => [metric.employeeId, metric.minutes]));
-  const byEmployee = assignmentRows(ctx, plan),
-    counts = new Map(ctx.problem.slots.map((slot) => [slot.id, plan.filter((a) => a.slotId === slot.id).length]));
+  const plan = [...initial];
+  const minutes = new Map(employeeMetrics(ctx, plan).map((metric) => [metric.employeeId, metric.minutes]));
+  const byEmployee = assignmentRows(ctx, plan);
+  const counts = new Map(ctx.problem.slots.map((slot) => [slot.id, plan.filter((a) => a.slotId === slot.id).length]));
   const slots = [...ctx.problem.slots].sort(
     (a, b) =>
       (candidates.get(a.id)?.length ?? 0) / a.required - (candidates.get(b.id)?.length ?? 0) / b.required ||
@@ -47,15 +47,15 @@ function greedy(ctx: Prepared, initial: ShiftAssignment[], candidates: Candidate
   );
   for (const slot of slots)
     while ((counts.get(slot.id) ?? 0) < slot.required) {
-      let best: ShiftAssignment | undefined,
-        cost = Infinity;
+      let best: ShiftAssignment | undefined;
+      let cost = Infinity;
       for (const employeeId of candidates.get(slot.id) ?? []) {
         const assignment = { employeeId, slotId: slot.id, locked: false };
         if (!canAddToEmployee(ctx, assignment, byEmployee.get(employeeId) ?? [], counts.get(slot.id) ?? 0)) continue;
-        const target = ctx.employees.get(employeeId)?.profile?.targetMinutes ?? 0,
-          before = minutes.get(employeeId) ?? 0,
-          after = before + workMinutes(slot),
-          denominator = Math.max(60, target);
+        const target = ctx.employees.get(employeeId)?.profile?.targetMinutes ?? 0;
+        const before = minutes.get(employeeId) ?? 0;
+        const after = before + workMinutes(slot);
+        const denominator = Math.max(60, target);
         const delta =
           (((after - target) / denominator) ** 2 - ((before - target) / denominator) ** 2) * 1000 +
           (ctx.preferred.has(keyOf(employeeId, slot.id)) ? 0 : 100) +
@@ -89,19 +89,19 @@ function replace(
   if (!row) return null;
   const employeeId = pick(candidates.get(row.slotId) ?? [], random);
   if (!employeeId || employeeId === row.employeeId) return null;
-  const next = plan.filter((a) => a !== row),
-    assignment = { ...row, employeeId };
+  const next = plan.filter((a) => a !== row);
+  const assignment = { ...row, employeeId };
   return canAdd(ctx, assignment, next) ? [...next, assignment] : null;
 }
 function swap(ctx: Prepared, plan: ShiftAssignment[], random: Random): ShiftAssignment[] | null {
-  const movable = plan.filter((a) => !a.locked),
-    first = pick(movable, random),
-    second = pick(movable, random);
+  const movable = plan.filter((a) => !a.locked);
+  const first = pick(movable, random);
+  const second = pick(movable, random);
   if (!first || !second || first === second || first.employeeId === second.employeeId || first.slotId === second.slotId)
     return null;
-  const next = plan.filter((a) => a !== first && a !== second),
-    a = { ...first, employeeId: second.employeeId },
-    b = { ...second, employeeId: first.employeeId };
+  const next = plan.filter((a) => a !== first && a !== second);
+  const a = { ...first, employeeId: second.employeeId };
+  const b = { ...second, employeeId: first.employeeId };
   if (!canAdd(ctx, a, next)) return null;
   next.push(a);
   return canAdd(ctx, b, next) ? [...next, b] : null;
@@ -147,18 +147,18 @@ function search(
   random: Random,
   iterations: number,
 ): ShiftAssignment[] {
-  let current = initial,
-    currentScore = evaluatePrepared(ctx, initial).score,
-    best = initial,
-    bestScore = currentScore;
+  let current = initial;
+  let currentScore = evaluatePrepared(ctx, initial).score;
+  let best = initial;
+  let bestScore = currentScore;
   for (let index = 0; index < iterations; index++) {
-    const move = Math.floor(random() * 3),
-      next =
-        move === 0
-          ? fill(ctx, current, candidates, random)
-          : move === 1
-            ? replace(ctx, current, candidates, random)
-            : swap(ctx, current, random);
+    const move = Math.floor(random() * 3);
+    const next =
+      move === 0
+        ? fill(ctx, current, candidates, random)
+        : move === 1
+          ? replace(ctx, current, candidates, random)
+          : swap(ctx, current, random);
     if (!next) continue;
     const evaluation = evaluatePrepared(ctx, next);
     if (evaluation.issues.length) continue;
@@ -175,9 +175,9 @@ function search(
   return best;
 }
 export function recommendShift(problem: ShiftProblem, options: ShiftOptimizeOptions): ShiftRecommendation {
-  const seed = Number.isSafeInteger(options?.seed) ? options.seed >>> 0 : 0,
-    provided = options?.assignments ?? [],
-    ctx = prepare(problem);
+  const seed = Number.isSafeInteger(options?.seed) ? options.seed >>> 0 : 0;
+  const provided = options?.assignments ?? [];
+  const ctx = prepare(problem);
   if (!ctx || !Number.isSafeInteger(options?.seed) || !validAssignments(provided))
     return { assignments: [], evaluation: invalidEvaluation(), iterations: 0, seed };
   const locked = provided.filter((assignment) => assignment.locked).map((assignment) => ({ ...assignment }));
@@ -188,9 +188,9 @@ export function recommendShift(problem: ShiftProblem, options: ShiftOptimizeOpti
   const iterations = Number.isFinite(options.iterations ?? DEFAULT_ITERATIONS)
     ? Math.min(MAX_ITERATIONS, Math.max(0, Math.floor(options.iterations ?? DEFAULT_ITERATIONS)))
     : DEFAULT_ITERATIONS;
-  const candidates = candidatesOf(ctx),
-    random = randomOf(seed),
-    filled = greedy(ctx, initial, candidates, random);
+  const candidates = candidatesOf(ctx);
+  const random = randomOf(seed);
+  const filled = greedy(ctx, initial, candidates, random);
   const assignments = search(ctx, filled, candidates, random, iterations).sort(
     (a, b) =>
       ctx.problem.slots.findIndex((slot) => slot.id === a.slotId) -

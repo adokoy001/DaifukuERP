@@ -1,6 +1,6 @@
 import { z } from 'zod';
-export const money = z.string().max(14).regex(/^\d+$/),
-  date = z.iso.date();
+export const money = z.string().max(14).regex(/^\d+$/);
+export const date = z.iso.date();
 export const contractSnapshot = z.object({
   code: z.string(),
   name: z.string(),

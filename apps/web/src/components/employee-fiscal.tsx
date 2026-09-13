@@ -14,18 +14,18 @@ import {
 } from './workforce-shared.tsx';
 import type { MyFiscal } from '../api/fiscal.ts';
 export function EmployeeFiscal() {
-  const { t } = useLocale(),
-    [taxYear, setTaxYear] = useState<number>(),
-    portal = useMyFiscal(true, taxYear),
-    [editing, setEditing] = useState<{ taxYear: number; declaration: MyFiscal['declaration'] }>();
+  const { t } = useLocale();
+  const [taxYear, setTaxYear] = useState<number>();
+  const portal = useMyFiscal(true, taxYear);
+  const [editing, setEditing] = useState<{ taxYear: number; declaration: MyFiscal['declaration'] }>();
   useEffect(() => {
     if (taxYear === undefined && portal.data) setTaxYear(portal.data.taxYear);
   }, [portal.data, taxYear]);
   if (portal.isError && !canRetainData(portal))
     return <WorkforceError error={portal.error} onRetry={() => void portal.refetch()} />;
   if (!portal.data) return <p role="status">{t({ ja: '読込中…', en: 'Loading…' })}</p>;
-  const data = portal.data,
-    frozen = data.adjustments.some((row) => row.status === 'confirmed');
+  const data = portal.data;
+  const frozen = data.adjustments.some((row) => row.status === 'confirmed');
   return (
     <ReadRecoveryProvider sources={[portal]}>
       <div className="workforce-stack">

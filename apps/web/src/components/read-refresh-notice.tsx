@@ -14,8 +14,8 @@ export function ReadRecoveryProvider({ sources, children }: { sources: readonly 
   return <RecoveryContext.Provider value={sources}>{children}</RecoveryContext.Provider>;
 }
 export function ReadRefreshNotice({ sources }: { sources?: readonly ReadSource[] }) {
-  const context = useContext(RecoveryContext),
-    { t } = useLocale();
+  const context = useContext(RecoveryContext);
+  const { t } = useLocale();
   const failed = (sources ?? context).filter(canRetainData);
   if (!failed.length) return null;
   const busy = failed.some((source) => source.isFetching);

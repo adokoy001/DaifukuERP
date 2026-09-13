@@ -22,8 +22,8 @@ const statuses = {
 };
 
 export function PayrollRuleDetails({ rule }: { rule: PayrollRuleSummary }) {
-  const { t } = useLocale(),
-    applicability = rule.manifest.applicability;
+  const { t } = useLocale();
+  const applicability = rule.manifest.applicability;
   const periods = [
     [{ ja: '月次給与の支払日', en: 'Monthly payroll payment dates' }, applicability.paymentDates],
     [{ ja: '健康保険・厚生年金の対象月', en: 'Health / pension insurance months' }, applicability.insuranceMonths],
@@ -124,9 +124,9 @@ function PayrollRuleInstallReview({
   canManage: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    [reviewed] = useState(initial);
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [reviewed] = useState(initial);
   const stale =
     !current.data ||
     current.data.manifestHash !== reviewed.manifestHash ||
@@ -209,8 +209,8 @@ function PayrollRuleInstall({
   canManage: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    preview = usePayrollRulePreview(packageCode, true);
+  const { t } = useLocale();
+  const preview = usePayrollRulePreview(packageCode, true);
   if (preview.isError && !canRetainData(preview))
     return (
       <div role="alert">
@@ -238,9 +238,9 @@ export function PayrollRuleManager({
   taxYear: number;
   actions: string[];
 }) {
-  const { t } = useLocale(),
-    [reviewing, setReviewing] = useState(''),
-    bundles = catalog.bundles.filter((bundle) => bundle.taxYear === taxYear);
+  const { t } = useLocale();
+  const [reviewing, setReviewing] = useState('');
+  const bundles = catalog.bundles.filter((bundle) => bundle.taxYear === taxYear);
   return (
     <WorkforcePanel title={t({ ja: '制度の版と出典', en: 'Rule versions and sources' })} icon="document">
       <p>

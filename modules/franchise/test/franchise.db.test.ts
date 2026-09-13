@@ -9,7 +9,11 @@ import { PurchaseInvoice } from '@daifuku/mod-purchase';
 import { Payment } from '@daifuku/mod-payment';
 import { seedTaxRates } from '@daifuku/mod-tax';
 import { FranchiseAgreement, FranchiseSettlement, type FranchiseBoard } from '../src/index.ts';
-let db: TestDb, customer: string, supplier: string, bank: string, expense: string;
+let db: TestDb;
+let customer: string;
+let supplier: string;
+let bank: string;
+let expense: string;
 const run = <T>(fn: (ctx: Context) => Promise<T>) => db.run({ now: () => new Date('2026-09-12T03:00:00Z') }, fn);
 type Result = { id: string; version: number; status: string; invoiceId: string; paymentId: string | null };
 const action = (name: string, input: unknown) =>
@@ -90,8 +94,8 @@ describe('monthly franchise source-owned settlement', () => {
     );
   });
   it('settles once and atomically cancels the linked payment and invoice; permits a new reviewed revision', async () => {
-    const a = await agreement('roundtrip'),
-      made = await generate(a);
+    const a = await agreement('roundtrip');
+    const made = await generate(a);
     const request = {
       settlementId: made.id,
       expectedVersion: made.version,
@@ -130,8 +134,8 @@ describe('monthly franchise source-owned settlement', () => {
     expect((await generate(a)).id).not.toBe(made.id);
   });
   it('posts a payable fee with an explicit expense account and uses payment allocation', async () => {
-    const a = await agreement('pay', 'pay'),
-      made = await generate(a);
+    const a = await agreement('pay', 'pay');
+    const made = await generate(a);
     expect((await run((ctx) => repo(ctx, PurchaseInvoice).get(made.invoiceId))).total.toString()).toBe('6600');
     const paid = await action('settle', {
       settlementId: made.id,
@@ -144,8 +148,8 @@ describe('monthly franchise source-owned settlement', () => {
     expect((await run((ctx) => repo(ctx, Payment).get(required(paid.paymentId)))).direction).toBe('pay');
   });
   it('keeps external partial settlements intact and rolls back an attempted linked cancellation', async () => {
-    const a = await agreement('external-payment'),
-      made = await generate(a);
+    const a = await agreement('external-payment');
+    const made = await generate(a);
     const external = await run(async (ctx) => {
       const p = (await runAction(ctx, 'payment.create', {
         direction: 'receive',

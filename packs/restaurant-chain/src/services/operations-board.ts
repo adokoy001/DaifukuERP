@@ -52,8 +52,8 @@ function status(row: Closing | undefined, plannedOpen: boolean | null): string {
 export function boardRows(data: OperationsData, range: OperationsRange): BoardRow[] {
   const selected = new Map<string, Closing>();
   for (const row of data.closings) {
-    const key = `${row.storeId}/${row.date}`,
-      prior = selected.get(key);
+    const key = `${row.storeId}/${row.date}`;
+    const prior = selected.get(key);
     if (
       !prior ||
       priority(row) > priority(prior) ||
@@ -64,12 +64,12 @@ export function boardRows(data: OperationsData, range: OperationsRange): BoardRo
   const plans = new Map(data.plans.map((row) => [`${row.storeId}/${row.date}`, row]));
   return data.stores.flatMap((store) =>
     dates(range.from, range.to).map((date): BoardRow => {
-      const key = `${store.id}/${date}`,
-        row = selected.get(key),
-        plan = plans.get(key),
-        plannedOpen = plan?.expectedOpen ?? null;
-      const currentStatus = status(row, plannedOpen),
-        counts = emptyCounts();
+      const key = `${store.id}/${date}`;
+      const row = selected.get(key);
+      const plan = plans.get(key);
+      const plannedOpen = plan?.expectedOpen ?? null;
+      const currentStatus = status(row, plannedOpen);
+      const counts = emptyCounts();
       const submitted =
         !!row && (row.docstatus === 1 || (row.docstatus === 0 && ['submitted', 'approved'].includes(row.reviewStatus)));
       counts.expectedOpenDays = plannedOpen === true ? 1 : 0;

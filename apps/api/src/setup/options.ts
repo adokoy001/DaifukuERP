@@ -107,8 +107,8 @@ export async function readSecrets(options: SetupOptions): Promise<SetupSecrets> 
   const env = parseEnv(await privateFile(options.envFile));
   if (!env.DATABASE_URL_OWNER || !env.DATABASE_URL)
     throw new SetupError('ENV', 'DATABASE_URL_OWNERとDATABASE_URLが必要です。');
-  const owner = connection(env.DATABASE_URL_OWNER, options.allowRemote),
-    app = connection(env.DATABASE_URL, options.allowRemote);
+  const owner = connection(env.DATABASE_URL_OWNER, options.allowRemote);
+  const app = connection(env.DATABASE_URL, options.allowRemote);
   if (
     owner.hostname !== app.hostname ||
     (owner.port || '5432') !== (app.port || '5432') ||

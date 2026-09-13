@@ -153,8 +153,8 @@ export async function issueRelayPairing(ctx: Context, gatewayId: string, siteId:
         isNull(relayPairings.consumedAt),
       ),
     );
-  const token = opaqueToken(),
-    expiresAt = new Date(ctx.now().getTime() + 600000);
+  const token = opaqueToken();
+  const expiresAt = new Date(ctx.now().getTime() + 600000);
   await ctx.db.insert(relayPairings).values({
     id: newId(),
     tenantId: ctx.tenantId,

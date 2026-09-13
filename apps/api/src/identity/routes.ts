@@ -19,9 +19,9 @@ import { parse } from '../request-context.ts';
 import { configured, currentIdentity, identityLoginReply, type IdentityRouteOptions } from './session.ts';
 import { registerOidcRoutes } from './routes-oidc.ts';
 import { verifyAttempt } from './attempt.ts';
-const token = z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  code = z.string().min(1).max(64),
-  password = z.string().min(12).max(200);
+const token = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const code = z.string().min(1).max(64);
+const password = z.string().min(12).max(200);
 const step = z.object({ stepUpToken: token }).strict();
 export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRouteOptions): void {
   registerOidcRoutes(app, options);
@@ -33,12 +33,12 @@ export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRo
   }));
   app.post('/auth/step-up', async (req) => {
     const input = parse(
-        z.object({ currentPassword: z.string().min(1).max(200), code: code.optional() }).strict(),
-        req.body,
-        'body',
-      ),
-      config = configured(options),
-      current = currentIdentity(req);
+      z.object({ currentPassword: z.string().min(1).max(200), code: code.optional() }).strict(),
+      req.body,
+      'body',
+    );
+    const config = configured(options);
+    const current = currentIdentity(req);
     return verifyAttempt(
       options.owner,
       req,
@@ -51,8 +51,8 @@ export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRo
     );
   });
   app.post('/auth/mfa/setup', async (req) => {
-    const input = parse(step, req.body, 'body'),
-      config = configured(options);
+    const input = parse(step, req.body, 'body');
+    const config = configured(options);
     return withContext(options.db, req.contextParams(), (ctx) =>
       beginMfa(ctx, currentIdentity(req).sessionVersion, input.stepUpToken, config.encryptionKey),
     );
@@ -98,11 +98,11 @@ export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRo
   });
   app.post('/auth/password-reset/request', async (req) => {
     const input = parse(
-        z.object({ email: z.email().max(200), tenantId: z.uuid().optional() }).strict(),
-        req.body,
-        'body',
-      ),
-      started = Date.now();
+      z.object({ email: z.email().max(200), tenantId: z.uuid().optional() }).strict(),
+      req.body,
+      'body',
+    );
+    const started = Date.now();
     await identityRateLimit(options.owner, `reset-ip:${req.ip}`, 20, 1800);
     await identityRateLimit(options.owner, `reset:${input.tenantId ?? ''}:${input.email.toLowerCase()}`, 3, 1800);
     try {
@@ -130,11 +130,11 @@ export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRo
     });
   app.post('/auth/invitations', async (req) => {
     const input = parse(
-        z.object({ email: z.email().max(200), name: z.string().trim().min(1).max(200), stepUpToken: token }).strict(),
-        req.body,
-        'body',
-      ),
-      config = configured(options);
+      z.object({ email: z.email().max(200), name: z.string().trim().min(1).max(200), stepUpToken: token }).strict(),
+      req.body,
+      'body',
+    );
+    const config = configured(options);
     const current = currentIdentity(req);
     if (!req.principal?.tenantAdmin) throw new PermissionDenied('identity', 'invite', req.principal?.roles ?? []);
     await identityRateLimit(options.owner, `invite-user:${current.tenantId}:${current.userId}`, 30);

@@ -32,9 +32,9 @@ export function CommerceShell({
   sources?: ReadSource[];
 }) {
   const copy = useCommerceCopy();
-  const { meta, allowed } = useCommerceAccess(action),
-    readers = [meta, ...sources],
-    failed = readers.find((q) => q.isError && !canRetainData(q));
+  const { meta, allowed } = useCommerceAccess(action);
+  const readers = [meta, ...sources];
+  const failed = readers.find((q) => q.isError && !canRetainData(q));
   return (
     <div className="workspace-page commerce-page">
       <header className="commerce-hero">

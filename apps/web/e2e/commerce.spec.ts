@@ -115,17 +115,17 @@ test('FC payment confirmation rejects a balance changed by another receipt and p
   page,
   request,
 }) => {
-  const f = await commerceFixture(request),
-    made = await api(request, f.headers, '/actions/franchise.generate', {
-      agreementId: f.agreement.id,
-      expectedAgreementVersion: f.agreement.version,
-      month: f.period.month,
-      grossSales: '100000',
-      netSales: '100000',
-      sourceReference: '残高競合検証',
-      date: f.period.to,
-      dueDate: BUSINESS_DATE,
-    });
+  const f = await commerceFixture(request);
+  const made = await api(request, f.headers, '/actions/franchise.generate', {
+    agreementId: f.agreement.id,
+    expectedAgreementVersion: f.agreement.version,
+    month: f.period.month,
+    grossSales: '100000',
+    netSales: '100000',
+    sourceReference: '残高競合検証',
+    date: f.period.to,
+    dueDate: BUSINESS_DATE,
+  });
   await signInQuality(page, f.email, PASSWORD);
   await page.goto('/commerce/franchise');
   await page.getByRole('button', { name: '根拠と残高', exact: true }).click();

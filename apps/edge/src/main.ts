@@ -36,9 +36,9 @@ async function main(): Promise<void> {
     !args.values.state
   )
     throw new EdgeError('invalid_cli_arguments');
-  const config = await loadConfig(resolve(args.values.config)),
-    state = resolve(args.values.state),
-    abort = new AbortController();
+  const config = await loadConfig(resolve(args.values.config));
+  const state = resolve(args.values.state);
+  const abort = new AbortController();
   const release = await acquireWriter(state, () => {
     process.stderr.write('writer_lock_lost\n');
     process.exit(73);
@@ -47,8 +47,8 @@ async function main(): Promise<void> {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
-    const credentials = await Credentials.open(state, config),
-      journal = await Journal.open(state);
+    const credentials = await Credentials.open(state, config);
+    const journal = await Journal.open(state);
     if (command === 'pair') {
       if (!args.values['token-file']) throw new EdgeError('pairing_token_file_required');
       const parsed = z

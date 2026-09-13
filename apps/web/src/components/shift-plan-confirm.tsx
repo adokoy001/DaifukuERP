@@ -19,8 +19,8 @@ export function ShiftPlanConfirm({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   return (
     <WorkforceDialog
       title={t(

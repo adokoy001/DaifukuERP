@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Decimal } from '@daifuku/kernel';
 import { ledgerIntegrityIssues } from '../src/ledger-validation.ts';
-const D = Decimal.from,
-  year = { startDate: '2026-01-01', endDate: '2026-12-31' };
-const entries = [{ id: '1', docstatus: 1, totalDebit: D(100), totalCredit: D(100) }],
-  lines = [
-    { entryId: '1', debit: D(100), credit: D(0) },
-    { entryId: '1', debit: D(0), credit: D(100) },
-  ];
+const D = Decimal.from;
+const year = { startDate: '2026-01-01', endDate: '2026-12-31' };
+const entries = [{ id: '1', docstatus: 1, totalDebit: D(100), totalCredit: D(100) }];
+const lines = [
+  { entryId: '1', debit: D(100), credit: D(0) },
+  { entryId: '1', debit: D(0), credit: D(100) },
+];
 describe('independent ledger evidence checks', () => {
   it('requires complete, non-overlapping annual period coverage', () => {
     expect(ledgerIntegrityIssues(year, [year], entries, lines)).toEqual([]);

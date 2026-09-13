@@ -2,11 +2,12 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-const cwd = fileURLToPath(new URL('..', import.meta.url)),
-  children = [];
-const pnpmCli = process.env.npm_execpath,
-  browserUrl = 'http://localhost:5189';
-let interrupted, stopping;
+const cwd = fileURLToPath(new URL('..', import.meta.url));
+const children = [];
+const pnpmCli = process.env.npm_execpath;
+const browserUrl = 'http://localhost:5189';
+let interrupted;
+let stopping;
 if (
   !pnpmCli ||
   !process.env.TEST_DATABASE_URL_OWNER ||

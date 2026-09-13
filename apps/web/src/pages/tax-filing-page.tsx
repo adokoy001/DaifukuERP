@@ -31,26 +31,26 @@ export function TaxFilingPage() {
   return <FilingWorkspace key={financeIdentity()} />;
 }
 function FilingWorkspace() {
-  const { t } = useLocale(),
-    access = useFinanceAccess(),
-    actions = access.data?.actions.map((action) => action.name) ?? [];
+  const { t } = useLocale();
+  const access = useFinanceAccess();
+  const actions = access.data?.actions.map((action) => action.name) ?? [];
   const kinds = (['accounting', 'payroll'] as const).filter((kind) =>
     access.data?.entities.some((entity) => entity.name === `filing_${kind}_pack` && entity.ops.includes('read')),
   );
-  const [requestedKind, setKind] = useState<FilingKind>(),
-    kind = requestedKind && kinds.includes(requestedKind) ? requestedKind : (kinds[0] ?? 'accounting'),
-    allowed = actions.includes('tax_filing.board') && kinds.includes(kind);
-  const [id, setId] = useState(''),
-    [dialog, setDialog] = useState<Dialog>();
-  const query = useFinanceRead('tax_filing.board', { kind }, allowed, filingBoardOutput.parse),
-    detail = useFinanceRead('tax_filing.get', { kind, id }, allowed && Boolean(id), filingDetailOutput.parse);
-  const sources = [access, query, detail],
-    busy = sources.some((source) => source.isFetching || source.isError),
-    stale = !allowed || sources.some((source) => source.isError),
-    board = query.data,
-    close = () => setDialog(undefined);
-  const profileAction = `tax_filing.save_${kind}_profile`,
-    profileExists = kind === 'accounting' ? Boolean(board?.accountingProfile) : Boolean(board?.payrollProfile);
+  const [requestedKind, setKind] = useState<FilingKind>();
+  const kind = requestedKind && kinds.includes(requestedKind) ? requestedKind : (kinds[0] ?? 'accounting');
+  const allowed = actions.includes('tax_filing.board') && kinds.includes(kind);
+  const [id, setId] = useState('');
+  const [dialog, setDialog] = useState<Dialog>();
+  const query = useFinanceRead('tax_filing.board', { kind }, allowed, filingBoardOutput.parse);
+  const detail = useFinanceRead('tax_filing.get', { kind, id }, allowed && Boolean(id), filingDetailOutput.parse);
+  const sources = [access, query, detail];
+  const busy = sources.some((source) => source.isFetching || source.isError);
+  const stale = !allowed || sources.some((source) => source.isError);
+  const board = query.data;
+  const close = () => setDialog(undefined);
+  const profileAction = `tax_filing.save_${kind}_profile`;
+  const profileExists = kind === 'accounting' ? Boolean(board?.accountingProfile) : Boolean(board?.payrollProfile);
   const profileChanged =
     dialog?.type === 'profile' &&
     (kind === 'accounting'
@@ -252,9 +252,9 @@ function FilingDetails({
   actions: string[];
   onDialog: (dialog: Dialog) => void;
 }) {
-  const { t } = useLocale(),
-    hasErrors = detail.issues.some((issue) => issue.severity === 'error'),
-    ownDraft = detail.status === 'draft' && detail.preparedBy === getUser()?.id;
+  const { t } = useLocale();
+  const hasErrors = detail.issues.some((issue) => issue.severity === 'error');
+  const ownDraft = detail.status === 'draft' && detail.preparedBy === getUser()?.id;
   return (
     <FinancePanel
       title={t({ ja: '根拠と検算', en: 'Evidence and validation' })}

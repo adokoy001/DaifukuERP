@@ -9,8 +9,8 @@ import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
 import { legacyMigrationFolder } from './legacy-fixture.ts';
 
-const owner = connect(OWNER_URL, { max: 1 }),
-  app = connect(APP_URL, { max: 1 });
+const owner = connect(OWNER_URL, { max: 1 });
+const app = connect(APP_URL, { max: 1 });
 const previous = legacyMigrationFolder(8);
 type Sql = postgres.TransactionSql;
 const scope = <T>(db: Database, tenant: string, fn: (tx: Sql) => Promise<T>) =>
@@ -48,10 +48,10 @@ afterAll(async () => {
 });
 
 async function addClosings(tx: Sql, tenant: string, company: string): Promise<string[]> {
-  const warehouse = newId(),
-    partner = newId(),
-    account = newId(),
-    store = newId();
+  const warehouse = newId();
+  const partner = newId();
+  const account = newId();
+  const store = newId();
   await tx`insert into warehouse(id,tenant_id,company_id,code,name) values(${warehouse},${tenant},${company},'KITCHEN','既存厨房')`;
   await tx`insert into partner(id,tenant_id,company_id,name,is_customer) values(${partner},${tenant},${company},'既存店舗客',true)`;
   await tx`insert into account(id,tenant_id,company_id,code,name,type) values(${account},${tenant},${company},'CASH','既存現金','asset')`;
@@ -68,8 +68,8 @@ async function addClosings(tx: Sql, tenant: string, company: string): Promise<st
 async function historicalFixture(): Promise<TenantFixture[]> {
   const fixtures: TenantFixture[] = [];
   for (const label of ['Tenant A', 'Tenant B']) {
-    const id = newId(),
-      companies = [newId(), newId()];
+    const id = newId();
+    const companies = [newId(), newId()];
     const users: UserFixture[] = [
       {
         id: newId(),
@@ -125,8 +125,8 @@ async function originalFacts(fixtures: TenantFixture[]) {
 
 describe('operations-control historical 0008 upgrade', () => {
   it('copies tenant-wide legacy roles into only the same tenant companies without changing original facts', async () => {
-    const fixtures = await historicalFixture(),
-      original = await originalFacts(fixtures);
+    const fixtures = await historicalFixture();
+    const original = await originalFacts(fixtures);
     await runMigrations(owner, MIGRATIONS_DIR);
     expect(await originalFacts(fixtures)).toEqual(original);
     for (const fixture of fixtures)
@@ -193,8 +193,8 @@ describe('operations-control historical 0008 upgrade', () => {
   it('enforces tenant RLS on migrated memberships and denies a foreign-tenant insert', async () => {
     const fixtures = await historicalFixture();
     await runMigrations(owner, MIGRATIONS_DIR);
-    const current = fixtures[0],
-      foreign = fixtures[1];
+    const current = fixtures[0];
+    const foreign = fixtures[1];
     expect(current && foreign).toBeTruthy();
     if (!current || !foreign) throw new Error('fixture missing');
     for (const fixture of fixtures)
@@ -219,8 +219,8 @@ describe('operations-control historical 0008 upgrade', () => {
   });
 
   it('rolls back the entire migration for malformed legacy role JSON, then succeeds after an explicit source correction', async () => {
-    const fixtures = await historicalFixture(),
-      fixture = fixtures[1];
+    const fixtures = await historicalFixture();
+    const fixture = fixtures[1];
     expect(fixture).toBeTruthy();
     if (!fixture) throw new Error('fixture missing');
     const user = fixture.users[1];

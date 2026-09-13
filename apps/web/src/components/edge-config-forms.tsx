@@ -11,8 +11,8 @@ import { canRetainData } from '../lib/read-recovery.ts';
 import { ReadRefreshNotice } from './read-refresh-notice.tsx';
 import { WorkforceError } from './workforce-shared.tsx';
 export function EdgeGatewayForm({ onClose }: { onClose: () => void }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand();
+  const { t } = useLocale();
+  const task = useEdgeCommand();
   const sites = useQuery({
     queryKey: ['edge-sites', edgeIdentity()],
     queryFn: ({ signal }) => request<ListResponse>('/api/workforce_site?limit=500', { signal, cache: 'no-store' }),
@@ -91,9 +91,9 @@ export function EdgeGatewayForm({ onClose }: { onClose: () => void }) {
   );
 }
 export function EdgeDeviceForm({ gateway, onClose }: { gateway: EdgeRow; onClose: () => void }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand(),
-    [driver, setDriver] = useState('ipp_text');
+  const { t } = useLocale();
+  const task = useEdgeCommand();
+  const [driver, setDriver] = useState('ipp_text');
   return (
     <EdgeForm
       title={t({ ja: '機器を登録', en: 'Register a device' })}
@@ -154,9 +154,9 @@ export function EdgeActiveForm({
   type: 'gateway' | 'device';
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand(),
-    active = !row.active;
+  const { t } = useLocale();
+  const task = useEdgeCommand();
+  const active = !row.active;
   return (
     <EdgeForm
       title={t(active ? { ja: '受付を再開', en: 'Resume requests' } : { ja: '受付を停止', en: 'Pause requests' })}

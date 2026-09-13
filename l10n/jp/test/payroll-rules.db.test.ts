@@ -62,8 +62,8 @@ function register(bundles: PayrollRuleBundle[]) {
   registry.registerOverride(PAYROLL_RULE_PROVIDERS_OVERRIDE, () => [createJapanPayrollProvider(bundles)]);
 }
 function revisedBundle(code: string, revision = 2): PayrollRuleBundle {
-  const bundle = structuredClone(legacy),
-    data = payrollDataSchema.parse(bundle.data);
+  const bundle = structuredClone(legacy);
+  const data = payrollDataSchema.parse(bundle.data);
   bundle.code = data.code = bundle.manifest.packageCode = code;
   bundle.manifest.revision = revision;
   bundle.manifest.supersedesPackageCode = legacy.manifest.packageCode;
@@ -251,8 +251,8 @@ describe('company approved payroll rule releases', () => {
     ).rejects.toThrow('rollback synthetic corruption');
   });
   it('rejects overlapping packages without a valid replacement and preserves originals on correction', async () => {
-    const revision = revisedBundle('synthetic-2026-revision-2'),
-      conflict = revisedBundle('synthetic-2026-conflict');
+    const revision = revisedBundle('synthetic-2026-revision-2');
+    const conflict = revisedBundle('synthetic-2026-conflict');
     delete conflict.manifest.supersedesPackageCode;
     register([legacy, revision, conflict]);
     const bad = await action<PayrollRulePreview>('preview_payroll_rule', {

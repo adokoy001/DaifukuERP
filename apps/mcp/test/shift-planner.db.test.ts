@@ -25,8 +25,8 @@ afterAll(async () => {
   await db?.close();
 });
 it('employee-shift-planner MCP keeps preferences personal and rechecks live company scope', async () => {
-  const id = newId(),
-    email = 'shift-mcp@example.com';
+  const id = newId();
+  const email = 'shift-mcp@example.com';
   const site = await db.run({}, (ctx) =>
     repo(ctx, registry.entity('workforce_site')).create({ code: 'MCP-SHIFT', name: 'Synthetic shift site' }),
   );
@@ -72,13 +72,13 @@ it('employee-shift-planner MCP keeps preferences personal and rechecks live comp
     expect(tools).toContain('workforce_my_shifts');
     expect(tools).toContain('workforce_save_shift_availability');
     expect(tools).not.toContain('workforce_shift_board');
-    const weekStart = '2026-09-14',
-      days = Array.from({ length: 7 }, (_, i) => ({
-        date: `2026-09-${14 + i}`,
-        preference: 'available',
-        startMinute: 540,
-        endMinute: 1020,
-      }));
+    const weekStart = '2026-09-14';
+    const days = Array.from({ length: 7 }, (_, i) => ({
+      date: `2026-09-${14 + i}`,
+      preference: 'available',
+      startMinute: 540,
+      endMinute: 1020,
+    }));
     const saved = await client.callTool(
       { name: 'workforce_save_shift_availability', arguments: { weekStart, expectedVersion: 0, days } },
       CallToolResultSchema,

@@ -36,9 +36,9 @@ async function useDb<T>(url: string, fn: (db: Database) => Promise<T>): Promise<
 }
 
 async function sourceFolders(root: string) {
-  const journal = readJournal(),
-    legacy = join(root, 'legacy-0008'),
-    synthetic = join(root, 'synthetic');
+  const journal = readJournal();
+  const legacy = join(root, 'legacy-0008');
+  const synthetic = join(root, 'synthetic');
   for (const dir of [legacy, synthetic]) await mkdir(join(dir, 'meta'), { recursive: true, mode: 0o700 });
   for (const entry of journal.entries) {
     await copyFile(join(MIGRATIONS_DIR, `${entry.tag}.sql`), join(synthetic, `${entry.tag}.sql`));
@@ -72,11 +72,11 @@ async function sourceFolders(root: string) {
   return { legacy, synthetic, next };
 }
 async function populateLegacy(url: string, folder: string) {
-  const tenant = newId(),
-    company = newId(),
-    user = newId(),
-    password = 'Original-LegacyCredential9!',
-    hash = await hashPassword(password);
+  const tenant = newId();
+  const company = newId();
+  const user = newId();
+  const password = 'Original-LegacyCredential9!';
+  const hash = await hashPassword(password);
   await useDb(url, async (db) => {
     assert.equal((await relationNames(db)).length, 0, 'legacy test DB must be new');
     await migrate(db.drizzle, { migrationsFolder: folder });
@@ -140,11 +140,11 @@ async function main(): Promise<void> {
       'TEST_ENV_REQUIRED',
       'SETUP_TEST_ENV_FILEで専用保護envを明示してください。接続先のfallbackはありません。',
     );
-  const originalEnv = await privateFile(input),
-    env = parseEnv(originalEnv);
+  const originalEnv = await privateFile(input);
+  const env = parseEnv(originalEnv);
   assert(env.DATABASE_URL_OWNER && env.DATABASE_URL && env.RESTORE_CHECK_URL);
-  const ownerUrl = env.DATABASE_URL_OWNER,
-    appUrl = env.DATABASE_URL;
+  const ownerUrl = env.DATABASE_URL_OWNER;
+  const appUrl = env.DATABASE_URL;
   assert.equal(new URL(ownerUrl).hostname, '127.0.0.1');
   const databaseName = decodeURIComponent(new URL(ownerUrl).pathname.slice(1));
   assert.match(databaseName, /^daifuku_setup_test(?:_\d+)?$/);
@@ -192,8 +192,8 @@ async function main(): Promise<void> {
   const partial = await readState(base.stateDir);
   assert(partial?.identity);
   const firstTenantId = partial.identity.tenantId;
-  const runtimePath = join(base.stateDir, 'runtime.env'),
-    runtime = await privateFile(runtimePath);
+  const runtimePath = join(base.stateDir, 'runtime.env');
+  const runtime = await privateFile(runtimePath);
   const generatedPassword = (await privateFile(join(base.stateDir, 'initial-admin-password.txt'))).trimEnd();
   const hash = await useDb(
     ownerUrl,
@@ -224,9 +224,9 @@ async function main(): Promise<void> {
   const stateBefore = await privateFile(join(base.stateDir, 'setup-state.json'));
   assert.equal((await runSetup(second)).noOp, true);
   assert.equal(await privateFile(join(base.stateDir, 'setup-state.json')), stateBefore);
-  const folders = await sourceFolders(artifact),
-    legacyUrl = replaceDatabase(ownerUrl, `daifuku_setup_legacy${suffix}`),
-    legacyApp = replaceDatabase(appUrl, `daifuku_setup_legacy${suffix}`);
+  const folders = await sourceFolders(artifact);
+  const legacyUrl = replaceDatabase(ownerUrl, `daifuku_setup_legacy${suffix}`);
+  const legacyApp = replaceDatabase(appUrl, `daifuku_setup_legacy${suffix}`);
   step('AC-3 real populated 0008 fixture');
   const {
     tenant,

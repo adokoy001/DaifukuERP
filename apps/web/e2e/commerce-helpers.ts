@@ -29,13 +29,13 @@ export async function commerceFixture(request: APIRequestContext) {
     ],
     { env: process.env, encoding: 'utf8' },
   );
-  const companies = JSON.parse(text) as { id: string; code: string; name: string }[],
-    first = companies[0],
-    second = companies[1];
+  const companies = JSON.parse(text) as { id: string; code: string; name: string }[];
+  const first = companies[0];
+  const second = companies[1];
   if (!first || !second) throw new Error('Two synthetic companies are required.');
-  const admin = { authorization: 'Bearer ' + session.token, 'x-company-id': session.user.defaultCompanyId },
-    email = `commerce-${runId}@example.invalid`,
-    user = await api(request, admin, '/admin/users', { name: 'Commerce検証 ' + runId, email, password: PASSWORD });
+  const admin = { authorization: 'Bearer ' + session.token, 'x-company-id': session.user.defaultCompanyId };
+  const email = `commerce-${runId}@example.invalid`;
+  const user = await api(request, admin, '/admin/users', { name: 'Commerce検証 ' + runId, email, password: PASSWORD });
   for (const company of companies)
     await api(
       request,
@@ -44,8 +44,8 @@ export async function commerceFixture(request: APIRequestContext) {
       { expectedVersion: 0, roles: ['admin'], accessScope: 'all', storeIds: [], siteIds: [] },
       'PUT',
     );
-  const own = await api<{ token: string }>(request, {}, '/auth/login', { email, password: PASSWORD }),
-    headers: Headers = { authorization: 'Bearer ' + own.token, 'x-company-id': first.id };
+  const own = await api<{ token: string }>(request, {}, '/auth/login', { email, password: PASSWORD });
+  const headers: Headers = { authorization: 'Bearer ' + own.token, 'x-company-id': first.id };
   const period = commercePeriod();
   const defs = [
     { code: '1100', name: '普通預金', type: 'asset' },
@@ -113,8 +113,8 @@ export async function commerceFixture(request: APIRequestContext) {
 export type CommerceFixture = Awaited<ReturnType<typeof commerceFixture>>;
 export async function closeCommercePeriods(request: APIRequestContext, fixture: CommerceFixture) {
   for (const company of fixture.companies) {
-    const headers = { ...fixture.headers, 'x-company-id': company.id },
-      periods = await api<{ items: Row[] }>(request, headers, '/api/fiscal_period?limit=500');
+    const headers = { ...fixture.headers, 'x-company-id': company.id };
+    const periods = await api<{ items: Row[] }>(request, headers, '/api/fiscal_period?limit=500');
     for (const p of periods.items.filter((row) => String(row.endDate) <= fixture.period.to && !row.isClosed))
       await api(request, headers, '/actions/accounting.close_period', { periodId: p.id });
   }

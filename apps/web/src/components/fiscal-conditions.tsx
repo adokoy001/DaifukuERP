@@ -93,8 +93,8 @@ function ConditionDialog({
   future?: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   return (
     <WorkforceDialog
       title={t({ ja: '税・保険の本人条件', en: 'Employee tax and insurance conditions' })}
@@ -110,8 +110,8 @@ function ConditionDialog({
       stale={original ? current?.version !== original.version : false}
       onClose={onClose}
       onSubmit={async (data) => {
-        const healthMembership = formText(data, 'healthMembership'),
-          pensionMembership = formText(data, 'pensionMembership');
+        const healthMembership = formText(data, 'healthMembership');
+        const pensionMembership = formText(data, 'pensionMembership');
         await task.mutateAsync({
           action: future ? 'workforce.supersede_payroll_condition' : 'workforce.save_payroll_condition',
           input: {
@@ -319,12 +319,12 @@ function ConditionDialog({
   );
 }
 export function FiscalConditions({ data, employeeId }: { data: FiscalBoard; employeeId: string }) {
-  const { t } = useLocale(),
-    [editing, setEditing] = useState<{
-      employee: FiscalBoard['employees'][number];
-      original?: Condition;
-      future?: boolean;
-    }>();
+  const { t } = useLocale();
+  const [editing, setEditing] = useState<{
+    employee: FiscalBoard['employees'][number];
+    original?: Condition;
+    future?: boolean;
+  }>();
   const employees = data.employees.filter((employee) => !employeeId || employee.id === employeeId);
   return (
     <WorkforcePanel title={t({ ja: '税・保険の本人条件', en: 'Employee tax and insurance conditions' })} icon="people">

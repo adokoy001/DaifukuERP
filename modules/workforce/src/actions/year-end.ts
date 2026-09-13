@@ -48,8 +48,8 @@ export const submitYearEndDeclarationAction = workflowAction(
         await allRows(ctx, WorkforceYearEndDeclaration, { employeeId: employee.id, taxYear: input.taxYear })
       )[0];
       expectVersion(prior?.version ?? 0, input.expectedVersion);
-      const { expectedVersion: _version, ...raw } = input,
-        declaration = yearEndDeclarationData.parse(raw);
+      const { expectedVersion: _version, ...raw } = input;
+      const declaration = yearEndDeclarationData.parse(raw);
       const values = {
         declaration,
         status: 'submitted' as const,
@@ -121,8 +121,8 @@ export const calculateYearEndAction = workflowAction(
           throw new StateError('年末調整下書きが重複しています', '給与本部で下書きの状態を確認してください。');
         const prior = existing[0];
         expectVersion(prior?.version ?? 0, input.expectedVersion);
-        const source = await yearEndSource(ctx, input.employeeId, input.taxYear, input.adjustedOn),
-          value = source.result;
+        const source = await yearEndSource(ctx, input.employeeId, input.taxYear, input.adjustedOn);
+        const value = source.result;
         const values = {
           declarationId: source.declaration.id,
           adjustedOn: input.adjustedOn,

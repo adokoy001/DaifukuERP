@@ -17,20 +17,20 @@ export function EdgePage() {
   return <EdgeWorkspace key={edgeIdentity()} />;
 }
 function EdgeWorkspace() {
-  const { t } = useLocale(),
-    meta = useEdgeAccess(),
-    actions = meta.data?.actions.map((action) => action.name) ?? [];
-  const allowed = actions.includes('edge.board'),
-    manage = actions.includes('edge.create_gateway');
-  const [gatewayId, setGatewayId] = useState<string>(),
-    [create, setCreate] = useState(false),
-    [selection, setSelection] = useState<EdgeSelection>();
-  const board = useEdgeBoard(allowed, gatewayId),
-    sources = [meta, board],
-    data = board.data,
-    failed = sources.find((source) => source.isError && !canRetainData(source));
-  const busy = sources.some((source) => source.isFetching || source.isError),
-    gateway = data?.gateways.find((row) => row.id === gatewayId);
+  const { t } = useLocale();
+  const meta = useEdgeAccess();
+  const actions = meta.data?.actions.map((action) => action.name) ?? [];
+  const allowed = actions.includes('edge.board');
+  const manage = actions.includes('edge.create_gateway');
+  const [gatewayId, setGatewayId] = useState<string>();
+  const [create, setCreate] = useState(false);
+  const [selection, setSelection] = useState<EdgeSelection>();
+  const board = useEdgeBoard(allowed, gatewayId);
+  const sources = [meta, board];
+  const data = board.data;
+  const failed = sources.find((source) => source.isError && !canRetainData(source));
+  const busy = sources.some((source) => source.isFetching || source.isError);
+  const gateway = data?.gateways.find((row) => row.id === gatewayId);
   const selectionAllowed =
     !selection ||
     Boolean(
@@ -50,10 +50,10 @@ function EdgeWorkspace() {
     if (!manage || failed) setCreate(false);
     if (failed || !selectionAllowed) setSelection(undefined);
   }, [manage, failed, selectionAllowed]);
-  const close = () => setSelection(undefined),
-    refresh = () => {
-      for (const source of sources) void source.refetch();
-    };
+  const close = () => setSelection(undefined);
+  const refresh = () => {
+    for (const source of sources) void source.refetch();
+  };
   return (
     <div className="workspace-page edge-page">
       <EdgeHero />
