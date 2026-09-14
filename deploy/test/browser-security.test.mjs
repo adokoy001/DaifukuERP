@@ -234,6 +234,7 @@ async function verifyBrowser(context, origin, peerOrigin, calls) {
   context.on('page', observePopup);
   await page.locator('#print').click();
   const popup = await popupPromise;
+  await expect(popup).toHaveURL(/^blob:/);
   await popup.waitForLoadState();
   assert.equal(await popup.evaluate(() => globalThis.opener), null);
   assert.equal(await popup.evaluate(() => globalThis.printInlineRan), undefined);
@@ -247,9 +248,13 @@ async function verifyBrowser(context, origin, peerOrigin, calls) {
   );
   await popup.getByRole('button', { name: 'Print', exact: true }).click();
   await expect.poll(() => popup.evaluate(() => globalThis.printObserved === true)).toBe(true);
-  const closed = popup.waitForEvent('close');
-  await popup.getByRole('button', { name: 'Close', exact: true }).click();
-  await closed;
+  // The real handler closes this target; observe closure instead of waiting for navigation on a closed page.
+  await Promise.all([
+    popup.waitForEvent('close', { timeout: 10_000 }),
+    popup.getByRole('button', { name: 'Close', exact: true }).click({ noWaitAfter: true }),
+  ]);
+  assert.equal(popup.isClosed(), true);
+  assert.equal(page.isClosed(), false);
   context.off('page', observePopup);
   const downloaded = page.waitForEvent('download');
   await page.locator('#download').click();
