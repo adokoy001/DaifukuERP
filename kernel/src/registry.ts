@@ -1,6 +1,8 @@
 // Process-wide registry of modules, packs, entities, actions, hooks, overrides, guards and event subscriptions.
 // Modules and packs register by calling defineEntity/defineAction/defineModule/definePack at import time; apps read from here.
 import type { PgTable } from 'drizzle-orm/pg-core';
+import { getTableColumns } from 'drizzle-orm';
+import { buildTable, type RefResolver } from './db/table.ts';
 import type { z } from 'zod';
 import type { ActionDef, EntityDef, LabelOverride, ModuleDef, PackDef } from './dsl/defs.ts';
 import { checkExtFields, DEFAULT_EXT_SOURCE, type ExtFieldDef, type RegisterExtOptions } from './dsl/ext.ts';
@@ -353,11 +355,22 @@ class Registry {
   registerSystemTable(name: string, table: PgTable): void {
     this.systemTables.set(name, table);
   }
-  /** All tables for drizzle-kit: system tables + entity tables. */
+  /** Schema-only tables include generated equality columns after every pack is loaded; runtime tables stay intact. */
   tables(): Record<string, PgTable> {
     const out: Record<string, PgTable> = {};
     for (const [name, t] of this.systemTables) out[name] = t;
-    for (const e of this.entities.values()) out[e.name] = e.table;
+    const resolveRef: RefResolver = (name, column = 'id') => {
+      if (name === '@company') {
+        const company = this.systemTables.get('companies');
+        return company ? getTableColumns(company)[column] : undefined;
+      }
+      return this.entity(name).columns[column];
+    };
+    for (const e of this.entities.values()) {
+      const ext = this.extFields(e.name);
+      const indexed = ext.some((def) => (def.field.opts as { equalityIndex?: boolean }).equalityIndex === true);
+      out[e.name] = indexed ? buildTable(e.config, e.kind, resolveRef, ext).table : e.table;
+    }
     return out;
   }
 

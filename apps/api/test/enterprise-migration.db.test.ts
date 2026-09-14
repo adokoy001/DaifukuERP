@@ -47,7 +47,7 @@ beforeAll(async () => {
   await scoped(owner, tenant, async (tx) => {
     await tx`insert into tenants(id,name) values(${tenant},'Historical enterprise fixture')`;
     await tx`insert into companies(id,tenant_id,code,name,settings) values(${company},${tenant},'ORIGINAL','Existing company','{"keep":"settings"}')`;
-    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version) values(${user},${tenant},'historical-enterprise@example.invalid','Existing employee',${hashPassword('Synthetic-OriginalCredential-2026')},'[]',${company},7)`;
+    await tx`insert into users(id,tenant_id,email,name,password_hash,roles,default_company_id,session_version) values(${user},${tenant},'historical-enterprise@example.invalid','Existing employee',${await hashPassword('Synthetic-OriginalCredential-2026')},'[]',${company},7)`;
     await tx`insert into user_company_memberships(tenant_id,user_id,company_id,roles,access_scope,version) values(${tenant},${user},${company},'["workforce_employee"]','all',3)`;
     await tx`insert into workforce_site(id,tenant_id,company_id,code,name) values(${site},${tenant},${company},'OLD','Existing site')`;
     await tx`insert into workforce_employee(id,tenant_id,company_id,user_id,site_id,code,name,hired_on,version) values(${employee},${tenant},${company},${user},${site},'EMP','Existing employee','2025-04-01',7)`;

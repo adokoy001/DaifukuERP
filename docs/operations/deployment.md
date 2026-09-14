@@ -33,7 +33,7 @@ node /opt/daifuku/releases/release-001/bundle/source/scripts/verify-release.mjs 
 
 ```bash
 cd /opt/daifuku/releases/release-001/bundle/runtime/apps/api
-/opt/node22/bin/node --import tsx src/setup/cli.ts install   --env /home/daifuku/setup-source.env   --state-dir /home/daifuku/operations   --tenant-name '運営組織' --company-code MAIN --company-name '運営会社'   --admin-email '実際の管理者メール' --admin-name '初回管理者'   --generate-admin-password
+/opt/node22/bin/node dist/setup/cli.js install   --env /home/daifuku/setup-source.env   --state-dir /home/daifuku/operations   --tenant-name '運営組織' --company-code MAIN --company-name '運営会社'   --admin-email '実際の管理者メール' --admin-name '初回管理者'   --generate-admin-password
 ```
 
 最初は plan のみ。対象を確認し、全 API/MCP/worker/外部 writer を停止してから同じコマンドへ `--execute --confirm-target <target.id> --maintenance-confirmed` を付ける。成功後、既存 `operations/runtime.env` を0600のまま保護されたエディターで編集し、次を明示する。内容を shell の引数へ貼り付けたり `source` したりしない。
@@ -79,7 +79,7 @@ systemd unit は SIGTERM と終了猶予を用い、release を read-only とし
 
 ## 5. 更新・失敗復旧
 
-新 release を新ディレクトリへ展開・検証し、旧 release、私有 runtime.env、添付、DB role 秘密、移行前 DB backup を保全する。サービスを止め、新 release の runtime から `src/setup/cli.ts upgrade` を plan → 明示 execute する。新 profile を生成して内容を確認し、管理者が起動先を切り替える。
+新 release を新ディレクトリへ展開・検証し、旧 release、私有 runtime.env、添付、DB role 秘密、移行前 DB backup を保全する。サービスを止め、新 release の runtime から `dist/setup/cli.js upgrade` を plan → 明示 execute する。新 profile を生成して内容を確認し、管理者が起動先を切り替える。
 
 migration が適用された DB に古い実行コードだけを向ける「ロールバック」は行わない。復旧は [元の版と別の新規 DB を用いた復元](setup.md#4-復元した-db-で回復を確認する) で検証し、接続先を明示して切り替える。DB dump は添付・環境設定・role を含まない。常駐 process の再起動、TLS 証明書更新、backup 保持/実復元、空き容量監視は運用の責任である。
 

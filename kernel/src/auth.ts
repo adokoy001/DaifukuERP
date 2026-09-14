@@ -1,5 +1,6 @@
 // Users and passwords. Login lookups run on the owner connection because users are RLS-scoped by tenant.
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { DUMMY_PASSWORD_HASH, hashPassword, passwordNeedsRehash, verifyPassword } from './password-hash.ts';
+export { hashPassword, verifyPassword } from './password-hash.ts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from './db/client.ts';
 import { companies, companyMemberships, tenants, users } from './db/system-tables.ts';
@@ -8,23 +9,6 @@ import { StateError } from './errors.ts';
 import { resolveCompanyAccess } from './company-access.ts';
 import type { Principal } from './principal.ts';
 export type { Principal } from './principal.ts';
-
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `scrypt$${salt}$${hash}`;
-}
-
-export function verifyPassword(password: string, stored: string | null): boolean {
-  if (!stored) return false;
-  const [algo, salt, hash] = stored.split('$');
-  if (algo !== 'scrypt' || !salt || !hash) return false;
-  const candidate = scryptSync(password, salt, 64);
-  const expected = Buffer.from(hash, 'hex');
-  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
-}
-
-const DUMMY_PASSWORD = hashPassword('not-a-real-login-password');
 
 /** Finds an active user by email across tenants (owner connection; bypasses RLS by design for login only). */
 export async function authenticate(
@@ -45,9 +29,59 @@ export async function authenticate(
     )
     .limit(2);
   const user = rows[0];
-  const valid = verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD);
-  if (!user || rows.length > 1 || !valid) return null;
-  return principalFrom(owner, user);
+  const valid = await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || rows.length > 1 || !valid || !user.passwordHash) return null;
+  let acceptedHash = user.passwordHash;
+  if (passwordNeedsRehash(acceptedHash)) {
+    const upgraded = await hashPassword(password);
+    const [changed] = await owner.drizzle
+      .update(users)
+      .set({ passwordHash: upgraded })
+      .where(
+        and(
+          eq(users.id, user.id),
+          eq(users.tenantId, user.tenantId),
+          eq(users.active, 1),
+          eq(users.sessionVersion, user.sessionVersion),
+          eq(users.passwordHash, acceptedHash),
+        ),
+      )
+      .returning({ id: users.id });
+    if (changed) acceptedHash = upgraded;
+    else {
+      // Another login may have upgraded the same hash. A reset, revoke or deactivation must still win.
+      const [current] = await owner.drizzle
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.id, user.id),
+            eq(users.tenantId, user.tenantId),
+            eq(users.active, 1),
+            eq(users.sessionVersion, user.sessionVersion),
+          ),
+        )
+        .limit(1);
+      if (!current?.passwordHash || !(await verifyPassword(password, current.passwordHash))) return null;
+      acceptedHash = current.passwordHash;
+    }
+  }
+  if (!acceptedHash) return null;
+  // Crypto yields: do not return the identity captured before a concurrent password/security update.
+  const [current] = await owner.drizzle
+    .select()
+    .from(users)
+    .where(
+      and(
+        eq(users.id, user.id),
+        eq(users.tenantId, user.tenantId),
+        eq(users.active, 1),
+        eq(users.sessionVersion, user.sessionVersion),
+        eq(users.passwordHash, acceptedHash),
+      ),
+    )
+    .limit(1);
+  return current ? principalFrom(owner, current) : null;
 }
 
 export async function loadPrincipal(owner: Database, userId: string): Promise<Principal | null> {
@@ -129,7 +163,7 @@ export async function bootstrapTenant(
       tenantId,
       email: input.adminEmail.toLowerCase(),
       name: input.adminName,
-      passwordHash: hashPassword(input.adminPassword),
+      passwordHash: await hashPassword(input.adminPassword),
       roles: ['admin'],
       tenantAdmin: 1,
       defaultCompanyId: companyId,

@@ -23,7 +23,7 @@
    - insert は必須 ext キーを要求（`ext` 自体を省略しても）。update は patch に `ext` があるときだけ検証（`ext` は丸ごと置換される既存の意味を変えない）。
 3. **一覧の `where` と `search`**（`kernel/src/repository/ext-query.ts`）:
    - `where: { 'ext.<key>': … }` は登録済みキーのみ（typo は登録キー一覧を hint に VALIDATION）。`(ext ->> '<key>')` のテキスト比較で、等価・`null`・`$in`（空なら偽）・`$ne`・text 種別の `$like`。範囲演算子は拒否（テキスト順は数値順ではない）。decimal 項目の比較値は正規形にしてから比べる。`$or`/`$and` の中、rowRules の domain でも同じ規則。
-   - キーは登録時の正規表現（`^[a-z][A-Za-z0-9]*$`）を通ったものだけなので SQL にリテラルとして埋め込む（パラメータにしない。将来 `(ext->>'jan')` の式インデックスが効く形）。
+   - キーは登録時の正規表現（`^[a-z][A-Za-z0-9]*$`）を通ったものだけなので SQL にリテラルとして埋め込み、値はバインドする。完全一致の `equalityIndex: true` は、[ADR-0026](0026-ext-equality-indexes.md) の内部計算列と B-tree で候補を絞り、全文比較を残す。RLS 下での利用を実行計画で検査する。
    - `searchable: true` の text ext は汎用 `search` の OR 条件に加わる（normalize も同じ）。`orderBy` の ext は対象外。
 4. **meta と入力スキーマ**: `EntityMeta.extFields: FieldMeta[]`（`name` は `ext.<key>`、`source`・`searchable` 付き、登録が無ければ `[]`。`fields` には混ぜない）。汎用 `<entity>.create` / `.update` の `input`（OpenAPI・MCP tool の inputSchema の元）は、`registerCrudActions` の後に登録された ext も含めて `ext` の形を載せる（input を getter にして extVersion が変わったら再生成。明細エンティティの ext も lines 入力に載る）。これらのアクションは lenient なので、スキーマは説明用で、検証は 2. の Repository が行う。
 5. **`after_lines_saved` フック**: `HOOK_PHASES` に追加。`saveLines` 1 回につき 1 回、全明細セットの置換が終わってから発火（汎用 create/update・`amendDocument`・直接呼び出しのどれでも）。`HookArgs.row` は親の再読込（フックごとに読み直すので、前のフックの更新が見える。他の after_* と同じく DB の生の行）、`HookArgs.lines` は伝票の全明細セット（`lineEntity → 行[]`、seq 順、Decimal）。

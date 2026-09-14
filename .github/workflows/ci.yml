@@ -59,6 +59,7 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -d postgres -f .github/ci/databases.sql
       - run: pnpm gate
       - run: pnpm --filter @daifuku/api typecheck
+      - run: pnpm build:api
       - run: pnpm --filter @daifuku/edge build
       - run: pnpm --filter @daifuku/web typecheck
       - run: pnpm --filter @daifuku/web build
@@ -112,6 +113,8 @@ jobs:
         run: echo "E2E_INVOICE_DATE=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_ENV"
       - name: Prepare empty database and unapplied industry companies
         run: pnpm --filter @daifuku/api exec tsx src/db/e2e-fixture.ts
+      - name: Build the compiled API used by browser workflows
+        run: pnpm build:api
       - name: Start isolated API and Web
         run: bash .github/ci/start-e2e.sh
       - name: Run industry UI prerequisites, then the remaining browser tests

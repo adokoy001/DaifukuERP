@@ -7,7 +7,14 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['**/test/**/*.test.ts', '**/src/**/*.test.ts'],
-          exclude: ['**/*.db.test.ts', '**/node_modules/**', '**/dist/**', '**/e2e/**', '**/.stryker-tmp/**'],
+          exclude: [
+            '**/*.db.test.ts',
+            '**/node_modules/**',
+            '**/dist/**',
+            '**/e2e/**',
+            '**/.stryker-tmp/**',
+            '**/.runtime/**',
+          ],
         },
       },
       {
@@ -15,7 +22,7 @@ export default defineConfig({
           name: 'db',
           setupFiles: ['./apps/api/test/payroll-provider-setup.ts'],
           include: ['**/*.db.test.ts'],
-          exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**', '**/.runtime/**'],
           fileParallelism: false,
           testTimeout: 30000,
           // Each DB suite builds the full schema; allow for migration work on slower local disks.

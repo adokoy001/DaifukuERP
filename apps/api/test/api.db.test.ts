@@ -55,7 +55,7 @@ beforeAll(async () => {
     tenantId: db.tenantId,
     email: 'sales@example.com',
     name: 'Sales',
-    passwordHash: hashPassword('sales-pw'),
+    passwordHash: await hashPassword('sales-pw'),
     roles: ['sales'],
     defaultCompanyId: db.companyId,
   });
@@ -413,7 +413,7 @@ describe('kernel-phase15: internal actions, /auth/me company, meta contract (AC-
       tenantId: db.tenantId,
       email: 'nocompany@example.com',
       name: 'No Company',
-      passwordHash: hashPassword('nc-pw'),
+      passwordHash: await hashPassword('nc-pw'),
       roles: ['viewer'],
       defaultCompanyId: null,
     });

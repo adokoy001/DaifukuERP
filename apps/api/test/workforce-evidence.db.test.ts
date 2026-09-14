@@ -80,7 +80,7 @@ async function user(name: string, roles: string[], sites: string[]) {
     tenantId: db.tenantId,
     email,
     name,
-    passwordHash: hashPassword('test-password'),
+    passwordHash: await hashPassword('test-password'),
     roles,
     defaultCompanyId: db.companyId,
   });

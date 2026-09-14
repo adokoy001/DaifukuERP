@@ -18,7 +18,7 @@ async function createAccount(withCompany = true) {
     tenantId: db.tenantId,
     email,
     name: 'Staff',
-    passwordHash: hashPassword(PASSWORD),
+    passwordHash: await hashPassword(PASSWORD),
     roles: [],
     defaultCompanyId: withCompany ? db.companyId : null,
   });

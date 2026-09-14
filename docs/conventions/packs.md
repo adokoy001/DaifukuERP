@@ -57,6 +57,7 @@ export const RetailPack = definePack({
 - **名前**: pack 名・エンティティ名・設定キーの前半は snake_case、ext キーは camelCase（ADR-0014。`customer_rank` ではなく `customerRank`）。
 - **定義エラーは import 時に出る**（全部通るまで何も登録しない）。hint を読んで直す。
 - **ext**: `required` を付けない（既存データへの導入時に不足する）。既定値は付けられないので、要るなら `before_validate` フックで入れる。範囲検索・並び替えが要る項目は ext ではなく pack のエンティティの列にする。
+- **ext の索引**: text の `equalityIndex: true` は完全一致 / IN 用の内部計算列と tenant/company 付き非 unique B-tree を作る。追加時は全 pack を読んで新規 migration を生成する。`searchable: true` は部分一致検索への参加指定であり、索引を作らない。通常リクエストや会社への pack 適用で DDL を実行しない。先頭ゼロ・長い既存値・全文比較を保持する方式と導入時のロックは [ADR-0026](../adr/0026-ext-equality-indexes.md) を参照。
 - **entities**: テーブルができるのでマイグレーション生成が要る（統合時に本体が `pnpm db:generate`）。テスト（`freshDb`）はレジストリからスキーマを作るので生成前でも動く。
 - **settings**: キーは登録済みの設定（`depends` の module が宣言したもの、または pack の `hooks` で `registry.registerSetting` したもの）で、値は schema を通ること。検査は適用時（未登録キー・不正値は `ValidationError`、何も書かれない）。会社が既に値を持つキーは上書きしない。
 - **labels**: 会社に適用されたパックだけを反映する。同じ会社で複数のパックが同じラベルを指定した場合は登録順に解決されるため、業種のデモは別会社へ分ける。ext 項目のラベルは ext 定義に書く。

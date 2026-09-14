@@ -1,6 +1,12 @@
-# 現在地（2026-09-13 AWS の独立試用環境）
+# 現在地（2026-09-14 追加レビューへの対応）
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
+
+## 認証・検索・配布の補強
+
+[追加レビュー仕様](specs/review-hardening.md)に基づき、非同期scryptと旧形式の互換移行、計算負荷の上限、JANの宣言的な完全一致索引、分析画面の重要な非同期操作の回帰試験、[ビルド済みAPI](architecture/compiled-api.md)を追加した。索引はRLSを維持した実行計画を確認し、内部計算列とスコープ付きB-treeを採用する。[0016の導入条件](adr/0026-ext-equality-indexes.md)と[新ハッシュの復旧条件](operations/enterprise-identity.md)を更新手順と合わせて確認する。
+
+Cookie認証への切替は未実装で、別タブのアカウント・会社・未保存入力を保つ[移行方針](adr/0025-browser-session-migration.md)を記録した。検証状況は[作業記録](log/2026-09-14-review-hardening.md)を参照する。ソースへの実装とAWS試用環境への反映は区別し、この追加レビュー対応ではAWSを更新しない。
 
 ## ソースの可読性と給与制度版
 

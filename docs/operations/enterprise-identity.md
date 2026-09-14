@@ -34,7 +34,7 @@ MCPは `DAIFUKU_MFA_CODE`（その起動で一度だけ利用するTOTPまたは
 
 SMTPには `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_SECURE` を設定します。`SMTP_SECURE=true` は接続時TLS（既定465）、falseはSTARTTLS必須（既定587）です。証明書検証は無効にできません。APIはメールをトランザクション内の暗号化outboxへ登録し、直接送信しません。
 
-配送は同じ保護設定を持つ環境で `pnpm --filter @daifuku/api mail:deliver` を明示的に実行します。スケジューラで繰り返し実行して配送待ちを処理してください。未設定の場合は未配信のまま終了コード2です。成功件数・失敗件数だけを表示し、宛先、本文、token、SMTP応答の原文はログへ出しません。招待画面の「配送待ち」は受信完了を意味しません。
+配送は同じ保護設定を持つ環境で明示的に実行します。ソース環境では `pnpm --filter @daifuku/api mail:deliver`、配布物では `runtime/apps/api` を作業ディレクトリにして `node --env-file=/absolute/path/to/runtime.env dist/identity/mail-cli.js` を使います。`runtime.env` にはAPIと同じ保護された設定ファイルの絶対パスを指定してください。スケジューラで繰り返し実行して配送待ちを処理してください。未設定の場合は未配信のまま終了コード2です。成功件数・失敗件数だけを表示し、宛先、本文、token、SMTP応答の原文はログへ出しません。招待画面の「配送待ち」は受信完了を意味しません。
 
 workerは2分のlease、固定Message-ID、最大5回の指数間隔で再試行します。SMTPが受理直後に接続切断した場合は再試行で重複配送され得ます（at-least-once）。リンクは同じ単回tokenなので二重受理はできません。成功・期限切れ・試行上限では本文暗号文を削除し、配送状態を残します。通信timeoutはleaseより短い30秒です。エラーは `delivery_failed` / `expired` / `attempt_limit` に分類します。
 
@@ -51,3 +51,19 @@ workerは2分のlease、固定Message-ID、最大5回の指数間隔で再試行
 MFA は各 challenge の最大5試行に加え、テナントと本人で5分窓10失敗を共有します。新 challenge や MCP 接続を使っても本人側予算は共通です。拒否が続く場合は次の窓まで待ち、現在の認証器または未使用回復コードでやり直します。API と MCP のパスワード失敗予算も共通です。
 
 配送・challenge 作成には別の発行予算があります。メール再設定申請は宛先/テナントで30分3回、IPで30分20回。招待は本人管理者で5分30回、テナント全体で5分100回。OIDC 開始は IP で5分300回です。これらは成功した申請も消費します。HTTP 429 は処理完了ではないため、繰り返し送信せず時間を空けてください。reverse proxy 配下の配備では接続元 IP の扱いも導入受入で確認します。アプリは任意の X-Forwarded-For を信頼していません。
+
+## パスワードハッシュの強度と更新
+
+`review-hardening` 以降の生成は Node.js の非同期 `scrypt` を使います。新形式は `scrypt$v1$32768$8$3$64$<salt>$<hash>` で、順に版・N・r・p・出力byte数を記録します。saltは16byteの乱数をhex文字列にし、その文字列をUTF-8で渡します。保存形式は厳格に検査し、余剰項目、不正長、未対応版、許可していない計算量を拒否します。DB値を編集して計算量を自由に指定する仕組みではありません。
+
+N=32768/r=8/p=3は [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt) が挙げる32MiBの代替設定です（確認2026-09-14）。128MiB設定よりメモリを抑え、CPU計算量との交換で提示水準を満たします。[Node.js 22のscrypt](https://nodejs.org/docs/latest-v22.x/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback) の非同期版はworker poolを使うため、イベントループを塞ぎませんが、CPU・メモリ消費は残ります。
+
+API/MCPの**各プロセス**で同時実行2件、待機8件、待機上限5秒、1計算の `maxmem` 48MiBに固定しています。実行中の計算はcallbackが終了するまで枠を保持し、待ち時間だけで枠を再利用しません。上限超過・待ち期限・暗号処理の利用不能はHTTP 503相当です。利用者は少し待って再試行してください。503は誤パスワードの失敗予算へ計上せず、その試行の予約を返却します。既存の失敗10回/100回制限とは別の資源上限です。プロセスを増やせば全体の同時数も増えるため、稼働台数・worker poolを含めてメモリと待ち時間を監視します。
+
+2026-09-14のWSL Linux/x64・Node22.23.2の小さな合成逐次計測では、旧既定の同期処理で0ms timerが44〜65ms遅延し、同条件の非同期では0.45〜1.53msでした。採用したN32768/r8/p3の別計測は計算583〜677ms、timer1.4〜6.8msでした。これらは開発端末の測定で、AWS実機の処理能力や同時負荷の保証ではありません。単に並列数を増やしたり、同期処理のままNだけを引き上げたりしないでください。
+
+旧 `scrypt$<salt>$<hash>` はN16384/r8/p1/出力64byteと、従来のUTF-8 salt文字列解釈で読み続けます。旧形式の正しいパスワードでログインすると、元hash・active・sessionVersionを条件に新形式へ比較更新します。並行reset/無効化/全端末失効を上書きせず、再読込して現在の本人状態を確認します。再ハッシュだけでは業務上のversionやsessionVersionを変更せず、既存セッションを強制終了しません。誤パスワードでは更新せず、休眠ユーザーの旧hashは次のパスワードログインまで残ります。SSOログインだけではローカルパスワードを再ハッシュできません。新規登録・本人変更・管理者変更・招待受諾・再設定完了は新形式を生成します。
+
+`password_hash` は既存text列のままで、この変更自体のschema migrationは不要です。ただし、新形式を生成した後のDBを**旧ハッシュ専用アプリへ戻すことはできません**。更新前にバックアップを取り、復旧先も新旧両形式を読める版を選びます。旧版と旧DBの組合せへ戻す場合は、その後のパスワード変更・業務更新を含む復元範囲を別途検証してください。実利用者の一括リセットや設定上書きは行いません。
+
+API開発者向けには、`hashPassword` は `Promise<string>`、`verifyPassword` は `Promise<boolean>` です。呼出しは必ず `await` し、拒否を上位へ伝えます。MFAのTOTP/回復コード方式、12時間のJWT、現在のタブ別Bearer認証方式はこの更新では変更しません。互換性と過負荷の回帰は `kernel/test/password-hash.test.ts`、`password-work-queue.test.ts`、`password-auth.db.test.ts` と既存REST/MCP認証試験で確認します。

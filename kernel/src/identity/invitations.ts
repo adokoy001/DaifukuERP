@@ -164,7 +164,7 @@ export async function completeIdentityToken(
       await ctx.db
         .update(users)
         .set({
-          passwordHash: hashPassword(password),
+          passwordHash: await hashPassword(password),
           active: 1,
           sessionVersion: user.sessionVersion + 1,
           version: user.version + 1,

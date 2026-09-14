@@ -76,7 +76,7 @@ async function populateLegacy(url: string, folder: string) {
     company = newId(),
     user = newId(),
     password = 'Original-LegacyCredential9!',
-    hash = hashPassword(password);
+    hash = await hashPassword(password);
   await useDb(url, async (db) => {
     assert.equal((await relationNames(db)).length, 0, 'legacy test DB must be new');
     await migrate(db.drizzle, { migrationsFolder: folder });

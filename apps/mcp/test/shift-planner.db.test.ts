@@ -35,7 +35,7 @@ it('employee-shift-planner MCP keeps preferences personal and rechecks live comp
     tenantId: db.tenantId,
     email,
     name: 'Shift MCP',
-    passwordHash: hashPassword('shift-mcp-password'),
+    passwordHash: await hashPassword('shift-mcp-password'),
     roles: [],
     defaultCompanyId: db.companyId,
   });

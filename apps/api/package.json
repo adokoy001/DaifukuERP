@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "build": "node ../../scripts/build-api.mjs",
+    "start": "node ../../.runtime/api/apps/api/dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:schema": "tsx src/db/cli.ts snapshot",
     "db:generate": "tsx src/db/cli.ts generate",
@@ -45,7 +46,6 @@
     "jose": "^6.2.12",
     "nodemailer": "^10.0.9",
     "postgres": "^3.4.9",
-    "tsx": "^4.19.0",
     "zod": "^4.6.1",
     "@daifuku/mod-pos-integration": "workspace:*",
     "@fastify/websocket": "^11.3.0",
@@ -53,6 +53,7 @@
     "@daifuku/mod-edge-integration": "workspace:*"
   },
   "devDependencies": {
+    "tsx": "^4.19.0",
     "@daifuku/mod-trade": "workspace:*",
     "@daifuku/mod-banking": "workspace:*",
     "@daifuku/mod-tax-filing": "workspace:*",

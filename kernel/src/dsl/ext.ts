@@ -47,6 +47,10 @@ function keyIssues(entity: EntityDef, key: string, fd: AnyField): string[] {
   if (key in entity.config.fields) out.push(`"${key}" is already a field of ${entity.name}`);
   if (!EXT_KINDS.has(fd.kind)) out.push(`kind "${String(fd.kind)}" cannot live in JSONB ext`);
   const opts = fd.opts as Record<string, unknown>;
+  if (opts.equalityIndex !== undefined && typeof opts.equalityIndex !== 'boolean')
+    out.push('option "equalityIndex" must be boolean');
+  if (opts.equalityIndex === true && fd.kind !== 'text')
+    out.push('option "equalityIndex" is supported only for text ext fields');
   for (const o of COLUMN_ONLY_OPTS)
     if (opts[o] === true) out.push(`option "${o}" is not supported for ext fields (no column)`);
   if (fd.hasDefault)
