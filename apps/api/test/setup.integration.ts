@@ -187,6 +187,22 @@ async function main(): Promise<void> {
     await busy.sql`select 1`;
     await assert.rejects(runSetup(first), { code: 'DATABASE_BUSY' });
   });
+  step('release-finishing AC-5a rejects an oversized password before backup and migration');
+  const oversizedPasswordFile = join(artifact, 'oversized-password');
+  await writeExclusive(oversizedPasswordFile, 'Aa1!'.repeat(50) + 'x');
+  const invalidPassword = {
+    ...first,
+    stateDir: join(artifact, 'invalid-password'),
+    generateAdminPassword: false,
+    adminPasswordFile: oversizedPasswordFile,
+  };
+  await assert.rejects(runSetup(invalidPassword), { code: 'ADMIN_PASSWORD' });
+  assert.deepEqual((await readState(invalidPassword.stateDir))?.backups, []);
+  assert.equal(await exists(join(invalidPassword.stateDir, 'backups')), false);
+  await useDb(ownerUrl, async (db) => {
+    assert.equal((await relationNames(db)).length, 0);
+    assert.deepEqual(await history(db), []);
+  });
   step('AC-4/5/6 initial backup, migrate and injected crash after admin commit');
   await interruptInstallation(first, await changeEnv(9));
   const partial = await readState(base.stateDir);

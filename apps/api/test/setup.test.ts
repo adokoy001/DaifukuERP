@@ -68,6 +68,12 @@ describe('safe-setup validation', () => {
     await chmod(path, 0o644);
     await expect(privateFile(path)).rejects.toThrowError(SetupError);
   });
+  it('release-finishing AC-5a accepts 200 characters and rejects 201 at the setup password boundary', () => {
+    const password = 'Aa1!'.repeat(50);
+    expect(password.length).toBe(200);
+    expect(() => validatePassword(password)).not.toThrow();
+    expect(() => validatePassword(password + 'x')).toThrowError(SetupError);
+  });
   it('AC-5/6 keeps source env unchanged, rejects weak JWT and mismatched target URLs', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'daifuku-setup-env-'));
     const path = join(dir, 'input.env');

@@ -22,7 +22,58 @@ function service({ release, state, config, node, user }) {
 }
 function proxy({ release, hostname, profile, cert, key, port }) {
   const tls = profile === 'onprem' ? `\n  tls ${cert} ${key}` : '';
-  return `{\n  admin off\n}\n${hostname} {${tls}\n  encode zstd gzip\n  header X-Content-Type-Options nosniff\n  header Referrer-Policy no-referrer\n  redir /api /api/ 308\n  handle_path /api/* {\n    reverse_proxy 127.0.0.1:${port} {\n      header_up X-Forwarded-For {remote_host}\n      header_up X-Forwarded-Proto {scheme}\n      header_up X-Forwarded-Host {host}\n      stream_close_delay 5m\n    }\n  }\n  root * ${release}/web\n  handle /assets/* {\n    header Cache-Control "public, max-age=31536000, immutable"\n    file_server\n  }\n  handle {\n    header Cache-Control "no-cache"\n    try_files {path} /index.html\n    file_server\n  }\n}\n`;
+  // The release fixes API traffic and assets to this origin. Inline styles support React layouts and printed HTML;
+  // scripts, event-handler attributes and worker code have no corresponding inline/eval exception.
+  const policy = [
+    "default-src 'none'",
+    "script-src 'self'",
+    "script-src-attr 'none'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    `connect-src 'self' wss://${hostname}`,
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+  ].join('; ');
+  return `{
+  admin off
+}
+${hostname} {${tls}
+  encode zstd gzip
+  header {
+    defer
+    Content-Security-Policy "${policy}"
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    X-Frame-Options DENY
+    Strict-Transport-Security "max-age=31536000"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+  }
+  redir /api /api/ 308
+  redir /api/docs /api/docs/ 308
+  handle_path /api/* {
+    reverse_proxy 127.0.0.1:${port} {
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      header_up X-Forwarded-Host {host}
+      stream_close_delay 5m
+    }
+  }
+  root * ${release}/web
+  handle /assets/* {
+    header Cache-Control "public, max-age=31536000, immutable"
+    file_server
+  }
+  handle {
+    header Cache-Control "no-cache"
+    try_files {path} /index.html
+    file_server
+  }
+}
+`;
 }
 export async function renderProfile(input) {
   const release = safePath(input.release);

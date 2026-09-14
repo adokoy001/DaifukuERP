@@ -32,6 +32,7 @@
     "docs:check": "node scripts/check-doc-links.mjs",
     "test:identity:e2e": "node scripts/test-identity-e2e.mjs",
     "test:deploy": "node --test deploy/test/release.test.mjs deploy/test/compiled-api.test.mjs deploy/aws/trial.test.mjs",
+    "test:browser-security": "node --test deploy/test/browser-security.test.mjs",
     "build:release": "node scripts/build-release.mjs",
     "build:api": "node scripts/build-api.mjs",
     "verify:release": "node scripts/verify-release.mjs",

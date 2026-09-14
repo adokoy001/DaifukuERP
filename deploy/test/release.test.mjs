@@ -80,7 +80,16 @@ test('plan makes no files; explicit rendering creates only its new profile and p
     assert.match(unit, /dist\/main\.js/);
     assert.doesNotMatch(unit, /--import tsx|src\/main\.ts/);
     assert.doesNotMatch(unit, /EnvironmentFile|synthetic-never/);
-    assert.match(await readFile(join(f.output, 'Caddyfile'), 'utf8'), /handle_path \/api\/\*/);
+    const proxy = await readFile(join(f.output, 'Caddyfile'), 'utf8');
+    assert.match(proxy, /handle_path \/api\/\*/);
+    assert.match(proxy, /header \{\n {4}defer\n {4}Content-Security-Policy/);
+    assert.match(proxy, /script-src 'self'; script-src-attr 'none'/);
+    assert.match(proxy, /connect-src 'self' wss:\/\/erp.example.test/);
+    assert.match(proxy, /frame-ancestors 'none'/);
+    assert.match(proxy, /Strict-Transport-Security "max-age=31536000"/);
+    assert.match(proxy, /X-Frame-Options DENY/);
+    assert.match(proxy, /redir \/api\/docs \/api\/docs\/ 308/);
+    assert.doesNotMatch(proxy, /unsafe-eval|script-src[^;]*unsafe-inline|includeSubDomains|preload/);
     assert.equal(await readFile(f.config, 'utf8'), before);
     assert.equal((await lstat(join(f.state, 'evidence'))).mode & 0o777, 0o700);
     await assert.rejects(renderProfile({ ...f, execute: true }));

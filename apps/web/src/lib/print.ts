@@ -36,13 +36,19 @@ function escapeHtml(s: string): string {
  * Adds a fixed toolbar (print / close) to a rendered document. Hidden by `@media print`, so the paper output is the
  * module's layout untouched. Inserted right after `<body ...>` when present, else before the content.
  */
-export function withPrintBar(html: string, labels: PrintBarLabels): string {
+export function withPrintBar(html: string, labels: PrintBarLabels, webOrigin: string): string {
+  // The caller supplies location.origin, never an API-returned URL. Blob documents need an absolute asset URL.
+  const origin = new URL(webOrigin);
+  if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== webOrigin)
+    throw new Error('Print controls require the current Web origin.');
+  const controls = new URL('/print-controls.js', origin).href;
   const bar =
     `<style>.daifuku-print-bar{position:fixed;top:8px;right:8px;z-index:2147483647;display:flex;gap:6px;font:13px system-ui,sans-serif}` +
     `.daifuku-print-bar button{padding:4px 12px;border:1px solid #888;border-radius:4px;background:#fff;cursor:pointer}` +
     `.daifuku-print-bar button:hover{background:#eee}@media print{.daifuku-print-bar{display:none}}</style>` +
-    `<div class="daifuku-print-bar"><button type="button" onclick="window.print()">${escapeHtml(labels.print)}</button>` +
-    `<button type="button" onclick="window.close()">${escapeHtml(labels.close)}</button></div>`;
+    `<div class="daifuku-print-bar"><button type="button" data-daifuku-print="print">${escapeHtml(labels.print)}</button>` +
+    `<button type="button" data-daifuku-print="close">${escapeHtml(labels.close)}</button></div>` +
+    `<script src="${escapeHtml(controls)}" defer></script>`;
   const body = /<body[^>]*>/i.exec(html);
   if (!body) return `${bar}${html}`;
   const at = body.index + body[0].length;

@@ -123,6 +123,8 @@ module.exports = {
           '\\.test\\.ts$',
           '\\.spec\\.ts$',
           '(^|/)main\\.tsx?$',
+          // HTML entry emitted by lib/print.ts; browser-security acceptance loads and exercises this exact asset.
+          '^apps/web/public/print-controls\\.js$',
           '(^|/)scripts/',
         ],
       },

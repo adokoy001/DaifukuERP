@@ -50,22 +50,33 @@ describe('htmlOf', () => {
 
 describe('withPrintBar', () => {
   const labels = { print: '印刷', close: '閉じる' };
+  const origin = 'https://erp.example.test';
   it('inserts the bar right after <body> and keeps the rest of the document', () => {
     const out = withPrintBar(
       '<!doctype html><html><head><title>t</title></head><body class="a4"><h1>請求書</h1></body></html>',
       labels,
+      origin,
     );
     expect(out.indexOf('<div class="daifuku-print-bar">')).toBeGreaterThan(out.indexOf('<body class="a4">'));
     expect(out.indexOf('<div class="daifuku-print-bar">')).toBeLessThan(out.indexOf('<h1>'));
-    expect(out).toContain('onclick="window.print()">印刷<');
+    expect(out).toContain('data-daifuku-print="print">印刷<');
+    expect(out).toContain('<script src="https://erp.example.test/print-controls.js" defer></script>');
+    expect(out).not.toContain('onclick=');
     expect(out).toContain('@media print{.daifuku-print-bar{display:none}}');
     expect(out.endsWith('</body></html>')).toBe(true);
   });
   it('prepends the bar to a fragment without <body>, and escapes labels', () => {
-    const out = withPrintBar('<h1>x</h1>', { print: 'A<b>', close: '"q"' });
+    const out = withPrintBar('<h1>x</h1>', { print: 'A<b>', close: '"q"' }, origin);
     expect(out.startsWith('<style>')).toBe(true);
     expect(out.endsWith('<h1>x</h1>')).toBe(true);
     expect(out).toContain('>A&lt;b&gt;<');
     expect(out).toContain('>&quot;q&quot;<');
+  });
+  it('accepts the development origin but refuses non-origin and executable asset inputs', () => {
+    expect(withPrintBar('<h1>x</h1>', labels, 'http://localhost:5173')).toContain(
+      'src="http://localhost:5173/print-controls.js"',
+    );
+    for (const input of ['javascript:alert(1)', 'data:text/javascript,x', `${origin}/path`, `${origin}?token=x`])
+      expect(() => withPrintBar('<h1>x</h1>', labels, input)).toThrow();
   });
 });

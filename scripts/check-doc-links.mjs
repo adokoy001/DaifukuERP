@@ -101,6 +101,7 @@ documents.push(
   'docs/conventions/errors.md',
   'docs/conventions/source-headers.md',
 );
+documents.push('docs/specs/release-finishing.md', 'docs/log/2026-09-14-release-finishing.md');
 let checked = 0;
 const failures = [];
 for (const document of documents) {

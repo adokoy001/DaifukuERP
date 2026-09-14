@@ -6,6 +6,7 @@
 import {
   registry,
   repo,
+  NotFound,
   StateError,
   withLock,
   ValidationError,
@@ -45,7 +46,14 @@ async function loadAccounts(ctx: Context, ids: readonly string[]): Promise<Map<s
   if (unique.length === 0) return out;
   const res = await repo(ctx, Account).list({ where: { id: { $in: unique } }, limit: 500 });
   for (const a of res.items) out.set(a.id, a);
+  for (const id of unique) requireAccount(out, id);
   return out;
+}
+
+function requireAccount(accounts: ReadonlyMap<string, AccountRow>, id: string): AccountRow {
+  const account = accounts.get(id);
+  if (!account) throw new NotFound(Account.name, id);
+  return account;
 }
 
 /** The fiscal period containing `date`, or null. Throws StateError when it (or its year) is closed. */
@@ -93,7 +101,7 @@ export function registerValidateEntryHook(): void {
       debit: l.debit,
       credit: l.credit,
       partnerId: l.partnerId,
-      partnerRequired: accounts.get(l.accountId)?.partnerRequired ?? false,
+      partnerRequired: requireAccount(accounts, l.accountId).partnerRequired,
     }));
     const result = validateLines(checks);
     if (result.issues.length > 0) {
@@ -110,9 +118,15 @@ export function registerValidateEntryHook(): void {
   registry.registerHook(JournalEntry.name, 'after_submit', async (ctx, { row }) => {
     const entryId = row.id as string;
     const date = row.date as LocalDate;
+    const lines = await loadLines(ctx, entryId);
+    // A separate scoped read at stamping time: no per-line lookup or cache across hook phases.
+    const accounts = await loadAccounts(
+      ctx,
+      lines.map((line) => line.accountId),
+    );
     await withStamp(ctx, async (internal) => {
-      for (const l of await loadLines(ctx, entryId)) {
-        const account = await repo(ctx, Account).get(l.accountId);
+      for (const l of lines) {
+        const account = requireAccount(accounts, l.accountId);
         await repo(internal, JournalLine).update(l.id, {
           entryDate: date,
           posted: true,

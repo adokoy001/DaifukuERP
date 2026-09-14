@@ -51,14 +51,14 @@ export function validatePassword(password: string): void {
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9\s]/].filter((pattern) => pattern.test(password)).length;
   if (
     password.length < 16 ||
-    password.length > 256 ||
+    password.length > 200 ||
     classes < 3 ||
     /[\r\n\0]/.test(password) ||
     /^(password|admin|owner|app|dev-secret-change-me)/i.test(password)
   )
     throw new SetupError(
       'ADMIN_PASSWORD',
-      '管理者passwordは16〜256文字、英大/小/数字/記号のうち3種類以上で指定してください。既知の開発値は拒否します。',
+      '管理者passwordは16〜200文字、英大/小/数字/記号のうち3種類以上で指定してください。既知の開発値は拒否します。',
     );
 }
 function hiddenPassword(): Promise<string> {
@@ -87,7 +87,7 @@ function hiddenPassword(): Promise<string> {
         finish();
         resolve(value);
       } else if (key.name === 'backspace') value = value.slice(0, -1);
-      else if (text && !key.ctrl && value.length < 257) value += text;
+      else if (text && !key.ctrl && value.length < 201) value += text;
     };
     process.stdin.on('keypress', keypress);
   });

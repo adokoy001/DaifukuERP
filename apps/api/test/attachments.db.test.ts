@@ -402,7 +402,7 @@ describe('POST /api/attachments/upload (AC-2, AC-7)', () => {
 
 describe('GET /api/attachments/:id/download (AC-3)', () => {
   it('AC-3 streams the bytes with the original filename (RFC 5987) and content type; viewer may read', async () => {
-    const content = 'PNG bytes   日本語';
+    const content = 'PNG bytes \u0000\u0001\u0002 日本語';
     const up = await upload({ content, filename: 'スキャン (1).png', contentType: 'image/png' });
     expect(up.status).toBe(200);
     const res = await download(up.body.id as string, viewerToken);

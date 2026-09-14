@@ -72,10 +72,35 @@ cloud は組織管理 DNS と公開 TLS 入口を前提に Caddy の自動 HTTPS
 
 - `https://erp.example.jp/` と深い画面 URL で同じ SPA が表示される。
 - `https://erp.example.jp/api/health` は API 生存、`/api/ready` は DB/schema/storage を確認する。503 の内部原因は公開しない。
+- `/api/docs` は `/api/docs/` へ転送し、同一originのSwagger資産と仕様を読み込む。
 - ログイン・会社選択・添付保存と取得を確認する。公開入口を使う外部 callback/Webhook は `/api` prefix を含めて provider 側の登録 URL と厳密に揃える。
 - 店舗 agent は [機器連携仕様](../specs/deployment-edge.md) の外向き WSS/HTTPS を使う。通知が切れても再取得できること、停止・再起動後に同じ job を二重実行しないことを確認する。
 
 systemd unit は SIGTERM と終了猶予を用い、release を read-only とし evidence だけ書込可能にする。ただしこのスクリプトは systemd 自身を有効化しない。手動起動して放置した process と二重に常駐させない。
+
+### ブラウザの保護ヘッダー
+
+cloud/onpremとも、生成CaddyfileはCSPを強制適用する。報告だけの設定ではない。`defer`で応答直前に設定するため、API上流から来た値で保護ヘッダーが弱くならない。
+
+| 対象 | 許可・制限 | 現在の用途 |
+| --- | --- | --- |
+| JavaScript / Worker | 同一originのみ。inline script・イベント属性・evalは不可 | Web、Swagger、分析・シフトWorker、外部ファイル化した印刷ボタン |
+| 接続 | 同一origin HTTPと、そのFQDNのWSSのみ | `/api`。SSOはブラウザ全体の画面遷移であり、IdPへのfetch許可は追加しない |
+| スタイル | 同一originとinline CSS | Reactの動的余白・アイコン寸法、帳票と印刷バーのスタイル |
+| 画像 / フォント | 画像は同一origin・data・blob、フォントは同一origin | MFA登録QRのdata画像と、ブラウザ内で生成する画像 |
+| 埋込・送信 | objectと外部からのframe埋込を拒否、base変更を拒否、form送信は同一originのみ | クリックジャッキング・意図しない送信先の抑制 |
+
+`X-Frame-Options: DENY`、`nosniff`、`no-referrer`も設定する。Permissions Policyでcamera・microphone・geolocation・paymentの利用を拒否する。参照profileはHTTPS専用であり、HSTSは当該ホストに1年適用する。`includeSubDomains`と`preload`は付けず、別ホストの運用へ適用範囲を広げない。
+
+印刷用blobページも作成元のCSPを継承するため、印刷/閉じるボタンは同一originの`/print-controls.js`を読み込む。`showHtmlIn`は遷移前にopenerを切り離す。帳票のHTML escape、認可、入力検証は引き続き必要であり、CSPだけで任意のHTMLが安全になるわけではない。
+
+別originのAPI/CDNを使う独自配備や、iframe内へのERP埋込はこの参照profileの対象外。開発用Vite/E2Eの設定を本番の許可リストに混ぜない。稼働環境への適用は新profileを生成・比較してから行い、このソース変更だけでは既存Caddyの設定は更新されない。
+
+再現可能な受入は[ブラウザ保護試験](../../deploy/test/browser-security.test.mjs)と[専用CI](../../.github/workflows/browser-security.yml)。LinuxにCaddy 2.11.4・OpenSSL・NSSの`certutil`・Playwright Chromiumを用意し、`VITE_API_URL=/api pnpm --filter @daifuku/web build`、`CADDY_BIN=/path/to/caddy pnpm test:browser-security`を実行する。CIのCaddyは公式archiveの固定SHA-512を照合する。
+
+試験は一時CAを専用ブラウザの信頼ストアへ登録し、TLS検証を無効化しない。生成した両profileを空きportと試験証明書で実行し、Webログイン、深いURL、実Swagger、Worker、QR、実印刷/閉じる・ダウンロード、SSOの画面遷移を確認する。許可しないscript・eval・外部接続・form・base・object・frameと、blob内inline scriptの拒否も確認する。API/IdPは合成fixtureで、実認証・DB・添付保存の受入は別の通常/認証E2Eが担当する。公開CAの発行や本番IdPへの接続はこの試験では確認しない。
+
+一次資料（2026-09-14確認）: [Caddy header](https://caddyserver.com/docs/caddyfile/directives/header)、[CSP Level 3](https://www.w3.org/TR/CSP3/)、[script-src-attr](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src-attr)、[connect-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src)、[HSTS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security)。
 
 ## 5. 更新・失敗復旧
 
