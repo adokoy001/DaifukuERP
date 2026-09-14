@@ -65,8 +65,8 @@ describe('edge local trust boundary', () => {
   it('recovers pairing and rotation response loss with the already persisted new secret', async () => {
     const relay = await relayFixture();
     try {
-      const config = relay.config(),
-        credentials = await Credentials.open(relay.directory, config);
+      const config = relay.config();
+      const credentials = await Credentials.open(relay.directory, config);
       relay.state.pairLost = true;
       await expect(credentials.pair(relay.state.pairing)).rejects.toThrow();
       const pending = JSON.parse(await readFile(join(relay.directory, 'credentials.json'), 'utf8')) as Record<
@@ -100,8 +100,8 @@ describe('edge local trust boundary', () => {
   it('rejects unknown TLS roots and revoked credentials without disclosing the secret', async () => {
     const relay = await relayFixture();
     try {
-      const config = relay.config(),
-        credentials = await Credentials.open(relay.directory, config);
+      const config = relay.config();
+      const credentials = await Credentials.open(relay.directory, config);
       await credentials.pair(relay.state.pairing);
       const { caFile: ignored, ...untrusted } = config;
       void ignored;

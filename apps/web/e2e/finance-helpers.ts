@@ -4,8 +4,8 @@ import { api, type Row } from './operations-helpers.ts';
 import { BUSINESS_DATE } from './environment.ts';
 
 export async function financeFixture(request: APIRequestContext) {
-  const base = await commerceFixture(request),
-    headers = base.headers;
+  const base = await commerceFixture(request);
+  const headers = base.headers;
   const partner = await api(request, headers, '/api/partner', {
     code: 'FN-' + base.runId,
     name: '商流銀行取引先 ' + base.runId,

@@ -10,6 +10,8 @@ Cookie認証への切替は未実装で、別タブのアカウント・会社�
 
 ## ソースの可読性と給与制度版
 
+[一貫性調整](specs/source-consistency.md)では個別の変数宣言をlintで保ち、基盤5列をnative booleanへ移行する。エラー規約は業務の構造化エラーと内部の定義ミスを区別し、文書状態を名前付き定数へ揃え、非自明な処理には短い責務ヘッダを使う。既存データを保持する0017の更新条件は [setup](operations/setup.md#基盤のboolean移行)、検証範囲は [作業記録](log/2026-09-14-source-consistency.md)と対象PRのChecksを参照する。AWSへの反映はこのソース変更に含めない。
+
 [整形仕様](specs/readable-source.md) に沿い、Prettierを120文字目安で導入した。ファイル1,000行・関数300行は警告とし、行数だけのための分割や圧縮を求めない。純整形を別コミットにし、blameの除外履歴を残した。全gate・ブラウザー69件の成功と長行の実測は [整形記録](log/2026-09-13-readable-source.md) に、公開CIの成功は [PR #11](https://github.com/adokoy001/DaifukuERP/pull/11) に記録した。
 
 [給与制度版仕様](specs/payroll-rule-versions.md) は、期間付きJSONと国別算定器、会社別の出典確認・導入、旧記録を保つ追加migrationを実装し、統合受入を完了した。月次の支払日・保険月・賃金締日と年調実施日を区別し、未対応年度を前年で代用しない。全gate（単体1,003件・DB668件・配備13件）、通常ブラウザー72件と追加障害ケース1件が成功した。旧実装の12表45行からの更新・別DB復元と旧下書き3件の確定、CSVの完全一致も確認した。詳しい範囲と検証状況は [給与制度版の記録](log/2026-09-13-payroll-rule-versions.md)、[設計](architecture/payroll-automation.md)、[操作](manual/appendix-i-fiscal-and-work-systems.md) にまとめる。収録済みの法定値は2026年の既存対応範囲に限る。

@@ -30,10 +30,10 @@ export function WorkforceReviews({
   selfEmployeeId?: string;
   category?: 'all' | 'attendance' | 'expenses';
 }) {
-  const { t, locale } = useLocale(),
-    task = useWorkforceTask();
-  const [review, setReview] = useState<Review>(),
-    [receiptId, setReceiptId] = useState<string>();
+  const { t, locale } = useLocale();
+  const task = useWorkforceTask();
+  const [review, setReview] = useState<Review>();
+  const [receiptId, setReceiptId] = useState<string>();
   const allowed = (action: string) => actions.includes('workforce.' + action);
   const open = (value: Review) => setReview(value);
   const attendance = data.attendances.filter((row) => row.status === 'submitted');

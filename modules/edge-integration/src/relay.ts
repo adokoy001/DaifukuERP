@@ -45,9 +45,9 @@ export async function claimJob(ctx: Context) {
     }
     let job: EdgeClaimedJob | null = null;
     if (selected) {
-      const token = newRelaySecret(),
-        until = leaseUntil(ctx, selected.expiresAt),
-        device = devices.get(selected.deviceId);
+      const token = newRelaySecret();
+      const until = leaseUntil(ctx, selected.expiresAt);
+      const device = devices.get(selected.deviceId);
       if (!device || !selected.request)
         throw new StateError('Invalid device job binding', 'Review the device configuration.');
       const claimed = await saveJob(ctx, selected, {
@@ -162,8 +162,8 @@ export async function recordDeviceEvent(ctx: Context, input: z.infer<typeof edge
       throw new StateError('Observation time is outside the accepted window', 'Synchronize the relay clock.');
     if (observedAt.getTime() < ctx.now().getTime() - 7 * 86400000)
       return { ok: true as const, duplicate: false, ignored: 'expired' as const };
-    const key = ctx.actor.id + ':' + input.eventId,
-      bodyHash = relayHash(JSON.stringify({ ...input, observedAt: observedAt.toISOString() }));
+    const key = ctx.actor.id + ':' + input.eventId;
+    const bodyHash = relayHash(JSON.stringify({ ...input, observedAt: observedAt.toISOString() }));
     const [prior] = (
       await repo(ctx, EdgeDeviceEvent).list({ where: { gatewayId: ctx.actor.id, eventId: input.eventId }, limit: 1 })
     ).items;

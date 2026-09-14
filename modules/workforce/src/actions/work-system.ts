@@ -29,13 +29,13 @@ export const saveWorkSystemAction = workflowAction(
   (ctx, input) =>
     withLock(ctx, 'workforce:policies', () =>
       employeeLock(ctx, input.employeeId, async () => {
-        const employee = await repo(ctx, WorkforceEmployee).get(input.employeeId),
-          prior = input.periodId ? await repo(ctx, WorkforceWorkSystemPeriod).get(input.periodId) : null;
+        const employee = await repo(ctx, WorkforceEmployee).get(input.employeeId);
+        const prior = input.periodId ? await repo(ctx, WorkforceWorkSystemPeriod).get(input.periodId) : null;
         if (prior && (prior.employeeId !== employee.id || prior.status !== 'draft'))
           throw new StateError('この勤務制度は下書きとして編集できません', '対象社員の下書きを選択してください。');
         expectVersion(prior?.version ?? 0, input.expectedVersion);
-        const { periodId: _id, expectedVersion: _version, ...raw } = input,
-          values = workSystemData.parse(raw);
+        const { periodId: _id, expectedVersion: _version, ...raw } = input;
+        const values = workSystemData.parse(raw);
         validateWorkSystem(values);
         if (employee.hiredOn > values.startsOn || (employee.terminatedOn && employee.terminatedOn < values.endsOn))
           throw new StateError(
@@ -166,12 +166,12 @@ export const workSystemBoardAction = defineAction({
   tx: 'none',
   mutates: false,
   async handler(ctx, input) {
-    const bounds = periodBounds(input.period),
-      employees = await allRows(ctx, WorkforceEmployee),
-      periods = await allRows(ctx, WorkforceWorkSystemPeriod, {
-        startsOn: { $lte: bounds.end },
-        endsOn: { $gte: bounds.start },
-      });
+    const bounds = periodBounds(input.period);
+    const employees = await allRows(ctx, WorkforceEmployee);
+    const periods = await allRows(ctx, WorkforceWorkSystemPeriod, {
+      startsOn: { $lte: bounds.end },
+      endsOn: { $gte: bounds.start },
+    });
     return workSystemBoardOutput.parse({
       employees: employees.map(({ id, name, code, siteId }) => ({ id, name, code, siteId })),
       periods: periods.map((row) =>

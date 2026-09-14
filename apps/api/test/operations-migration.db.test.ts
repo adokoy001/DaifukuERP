@@ -7,10 +7,10 @@ import type postgres from 'postgres';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import '../src/modules.ts';
 import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
-import { legacyMigrationFolder } from './legacy-fixture.ts';
+import { expectedBooleanUserFacts, legacyMigrationFolder, upgradeLegacyConnection } from './legacy-fixture.ts';
 
-const owner = connect(OWNER_URL, { max: 1 }),
-  app = connect(APP_URL, { max: 1 });
+let owner = connect(OWNER_URL, { max: 1 });
+const app = connect(APP_URL, { max: 1 });
 const previous = legacyMigrationFolder(8);
 type Sql = postgres.TransactionSql;
 const scope = <T>(db: Database, tenant: string, fn: (tx: Sql) => Promise<T>) =>
@@ -33,6 +33,8 @@ interface TenantFixture {
 }
 
 beforeEach(async () => {
+  await owner.close();
+  owner = connect(OWNER_URL, { max: 1 });
   await dropAll(owner);
   await migrate(owner.drizzle, { migrationsFolder: previous });
   // Reproduce the historical FORCE RLS owner path without invoking current-registry grants.
@@ -48,10 +50,10 @@ afterAll(async () => {
 });
 
 async function addClosings(tx: Sql, tenant: string, company: string): Promise<string[]> {
-  const warehouse = newId(),
-    partner = newId(),
-    account = newId(),
-    store = newId();
+  const warehouse = newId();
+  const partner = newId();
+  const account = newId();
+  const store = newId();
   await tx`insert into warehouse(id,tenant_id,company_id,code,name) values(${warehouse},${tenant},${company},'KITCHEN','既存厨房')`;
   await tx`insert into partner(id,tenant_id,company_id,name,is_customer) values(${partner},${tenant},${company},'既存店舗客',true)`;
   await tx`insert into account(id,tenant_id,company_id,code,name,type) values(${account},${tenant},${company},'CASH','既存現金','asset')`;
@@ -68,8 +70,8 @@ async function addClosings(tx: Sql, tenant: string, company: string): Promise<st
 async function historicalFixture(): Promise<TenantFixture[]> {
   const fixtures: TenantFixture[] = [];
   for (const label of ['Tenant A', 'Tenant B']) {
-    const id = newId(),
-      companies = [newId(), newId()];
+    const id = newId();
+    const companies = [newId(), newId()];
     const users: UserFixture[] = [
       {
         id: newId(),
@@ -125,9 +127,12 @@ async function originalFacts(fixtures: TenantFixture[]) {
 
 describe('operations-control historical 0008 upgrade', () => {
   it('copies tenant-wide legacy roles into only the same tenant companies without changing original facts', async () => {
-    const fixtures = await historicalFixture(),
-      original = await originalFacts(fixtures);
-    await runMigrations(owner, MIGRATIONS_DIR);
+    const fixtures = await historicalFixture();
+    const original = (await originalFacts(fixtures)).map((facts) => ({
+      ...facts,
+      users: expectedBooleanUserFacts(facts.users),
+    }));
+    owner = await upgradeLegacyConnection(owner, OWNER_URL);
     expect(await originalFacts(fixtures)).toEqual(original);
     for (const fixture of fixtures)
       await scope(owner, fixture.id, async (tx) => {
@@ -150,7 +155,7 @@ describe('operations-control historical 0008 upgrade', () => {
         for (const user of fixture.users)
           expect(users).toContainEqual({
             id: user.id,
-            tenant_admin: user.roles.includes('admin') ? 1 : 0,
+            tenant_admin: user.roles.includes('admin'),
             version: 1,
             session_version: 1,
           });
@@ -182,7 +187,7 @@ describe('operations-control historical 0008 upgrade', () => {
         ),
       );
     const membersBefore = await memberships();
-    await runMigrations(owner, MIGRATIONS_DIR);
+    owner = await upgradeLegacyConnection(owner, OWNER_URL);
     expect(await originalFacts(fixtures)).toEqual(original);
     expect(await memberships()).toEqual(membersBefore);
     expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
@@ -192,9 +197,9 @@ describe('operations-control historical 0008 upgrade', () => {
 
   it('enforces tenant RLS on migrated memberships and denies a foreign-tenant insert', async () => {
     const fixtures = await historicalFixture();
-    await runMigrations(owner, MIGRATIONS_DIR);
-    const current = fixtures[0],
-      foreign = fixtures[1];
+    owner = await upgradeLegacyConnection(owner, OWNER_URL);
+    const current = fixtures[0];
+    const foreign = fixtures[1];
     expect(current && foreign).toBeTruthy();
     if (!current || !foreign) throw new Error('fixture missing');
     for (const fixture of fixtures)
@@ -219,8 +224,8 @@ describe('operations-control historical 0008 upgrade', () => {
   });
 
   it('rolls back the entire migration for malformed legacy role JSON, then succeeds after an explicit source correction', async () => {
-    const fixtures = await historicalFixture(),
-      fixture = fixtures[1];
+    const fixtures = await historicalFixture();
+    const fixture = fixtures[1];
     expect(fixture).toBeTruthy();
     if (!fixture) throw new Error('fixture missing');
     const user = fixture.users[1];
@@ -245,7 +250,7 @@ describe('operations-control historical 0008 upgrade', () => {
       fixture.id,
       (tx) => tx`update users set roles=${JSON.stringify(user.roles)}::jsonb where id=${user.id}`,
     );
-    await runMigrations(owner, MIGRATIONS_DIR);
+    owner = await upgradeLegacyConnection(owner, OWNER_URL);
     expect(
       await scope(
         owner,

@@ -18,19 +18,19 @@ import { parse } from '../request-context.ts';
 import { authorizationRequest, exchangeOidc, type OidcTransaction } from './oidc.ts';
 import { verifyAttempt } from './attempt.ts';
 import { configured, currentIdentity, identityLoginReply, type IdentityRouteOptions } from './session.ts';
-const browser = z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  providerId = z.string().regex(/^[a-z0-9_-]{1,40}$/);
+const browser = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const providerId = z.string().regex(/^[a-z0-9_-]{1,40}$/);
 export function registerOidcRoutes(app: FastifyInstance, options: IdentityRouteOptions): void {
   app.get('/auth/oidc/providers', async () => ({
     items: options.identity?.providers.map(({ id, label }) => ({ id, label })) ?? [],
   }));
   async function start(req: FastifyRequest, linking: boolean) {
     const input = parse(
-        z.object({ providerId, browserNonce: browser, ...(linking ? { stepUpToken: browser } : {}) }).strict(),
-        req.body,
-        'body',
-      ),
-      config = configured(options);
+      z.object({ providerId, browserNonce: browser, ...(linking ? { stepUpToken: browser } : {}) }).strict(),
+      req.body,
+      'body',
+    );
+    const config = configured(options);
     const provider = config.providers.find((p) => p.id === input.providerId);
     if (!provider) throw identityDenied();
     await identityRateLimit(options.owner, `oidc-start:${req.ip}`, 300);
@@ -74,11 +74,11 @@ export function registerOidcRoutes(app: FastifyInstance, options: IdentityRouteO
   app.post('/auth/oidc/link', (req) => start(req, true));
   app.post('/auth/oidc/complete', async (req) => {
     const input = parse(
-        z.object({ providerId, state: browser, code: z.string().min(1).max(4096), browserNonce: browser }).strict(),
-        req.body,
-        'body',
-      ),
-      config = configured(options);
+      z.object({ providerId, state: browser, code: z.string().min(1).max(4096), browserNonce: browser }).strict(),
+      req.body,
+      'body',
+    );
+    const config = configured(options);
     const provider = config.providers.find((p) => p.id === input.providerId);
     if (!provider) throw identityDenied();
     const result = await verifyAttempt(options.owner, req, 'oidc-complete', () =>

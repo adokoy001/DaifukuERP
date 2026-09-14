@@ -6,11 +6,11 @@ export function consolidate(
   mapping: GroupMapping[],
   adjustments: GroupAdjustment[],
 ): GroupResult {
-  const map = new Map<string, GroupMapping>(),
-    groups = new Map<
-      string,
-      { name: string; type: string; standalone: Decimal; elimination: Decimal; adjustment: Decimal }
-    >();
+  const map = new Map<string, GroupMapping>();
+  const groups = new Map<
+    string,
+    { name: string; type: string; standalone: Decimal; elimination: Decimal; adjustment: Decimal }
+  >();
   for (const item of mapping) {
     const key = item.companyId + ':' + item.accountId;
     if (map.has(key))
@@ -31,8 +31,8 @@ export function consolidate(
   const used = new Set<string>();
   for (const source of sources)
     for (const row of source.rows) {
-      const key = source.companyId + ':' + row.accountId,
-        item = map.get(key);
+      const key = source.companyId + ':' + row.accountId;
+      const item = map.get(key);
       if (!item)
         throw new StateError(
           'Source account is not mapped',
@@ -58,12 +58,12 @@ export function consolidate(
         'Each elimination or adjustment needs a unique reference.',
       );
     keys.add(adjustment.key);
-    let debit = Decimal.zero(),
-      credit = Decimal.zero();
+    let debit = Decimal.zero();
+    let credit = Decimal.zero();
     for (const line of adjustment.lines) {
-      const target = groups.get(line.groupCode),
-        d = Decimal.from(line.debit),
-        c = Decimal.from(line.credit);
+      const target = groups.get(line.groupCode);
+      const d = Decimal.from(line.debit);
+      const c = Decimal.from(line.credit);
       if (
         !target ||
         d.isNegative() ||
@@ -104,8 +104,8 @@ export function consolidate(
         credit: consolidated.isNegative() ? consolidated.neg().toString() : '0',
       };
     });
-  const debit = Decimal.sum(rows.map((r) => Decimal.from(r.debit))),
-    credit = Decimal.sum(rows.map((r) => Decimal.from(r.credit)));
+  const debit = Decimal.sum(rows.map((r) => Decimal.from(r.debit)));
+  const credit = Decimal.sum(rows.map((r) => Decimal.from(r.credit)));
   if (!debit.eq(credit))
     throw new StateError('Consolidation is not balanced', 'Check complete standalone sources and adjustments.');
   return { rows, debit: debit.toString(), credit: credit.toString(), balanced: true };

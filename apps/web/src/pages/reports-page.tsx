@@ -9,8 +9,8 @@ import { LoadingView, MetaError } from './status-views.tsx';
 export function ReportsPage() {
   const { t } = useLocale();
   const meta = useMeta();
-  const [search, setSearch] = useState(''),
-    [module, setModule] = useState('');
+  const [search, setSearch] = useState('');
+  const [module, setModule] = useState('');
   if (meta.isError) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (!meta.data) return <LoadingView />;
   const reports = reportActions(meta.data).filter((item) => !item.mutates);

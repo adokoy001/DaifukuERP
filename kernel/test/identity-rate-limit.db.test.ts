@@ -7,8 +7,8 @@ import { beginMfa, beginMfaLogin, completeMfaLogin, confirmMfa, stepUpIdentity }
 import { identityRateLimit, withIdentityAttempt } from '../src/identity/rate-limit.ts';
 import { tokenHash, totp } from '../src/identity/crypto.ts';
 let db: TestDb;
-const now = new Date('2026-09-12T09:00:00Z'),
-  key = Buffer.alloc(32, 8).toString('base64');
+const now = new Date('2026-09-12T09:00:00Z');
+const key = Buffer.alloc(32, 8).toString('base64');
 beforeAll(async () => {
   db = await freshDb();
 });
@@ -25,8 +25,8 @@ const count = async (key: string) =>
 describe('failure reservations outside identity transactions', () => {
   it('does not erase a concurrent failure when a successful request completes', async () => {
     const budget = [{ key: 'concurrent-identity', limit: 2 }];
-    const entered = Promise.withResolvers<void>(),
-      complete = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const complete = Promise.withResolvers<void>();
     const successful = withIdentityAttempt(
       db.owner,
       budget,
@@ -89,8 +89,8 @@ describe('failure reservations outside identity transactions', () => {
   });
   it('cannot refund or rewind a later window when an earlier successful request finishes', async () => {
     const budget = [{ key: 'window-identity', limit: 1, seconds: 60 }];
-    const entered = Promise.withResolvers<void>(),
-      complete = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const complete = Promise.withResolvers<void>();
     const pending = withIdentityAttempt(
       db.owner,
       budget,
@@ -117,8 +117,8 @@ describe('failure reservations outside identity transactions', () => {
   it('limits MFA failures per identity even when the password holder repeatedly obtains fresh challenges', async () => {
     const [user] = await db.owner.drizzle.select().from(users).where(eq(users.id, db.adminUserId));
     if (!user) throw new Error('Missing synthetic user');
-    const params = { companyId: null, now: () => now },
-      original = { userId: db.adminUserId, tenantId: db.tenantId, sessionVersion: user.sessionVersion };
+    const params = { companyId: null, now: () => now };
+    const original = { userId: db.adminUserId, tenantId: db.tenantId, sessionVersion: user.sessionVersion };
     const setup = await db.run(params, async (ctx) => {
       const step = await stepUpIdentity(ctx, original.sessionVersion, 'password', undefined, key);
       return beginMfa(ctx, original.sessionVersion, step.stepUpToken, key);

@@ -319,9 +319,9 @@ test('取得中に実UIで会社を切り替えると旧取得を中止し、結
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('分析設定を保存しました。', { exact: true })).toBeVisible();
   const savedId = await savedAnalyses(page).inputValue();
-  const received = deferred(),
-    release = deferred(),
-    finished = deferred();
+  const received = deferred();
+  const release = deferred();
+  const finished = deferred();
   await page.route(
     '**/analytics/snapshot',
     async (route) => {
@@ -385,8 +385,8 @@ test('HTTP応答が逆順でも新しい対象の結果を保ち、遅れた旧s
         ? original(input, { ...options, signal: null })
         : original(input, options);
   });
-  const received = deferred(),
-    release = deferred();
+  const received = deferred();
+  const release = deferred();
   await page.route(
     '**/analytics/snapshot',
     async (route) => {
@@ -483,7 +483,8 @@ test('Web Lock待機中に別の保存分析を選んでも、保存完了が現
   const held = await page.evaluateHandle(async () => {
     const key = Object.keys(localStorage).find((key) => key.startsWith('daifuku.analytics.v1.'));
     if (!key) throw new Error('Saved analysis scope missing');
-    let release!: () => void, acquired!: () => void;
+    let release!: () => void;
+    let acquired!: () => void;
     const wait = new Promise<void>((done) => {
       release = done;
     });

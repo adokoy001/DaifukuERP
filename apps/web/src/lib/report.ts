@@ -96,8 +96,8 @@ export function reportPeriodValues(
   now = new Date(),
 ): Record<string, string | number> {
   const today = businessToday(now);
-  const year = Number(today.slice(0, 4)),
-    month = Number(today.slice(5, 7));
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
   const monthStart = (offset: number) => new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 10);
   const from = monthStart(period === 'previous' ? -1 : period === 'last12' ? -11 : 0);
   const to = period === 'previous' ? new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10) : today;
@@ -212,19 +212,19 @@ export function reportRowsPage(
     const direction = opts.sort.direction === 'desc' ? -1 : 1;
     const collator = new Intl.Collator(opts.locale ?? 'ja', { numeric: true, sensitivity: 'base' });
     rows.sort((a, b) => {
-      const av = a.row[column.key],
-        bv = b.row[column.key];
+      const av = a.row[column.key];
+      const bv = b.row[column.key];
       // Empty cells remain last in both directions. Equal values retain the server's original order.
       if (missing(av) !== missing(bv)) return missing(av) ? 1 : -1;
       const compared = missing(av) && missing(bv) ? 0 : compareReportCells(av, bv, column, collator);
       return compared * direction || a.index - b.index;
     });
   }
-  const matched = rows.length,
-    pages = Math.max(1, Math.ceil(matched / pageSize));
+  const matched = rows.length;
+  const pages = Math.max(1, Math.ceil(matched / pageSize));
   const requested = typeof opts.page === 'number' && Number.isFinite(opts.page) ? Math.floor(opts.page) : 0;
-  const page = Math.max(0, Math.min(pages - 1, requested)),
-    offset = page * pageSize;
+  const page = Math.max(0, Math.min(pages - 1, requested));
+  const offset = page * pageSize;
   return {
     rows: rows.slice(offset, offset + pageSize),
     matched,

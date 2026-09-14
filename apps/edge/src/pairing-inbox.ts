@@ -21,8 +21,8 @@ export async function connectService(
   credentials: Credentials,
   directory: string,
 ): Promise<'running' | 'pairing_required' | 'credential_rejected'> {
-  const inbox = join(directory, 'pairing.json'),
-    processing = join(directory, 'pairing.processing.json');
+  const inbox = join(directory, 'pairing.json');
+  const processing = join(directory, 'pairing.processing.json');
   let waiting: 'pairing_required' | 'credential_rejected' = 'pairing_required';
   try {
     await credentials.session();

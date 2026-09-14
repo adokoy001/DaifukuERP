@@ -64,8 +64,8 @@ export function EdgeKind({ kind }: { kind: string }) {
   );
 }
 export function EdgeTime({ value }: { value: unknown }) {
-  const { locale } = useLocale(),
-    date = typeof value === 'string' ? new Date(value) : null;
+  const { locale } = useLocale();
+  const date = typeof value === 'string' ? new Date(value) : null;
   return (
     <>
       {date && Number.isFinite(date.getTime())

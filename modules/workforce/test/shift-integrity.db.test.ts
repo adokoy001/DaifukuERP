@@ -49,8 +49,8 @@ async function save(
 const employee = (id: string) => f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceEmployee).get(id));
 describe('shift planner preserves live constraints and employment history', () => {
   it('flags published work after pending leave without disclosing the reason, and revalidates revisions', async () => {
-    const weekStart = '2026-09-14',
-      row = await draft(f, weekStart);
+    const weekStart = '2026-09-14';
+    const row = await draft(f, weekStart);
     await publish(f, row);
     await call(f.db, f.hr.params, 'grant_leave', {
       employeeId: f.employee.id,
@@ -88,9 +88,9 @@ describe('shift planner preserves live constraints and employment history', () =
     expect(approved.sourceRevision).not.toBe(source.sourceRevision);
   });
   it('detects conditions changed after draft save and applies the stricter individual limit', async () => {
-    const weekStart = '2026-10-12',
-      row = await draft(f, weekStart),
-      own = defined((await mine(f, weekStart)).profile);
+    const weekStart = '2026-10-12';
+    const row = await draft(f, weekStart);
+    const own = defined((await mine(f, weekStart)).profile);
     const updated = await call(f.db, f.manager.params, 'save_shift_profile', {
       employeeId: f.employee.id,
       expectedVersion: own.version,
@@ -117,9 +117,9 @@ describe('shift planner preserves live constraints and employment history', () =
     expect((await board(f, weekStart)).draft?.version).toBe(row.version);
   });
   it('includes adjacent published days and rejects a rest conflict across the week boundary', async () => {
-    const previousWeek = '2026-11-02',
-      weekStart = '2026-11-09',
-      source = await ready(f, previousWeek);
+    const previousWeek = '2026-11-02';
+    const weekStart = '2026-11-09';
+    const source = await ready(f, previousWeek);
     const late = { ...slot(addDays(previousWeek, 6)), startMinute: 1200, endMinute: 1440 };
     const previous = await save(previousWeek, source.sourceRevision, [late]);
     await publish(f, { ...previous, sourceRevision: source.sourceRevision });
@@ -140,8 +140,8 @@ describe('shift planner preserves live constraints and employment history', () =
     );
   });
   it('serializes concurrent publish and refuses stale draft edits without changing public history', async () => {
-    const weekStart = '2026-12-07',
-      row = await draft(f, weekStart);
+    const weekStart = '2026-12-07';
+    const row = await draft(f, weekStart);
     const outcomes = await Promise.allSettled([publish(f, row), publish(f, row)]);
     expect(outcomes.filter((item) => item.status === 'fulfilled')).toHaveLength(1);
     expect(
@@ -158,8 +158,8 @@ describe('shift planner preserves live constraints and employment history', () =
     expect((await board(f, weekStart)).published).toEqual(current.published);
   });
   it('protects published commitments and site history during employee lifecycle changes', async () => {
-    const before = await employee(f.otherEmployee.id),
-      members = await f.db.owner.drizzle.select().from(companyMemberships);
+    const before = await employee(f.otherEmployee.id);
+    const members = await f.db.owner.drizzle.select().from(companyMemberships);
     for (const change of [{ active: false }, { terminatedOn: '2026-11-08' }, { siteId: f.otherSiteId }]) {
       await expect(
         f.db.run({ ...f.hr.params, ...at(NOW) }, (ctx) =>
@@ -175,8 +175,8 @@ describe('shift planner preserves live constraints and employment history', () =
     expect(publicRows.items).toHaveLength(1);
   });
   it('serializes site deactivation against publication and preserves a consistent active site', async () => {
-    const weekStart = '2027-02-01',
-      row = await draft(f, weekStart);
+    const weekStart = '2027-02-01';
+    const row = await draft(f, weekStart);
     const site = await f.db.run(f.hr.params, (ctx) => repo(ctx, WorkforceSite).get(f.siteId));
     const outcomes = await Promise.allSettled([
       publish(f, row),

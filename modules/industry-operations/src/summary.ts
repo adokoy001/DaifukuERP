@@ -48,8 +48,8 @@ async function summarize(
     docstatus: { $in: [DOCSTATUS.submitted, DOCSTATUS.cancelled] },
     $and: [{ completedDate: { $gte: input.from } }, { completedDate: { $lte: input.to } }],
   };
-  const source = await rows(ctx, Job, where),
-    visible: JobRow[] = [];
+  const source = await rows(ctx, Job, where);
+  const visible: JobRow[] = [];
   for (const row of source) {
     if (row.docstatus === DOCSTATUS.cancelled && !row.cancelledDate)
       throw new StateError('取消の有効日が不明です。', '履歴を復元してください。');

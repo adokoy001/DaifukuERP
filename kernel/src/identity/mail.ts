@@ -37,8 +37,8 @@ export async function deliverIdentityMail(
   now = new Date(),
 ) {
   if (!transport) return { sent: 0, failed: 0, configured: false };
-  let sent = 0,
-    failed = 0;
+  let sent = 0;
+  let failed = 0;
   for (let index = 0; index < Math.max(0, Math.min(100, limit)); index++) {
     const claimed = await owner.drizzle.transaction(async (tx) => {
       const [row] = await tx

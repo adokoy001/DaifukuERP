@@ -23,8 +23,8 @@ export async function fillPlanningLine(
   parent: EntityDef,
   field: string,
 ) {
-  const value = { ...previous, ...row },
-    head = await repo(ctx, parent).get(String(value[field]));
+  const value = { ...previous, ...row };
+  const head = await repo(ctx, parent).get(String(value[field]));
   row.direction = head.direction;
   const product = await repo(ctx, Product).get(String(value.productId));
   if (
@@ -40,8 +40,8 @@ export async function fillPlanningLine(
   row.description = value.description ?? product.name;
   row.taxCategory = value.taxCategory ?? product.taxCategory;
   row.unitPrice = value.unitPrice ?? (head.direction === 'sales' ? product.salePrice : product.purchasePrice);
-  const qty = positiveQuantity(value.quantity ?? '1'),
-    price = Decimal.from(String(row.unitPrice));
+  const qty = positiveQuantity(value.quantity ?? '1');
+  const price = Decimal.from(String(row.unitPrice));
   if (price.lt('0') || !price.roundDown(6).eq(price))
     throw new StateError('単価は小数6桁以内の0以上にしてください。', '税抜単価を入力してください。');
   row.amount = qty.times(price);

@@ -2,14 +2,14 @@ import { expect, test } from '@playwright/test';
 import { qualitySession, signInQuality, assertNoOverflow, failedRead } from './quality-helpers.ts';
 import { api, PASSWORD, type Row } from './operations-helpers.ts';
 async function fixture(request: Parameters<typeof qualitySession>[0], role = 'edge_manager') {
-  const session = await qualitySession(request),
-    suffix = crypto.randomUUID().slice(0, 8);
+  const session = await qualitySession(request);
+  const suffix = crypto.randomUUID().slice(0, 8);
   const site = await api(request, session.headers, '/api/workforce_site', {
     code: 'EDGE-' + suffix,
     name: '店舗連携検証 ' + suffix,
   });
-  const email = `edge-${suffix}@example.com`,
-    user = await api(request, session.headers, '/admin/users', { name: '店舗機器担当', email, password: PASSWORD });
+  const email = `edge-${suffix}@example.com`;
+  const user = await api(request, session.headers, '/admin/users', { name: '店舗機器担当', email, password: PASSWORD });
   await api(
     request,
     session.headers,
@@ -101,12 +101,12 @@ test('lost enqueue response retries the same payload and ID; failed refresh keep
   page,
   request,
 }) => {
-  const f = await fixture(request),
-    gateway = await api(request, f.headers, '/actions/edge.create_gateway', {
-      siteId: f.site.id,
-      code: 'relay-' + f.suffix,
-      name: '再送確認の中継',
-    });
+  const f = await fixture(request);
+  const gateway = await api(request, f.headers, '/actions/edge.create_gateway', {
+    siteId: f.site.id,
+    code: 'relay-' + f.suffix,
+    name: '再送確認の中継',
+  });
   const device = await api(request, f.headers, '/actions/edge.register_device', {
     gatewayId: gateway.id,
     localDeviceId: 'printer',
@@ -174,12 +174,12 @@ test('role demotion removes an open management form on the next permission refre
   await expect(page.getByRole('heading', { name: '店舗と機器を、つなぐ。', exact: true })).toBeVisible();
 });
 test('changing allowed sites removes an open request and the previous site data', async ({ page, request }) => {
-  const f = await fixture(request),
-    gateway = await api(request, f.headers, '/actions/edge.create_gateway', {
-      siteId: f.site.id,
-      code: 'relay-' + f.suffix,
-      name: '以前の拠点の中継',
-    });
+  const f = await fixture(request);
+  const gateway = await api(request, f.headers, '/actions/edge.create_gateway', {
+    siteId: f.site.id,
+    code: 'relay-' + f.suffix,
+    name: '以前の拠点の中継',
+  });
   await api(request, f.headers, '/actions/edge.register_device', {
     gatewayId: gateway.id,
     localDeviceId: 'printer',

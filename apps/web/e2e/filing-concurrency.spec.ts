@@ -22,8 +22,8 @@ const categories: Record<string, string> = {
 };
 
 async function otherActor(request: APIRequestContext, fixture: CommerceFixture) {
-  const admin = await qualitySession(request),
-    email = `filing-concurrent-${fixture.runId}@example.invalid`;
+  const admin = await qualitySession(request);
+  const email = `filing-concurrent-${fixture.runId}@example.invalid`;
   const user = await api(request, admin.headers, '/admin/users', {
     name: '申告資料の同時編集者',
     email,
@@ -89,9 +89,9 @@ for (const kind of ['accounting', 'payroll'] as const) {
     page,
     request,
   }) => {
-    const fixture = await commerceFixture(request),
-      other = await otherActor(request, fixture),
-      input = profileInput(fixture, kind);
+    const fixture = await commerceFixture(request);
+    const other = await otherActor(request, fixture);
+    const input = profileInput(fixture, kind);
     const saved = await api(request, fixture.headers, `/actions/tax_filing.save_${kind}_profile`, {
       ...input,
       expectedVersion: 0,
@@ -100,8 +100,8 @@ for (const kind of ['accounting', 'payroll'] as const) {
     await page.goto('/finance/filing');
     if (kind === 'payroll') await page.getByRole('button', { name: '給与の申告準備', exact: true }).click();
     await page.getByRole('button', { name: '作成条件・補足情報', exact: true }).click();
-    const dialog = page.getByRole('dialog'),
-      name = dialog.getByLabel(kind === 'accounting' ? '法人名' : '給与支払者の名称', { exact: true });
+    const dialog = page.getByRole('dialog');
+    const name = dialog.getByLabel(kind === 'accounting' ? '法人名' : '給与支払者の名称', { exact: true });
     await name.fill('株式会社Ａ編集中');
     if (kind === 'accounting') await dialog.getByRole('checkbox').check();
     const save = dialog.getByRole('button', {
@@ -120,8 +120,8 @@ for (const kind of ['accounting', 'payroll'] as const) {
     await expect(dialog.getByText(changedNotice, { exact: true })).toBeVisible();
     await expect(name).toHaveValue('株式会社Ａ編集中');
     await expect(save).toBeDisabled();
-    const current = await api<FilingBoard>(request, other, '/actions/tax_filing.board', { kind }),
-      profile = kind === 'accounting' ? current.accountingProfile : current.payrollProfile;
+    const current = await api<FilingBoard>(request, other, '/actions/tax_filing.board', { kind });
+    const profile = kind === 'accounting' ? current.accountingProfile : current.payrollProfile;
     expect(profile).toMatchObject({
       version: updated.version,
       legalName: '株式会社Ｂ確認済',
@@ -131,9 +131,9 @@ for (const kind of ['accounting', 'payroll'] as const) {
 }
 
 async function confirmedAccounting(request: APIRequestContext) {
-  const fixture = await commerceFixture(request),
-    other = await otherActor(request, fixture),
-    year = Number(BUSINESS_DATE.slice(0, 4)) - 1;
+  const fixture = await commerceFixture(request);
+  const other = await otherActor(request, fixture);
+  const year = Number(BUSINESS_DATE.slice(0, 4)) - 1;
   const opened = await api<{ fiscalYear: Row }>(request, fixture.headers, '/actions/accounting.open_fiscal_year', {
     startDate: `${year}-01-01`,
   });
@@ -180,15 +180,15 @@ test('filing export removes old downloads during failed revalidation and stops a
   await page.goto('/finance/filing');
   await page.getByRole('button', { name: '根拠と検算を確認', exact: true }).click();
   await page.getByRole('button', { name: 'ファイルを取得', exact: true }).click();
-  const dialog = page.getByRole('dialog'),
-    validate = dialog.getByRole('button', { name: '最新の根拠を検査して出力', exact: true });
+  const dialog = page.getByRole('dialog');
+  const validate = dialog.getByRole('button', { name: '最新の根拠を検査して出力', exact: true });
   const files = dialog.getByRole('button', { name: /^HOT010_.+\.csv · shift_jis$/ });
   const output = await financeAction<FilingExport>(page, 'tax_filing.export', () => validate.click());
   expect(output.files).toHaveLength(2);
   await expect(files).toHaveCount(2);
 
-  let requests = 0,
-    release!: () => void;
+  let requests = 0;
+  let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });

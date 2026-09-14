@@ -20,8 +20,8 @@ export interface IppTransport {
   ): Promise<IppMessage>;
 }
 export function printerTransport(device: Printer, config: EdgeConfig, signal: AbortSignal): IppTransport {
-  const original = validateUrl(device.printerUri, ['ipp:', 'ipps:']),
-    url = new URL(original.href.replace(/^ipps:/, 'https:').replace(/^ipp:/, 'http:'));
+  const original = validateUrl(device.printerUri, ['ipp:', 'ipps:']);
+  const url = new URL(original.href.replace(/^ipps:/, 'https:').replace(/^ipp:/, 'http:'));
   if (!original.port) url.port = '631';
   return async (operation, attributes, jobAttributes, document) => {
     const request = ippRequest(operation, original.href, attributes, jobAttributes, document);
@@ -74,8 +74,8 @@ function copiesSupported(copies: number, response: IppMessage): boolean {
 }
 export function terminalJob(response: IppMessage, reference: string): EdgeResult | null {
   if (response.code !== 0) return { state: 'uncertain', code: 'ipp_job_unavailable', deviceJobId: reference };
-  const state = response.attributes.get('job-state')?.[0],
-    reasons = response.attributes.get('job-state-reasons') ?? [];
+  const state = response.attributes.get('job-state')?.[0];
+  const reasons = response.attributes.get('job-state-reasons') ?? [];
   if (state === 9) {
     if (
       reasons.some(

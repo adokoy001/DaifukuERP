@@ -9,13 +9,13 @@ export function monthlyWithholding(
   dependents: number,
 ) {
   const a = positive(taxablePay.minus(socialPremium));
-  const rule = rules.data.monthlyTax,
-    salary = rule.salary.find((row) => row.to === null || a.lte(row.to));
+  const rule = rules.data.monthlyTax;
+  const salary = rule.salary.find((row) => row.to === null || a.lte(row.to));
   if (!salary) throw new Error('Incomplete versioned monthly tax table');
   const salaryDeduction = a.times(salary.rate).plus(salary.fixed).roundUp(0);
   const basicDeduction = D(rule.basic.find(([upper]) => a.lte(upper))?.[1] ?? 0);
-  const dependentDeduction = D(rule.dependent).times(dependents),
-    b = positive(a.minus(salaryDeduction).minus(basicDeduction).minus(dependentDeduction));
+  const dependentDeduction = D(rule.dependent).times(dependents);
+  const b = positive(a.minus(salaryDeduction).minus(basicDeduction).minus(dependentDeduction));
   const band = rule.tax.find((row) => row.to === null || b.lte(row.to));
   if (!band) throw new Error('Incomplete versioned monthly tax bands');
   const incomeTax = positive(b.times(band.rate).minus(band.offset))

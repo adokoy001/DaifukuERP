@@ -50,8 +50,8 @@ export async function inspectLinuxService(
   context: ServiceContext,
   group: string,
 ): Promise<{ exists: boolean; running: boolean; owned: boolean; processId?: number }> {
-  const body = await rootFile(host, linuxUnitPath),
-    state = await linuxStatus(host);
+  const body = await rootFile(host, linuxUnitPath);
+  const state = await linuxStatus(host);
   noOverrides(state);
   if (body === null && !state.exists) return { exists: false, running: false, owned: false };
   if (body !== renderSystemd(context, group))

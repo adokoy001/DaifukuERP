@@ -56,17 +56,17 @@ describe('payroll rule availability in browser forms', () => {
     expect(payrollPaymentRange('2096-11', rule)).toBeUndefined();
   });
   it('does not use available or superseded data or substitute a different tax year', () => {
-    const available = testRule('available'),
-      old = testRule('superseded'),
-      legacy = testRule('legacy');
+    const available = testRule('available');
+    const old = testRule('superseded');
+    const legacy = testRule('legacy');
     expect(supportedPayrollBundle([available, old], 2097, '2097-05')).toBeUndefined();
     expect(supportedPayrollBundle([legacy], 2097, '2097-05')).toBe(legacy);
     expect(supportedPayrollBundle([legacy], 2098, '2097-12')).toBeUndefined();
     expect(supportedYearEndBundle([available], 2097)).toBeUndefined();
   });
   it('refuses ambiguous installed packages instead of choosing one by array order', () => {
-    const first = testRule(),
-      second = { ...testRule(), packageCode: 'TEST-ONLY-CONFLICT' };
+    const first = testRule();
+    const second = { ...testRule(), packageCode: 'TEST-ONLY-CONFLICT' };
     expect(supportedPayrollBundle([first, second], 2097, '2097-05')).toBeUndefined();
     expect(supportedYearEndBundle([first, second], 2097)).toBeUndefined();
   });

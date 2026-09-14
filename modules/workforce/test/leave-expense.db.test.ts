@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
 import { leaveBalance } from '../src/leave-balance.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
-let f: Fixture,
-  sequence = 0;
+let f: Fixture;
+let sequence = 0;
 beforeAll(async () => {
   f = await fixture();
 });
@@ -16,8 +16,8 @@ interface Worker {
   params: Partial<ContextParams>;
 }
 async function worker(): Promise<Worker> {
-  const name = `case${++sequence}`,
-    person = await f.person(name, 'workforce_employee');
+  const name = `case${++sequence}`;
+  const person = await f.person(name, 'workforce_employee');
   const employee = await call(f.db, f.hr.params, 'register_employee', {
     userId: person.id,
     siteId: f.siteId,
@@ -98,8 +98,8 @@ describe('paid leave: eligibility, expiry and serialized ledger usage', () => {
     expect(await balance(w)).toBe('0');
   });
   it('uses earliest expiry first, requires half-day agreement, and restores only the original grant on cancellation', async () => {
-    const w = await worker(),
-      first = await grant(w, '1', '2026-09-01', '2026-09-12');
+    const w = await worker();
+    const first = await grant(w, '1', '2026-09-01', '2026-09-12');
     await grant(w, '1', '2026-09-01', '2026-10-31');
     const request = await requestLeave(w, '2026-09-12', 'morning');
     await expect(reviewLeave(request)).rejects.toMatchObject({ code: 'VALIDATION' });
@@ -141,8 +141,8 @@ describe('paid leave: eligibility, expiry and serialized ledger usage', () => {
     const rows = await f.db.run(w.params, (ctx) =>
       repo(ctx, WorkforceLeaveRequest).list({ where: { employeeId: w.employeeId } }),
     );
-    const winner = rows.items.find((row) => row.status === 'approved'),
-      loser = rows.items.find((row) => row.status === 'pending');
+    const winner = rows.items.find((row) => row.status === 'approved');
+    const loser = rows.items.find((row) => row.status === 'pending');
     if (!winner || !loser) throw new Error('Concurrent approval fixture is incomplete');
     await withdraw(w, winner);
     expect(await balance(w)).toBe('1');
@@ -208,8 +208,8 @@ describe('paid leave: eligibility, expiry and serialized ledger usage', () => {
 
 describe('employee expenses: idempotency, freeze and settlement', () => {
   it('replays initial save exactly and rejects changed duplicate input, fractional yen and future expense dates', async () => {
-    const w = await worker(),
-      saved = await expense(w);
+    const w = await worker();
+    const saved = await expense(w);
     expect(await call(f.db, w.params, 'save_expense', saved.input)).toMatchObject({
       id: saved.row.id,
       version: saved.row.version,
@@ -222,8 +222,8 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
     expect((await expenseRow(saved.row.id)).amount.toString()).toBe('1000');
   });
   it('freezes submitted amounts, permits returned corrections, and settles once under concurrency', async () => {
-    const w = await worker(),
-      saved = await expense(w);
+    const w = await worker();
+    const saved = await expense(w);
     const submitted = await call(f.db, w.params, 'submit_expense', {
       expenseId: saved.row.id,
       expectedVersion: saved.row.version,
@@ -281,9 +281,9 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
   });
   it('requires headquarters and a real settlement date; cancelled submissions cannot be approved', async () => {
-    const w = await worker(),
-      saved = await expense(w),
-      approved = await approveExpense(w, saved.row);
+    const w = await worker();
+    const saved = await expense(w);
+    const approved = await approveExpense(w, saved.row);
     const input = {
       expenseId: approved.id,
       expectedVersion: approved.version,
@@ -298,11 +298,11 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
         code: 'VALIDATION',
       });
     expect((await expenseRow(approved.id)).status).toBe('approved');
-    const next = await expense(w),
-      submitted = await call(f.db, w.params, 'submit_expense', {
-        expenseId: next.row.id,
-        expectedVersion: next.row.version,
-      });
+    const next = await expense(w);
+    const submitted = await call(f.db, w.params, 'submit_expense', {
+      expenseId: next.row.id,
+      expectedVersion: next.row.version,
+    });
     const cancelled = await call(f.db, w.params, 'cancel_expense', {
       expenseId: submitted.id,
       expectedVersion: submitted.version,

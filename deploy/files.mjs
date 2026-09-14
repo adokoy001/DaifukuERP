@@ -41,9 +41,9 @@ export async function inventory(root) {
   const records = [];
   async function visit(dir) {
     for (const item of (await readdir(dir)).sort()) {
-      const path = join(dir, item),
-        name = relative(root, path),
-        info = await lstat(path);
+      const path = join(dir, item);
+      const name = relative(root, path);
+      const info = await lstat(path);
       if (name === 'manifest.json') continue;
       if (!info.isSymbolicLink() && info.mode & 0o6022)
         throw new Error('Release contains privileged or writable-by-other files.');
@@ -78,12 +78,12 @@ export async function verifyRelease(root, expectedHash) {
     directory.mode & 0o6022
   )
     throw new Error('Use the immutable release directory directly, without a mutable path alias.');
-  const manifestPath = join(root, 'manifest.json'),
-    info = await lstat(manifestPath);
+  const manifestPath = join(root, 'manifest.json');
+  const info = await lstat(manifestPath);
   if (!info.isFile() || info.isSymbolicLink() || info.size > 32 * 1024 * 1024 || info.mode & 0o6022)
     throw new Error('Invalid manifest file.');
-  const raw = await readFile(manifestPath),
-    manifest = JSON.parse(raw);
+  const raw = await readFile(manifestPath);
+  const manifest = JSON.parse(raw);
   if (expectedHash && digest(raw) !== expectedHash)
     throw new Error('Release manifest does not match the approved digest.');
   if (

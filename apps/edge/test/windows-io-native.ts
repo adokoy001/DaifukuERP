@@ -18,8 +18,8 @@ async function main(): Promise<void> {
   let release: (() => Promise<void>) | undefined;
   try {
     await privateDirectory(root);
-    const marker = join(root, 'installation.json'),
-      lock = join(root, '.setup-lock');
+    const marker = join(root, 'installation.json');
+    const lock = join(root, '.setup-lock');
     await privateDirectory(lock);
     await durableJson(marker, { format: 1, installationId: randomUUID(), phase: 'prepared', label: '合成データ' });
     const before = await readFile(marker, 'utf8');
@@ -38,8 +38,8 @@ async function main(): Promise<void> {
     release = await acquireWriter(lock, () => {
       throw new Error('unexpected_lock_loss');
     });
-    const staged = join(root, 'pairing.incoming.json'),
-      inbox = join(root, 'pairing.json');
+    const staged = join(root, 'pairing.incoming.json');
+    const inbox = join(root, 'pairing.json');
     await writeFile(staged, '{"synthetic":"first"}', { flag: 'wx' });
     await windowsDurablePublish(staged, inbox);
     await writeFile(staged, '{"synthetic":"second"}', { flag: 'wx' });

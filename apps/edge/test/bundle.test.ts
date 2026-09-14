@@ -9,9 +9,9 @@ import { syncJson } from '../src/files.ts';
 import { job, relayFixture, until } from './fixtures.ts';
 describe('standalone Linux edge bundle', () => {
   it('runs without node_modules and releases its writer lock after a killed process', async () => {
-    const relay = await relayFixture(),
-      cwd = fileURLToPath(new URL('../', import.meta.url)),
-      run = promisify(execFile);
+    const relay = await relayFixture();
+    const cwd = fileURLToPath(new URL('../', import.meta.url));
+    const run = promisify(execFile);
     let running: ReturnType<typeof spawn> | undefined;
     try {
       await run(process.execPath, ['scripts/build.mjs'], { cwd });
@@ -23,8 +23,8 @@ describe('standalone Linux edge bundle', () => {
       expect(notices).toContain('Permission is hereby granted');
       expect(notices).not.toContain('esbuild@');
       expect(await readFile(join(cwd, 'dist/LICENSE'), 'utf8')).toContain('adokoy001');
-      const config = relay.config(),
-        value = job();
+      const config = relay.config();
+      const value = job();
       config.devices = [
         {
           deviceId: value.deviceId,

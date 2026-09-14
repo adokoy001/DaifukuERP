@@ -27,15 +27,15 @@ export function WorkSystemEditor({
   current?: Period | undefined;
   onClose: () => void;
 }) {
-  const { t, locale } = useLocale(),
-    task = useWorkforceTask();
-  const [from, setFrom] = useState(original?.startsOn.slice(0, 7) ?? period),
-    [to, setTo] = useState(original?.endsOn.slice(0, 7) ?? period),
-    [mode, setMode] = useState<WorkSystemInput['mode']>(original?.mode ?? 'ordinary');
+  const { t, locale } = useLocale();
+  const task = useWorkforceTask();
+  const [from, setFrom] = useState(original?.startsOn.slice(0, 7) ?? period);
+  const [to, setTo] = useState(original?.endsOn.slice(0, 7) ?? period);
+  const [mode, setMode] = useState<WorkSystemInput['mode']>(original?.mode ?? 'ordinary');
   const [days, setDays] = useState<WorkSystemDay[]>(original?.days ?? weekdayTemplate(monthDays(period, period)));
-  const expected = monthDays(from, mode === 'flex' ? to : from),
-    total = days.reduce((sum, day) => sum + day.scheduledMinutes, 0),
-    cap = Math.floor((2400 * days.length) / 7);
+  const expected = monthDays(from, mode === 'flex' ? to : from);
+  const total = days.reduce((sum, day) => sum + day.scheduledMinutes, 0);
+  const cap = Math.floor((2400 * days.length) / 7);
   const calendarMatches =
     expected.length > 0 && expected.length === days.length && expected.every((date, i) => date === days[i]?.date);
   return (

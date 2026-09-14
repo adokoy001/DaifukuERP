@@ -14,11 +14,11 @@ export function BankingMatch({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    query = useFinanceRead('banking.candidates', { statementId }, !stale, bankCandidatesOutput.parse),
-    command = useFinanceCommand();
-  const [selected, setSelected] = useState<BankCandidate>(),
-    [requestId] = useState(() => crypto.randomUUID());
+  const { t } = useLocale();
+  const query = useFinanceRead('banking.candidates', { statementId }, !stale, bankCandidatesOutput.parse);
+  const command = useFinanceCommand();
+  const [selected, setSelected] = useState<BankCandidate>();
+  const [requestId] = useState(() => crypto.randomUUID());
   const candidate = query.data?.candidates.find(
     (row) => row.targetKind === selected?.targetKind && row.targetId === selected.targetId,
   );
@@ -196,8 +196,8 @@ export function BankingUndo({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand();
+  const { t } = useLocale();
+  const command = useFinanceCommand();
   return (
     <FinanceDialog
       title={t({ ja: '銀行照合を解除', en: 'Reverse reconciliation' })}

@@ -124,8 +124,8 @@ describe('authorized navigation catalog', () => {
         },
       ],
     );
-    const before = JSON.stringify(data),
-      catalog = buildNavigation(data, false);
+    const before = JSON.stringify(data);
+    const catalog = buildNavigation(data, false);
     expect(new Set(catalog.entries.map((entry) => entry.href)).size).toBe(catalog.entries.length);
     expect(catalog.entries.filter((entry) => entry.href === '/e/partner')).toHaveLength(1);
     expect(findNavigationEntry(catalog, '/finance/banking')?.label.ja).toBe('銀行連携・消込');

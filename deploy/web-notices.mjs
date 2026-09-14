@@ -37,8 +37,8 @@ async function packageNotices(directory, metadata) {
 /** Collect only dependencies contributing code to main/worker chunks in the frozen Vite build. */
 export async function writeWebNotices(stage, destination) {
   stage = resolve(stage);
-  const evidence = join(destination, '.license-inputs'),
-    packages = new Map();
+  const evidence = join(destination, '.license-inputs');
+  const packages = new Map();
   const files = await readdir(evidence);
   if (!files.length) throw new Error('Web bundle license evidence is missing.');
   for (const file of files) {

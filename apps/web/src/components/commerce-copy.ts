@@ -253,8 +253,8 @@ const english: Record<string, string> = {
 };
 export function commerceCopy(value: string, locale: string): string {
   if (locale !== 'en') return value;
-  const key = value.trim(),
-    translated = english[key];
+  const key = value.trim();
+  const translated = english[key];
   return translated === undefined
     ? value
     : value.slice(0, value.length - value.trimStart().length) + translated + value.slice(value.trimEnd().length);

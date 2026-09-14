@@ -54,9 +54,9 @@ describe('protected installer inputs and truthful runtime freshness', () => {
     expect(f.fixture.events).toEqual([]);
   });
   it('rejects source aliases rather than copying an unsafe input', async () => {
-    const f = await fixture(),
-      alias = join(f.fixture.root, 'alias.json'),
-      hard = join(f.fixture.root, 'hard.json');
+    const f = await fixture();
+    const alias = join(f.fixture.root, 'alias.json');
+    const hard = join(f.fixture.root, 'hard.json');
     await symlink(f.fixture.configSource, alias);
     await expect(readPrivateSource(alias, 65536)).rejects.toThrow('unsafe_path_link');
     await link(f.fixture.configSource, hard);

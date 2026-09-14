@@ -30,10 +30,10 @@ function body(extra: Record<string, unknown> = {}) {
 }
 describe('Square official webhook boundary', () => {
   it('verifies configured URL plus exact raw body, rejects tampering and malformed signatures', () => {
-    const raw = body(),
-      signature = createHmac('sha256', connection.signatureKey)
-        .update(connection.notificationUrl + raw)
-        .digest('base64');
+    const raw = body();
+    const signature = createHmac('sha256', connection.signatureKey)
+      .update(connection.notificationUrl + raw)
+      .digest('base64');
     expect(verifySquareSignature(raw, signature, connection)).toBe(true);
     expect(verifySquareSignature(raw + ' ', signature, connection)).toBe(false);
     expect(

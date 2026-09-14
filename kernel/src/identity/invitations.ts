@@ -62,7 +62,7 @@ export async function inviteIdentity(
         ),
       )
       .limit(1);
-    if (!invites.length || existing.active !== 0 || existing.passwordHash || existing.tenantAdmin || memberships.length)
+    if (!invites.length || existing.active || existing.passwordHash || existing.tenantAdmin || memberships.length)
       throw new StateError(
         'This account cannot be invited.',
         'Use existing account management; invitations cannot reset or reactivate an established account.',
@@ -72,7 +72,7 @@ export async function inviteIdentity(
   } else {
     const [created] = await ctx.db
       .insert(users)
-      .values({ id: newId(), tenantId: ctx.tenantId, email, name: input.name, active: 0 })
+      .values({ id: newId(), tenantId: ctx.tenantId, email, name: input.name, active: false })
       .returning();
     if (!created) throw identityDenied();
     user = created;
@@ -108,7 +108,7 @@ export async function requestIdentityReset(
     .where(
       and(
         eq(users.email, email.trim().toLowerCase()),
-        eq(users.active, 1),
+        eq(users.active, true),
         tenantId ? eq(users.tenantId, tenantId) : undefined,
       ),
     )
@@ -158,14 +158,14 @@ export async function completeIdentityToken(
         ctx,
         challenge.payload.sessionVersion,
         challenge.userId,
-        purpose === 'invitation' ? 0 : 1,
+        purpose !== 'invitation',
       );
       if (purpose === 'invitation' && (user.passwordHash || user.tenantAdmin)) throw identityDenied();
       await ctx.db
         .update(users)
         .set({
           passwordHash: await hashPassword(password),
-          active: 1,
+          active: true,
           sessionVersion: user.sessionVersion + 1,
           version: user.version + 1,
         })

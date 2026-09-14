@@ -1,22 +1,22 @@
 // Populated 0011 -> enterprise upgrade retains credentials, scope and published shift history.
 import { rmSync } from 'node:fs';
-import { connect, dropAll, hashPassword, newId, runMigrations, type Database } from '@daifuku/kernel';
+import { connect, dropAll, hashPassword, newId, type Database } from '@daifuku/kernel';
 import { APP_URL, OWNER_URL } from '@daifuku/kernel/testing';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import '../src/modules.ts';
-import { MIGRATIONS_DIR, readJournal } from '../src/db/migrations.ts';
-import { legacyMigrationFolder } from './legacy-fixture.ts';
-const owner = connect(OWNER_URL, { max: 1 }),
-  app = connect(APP_URL, { max: 1 }),
-  previous = legacyMigrationFolder(11);
-const tenant = newId(),
-  company = newId(),
-  user = newId(),
-  site = newId(),
-  employee = newId(),
-  plan = newId();
+import { readJournal } from '../src/db/migrations.ts';
+import { expectedBooleanUserFacts, legacyMigrationFolder, upgradeLegacyConnection } from './legacy-fixture.ts';
+let owner = connect(OWNER_URL, { max: 1 });
+const app = connect(APP_URL, { max: 1 });
+const previous = legacyMigrationFolder(11);
+const tenant = newId();
+const company = newId();
+const user = newId();
+const site = newId();
+const employee = newId();
+const plan = newId();
 const tables = [
   'identity_challenges',
   'identity_factors',
@@ -71,15 +71,16 @@ const facts = () =>
     plans: await tx`select * from workforce_shift_plan order by id`,
   }));
 it('preserves historical facts, initializes MFA off and adds only empty enterprise tables with RLS and scoped foreign keys', async () => {
-  const before = await facts();
-  await runMigrations(owner, MIGRATIONS_DIR);
+  const original = await facts();
+  const before = { ...original, users: expectedBooleanUserFacts(original.users) };
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   const [identity] = await scoped(
     app,
     tenant,
     (tx) => tx`select mfa_enabled,session_version from users where id=${user}`,
   );
-  expect(identity).toEqual({ mfa_enabled: 0, session_version: 7 });
+  expect(identity).toEqual({ mfa_enabled: false, session_version: 7 });
   for (const name of tables) {
     expect((await scoped(app, tenant, (tx) => tx`select count(*)::int n from ${tx(name)}`))[0]?.n).toBe(0);
     expect(
@@ -102,7 +103,7 @@ it('preserves historical facts, initializes MFA off and adds only empty enterpri
         tx`insert into identity_links(id,tenant_id,user_id,provider_id,issuer,subject) values(${newId()},${tenant},${newId()},'test','https://issuer.example.invalid','subject')`,
     ),
   ).rejects.toMatchObject({ code: '23503' });
-  await runMigrations(owner, MIGRATIONS_DIR);
+  owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);
   expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
     readJournal().entries.length,

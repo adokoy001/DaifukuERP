@@ -11,8 +11,8 @@ export function OperationsTrend({ series }: { series: TableResult }) {
   }));
   const max = maximumMagnitude(points.flatMap((p) => [p.sales, p.target]));
   const hasNegative = points.some((p) => p.sales.startsWith('-') || p.target.startsWith('-'));
-  const baseline = hasNegative ? 112 : 195,
-    height = hasNegative ? 80 : 163;
+  const baseline = hasNegative ? 112 : 195;
+  const height = hasNegative ? 80 : 163;
   const x = (index: number) => 58 + (index / Math.max(1, points.length - 1)) * 624;
   const y = (value: string) => baseline - chartRatio(value, max) * height;
   const path = (key: 'sales' | 'target') => points.map((p, i) => (i ? 'L' : 'M') + x(i) + ' ' + y(p[key])).join(' ');

@@ -3,8 +3,8 @@ import { pivot, type PivotConfig } from './pivot.ts';
 import { createPivotRunner, type PivotWorkerPort } from './pivot-worker-client.ts';
 
 const config: PivotConfig = { rows: [], columns: [], measures: [{ field: 'amount', op: 'sum' }] };
-const rows = [{ amount: '0.1' }],
-  result = pivot(rows, config);
+const rows = [{ amount: '0.1' }];
+const result = pivot(rows, config);
 function port(): PivotWorkerPort {
   return { onmessage: null, onerror: null, postMessage: vi.fn(), terminate: vi.fn() };
 }
@@ -14,9 +14,9 @@ function callbacks() {
 afterEach(() => vi.useRealTimers());
 describe('pivot worker lifecycle', () => {
   it('terminates superseded workers and ignores their late results and errors', () => {
-    const first = port(),
-      second = port(),
-      cb = callbacks();
+    const first = port();
+    const second = port();
+    const cb = callbacks();
     const runner = createPivotRunner(vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second), cb);
     runner.run(rows, config);
     runner.run([{ amount: '0.2' }], config);
@@ -31,9 +31,9 @@ describe('pivot worker lifecycle', () => {
     expect(cb.pending).toHaveBeenLastCalledWith(false);
   });
   it('sends only the supplied snapshot/config and returns safe actionable errors', () => {
-    const worker = port(),
-      cb = callbacks(),
-      runner = createPivotRunner(() => worker, cb);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createPivotRunner(() => worker, cb);
     runner.run(rows, config);
     expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ rows, config });
     worker.onmessage?.({ data: { kind: 'error', code: 'cell_limit' } });
@@ -42,9 +42,9 @@ describe('pivot worker lifecycle', () => {
     expect(cb.result).not.toHaveBeenCalled();
   });
   it('cancels and discards a reply without surfacing failure', () => {
-    const worker = port(),
-      cb = callbacks(),
-      runner = createPivotRunner(() => worker, cb);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createPivotRunner(() => worker, cb);
     runner.run(rows, config);
     runner.cancel();
     worker.onmessage?.({ data: { kind: 'result', result } });
@@ -55,9 +55,9 @@ describe('pivot worker lifecycle', () => {
   });
   it('terminates computation after the time budget and ignores a late result', () => {
     vi.useFakeTimers();
-    const worker = port(),
-      cb = callbacks(),
-      runner = createPivotRunner(() => worker, cb, 500);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createPivotRunner(() => worker, cb, 500);
     runner.run(rows, config);
     vi.advanceTimersByTime(501);
     worker.onmessage?.({ data: { kind: 'result', result } });
@@ -82,9 +82,9 @@ describe('pivot worker lifecycle', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
   it('disposes on navigation without delivering state updates to a removed view', () => {
-    const worker = port(),
-      cb = callbacks(),
-      runner = createPivotRunner(() => worker, cb);
+    const worker = port();
+    const cb = callbacks();
+    const runner = createPivotRunner(() => worker, cb);
     runner.run(rows, config);
     cb.pending.mockClear();
     runner.dispose();

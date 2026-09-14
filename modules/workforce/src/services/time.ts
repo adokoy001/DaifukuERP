@@ -37,8 +37,8 @@ export function measureWork(
   nightStart: number,
   nightEnd: number,
 ) {
-  const start = clockIn.getTime(),
-    end = clockOut.getTime();
+  const start = clockIn.getTime();
+  const end = clockOut.getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > DAY_MS)
     throw new ValidationError('Invalid working interval', [
       { path: 'clockOut', message: 'End must follow start within 24 hours.' },
@@ -46,8 +46,8 @@ export function measureWork(
   const intervals = breaks
     .map((b) => ({ start: new Date(b.start).getTime(), end: new Date(b.end).getTime() }))
     .sort((a, b) => a.start - b.start);
-  let breakMs = 0,
-    previousEnd = start;
+  let breakMs = 0;
+  let previousEnd = start;
   for (const interval of intervals) {
     if (
       !Number.isFinite(interval.start) ||

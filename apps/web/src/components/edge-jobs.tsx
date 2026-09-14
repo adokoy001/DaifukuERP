@@ -96,9 +96,9 @@ export function EdgeJobs({
   );
 }
 export function EdgeReviewForm({ job, onClose }: { job: EdgeRow; onClose: () => void }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand(),
-    resolve = job.state === 'uncertain';
+  const { t } = useLocale();
+  const task = useEdgeCommand();
+  const resolve = job.state === 'uncertain';
   return (
     <EdgeForm
       title={t(

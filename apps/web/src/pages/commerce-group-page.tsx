@@ -24,41 +24,41 @@ export function CommerceGroupPage() {
 }
 function GroupWorkspace() {
   const copy = useCommerceCopy();
-  const today = businessToday(),
-    priorEnd = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+  const today = businessToday();
+  const priorEnd = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
   priorEnd.setUTCDate(0);
-  const initialTo = priorEnd.toISOString().slice(0, 10),
-    initialFrom = initialTo.slice(0, 7) + '-01';
+  const initialTo = priorEnd.toISOString().slice(0, 10);
+  const initialFrom = initialTo.slice(0, 7) + '-01';
   const { allowed, actions } = useCommerceAccess('group_accounting.companies');
-  const [selected, setSelected] = useState<string[]>([]),
-    [period, setPeriod] = useState<{
-      from: string;
-      to: string;
-    }>(),
-    [runId, setRunId] = useState(''),
-    [offset, setOffset] = useState(0),
-    [editor, setEditor] = useState<{
-      sources: CompanySource[];
-      from: string;
-      to: string;
-      initial?: GroupBoard;
-    }>(),
-    [confirm, setConfirm] = useState<{
-      board: GroupBoard;
-      mode: 'confirm' | 'cancel';
-    }>();
-  const companies = useCommerceRead<AuthorizedCompany[]>('group_accounting.companies', {}, allowed),
-    history = useCommerceList('group_accounting_run', allowed, offset),
-    source = useCommerceRead<{
-      sources: CompanySource[];
-    }>(
-      'group_accounting.sources',
-      { companyIds: selected, from: period?.from ?? '', to: period?.to ?? '' },
-      allowed && Boolean(period),
-    ),
-    board = useCommerceRead<GroupBoard>('group_accounting.board', { runId }, allowed && Boolean(runId));
-  const readers = [companies, history, source, board],
-    busy = readers.some((q) => q.isFetching);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [period, setPeriod] = useState<{
+    from: string;
+    to: string;
+  }>();
+  const [runId, setRunId] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [editor, setEditor] = useState<{
+    sources: CompanySource[];
+    from: string;
+    to: string;
+    initial?: GroupBoard;
+  }>();
+  const [confirm, setConfirm] = useState<{
+    board: GroupBoard;
+    mode: 'confirm' | 'cancel';
+  }>();
+  const companies = useCommerceRead<AuthorizedCompany[]>('group_accounting.companies', {}, allowed);
+  const history = useCommerceList('group_accounting_run', allowed, offset);
+  const source = useCommerceRead<{
+    sources: CompanySource[];
+  }>(
+    'group_accounting.sources',
+    { companyIds: selected, from: period?.from ?? '', to: period?.to ?? '' },
+    allowed && Boolean(period),
+  );
+  const board = useCommerceRead<GroupBoard>('group_accounting.board', { runId }, allowed && Boolean(runId));
+  const readers = [companies, history, source, board];
+  const busy = readers.some((q) => q.isFetching);
   return (
     <CommerceShell
       title={copy('グループ連結精算表')}

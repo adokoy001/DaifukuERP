@@ -31,14 +31,14 @@ export function CommerceDialog({
   submitDisabled?: boolean;
 }) {
   const { t } = useLocale();
-  const dialog = useRef<HTMLDialogElement>(null),
-    locked = useRef(false),
-    exitAllowed = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const locked = useRef(false);
+  const exitAllowed = useRef(false);
   const id = useId();
-  const [dirty, setDirty] = useState(false),
-    [busy, setBusy] = useState(false),
-    [discarding, setDiscarding] = useState(false),
-    [error, setError] = useState<unknown>();
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [error, setError] = useState<unknown>();
   const blocker = useBlocker({
     shouldBlockFn: () => Boolean(getToken()) && !exitAllowed.current && (locked.current || dirty),
     enableBeforeUnload: dirty || busy,

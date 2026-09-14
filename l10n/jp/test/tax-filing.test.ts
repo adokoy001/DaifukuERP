@@ -80,8 +80,8 @@ function source(): FilingSource {
 }
 describe('HOT010 3.0 limited general-industry profile', () => {
   it('emits two five-column SHIFT-JIS statements with official headers and reconciled totals', () => {
-    const s = source(),
-      p = jp.prepare(s);
+    const s = source();
+    const p = jp.prepare(s);
     expect(p.issues).toEqual([]);
     expect(p.totals).toMatchObject({
       assets: '1200',

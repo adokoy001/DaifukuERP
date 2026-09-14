@@ -16,17 +16,17 @@ export function OperationsBoard({ result, actions }: { result: TableResult; acti
   const { t } = useLocale();
   const toast = useToast();
   const task = useOperationsTask();
-  const [selected, setSelected] = useState<SelectedTask>(),
-    [note, setNote] = useState(''),
-    [onlyPending, setOnlyPending] = useState(false),
-    [showUnplanned, setShowUnplanned] = useState(false),
-    [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<SelectedTask>();
+  const [note, setNote] = useState('');
+  const [onlyPending, setOnlyPending] = useState(false);
+  const [showUnplanned, setShowUnplanned] = useState(false);
+  const [page, setPage] = useState(0);
   const allowed = (name: string) => actions.some((a) => a.name === 'restaurant_chain.' + name);
   const rows = result.rows
     .filter((row) => (!onlyPending || row.docstatus !== 1) && (showUnplanned || row.status !== 'unplanned'))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.store).localeCompare(String(b.store)));
-  const lastPage = Math.max(0, Math.ceil(rows.length / 50) - 1),
-    visiblePage = Math.min(page, lastPage);
+  const lastPage = Math.max(0, Math.ceil(rows.length / 50) - 1);
+  const visiblePage = Math.min(page, lastPage);
   const visibleRows = rows.slice(visiblePage * 50, (visiblePage + 1) * 50);
   const choose = (row: Record<string, unknown>, action: string, title: string, decision?: string) => {
     setNote('');

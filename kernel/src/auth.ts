@@ -23,7 +23,7 @@ export async function authenticate(
     .where(
       and(
         eq(users.email, email.toLowerCase()),
-        eq(users.active, 1),
+        eq(users.active, true),
         tenantId ? eq(users.tenantId, tenantId) : undefined,
       ),
     )
@@ -41,7 +41,7 @@ export async function authenticate(
         and(
           eq(users.id, user.id),
           eq(users.tenantId, user.tenantId),
-          eq(users.active, 1),
+          eq(users.active, true),
           eq(users.sessionVersion, user.sessionVersion),
           eq(users.passwordHash, acceptedHash),
         ),
@@ -57,7 +57,7 @@ export async function authenticate(
           and(
             eq(users.id, user.id),
             eq(users.tenantId, user.tenantId),
-            eq(users.active, 1),
+            eq(users.active, true),
             eq(users.sessionVersion, user.sessionVersion),
           ),
         )
@@ -75,7 +75,7 @@ export async function authenticate(
       and(
         eq(users.id, user.id),
         eq(users.tenantId, user.tenantId),
-        eq(users.active, 1),
+        eq(users.active, true),
         eq(users.sessionVersion, user.sessionVersion),
         eq(users.passwordHash, acceptedHash),
       ),
@@ -88,7 +88,7 @@ export async function loadPrincipal(owner: Database, userId: string): Promise<Pr
   const rows = await owner.drizzle
     .select()
     .from(users)
-    .where(and(eq(users.id, userId), eq(users.active, 1)))
+    .where(and(eq(users.id, userId), eq(users.active, true)))
     .limit(1);
   const user = rows[0];
   if (!user) return null;
@@ -103,9 +103,9 @@ function principalFrom(owner: Database, user: typeof users.$inferSelect): Promis
     email: user.email,
     roles: [],
     defaultCompanyId: user.defaultCompanyId,
-    tenantAdmin: user.tenantAdmin === 1,
+    tenantAdmin: user.tenantAdmin,
     sessionVersion: user.sessionVersion,
-    mfaEnabled: user.mfaEnabled === 1,
+    mfaEnabled: user.mfaEnabled,
     accessScope: 'all',
     storeIds: [],
     siteIds: [],
@@ -165,7 +165,7 @@ export async function bootstrapTenant(
       name: input.adminName,
       passwordHash: await hashPassword(input.adminPassword),
       roles: ['admin'],
-      tenantAdmin: 1,
+      tenantAdmin: true,
       defaultCompanyId: companyId,
     });
     await tx.insert(companyMemberships).values({ tenantId, userId, companyId, roles: ['admin'] });

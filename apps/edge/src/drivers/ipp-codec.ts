@@ -34,8 +34,8 @@ export function ippRequest(
   jobAttributes: readonly IppAttribute[] = [],
   document?: Buffer,
 ) {
-  const requestId = randomInt(1, 2147483647),
-    header = Buffer.alloc(8);
+  const requestId = randomInt(1, 2147483647);
+  const header = Buffer.alloc(8);
   header[0] = 1;
   header[1] = 1;
   header.writeUInt16BE(operation, 2);
@@ -46,8 +46,8 @@ export function ippRequest(
     chunks.push(Buffer.from([tag]));
     for (const attribute of values)
       for (const [index, value] of attribute.values.entries()) {
-        const name = Buffer.from(index ? '' : attribute.name),
-          data = encoded(value);
+        const name = Buffer.from(index ? '' : attribute.name);
+        const data = encoded(value);
         if (name.length > 255 || data.length > 65535) throw new EdgeError('ipp_attribute_too_large');
         chunks.push(Buffer.from([attribute.tag]), short(name.length), name, short(data.length), data);
       }
@@ -85,10 +85,10 @@ export function parseIpp(body: Buffer, requestId?: number): IppMessage {
   const actual = body.readInt32BE(4);
   if (requestId !== undefined && actual !== requestId) throw new EdgeError('ipp_request_mismatch');
   const attributes = new Map<string, IppValue[]>();
-  let position = 8,
-    name = '',
-    count = 0,
-    group = 0;
+  let position = 8;
+  let name = '';
+  let count = 0;
+  let group = 0;
   while (position < body.length) {
     const tag = body[position++];
     if (tag === 3) return { code: body.readUInt16BE(2), requestId: actual, attributes };

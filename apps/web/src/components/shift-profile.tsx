@@ -29,9 +29,9 @@ function ProfileEditor({
   name: string;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    [week] = useState(() => shiftMonday()),
-    board = useShiftBoard(siteId, week);
+  const { t } = useLocale();
+  const [week] = useState(() => shiftMonday());
+  const board = useShiftBoard(siteId, week);
   if (board.isError && !canRetainData(board))
     return <WorkforceError error={board.error} onRetry={() => void board.refetch()} />;
   if (!board.data) return <p role="status">{t({ ja: '勤務条件を読込中…', en: 'Loading work profile…' })}</p>;
@@ -53,9 +53,9 @@ function ProfileForm({
   current: ShiftProfileSummary | undefined;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    [original] = useState(current);
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [original] = useState(current);
   const profile = original?.profile ?? defaults;
   return (
     <WorkforceDialog
@@ -140,8 +140,8 @@ function ProfileForm({
   );
 }
 export function ShiftProfileButton({ siteId, employeeId, name }: { siteId: string; employeeId: string; name: string }) {
-  const { t } = useLocale(),
-    [open, setOpen] = useState(false);
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" className="btn" onClick={() => setOpen(true)}>

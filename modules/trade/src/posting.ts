@@ -46,9 +46,9 @@ async function postFulfillment(ctx: Context, { row }: HookArgs) {
 }
 async function postBilling(ctx: Context, { row }: HookArgs) {
   assertInternal(ctx);
-  const sales = row.direction === 'sales',
-    entity = sales ? SalesInvoice : PurchaseInvoice,
-    lineEntity = sales ? SalesInvoiceLine : PurchaseInvoiceLine;
+  const sales = row.direction === 'sales';
+  const entity = sales ? SalesInvoice : PurchaseInvoice;
+  const lineEntity = sales ? SalesInvoiceLine : PurchaseInvoiceLine;
   const invoice = await repo(ctx, entity).create({
     partnerId: String(row.partnerId),
     date: String(row.date),
@@ -120,8 +120,8 @@ export function registerPostingHooks() {
   );
   registry.registerHook(TradeBilling.name, 'after_cancel', (ctx, { row, correctionDate }) =>
     writeTrade(ctx, async (inner) => {
-      const entity = row.direction === 'sales' ? SalesInvoice : PurchaseInvoice,
-        id = row.direction === 'sales' ? row.salesInvoiceId : row.purchaseInvoiceId;
+      const entity = row.direction === 'sales' ? SalesInvoice : PurchaseInvoice;
+      const id = row.direction === 'sales' ? row.salesInvoiceId : row.purchaseInvoiceId;
       if (!id) throw new StateError('生成請求が不明です。', '商流請求の関連を確認してください。');
       await cancelDocument(inner, entity, String(id), { correctionDate });
     }),

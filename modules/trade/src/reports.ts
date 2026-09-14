@@ -53,9 +53,9 @@ async function orderRow(ctx: Context, row: Infer<typeof TradeOrder>, q: Awaited<
   } as TradeOrderDetail['order'];
 }
 async function billingRow(ctx: Context, row: Infer<typeof TradeBilling>) {
-  const entity = row.direction === 'sales' ? SalesInvoice : PurchaseInvoice,
-    invoiceId = row.salesInvoiceId ?? row.purchaseInvoiceId,
-    invoice = invoiceId ? await repo(ctx, entity).get(invoiceId) : null;
+  const entity = row.direction === 'sales' ? SalesInvoice : PurchaseInvoice;
+  const invoiceId = row.salesInvoiceId ?? row.purchaseInvoiceId;
+  const invoice = invoiceId ? await repo(ctx, entity).get(invoiceId) : null;
   return {
     ...result(row, TradeBilling),
     date: row.date,
@@ -74,8 +74,8 @@ export async function orderDetail(
     orderId: string;
   },
 ): Promise<TradeOrderDetail> {
-  const row = await repo(ctx, TradeOrder).get(orderId),
-    q = await orderQuantities(ctx, orderId);
+  const row = await repo(ctx, TradeOrder).get(orderId);
+  const q = await orderQuantities(ctx, orderId);
   const fulfillments: TradeOrderDetail['fulfillments'] = [];
   for (const f of q.fulfillments) {
     const fq = await fulfillmentQuantities(ctx, f.id);

@@ -12,8 +12,8 @@ export function MfaChallenge({
   onSuccess: (result: LoginResponse) => Promise<void>;
   onCancel: () => void;
 }) {
-  const { t } = useLocale(),
-    [code, setCode] = useState('');
+  const { t } = useLocale();
+  const [code, setCode] = useState('');
   const mutation = useMutation({
     mutationFn: () => verifyMfa(challenge.challengeToken, code.trim()),
     onSuccess,

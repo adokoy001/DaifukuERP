@@ -16,15 +16,15 @@ export function BankingImport({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand();
-  const [csv, setCsv] = useState(''),
-    [filename, setFilename] = useState(''),
-    [preview, setPreview] = useState<ReturnType<typeof bankImportPreview.parse>>(),
-    [error, setError] = useState<unknown>(),
-    [busy, setBusy] = useState(false);
-  const reading = useRef(0),
-    pending = useRef(false);
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const [csv, setCsv] = useState('');
+  const [filename, setFilename] = useState('');
+  const [preview, setPreview] = useState<ReturnType<typeof bankImportPreview.parse>>();
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  const reading = useRef(0);
+  const pending = useRef(false);
   const read = async (file: File | undefined) => {
     const generation = ++reading.current;
     setPreview(undefined);

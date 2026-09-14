@@ -99,8 +99,8 @@ export async function fulfillOrder(ctx: Context, input: z.infer<typeof fulfillIn
   return withLock(ctx, 'trade.fulfill.' + input.requestId, async () => {
     const order = await repo(ctx, TradeOrder).lock(input.orderId);
     assertDirection(ctx, order.direction);
-    const { expectedVersion: _version, ...payload } = input,
-      hash = contentHash(JSON.stringify(payload));
+    const { expectedVersion: _version, ...payload } = input;
+    const hash = contentHash(JSON.stringify(payload));
     const existing = (await repo(ctx, TradeFulfillment).list({ where: { requestId: input.requestId }, limit: 1 }))
       .items[0];
     if (existing) {
@@ -147,8 +147,8 @@ export async function billFulfillment(ctx: Context, input: z.infer<typeof billIn
   return withLock(ctx, 'trade.bill.' + input.requestId, async () => {
     const fulfillment = await repo(ctx, TradeFulfillment).lock(input.fulfillmentId);
     assertDirection(ctx, fulfillment.direction);
-    const { expectedVersion: _version, ...payload } = input,
-      hash = contentHash(JSON.stringify(payload));
+    const { expectedVersion: _version, ...payload } = input;
+    const hash = contentHash(JSON.stringify(payload));
     const existing = (await repo(ctx, TradeBilling).list({ where: { requestId: input.requestId }, limit: 1 })).items[0];
     if (existing) {
       if (existing.requestHash !== hash || existing.docstatus !== DOCSTATUS.submitted)

@@ -59,22 +59,22 @@ export function AnalyticsResult({
   onExpand(axis: 'rows' | 'columns', key: string): void;
 }) {
   const { t } = useLocale();
-  const [rowPage, setRowPage] = useState(0),
-    [columnPage, setColumnPage] = useState(0);
+  const [rowPage, setRowPage] = useState(0);
+  const [columnPage, setColumnPage] = useState(0);
   const rowSet = useMemo(() => new Set(settings.expandedRows), [settings.expandedRows]);
   const colSet = useMemo(() => new Set(settings.expandedColumns), [settings.expandedColumns]);
   const visible = (nodes: PivotNode[], expanded: Set<string>) =>
     visibleNodes(nodes, expanded).filter(
       (node) => node.depth > 0 && (settings.subtotals || !expanded.has(node.key) || !node.children.length),
     );
-  const rows = visible(result.rowNodes, rowSet),
-    columns = visible(result.columnNodes, colSet);
-  const rp = Math.min(rowPage, Math.max(0, Math.ceil(rows.length / 50) - 1)),
-    cp = Math.min(columnPage, Math.max(0, Math.ceil(columns.length / 12) - 1));
-  const rootRow = result.rowNodes.find((node) => node.depth === 0),
-    rootCol = result.columnNodes.find((node) => node.depth === 0);
-  const shownRows = rows.slice(rp * 50, rp * 50 + 50),
-    shownCols = [...columns.slice(cp * 12, cp * 12 + 12), ...(rootCol ? [rootCol] : [])];
+  const rows = visible(result.rowNodes, rowSet);
+  const columns = visible(result.columnNodes, colSet);
+  const rp = Math.min(rowPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
+  const cp = Math.min(columnPage, Math.max(0, Math.ceil(columns.length / 12) - 1));
+  const rootRow = result.rowNodes.find((node) => node.depth === 0);
+  const rootCol = result.columnNodes.find((node) => node.depth === 0);
+  const shownRows = rows.slice(rp * 50, rp * 50 + 50);
+  const shownCols = [...columns.slice(cp * 12, cp * 12 + 12), ...(rootCol ? [rootCol] : [])];
   const measureLabels = settings.pivot.measures.map((measure) =>
     measure.op === 'rows'
       ? t(OP_LABELS.rows)
@@ -254,9 +254,9 @@ export function AnalyticsChart({
     .map((node) => ({ node, exact: result.cells[cellKey(node.key, '[]')]?.[index] ?? null }));
   const values = shown.map((point) => (point.exact === null ? null : Number(point.exact)));
   const finite = values.filter((value): value is number => value !== null && Number.isFinite(value));
-  const low = Math.min(0, ...finite),
-    high = Math.max(0, ...finite),
-    span = high - low || 1;
+  const low = Math.min(0, ...finite);
+  const high = Math.max(0, ...finite);
+  const span = high - low || 1;
   const y = (value: number) => 220 - ((value - low) / span) * 180;
   const x = (at: number) => 65 + at * (560 / Math.max(shown.length, 1));
   const title =

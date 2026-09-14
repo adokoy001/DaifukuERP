@@ -1,5 +1,16 @@
 // Machine authentication infrastructure. No generic CRUD or human login.
-import { foreignKey, index, integer, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  foreignKey,
+  index,
+  integer,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { registry } from '../registry.ts';
 import { sql } from 'drizzle-orm';
 import { companies, users } from './system-tables.ts';
@@ -21,7 +32,7 @@ export const relayCredentials = pgTable(
     siteId: uuid('site_id').notNull(),
     secretHash: text('secret_hash').notNull(),
     credentialVersion: integer('credential_version').notNull(),
-    active: integer('active').notNull().default(1),
+    active: boolean('active').notNull().default(true),
     rotationId: uuid('rotation_id'),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -38,7 +49,7 @@ export const relayCredentials = pgTable(
     uniqueIndex('relay_credential_generation_uq').on(t.tenantId, t.companyId, t.gatewayId, t.credentialVersion),
     uniqueIndex('relay_credential_active_uq')
       .on(t.tenantId, t.companyId, t.gatewayId)
-      .where(sql`${t.active} = 1`),
+      .where(sql`${t.active} = true`),
     index('relay_gateway_idx').on(t.tenantId, t.companyId, t.gatewayId),
     policy('relay_credentials'),
   ],

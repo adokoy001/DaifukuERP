@@ -16,10 +16,10 @@ export function AccessUserProfile({
   const mutation = useAccessMutation();
   const self = getUser()?.id === user.id;
   const [baseline, setBaseline] = useState(user);
-  const [name, setName] = useState(user.name),
-    [active, setActive] = useState(user.active),
-    [tenantAdmin, setTenantAdmin] = useState(user.tenantAdmin),
-    [password, setPassword] = useState('');
+  const [name, setName] = useState(user.name);
+  const [active, setActive] = useState(user.active);
+  const [tenantAdmin, setTenantAdmin] = useState(user.tenantAdmin);
+  const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
   const changed =
     name !== baseline.name || active !== baseline.active || tenantAdmin !== baseline.tenantAdmin || password.length > 0;

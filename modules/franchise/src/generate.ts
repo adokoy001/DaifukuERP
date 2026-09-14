@@ -54,9 +54,9 @@ export async function generateFranchise(ctx: Context, input: z.infer<typeof gene
         );
       return result(existing);
     }
-    const contract = snapshot(agreement),
-      fee = royalty(contract, input.month, input.grossSales, input.netSales),
-      end = monthBounds(input.month).to;
+    const contract = snapshot(agreement);
+    const fee = royalty(contract, input.month, input.grossSales, input.netSales);
+    const end = monthBounds(input.month).to;
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(ctx.now());
     if (fee.lte(0) || input.date < end || input.date > today || input.dueDate < input.date)
       throw new StateError(
@@ -93,18 +93,18 @@ async function createInvoice(
   fee: Decimal,
 ) {
   const header = {
-      partnerId: agreement.partnerId,
-      date: input.date,
-      dueDate: input.dueDate,
-      priceIncludesTax: false,
-      note: `FC精算 ${agreement.code} ${input.month} / ${input.sourceReference}`,
-    },
-    line = {
-      description: `FC精算 ${agreement.name} ${input.month}`,
-      quantity: '1',
-      unitPrice: fee,
-      taxCategory: agreement.taxCategory,
-    };
+    partnerId: agreement.partnerId,
+    date: input.date,
+    dueDate: input.dueDate,
+    priceIncludesTax: false,
+    note: `FC精算 ${agreement.code} ${input.month} / ${input.sourceReference}`,
+  };
+  const line = {
+    description: `FC精算 ${agreement.name} ${input.month}`,
+    quantity: '1',
+    unitPrice: fee,
+    taxCategory: agreement.taxCategory,
+  };
   if (agreement.direction === 'bill') {
     const invoice = await repo(ctx, SalesInvoice).create(header);
     await saveLines(ctx, SalesInvoice, invoice.id, { [SalesInvoiceLine.name]: [line] });

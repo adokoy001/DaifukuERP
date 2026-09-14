@@ -26,12 +26,12 @@ async function liveUser(ctx: Context) {
   const [user] = await ctx.db
     .select()
     .from(users)
-    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, userId), eq(users.active, 1)))
+    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, userId), eq(users.active, true)))
     .for('share')
     .limit(1);
   if (
     !user ||
-    (user.mfaEnabled === 1 && ctx.mfaVerified !== true) ||
+    (user.mfaEnabled && ctx.mfaVerified !== true) ||
     (ctx.sessionVersion !== undefined && ctx.sessionVersion !== user.sessionVersion)
   )
     denied(ctx);
@@ -55,7 +55,7 @@ function fullMembership(row: typeof companyMemberships.$inferSelect): boolean {
 export async function authorizedCompanies(ctx: Context): Promise<AuthorizedCompany[]> {
   const user = await liveUser(ctx);
   const columns = { id: companies.id, code: companies.code, name: companies.name, currency: companies.currency };
-  if (user.tenantAdmin === 1)
+  if (user.tenantAdmin)
     return ctx.db.select(columns).from(companies).where(eq(companies.tenantId, ctx.tenantId)).orderBy(companies.code);
   const memberships = await ctx.db
     .select()
@@ -86,7 +86,7 @@ export async function withAuthorizedCompany<T>(
     .limit(1);
   if (!company) denied(ctx);
   let roles: string[] = ['admin'];
-  if (user.tenantAdmin !== 1) {
+  if (!user.tenantAdmin) {
     const [membership] = await ctx.db
       .select()
       .from(companyMemberships)
@@ -110,7 +110,7 @@ export async function withAuthorizedCompany<T>(
       roles,
       sessionVersion: user.sessionVersion,
       mfaVerified: ctx.mfaVerified === true,
-      tenantAdmin: user.tenantAdmin === 1,
+      tenantAdmin: user.tenantAdmin,
       accessScope: 'all',
       storeIds: [],
       siteIds: [],

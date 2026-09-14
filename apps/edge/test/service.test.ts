@@ -12,11 +12,11 @@ import { relayFixture, secret, until } from './fixtures.ts';
 
 describe('service pairing inbox and durable recovery', () => {
   it('waits without credentials and exposes a private, secret-free service status', async () => {
-    const relay = await relayFixture(),
-      abort = new AbortController(),
-      codes: string[] = [];
-    const credentials = await Credentials.open(relay.directory, relay.config()),
-      journal = await Journal.open(relay.directory);
+    const relay = await relayFixture();
+    const abort = new AbortController();
+    const codes: string[] = [];
+    const credentials = await Credentials.open(relay.directory, relay.config());
+    const journal = await Journal.open(relay.directory);
     const run = runService(credentials, journal, relay.directory, abort.signal, (code) => codes.push(code));
     try {
       await until(() => codes.includes('pairing_required'));
@@ -64,8 +64,8 @@ describe('service pairing inbox and durable recovery', () => {
       await expect(connectService(credentials, relay.directory)).rejects.toThrow('transport_failed');
       expect(await readdir(relay.directory)).toContain('pairing.processing.json');
       expect(relay.state.pairing).toBe('');
-      const restarted = await Credentials.open(relay.directory, relay.config()),
-        pair = vi.spyOn(restarted, 'pair');
+      const restarted = await Credentials.open(relay.directory, relay.config());
+      const pair = vi.spyOn(restarted, 'pair');
       expect(await connectService(restarted, relay.directory)).toBe('running');
       expect(pair).not.toHaveBeenCalled();
       expect(await readdir(relay.directory)).not.toContain('pairing.processing.json');
@@ -76,8 +76,8 @@ describe('service pairing inbox and durable recovery', () => {
   it('preserves a rejected code and archives it only when a replacement arrives', async () => {
     const relay = await relayFixture();
     try {
-      const credentials = await Credentials.open(relay.directory, relay.config()),
-        invalid = { pairingToken: secret() };
+      const credentials = await Credentials.open(relay.directory, relay.config());
+      const invalid = { pairingToken: secret() };
       await syncJson(join(relay.directory, 'pairing.json'), invalid);
       await expect(connectService(credentials, relay.directory)).rejects.toThrow('credential_rejected');
       expect(await readPrivateJson(join(relay.directory, 'pairing.processing.json'))).toEqual(invalid);
@@ -96,8 +96,8 @@ describe('service pairing inbox and durable recovery', () => {
     const relay = await relayFixture();
     try {
       const credentials = await Credentials.open(relay.directory, relay.config());
-      const old = { pairingToken: secret() },
-        next = { pairingToken: relay.state.pairing };
+      const old = { pairingToken: secret() };
+      const next = { pairingToken: relay.state.pairing };
       await syncJson(join(relay.directory, 'pairing.processing.json'), old);
       await syncJson(join(relay.directory, 'pairing.json'), next);
       for (let i = 0; i < 10; i++)

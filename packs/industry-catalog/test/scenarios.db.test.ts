@@ -57,8 +57,8 @@ async function checkCancel(name: string, job: Doc, invoice: Doc): Promise<void> 
 describe('15-industry catalog: ten distinct fulfillment -> invoice -> payment scenarios', () => {
   for (const profile of INDUSTRY_PROFILES)
     it(`${profile.job.name}: normal UI sample apply, completion conditions, posting and dated cancellation`, async () => {
-      const name = profile.job.name,
-        entity = `${name}_job`;
+      const name = profile.job.name;
+      const entity = `${name}_job`;
       await expect(s.act<List>(`${entity}.list`, {})).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
       await expect(s.act(`${name}.start_job`, { jobId: s.db.adminUserId })).rejects.toMatchObject({
         code: 'PERMISSION_DENIED',

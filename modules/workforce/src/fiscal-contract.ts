@@ -1,14 +1,14 @@
 // Shared JSON wire contract: verified facts are explicit; yen amounts are decimal strings.
 import { z } from 'zod';
-const id = z.uuid(),
-  date = z.iso.date(),
-  year = z.number().int().min(1900).max(9999),
-  version = z.number().int().min(1),
-  editVersion = z.number().int().min(0);
-export const fiscalMoney = z.string().regex(/^\d{1,12}$/),
-  fiscalMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const reason = z.string().trim().min(1).max(1000),
-  membership = z.enum(['enrolled', 'not_enrolled', 'exempt']);
+const id = z.uuid();
+const date = z.iso.date();
+const year = z.number().int().min(1900).max(9999);
+const version = z.number().int().min(1);
+const editVersion = z.number().int().min(0);
+export const fiscalMoney = z.string().regex(/^\d{1,12}$/);
+export const fiscalMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+const reason = z.string().trim().min(1).max(1000);
+const membership = z.enum(['enrolled', 'not_enrolled', 'exempt']);
 export const payrollConditionData = z
   .object({
     validFrom: date,

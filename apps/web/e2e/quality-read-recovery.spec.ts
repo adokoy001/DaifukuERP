@@ -28,8 +28,8 @@ test('read recovery: mobile expense draft survives polling failure, retry and su
   page,
   request,
 }) => {
-  const person = await qualityEmployee(request),
-    description = '通信中も保持する経費 ' + crypto.randomUUID();
+  const person = await qualityEmployee(request);
+  const description = '通信中も保持する経費 ' + crypto.randomUUID();
   await page.clock.install();
   const dialog = await openExpense(page, person.email);
   await dialog.getByLabel('経費の区分', { exact: true }).fill('交通費');
@@ -91,8 +91,8 @@ test('read recovery: headquarters input survives a temporary management read err
     .getByRole('button', { name: '従業員', exact: true })
     .click();
   await page.getByRole('button', { name: '有給を付与', exact: true }).click();
-  const dialog = page.getByRole('dialog'),
-    basis = '付与する前に確認中の根拠 ' + crypto.randomUUID();
+  const dialog = page.getByRole('dialog');
+  const basis = '付与する前に確認中の根拠 ' + crypto.randomUUID();
   await dialog.getByLabel('対象の従業員', { exact: true }).selectOption(person.employee.id);
   await dialog.getByLabel('付与日数・資格の根拠', { exact: true }).fill(basis);
   await page.route('**/actions/workforce.management_portal', (route) => route.fulfill(failedRead()));
@@ -118,13 +118,13 @@ test('read recovery: generic record reconnect preserves dirty values, then 404 h
   page,
   request,
 }) => {
-  const { headers } = await qualitySession(request),
-    partner = await qualityPartner(request, headers, '再取得検証 ' + crypto.randomUUID());
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, '再取得検証 ' + crypto.randomUUID());
   await page.clock.install();
   await signInQuality(page);
   await page.goto('/e/partner/' + partner.id);
-  const input = page.getByTestId('record-form').locator('input[name=name]'),
-    changed = '編集中の取引先 ' + crypto.randomUUID();
+  const input = page.getByTestId('record-form').locator('input[name=name]');
+  const changed = '編集中の取引先 ' + crypto.randomUUID();
   await input.fill(changed);
   const path = '**/api/partner/' + partner.id;
   await page.route(path, (route) => route.fulfill(failedRead()));

@@ -25,14 +25,14 @@ interface Deployment {
   config?: PreparedConfig;
 }
 function distinctPaths(root: string, state: string): void {
-  const a = process.platform === 'win32' ? root.toLowerCase() : root,
-    b = process.platform === 'win32' ? state.toLowerCase() : state;
+  const a = process.platform === 'win32' ? root.toLowerCase() : root;
+  const b = process.platform === 'win32' ? state.toLowerCase() : state;
   if (a === b || a.startsWith(b + sep) || b.startsWith(a + sep))
     throw new Error('installation_and_state_must_be_separate');
 }
 async function plan(request: DeployRequest, adapter: ServiceAdapter): Promise<Deployment> {
-  const root = safePath(request.installRoot),
-    state = safePath(request.statePath);
+  const root = safePath(request.installRoot);
+  const state = safePath(request.statePath);
   distinctPaths(root, state);
   await pathChain(root, true);
   await pathChain(dirname(state), true);
@@ -97,8 +97,8 @@ async function execute(deployment: Deployment, request: DeployRequest, adapter: 
     await saveInstallation(marker);
   }
   if (pending.phase === 'copied') {
-    const previous = pending.previousContext ?? context,
-      inspection = await adapter.inspect(previous);
+    const previous = pending.previousContext ?? context;
+    const inspection = await adapter.inspect(previous);
     if (inspection.conflicts.length || (inspection.serviceExists && !inspection.serviceOwned))
       throw new Error('service_registration_conflict');
     if (inspection.serviceExists) await adapter.stop(previous);

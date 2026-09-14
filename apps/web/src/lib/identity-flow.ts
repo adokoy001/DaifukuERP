@@ -66,8 +66,8 @@ export function readSsoReturn() {
       saved.createdAt > Date.now()
     )
       return null;
-    const code = search.get('code'),
-      state = search.get('state');
+    const code = search.get('code');
+    const state = search.get('state');
     return code && state ? { providerId: saved.providerId, browserNonce: saved.browserNonce, code, state } : null;
   } catch {
     return null;

@@ -10,11 +10,11 @@ import type {
   ShiftPeriodBudget,
 } from './types.ts';
 
-export const MAX_EMPLOYEES = 100,
-  MAX_SLOTS = 42,
-  MAX_ASSIGNMENTS = 840;
-export const DEFAULT_ITERATIONS = 1200,
-  MAX_ITERATIONS = 10000;
+export const MAX_EMPLOYEES = 100;
+export const MAX_SLOTS = 42;
+export const MAX_ASSIGNMENTS = 840;
+export const DEFAULT_ITERATIONS = 1200;
+export const MAX_ITERATIONS = 10000;
 const DAY = 86400000;
 export const dayIndex = (date: string): number => Date.parse(`${date}T00:00:00Z`) / DAY;
 export const dateOf = (day: number): string => new Date(day * DAY).toISOString().slice(0, 10);
@@ -81,12 +81,12 @@ function validEmployee(e: ShiftEmployee): boolean {
 }
 function validProblem(p: ShiftProblem): boolean {
   if (!p || !date(p.weekStart) || new Date(`${p.weekStart}T00:00:00Z`).getUTCDay() !== 1) return false;
-  const lists = [p.employees, p.slots, p.availability, p.leave, p.existing, p.rules],
-    bounds = [MAX_EMPLOYEES, MAX_SLOTS, 700, 1400, 2520, 7];
+  const lists = [p.employees, p.slots, p.availability, p.leave, p.existing, p.rules];
+  const bounds = [MAX_EMPLOYEES, MAX_SLOTS, 700, 1400, 2520, 7];
   if (lists.some((list, i) => !Array.isArray(list) || list.length > (bounds[i] ?? 0))) return false;
   if (lists.some((list) => list.some((row) => !row || typeof row !== 'object' || Array.isArray(row)))) return false;
-  const start = dayIndex(p.weekStart),
-    inWeek = (value: string) => date(value) && dayIndex(value) >= start && dayIndex(value) < start + 7;
+  const start = dayIndex(p.weekStart);
+  const inWeek = (value: string) => date(value) && dayIndex(value) >= start && dayIndex(value) < start + 7;
   if (!p.employees.every(validEmployee) || new Set(p.employees.map((e) => e.id)).size !== p.employees.length)
     return false;
   const ids = new Set(p.employees.map((e) => e.id));
@@ -199,8 +199,8 @@ export function requiredBreak(rule: ShiftDayRule, minutes: number): number {
       : 0;
 }
 function staticIssues(ctx: Prepared, employee: ShiftEmployee, slot: ShiftSlot): ShiftIssue[] {
-  const issues: ShiftIssue[] = [],
-    add = (code: ShiftIssue['code']) => issues.push({ code, employeeId: employee.id, slotId: slot.id });
+  const issues: ShiftIssue[] = [];
+  const add = (code: ShiftIssue['code']) => issues.push({ code, employeeId: employee.id, slotId: slot.id });
   if (
     !employee.active ||
     slot.date < employee.hiredOn ||

@@ -31,29 +31,29 @@ const tabs = [
   { id: 'evidence', label: { ja: '支払の証跡', en: 'Payment evidence' }, icon: 'check' as const },
 ];
 export function FiscalPage() {
-  const { t } = useLocale(),
-    meta = useMeta();
-  const [tab, setTab] = useState('conditions'),
-    [taxYear, setTaxYear] = useState<number>(),
-    [period, setPeriod] = useState(lastMonth),
-    [employeeId, setEmployeeId] = useState('');
+  const { t } = useLocale();
+  const meta = useMeta();
+  const [tab, setTab] = useState('conditions');
+  const [taxYear, setTaxYear] = useState<number>();
+  const [period, setPeriod] = useState(lastMonth);
+  const [employeeId, setEmployeeId] = useState('');
   const [calculate, setCalculate] = useState<{
-      employee: FiscalBoard['employees'][number];
-      original?: PayrollSummary;
-    }>(),
-    [evidence, setEvidence] = useState<PayrollSummary>();
-  const actions = meta.data?.actions.map((action) => action.name) ?? [],
-    allowed = actions.includes('workforce.fiscal_board'),
-    canViewRules = actions.includes('workforce.payroll_rule_catalog'),
-    catalog = usePayrollRuleCatalog(canViewRules),
-    fiscal = useFiscalBoard(allowed, taxYear),
-    payroll = useManagementPortal(period, allowed);
+    employee: FiscalBoard['employees'][number];
+    original?: PayrollSummary;
+  }>();
+  const [evidence, setEvidence] = useState<PayrollSummary>();
+  const actions = meta.data?.actions.map((action) => action.name) ?? [];
+  const allowed = actions.includes('workforce.fiscal_board');
+  const canViewRules = actions.includes('workforce.payroll_rule_catalog');
+  const catalog = usePayrollRuleCatalog(canViewRules);
+  const fiscal = useFiscalBoard(allowed, taxYear);
+  const payroll = useManagementPortal(period, allowed);
   useEffect(() => {
     if (taxYear === undefined && fiscal.data) setTaxYear(fiscal.data.taxYear);
   }, [fiscal.data, taxYear]);
   if (!meta.data && !meta.isError) return <LoadingView />;
-  const requiredSources = [meta, fiscal, payroll],
-    sources = [...requiredSources, ...(canViewRules ? [catalog] : [])];
+  const requiredSources = [meta, fiscal, payroll];
+  const sources = [...requiredSources, ...(canViewRules ? [catalog] : [])];
   const failed = requiredSources.find((source) => source.isError && !canRetainData(source));
   if (failed)
     return (
@@ -81,18 +81,18 @@ export function FiscalPage() {
       </div>
     );
   if (!fiscal.data || !payroll.data) return <LoadingView />;
-  const data = fiscal.data,
-    payrolls = payroll.data.payrolls,
-    selected = data.employees.find((employee) => employee.id === employeeId),
-    visible = payrolls.filter((row) => !selected || row.employeeId === selected.id),
-    selfEmployeeId = payroll.data.employees.find((employee) => employee.userId === getUser()?.id)?.id;
-  const selectedYear = data.taxYear,
-    bundles = canViewRules && !catalog.isError ? (catalog.data?.bundles ?? []) : [],
-    payrollRule = supportedPayrollBundle(bundles, selectedYear, period),
-    yearEndRule = supportedYearEndBundle(bundles, selectedYear),
-    years = [...new Set([selectedYear, ...data.availableTaxYears, ...bundles.map((bundle) => bundle.taxYear)])].sort(
-      (a, b) => b - a,
-    );
+  const data = fiscal.data;
+  const payrolls = payroll.data.payrolls;
+  const selected = data.employees.find((employee) => employee.id === employeeId);
+  const visible = payrolls.filter((row) => !selected || row.employeeId === selected.id);
+  const selfEmployeeId = payroll.data.employees.find((employee) => employee.userId === getUser()?.id)?.id;
+  const selectedYear = data.taxYear;
+  const bundles = canViewRules && !catalog.isError ? (catalog.data?.bundles ?? []) : [];
+  const payrollRule = supportedPayrollBundle(bundles, selectedYear, period);
+  const yearEndRule = supportedYearEndBundle(bundles, selectedYear);
+  const years = [
+    ...new Set([selectedYear, ...data.availableTaxYears, ...bundles.map((bundle) => bundle.taxYear)]),
+  ].sort((a, b) => b - a);
   const prior = selected
     ? payrolls.find((row) => row.employeeId === selected.id && row.status !== 'cancelled')
     : undefined;

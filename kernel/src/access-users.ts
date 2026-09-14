@@ -35,7 +35,7 @@ export async function createManagedUser(ctx: Context, raw: unknown) {
       email,
       name: input.name,
       passwordHash: await hashPassword(input.password),
-      tenantAdmin: input.tenantAdmin ? 1 : 0,
+      tenantAdmin: input.tenantAdmin,
       roles: [],
     })
     .returning();
@@ -52,17 +52,22 @@ export async function updateManagedUser(ctx: Context, id: string, raw: unknown) 
   assertAccessVersion(before.version, input.expectedVersion);
   if (
     id === actorUser(ctx) &&
-    (input.active === false || (input.tenantAdmin !== undefined && input.tenantAdmin !== (before.tenantAdmin === 1)))
+    (input.active === false || (input.tenantAdmin !== undefined && input.tenantAdmin !== before.tenantAdmin))
   )
     throw new PermissionDenied('access_user', 'self-access-change', ctx.roles);
-  const active = input.active === undefined ? before.active : input.active ? 1 : 0;
-  const tenantAdmin = input.tenantAdmin === undefined ? before.tenantAdmin : input.tenantAdmin ? 1 : 0;
-  if (before.active === 1 && before.tenantAdmin === 1 && (active !== 1 || tenantAdmin !== 1)) {
+  const active = input.active ?? before.active;
+  const tenantAdmin = input.tenantAdmin ?? before.tenantAdmin;
+  if (before.active && before.tenantAdmin && (!active || !tenantAdmin)) {
     const others = await ctx.db
       .select({ id: users.id })
       .from(users)
       .where(
-        and(eq(users.tenantId, ctx.tenantId), eq(users.active, 1), eq(users.tenantAdmin, 1), sql`${users.id} <> ${id}`),
+        and(
+          eq(users.tenantId, ctx.tenantId),
+          eq(users.active, true),
+          eq(users.tenantAdmin, true),
+          sql`${users.id} <> ${id}`,
+        ),
       );
     if (!others.length)
       throw new StateError(

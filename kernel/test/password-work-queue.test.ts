@@ -11,8 +11,8 @@ afterEach(() => vi.useRealTimers());
 describe('password work resource budget', () => {
   it('bounds active and waiting work, rejects excess and starts waiting work in order', async () => {
     const queue = new PasswordWorkQueue(2, 1, 5000);
-    const first = deferred(),
-      second = deferred();
+    const first = deferred();
+    const second = deferred();
     const started: number[] = [];
     const a = queue.run(async () => {
       started.push(1);
@@ -37,8 +37,8 @@ describe('password work resource budget', () => {
   });
   it('expires queued work without starting it or freeing the active job prematurely', async () => {
     vi.useFakeTimers();
-    const queue = new PasswordWorkQueue(1, 1, 5000),
-      active = deferred();
+    const queue = new PasswordWorkQueue(1, 1, 5000);
+    const active = deferred();
     const a = queue.run(() => active.promise);
     const never = vi.fn(async () => true);
     const b = queue.run(never);

@@ -27,10 +27,10 @@ export function WorkforceClock({
   onHistory: (period: string) => void;
 }) {
   const { t, locale } = useLocale();
-  const toast = useToast(),
-    task = useWorkforceTask();
-  const lock = useRef(false),
-    keys = useRef(new Map<string, string>());
+  const toast = useToast();
+  const task = useWorkforceTask();
+  const lock = useRef(false);
+  const keys = useRef(new Map<string, string>());
   const [error, setError] = useState<unknown>();
   const punch = async (kind: string) => {
     if (lock.current) return;
@@ -270,8 +270,8 @@ export function WorkforceAttendance({
 }) {
   const { t, locale } = useLocale();
   const task = useWorkforceTask();
-  const [selected, setSelected] = useState<AttendanceSummary>(),
-    [error, setError] = useState<unknown>();
+  const [selected, setSelected] = useState<AttendanceSummary>();
+  const [error, setError] = useState<unknown>();
   const submit = async (row: AttendanceSummary) => {
     setError(undefined);
     try {

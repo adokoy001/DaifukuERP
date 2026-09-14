@@ -1,12 +1,12 @@
 // Browser-safe preparation contract. No submission endpoint or personal-number fields.
 import { z } from 'zod';
-const id = z.uuid(),
-  date = z.iso.date(),
-  version = z.number().int().min(1),
-  editVersion = z.number().int().min(0);
-const reason = z.string().trim().min(1).max(2000),
-  text = z.string().trim().max(200),
-  amount = z.string().regex(/^-?\d{1,18}(?:\.\d{1,12})?$/);
+const id = z.uuid();
+const date = z.iso.date();
+const version = z.number().int().min(1);
+const editVersion = z.number().int().min(0);
+const reason = z.string().trim().min(1).max(2000);
+const text = z.string().trim().max(200);
+const amount = z.string().regex(/^-?\d{1,18}(?:\.\d{1,12})?$/);
 export const filingKind = z.enum(['accounting', 'payroll']);
 export const filingIssue = z.object({
   code: z.string(),

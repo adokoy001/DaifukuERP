@@ -14,12 +14,12 @@ export function EdgeJobForm({
   serverTime: string;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useEdgeCommand(),
-    key = useRef(crypto.randomUUID()),
-    prepared = useRef<unknown>(undefined),
-    [sent, setSent] = useState(false),
-    [kind, setKind] = useState('print.text');
+  const { t } = useLocale();
+  const task = useEdgeCommand();
+  const key = useRef(crypto.randomUUID());
+  const prepared = useRef<unknown>(undefined);
+  const [sent, setSent] = useState(false);
+  const [kind, setKind] = useState('print.text');
   const submit = async (data: FormData) => {
     if (!prepared.current) {
       const request: EdgeJobRequest =

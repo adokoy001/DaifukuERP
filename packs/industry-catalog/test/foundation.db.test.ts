@@ -22,8 +22,8 @@ afterAll(async () => {
   await s?.db.close();
 });
 async function copy(name: string, patch: Row = {}): Promise<Doc> {
-  const row = await s.sample(name),
-    profile = must(INDUSTRY_PROFILES.find((p) => p.job.name === name));
+  const row = await s.sample(name);
+  const profile = must(INDUSTRY_PROFILES.find((p) => p.job.name === name));
   return s.act(`${name}_job.create`, {
     title: '境界確認',
     partnerId: row.partnerId,
@@ -155,8 +155,8 @@ describe('industry catalog foundation: scope, rollback, units and report coverag
       .sql`insert into companies(id, tenant_id, code, name) values (${companyId}, ${s.db.tenantId}, 'IND-B', 'Catalog B')`;
     await seedModules(s.db, companyId);
     for (const profile of INDUSTRY_PROFILES) {
-      const name = profile.job.name,
-        job = await s.sample(name);
+      const name = profile.job.name;
+      const job = await s.sample(name);
       await s.act('pack.apply', { name }, { companyId });
       expect((await s.act<List>(`${name}_job.list`, {}, { companyId })).total).toBe(0);
       await expect(s.act(`${name}_job.get`, { id: job.id }, { companyId })).rejects.toMatchObject({

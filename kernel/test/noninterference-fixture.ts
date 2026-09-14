@@ -66,8 +66,8 @@ export const observerAt = (siteId: string): Partial<ContextParams> => ({
   storeIds: [],
 });
 export async function observe(ctx: Context) {
-  const work = repo(ctx, ScopeWork),
-    child = repo(ctx, ScopeChild);
+  const work = repo(ctx, ScopeWork);
+  const child = repo(ctx, ScopeChild);
   return {
     list: await work.list({ orderBy: [{ field: 'name' }, { field: 'id' }] }),
     page: await work.list({ orderBy: [{ field: 'name' }, { field: 'id' }], limit: 1, offset: 1 }),

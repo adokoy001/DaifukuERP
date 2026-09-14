@@ -2,8 +2,8 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from 'jose';
 export async function oidcFixture(options: { port?: number; webUrl?: string; inbox?: () => string[] } = {}) {
-  const pair = await generateKeyPair('RS256'),
-    publicKey = await exportJWK(pair.publicKey);
+  const pair = await generateKeyPair('RS256');
+  const publicKey = await exportJWK(pair.publicKey);
   const grants = new Map<string, { nonce: string; challenge: string; redirect: string; claims: JWTPayload }>();
   let issuer = '';
   const server = createServer(async (request, response) => {
@@ -43,8 +43,8 @@ export async function oidcFixture(options: { port?: number; webUrl?: string; inb
     }
     let body = '';
     for await (const chunk of request) body += String(chunk);
-    const input = new URLSearchParams(body),
-      grant = grants.get(input.get('code') ?? '');
+    const input = new URLSearchParams(body);
+    const grant = grants.get(input.get('code') ?? '');
     if (
       !grant ||
       input.get('grant_type') !== 'authorization_code' ||
@@ -84,8 +84,8 @@ export async function oidcFixture(options: { port?: number; webUrl?: string; inb
   return {
     issuer,
     code(authorizationUrl: string, claims: JWTPayload = {}) {
-      const url = new URL(authorizationUrl),
-        code = `code-${grants.size}-${Date.now()}-${Math.random()}`;
+      const url = new URL(authorizationUrl);
+      const code = `code-${grants.size}-${Date.now()}-${Math.random()}`;
       grants.set(code, {
         nonce: url.searchParams.get('nonce') ?? '',
         challenge: url.searchParams.get('code_challenge') ?? '',

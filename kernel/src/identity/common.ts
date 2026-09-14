@@ -17,7 +17,7 @@ export const identityDenied = (): DaifukuError =>
     undefined,
     401,
   );
-export async function lockIdentity(ctx: Context, sessionVersion?: number, userId = actorUser(ctx), active = 1) {
+export async function lockIdentity(ctx: Context, sessionVersion?: number, userId = actorUser(ctx), active = true) {
   if (ctx.actor.type === 'system') throw identityDenied();
   const [user] = await ctx.db
     .select()

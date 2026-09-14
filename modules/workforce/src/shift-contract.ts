@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { ShiftProblem, ShiftEvaluation } from './scheduling/types.ts';
-const id = z.uuid(),
-  date = z.iso.date(),
-  version = z.number().int().min(1),
-  editVersion = z.number().int().min(0);
+const id = z.uuid();
+const date = z.iso.date();
+const version = z.number().int().min(1);
+const editVersion = z.number().int().min(0);
 const reason = z.string().trim().min(1).max(1000);
 export const shiftWeek = date.refine((value) => new Date(`${value}T12:00:00Z`).getUTCDay() === 1, 'Select a Monday');
 export const shiftProfileSchema = z

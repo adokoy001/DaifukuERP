@@ -11,8 +11,8 @@ function scaled(value: bigint, scale: number): string {
 // Independent integer oracle: the input is thousandths, never a binary float amount.
 function roundThousandths(value: bigint, scale: number, mode: RoundingMode): string {
   const magnitude = value < 0n ? -value : value;
-  const divisor = 10n ** BigInt(3 - scale),
-    remainder = magnitude % divisor;
+  const divisor = 10n ** BigInt(3 - scale);
+  const remainder = magnitude % divisor;
   const increment = mode === 'up' ? remainder > 0n : mode === 'half_up' ? remainder * 2n >= divisor : false;
   const rounded = magnitude / divisor + (increment ? 1n : 0n);
   return scaled(value < 0n ? -rounded : rounded, scale);
@@ -23,8 +23,8 @@ describe('AC-6 independent Decimal amount/quantity references', () => {
     const units = fc.bigInt({ min: -(10n ** 20n), max: 10n ** 20n });
     fc.assert(
       fc.property(units, units, (a, b) => {
-        const left = Decimal.from(scaled(a, 6)),
-          right = Decimal.from(scaled(b, 6));
+        const left = Decimal.from(scaled(a, 6));
+        const right = Decimal.from(scaled(b, 6));
         for (const [value, integer] of [
           [right, b],
           [left, a],

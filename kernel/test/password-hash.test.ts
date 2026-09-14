@@ -12,8 +12,8 @@ const salt = '0123456789abcdef0123456789abcdef';
 const legacy = `scrypt$${salt}$${scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex')}`;
 describe('versioned asynchronous password hashing', () => {
   it('round trips Unicode without normalization, records the bounded profile, and uses unique salts', async () => {
-    const a = await hashPassword(password),
-      b = await hashPassword(password);
+    const a = await hashPassword(password);
+    const b = await hashPassword(password);
     expect(a).toMatch(/^scrypt\$v1\$32768\$8\$3\$64\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
     expect(a).not.toBe(b);
     expect(await verifyPassword(password, a)).toBe(true);

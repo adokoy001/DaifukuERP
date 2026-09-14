@@ -46,9 +46,9 @@ function outcome(result: PromiseSettledResult<unknown>) {
 describe('ordinary update row lock and reference integrity', () => {
   it('allows FK insertion while an update hook waits on the publisher business lock', async () => {
     const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Before' }));
-    const businessKey = `update-lock:${parent.id}`,
-      held = latch(),
-      entered = latch();
+    const businessKey = `update-lock:${parent.id}`;
+    const held = latch();
+    const entered = latch();
     registry.registerHook(Parent.name, 'before_update', async (ctx, { row }) => {
       if (row.id !== parent.id) return;
       entered.release();
@@ -86,9 +86,9 @@ describe('ordinary update row lock and reference integrity', () => {
   });
 
   it('keeps explicit Repository.lock exclusive against concurrent reference key-share', async () => {
-    const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Explicit lock' })),
-      held = latch(),
-      release = latch();
+    const parent = await db.run({}, (ctx) => repo(ctx, Parent).create({ name: 'Explicit lock' }));
+    const held = latch();
+    const release = latch();
     const locking = db.run({}, async (ctx) => {
       await repo(ctx, Parent).lock(parent.id);
       held.release();

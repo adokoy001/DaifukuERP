@@ -50,7 +50,7 @@ export function financeFileBlob(base64: string, mediaType: string): Blob {
       ja: '出力ファイルの形式を確認できません。再取得してください。',
       en: 'The exported file is invalid. Download it again.',
     });
-  const decoded = atob(base64),
-    bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  const decoded = atob(base64);
+  const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
   return new Blob([bytes], { type: mediaType });
 }

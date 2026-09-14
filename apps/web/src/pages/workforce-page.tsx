@@ -31,14 +31,14 @@ const tabs: WorkforceTab[] = [
 ];
 
 export function WorkforcePage() {
-  const { t, locale } = useLocale(),
-    meta = useMeta();
-  const [period, setPeriod] = useState(() => businessToday().slice(0, 7)),
-    [siteId, setSiteId] = useState(''),
-    [tab, setTab] = useState('overview'),
-    [receiptId, setReceiptId] = useState<string>();
-  const actions = meta.data?.actions.map((a) => a.name) ?? [],
-    allowed = actions.includes('workforce.management_portal');
+  const { t, locale } = useLocale();
+  const meta = useMeta();
+  const [period, setPeriod] = useState(() => businessToday().slice(0, 7));
+  const [siteId, setSiteId] = useState('');
+  const [tab, setTab] = useState('overview');
+  const [receiptId, setReceiptId] = useState<string>();
+  const actions = meta.data?.actions.map((a) => a.name) ?? [];
+  const allowed = actions.includes('workforce.management_portal');
   const portal = useManagementPortal(period, allowed);
   if (!meta.data && !meta.isError) return <LoadingView />;
   if ((meta.isError && !canRetainData(meta)) || (portal.isError && !canRetainData(portal)))
@@ -65,10 +65,10 @@ export function WorkforcePage() {
       </div>
     );
   if (!portal.data) return <LoadingView />;
-  const source = portal.data,
-    selectedSite = source.sites.some((s) => s.id === siteId) ? siteId : '';
-  const employees = source.employees.filter((e) => !selectedSite || e.siteId === selectedSite),
-    ids = new Set(employees.map((e) => e.id));
+  const source = portal.data;
+  const selectedSite = source.sites.some((s) => s.id === siteId) ? siteId : '';
+  const employees = source.employees.filter((e) => !selectedSite || e.siteId === selectedSite);
+  const ids = new Set(employees.map((e) => e.id));
   const data = {
     ...source,
     employees,
@@ -83,8 +83,8 @@ export function WorkforcePage() {
   const canPayroll = ['workforce.calculate_payroll', 'workforce.confirm_payroll', 'workforce.cancel_payroll'].some(
     (action) => actions.includes(action),
   );
-  const visibleTabs = tabs.filter((item) => item.id !== 'payroll' || canPayroll),
-    selectedTab = visibleTabs.some((item) => item.id === tab) ? tab : 'overview';
+  const visibleTabs = tabs.filter((item) => item.id !== 'payroll' || canPayroll);
+  const selectedTab = visibleTabs.some((item) => item.id === tab) ? tab : 'overview';
   const receipt = data.expenses.find((r) => r.id === receiptId);
   return (
     <ReadRecoveryProvider sources={[meta, portal]}>

@@ -70,9 +70,9 @@ export function BankingAccountForm({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    row = edit.row;
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const row = edit.row;
   const [reference, setReference] = useState(
     edit.type === 'account' ? (edit.row?.ledgerAccountId ?? '') : (edit.row?.partnerId ?? ''),
   );

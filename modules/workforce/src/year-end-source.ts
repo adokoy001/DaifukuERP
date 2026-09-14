@@ -22,11 +22,11 @@ export async function yearEndSource(
       '旧形式年末調整の制度版が変更されています',
       '現在の制度と元資料を確認して年末調整を再計算してください。',
     );
-  const employee = await repo(ctx, WorkforceEmployee).get(employeeId),
-    rules = selected.row;
+  const employee = await repo(ctx, WorkforceEmployee).get(employeeId);
+  const rules = selected.row;
   const applicability = selected.bundle.manifest.applicability;
-  const declarations = await allRows(ctx, WorkforceYearEndDeclaration, { employeeId, taxYear }),
-    declaration = declarations[0];
+  const declarations = await allRows(ctx, WorkforceYearEndDeclaration, { employeeId, taxYear });
+  const declaration = declarations[0];
   if (declarations.length !== 1 || !declaration || declaration.status !== 'accepted')
     throw new StateError(
       '本人申告が受付済みではありません',
@@ -79,12 +79,12 @@ export async function yearEndSource(
         '支払証跡または理由付き無支払月を本人申告に揃え、再受付してください。',
       );
   }
-  const previousPay = facts.previousEmployers.reduce((sum, row) => sum.plus(row.taxablePay), D(0)),
-    previousSocial = facts.previousEmployers.reduce((sum, row) => sum.plus(row.socialPremium), D(0)),
-    previousTax = facts.previousEmployers.reduce((sum, row) => sum.plus(row.incomeTax), D(0));
-  const taxablePay = evidence.reduce((sum, row) => sum.plus(row.taxablePay), previousPay),
-    socialPremium = evidence.reduce((sum, row) => sum.plus(row.socialPremium), previousSocial),
-    withheldTax = evidence.reduce((sum, row) => sum.plus(row.incomeTax), previousTax);
+  const previousPay = facts.previousEmployers.reduce((sum, row) => sum.plus(row.taxablePay), D(0));
+  const previousSocial = facts.previousEmployers.reduce((sum, row) => sum.plus(row.socialPremium), D(0));
+  const previousTax = facts.previousEmployers.reduce((sum, row) => sum.plus(row.incomeTax), D(0));
+  const taxablePay = evidence.reduce((sum, row) => sum.plus(row.taxablePay), previousPay);
+  const socialPremium = evidence.reduce((sum, row) => sum.plus(row.socialPremium), previousSocial);
+  const withheldTax = evidence.reduce((sum, row) => sum.plus(row.incomeTax), previousTax);
   const result = selected.provider.annual(selected.bundle, facts, taxablePay, socialPremium, withheldTax);
   const snapshot = {
     employee,

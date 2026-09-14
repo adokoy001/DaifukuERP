@@ -75,7 +75,7 @@ export async function assertCompanyUser(ctx: Context, userId: string): Promise<v
         eq(companyMemberships.companyId, ctx.companyId ?? ''),
       ),
     )
-    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, userId), eq(users.active, 1)))
+    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, userId), eq(users.active, true)))
     .limit(1);
   if (!rows.length) throw new PermissionDenied('employee_user', 'company-membership', ctx.roles);
 }
@@ -94,7 +94,7 @@ export async function companyMemberIdentities(ctx: Context, targetEntity: string
         eq(companyMemberships.companyId, ctx.companyId ?? ''),
       ),
     )
-    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.active, 1)))
+    .where(and(eq(users.tenantId, ctx.tenantId), eq(users.active, true)))
     .orderBy(users.name, users.id);
 }
 

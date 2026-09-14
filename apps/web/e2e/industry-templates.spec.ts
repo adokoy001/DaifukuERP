@@ -233,8 +233,8 @@ test('飲食店: 画面導入・店内持帰り日次締め・集計・会社切
     partnerId: source?.partnerId,
   });
   const products = await list(request, headers, 'product');
-  const rice = products.find((row) => row.code === 'RC-RICE'),
-    chicken = products.find((row) => row.code === 'RC-CHICKEN');
+  const rice = products.find((row) => row.code === 'RC-RICE');
+  const chicken = products.find((row) => row.code === 'RC-CHICKEN');
   const receipt = await api(request, headers, '/api/stock_entry', {
     type: 'receipt',
     date: DATE,

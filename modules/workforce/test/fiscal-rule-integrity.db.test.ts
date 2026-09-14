@@ -4,7 +4,9 @@ import { WorkforcePayroll, WorkforceYearEndAdjustment, WorkforcePayPolicy, Workf
 import { fixture, call, at, type Fixture, type Command } from './helpers.ts';
 import { condition, declaration } from './fiscal-fixtures.ts';
 
-let f: Fixture, monthly: Command, annual: Command;
+let f: Fixture;
+let monthly: Command;
+let annual: Command;
 const late = '2027-01-15T09:00:00+09:00';
 // Trusted fixture writes simulate inconsistent persisted drafts without weakening production workflow guards.
 const payCapability = defineWriteCapability({

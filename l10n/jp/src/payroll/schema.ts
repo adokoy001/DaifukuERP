@@ -210,9 +210,9 @@ export function parseJapanPayrollRules(bundle: PayrollRuleBundle): JapanPayrollR
   const parsedManifest = payrollManifestSchema.safeParse(bundle.manifest);
   if (!parsedData.success || !parsedManifest.success)
     invalid('Unsupported schema, algorithm, rounding profile or malformed parameters.');
-  const data = parsedData.data,
-    manifest = parsedManifest.data,
-    range = manifest.applicability;
+  const data = parsedData.data;
+  const manifest = parsedManifest.data;
+  const range = manifest.applicability;
   if (
     bundle.code !== data.code ||
     bundle.code !== manifest.packageCode ||

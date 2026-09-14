@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_COMMAND, validateMutationReport } from '../mutation/report.mjs';
 
-const inventory = { 'sample.ts': 2 },
-  sources = { 'sample.ts': 'return left + right;\n' };
+const inventory = { 'sample.ts': 2 };
+const sources = { 'sample.ts': 'return left + right;\n' };
 const failureEvidence =
   'FAIL kernel/test/decimal.test.ts > comparison\nTest Files 1 failed | 3 passed (4)\nTests 1 failed | 20 passed (21)\n';
 const fixture = () => ({

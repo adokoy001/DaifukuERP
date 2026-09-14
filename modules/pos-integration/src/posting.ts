@@ -7,8 +7,8 @@ import { internalWrite } from './internal.ts';
 import { assertLocationAccounts } from './location.ts';
 export const paymentKey = (merchant: string, externalId: string) => `square:${merchant}:payment:${externalId}`;
 export async function postEvent(ctx: Context, inbox: Infer<typeof PosInbox>): Promise<string | null> {
-  const event = normalizedPosEvent.parse(inbox.event),
-    location = await repo(ctx, PosLocation).get(inbox.locationId);
+  const event = normalizedPosEvent.parse(inbox.event);
+  const location = await repo(ctx, PosLocation).get(inbox.locationId);
   if (!location.active)
     throw new StateError('POS location is inactive', 'Reactivate the reviewed mapping before retrying.');
   if (event.kind === 'unsupported')
@@ -22,8 +22,8 @@ export async function postEvent(ctx: Context, inbox: Infer<typeof PosInbox>): Pr
   if (event.currency !== 'JPY' || !event.amount || !Decimal.from(event.amount).gt('0'))
     throw new StateError('Unsupported POS money', 'Only positive integer JPY amounts are supported.');
   const amount = event.amount;
-  const key = `square:${event.merchantId}:${event.kind}:${event.externalId}`,
-    rows = repo(ctx, PosTransaction);
+  const key = `square:${event.merchantId}:${event.kind}:${event.externalId}`;
+  const rows = repo(ctx, PosTransaction);
   const existing = (await rows.list({ where: { key }, limit: 1 })).items[0];
   if (existing) {
     if (
@@ -80,8 +80,8 @@ export async function postEvent(ctx: Context, inbox: Infer<typeof PosInbox>): Pr
       suspenseAccountId: accounts.suspenseAccountId,
       status: 'posted',
     });
-    const debit = event.kind === 'payment' ? source.settlementAccountId : source.suspenseAccountId,
-      credit = event.kind === 'payment' ? source.suspenseAccountId : source.settlementAccountId;
+    const debit = event.kind === 'payment' ? source.settlementAccountId : source.suspenseAccountId;
+    const credit = event.kind === 'payment' ? source.suspenseAccountId : source.settlementAccountId;
     const entry = await postFromSource(inner, {
       sourceEntity: PosTransaction.name,
       sourceId: source.id,
@@ -101,8 +101,8 @@ export async function correctTransaction(
   ctx: Context,
   input: { transactionId: string; expectedVersion: number; date: string; reason: string },
 ) {
-  const first = await repo(ctx, PosTransaction).get(input.transactionId),
-    location = await repo(ctx, PosLocation).get(first.locationId);
+  const first = await repo(ctx, PosTransaction).get(input.transactionId);
+  const location = await repo(ctx, PosLocation).get(first.locationId);
   const parent = first.paymentId ? await repo(ctx, PosTransaction).get(first.paymentId) : first;
   return withLock(ctx, 'pos-payment:' + paymentKey(location.merchantId, parent.externalId), async () => {
     const source = await repo(ctx, PosTransaction).lock(first.id);

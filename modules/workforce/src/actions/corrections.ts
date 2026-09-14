@@ -33,8 +33,8 @@ async function request(ctx: Context, input: z.infer<typeof correctionInput>) {
     await assertPayrollOpen(ctx, row.employeeId, row.workDate);
     if (await repo(ctx, WorkforceAttendanceCorrection).count({ attendanceId: row.id, status: 'pending' }))
       throw new StateError('A correction is already pending', 'Wait for its review.');
-    const start = new Date(input.clockIn),
-      end = new Date(input.clockOut);
+    const start = new Date(input.clockIn);
+    const end = new Date(input.clockOut);
     if (jstDate(start) !== row.workDate || end > ctx.now())
       throw new ValidationError('Correction must keep the work date and use past times', [
         { path: 'clockIn', message: 'Use the original work date and actual completed times.' },

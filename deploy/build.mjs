@@ -40,9 +40,9 @@ async function prepareSource(source, temporary, env) {
     throw new Error('Only the reviewed public peer-resolution .npmrc is permitted.');
   if (files.some((path) => path !== '.npmrc' && restrictedSource(path)))
     throw new Error('Tracked source contains a forbidden secret or runtime path.');
-  const commit = git('rev-parse', 'HEAD').trim(),
-    stage = join(temporary, 'stage'),
-    archive = join(temporary, 'source.tar');
+  const commit = git('rev-parse', 'HEAD').trim();
+  const stage = join(temporary, 'stage');
+  const archive = join(temporary, 'source.tar');
   await mkdir(stage);
   git('archive', '--format=tar', `--output=${archive}`, 'HEAD');
   run('tar', ['-xf', archive, '--no-same-owner', '-C', stage], temporary, env);

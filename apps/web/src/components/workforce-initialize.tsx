@@ -4,8 +4,8 @@ import { useLocale } from '../i18n.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 
 export function WorkforceInitialize() {
-  const { t } = useLocale(),
-    task = useWorkforceTask();
+  const { t } = useLocale();
+  const task = useWorkforceTask();
   const [open, setOpen] = useState(false);
   return (
     <>

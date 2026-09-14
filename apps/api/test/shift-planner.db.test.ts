@@ -5,9 +5,13 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/server.ts';
 
-let db: TestDb, app: FastifyInstance, admin: string, siteId: string, otherSiteId: string;
-let employee: { id: string; token: string; employeeId: string },
-  manager: { id: string; token: string; employeeId: string };
+let db: TestDb;
+let app: FastifyInstance;
+let admin: string;
+let siteId: string;
+let otherSiteId: string;
+let employee: { id: string; token: string; employeeId: string };
+let manager: { id: string; token: string; employeeId: string };
 const weekStart = '2026-09-14';
 const days = Array.from({ length: 7 }, (_, i) => ({
   date: `2026-09-${14 + i}`,
@@ -43,8 +47,8 @@ async function command(name: string, token: string, input: InjectOptions['payloa
   return response.json<{ id: string; version: number }>();
 }
 async function person(name: string, role: string) {
-  const id = newId(),
-    email = name + '@example.com';
+  const id = newId();
+  const email = name + '@example.com';
   await db.owner.drizzle.insert(users).values({
     id,
     tenantId: db.tenantId,

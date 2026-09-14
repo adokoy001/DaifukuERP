@@ -21,8 +21,8 @@ function deferred() {
   return { promise, resolve };
 }
 async function account(hash = legacy, tenantId?: string) {
-  const id = newId(),
-    email = `${id}@example.invalid`;
+  const id = newId();
+  const email = `${id}@example.invalid`;
   await db.owner.drizzle.insert(users).values({
     id,
     tenantId: tenantId ?? db.tenantId,
@@ -49,8 +49,8 @@ afterAll(async () => {
 
 describe('password hash upgrade under real database concurrency', () => {
   it('preserves the identity, account version and sessions while upgrading a correct legacy password', async () => {
-    const user = await account(),
-      before = await stored(user.id);
+    const user = await account();
+    const before = await stored(user.id);
     const principal = await authenticate(db.owner, user.email, password, db.tenantId);
     expect(principal).toMatchObject({ userId: user.id, tenantId: db.tenantId, sessionVersion: 4 });
     const after = await stored(user.id);
@@ -61,15 +61,15 @@ describe('password hash upgrade under real database concurrency', () => {
     expect((await stored(user.id)).passwordHash).toBe(after.passwordHash);
   });
   it('does not write for wrong passwords, malformed hashes, inactive identities or wrong tenants', async () => {
-    const user = await account(),
-      before = await stored(user.id);
+    const user = await account();
+    const before = await stored(user.id);
     expect(await authenticate(db.owner, user.email, 'wrong', db.tenantId)).toBeNull();
     expect(await authenticate(db.owner, user.email, password, newId())).toBeNull();
     expect(await stored(user.id)).toEqual(before);
     const malformed = await account(legacy + '$extra');
     expect(await authenticate(db.owner, malformed.email, password, db.tenantId)).toBeNull();
     expect((await stored(malformed.id)).passwordHash).toBe(legacy + '$extra');
-    await db.owner.drizzle.update(users).set({ active: 0 }).where(eq(users.id, user.id));
+    await db.owner.drizzle.update(users).set({ active: false }).where(eq(users.id, user.id));
     expect(await authenticate(db.owner, user.email, password, db.tenantId)).toBeNull();
     expect((await stored(user.id)).passwordHash).toBe(legacy);
   });
@@ -87,8 +87,8 @@ describe('password hash upgrade under real database concurrency', () => {
     it(`does not overwrite or issue old authority when ${mutation} commits during rehash`, async () => {
       const user = await account();
       const original = hashing.hashPassword;
-      const started = deferred(),
-        resume = deferred();
+      const started = deferred();
+      const resume = deferred();
       vi.spyOn(hashing, 'hashPassword').mockImplementationOnce(async (input) => {
         started.resolve();
         await resume.promise;
@@ -100,7 +100,7 @@ describe('password hash upgrade under real database concurrency', () => {
         const replacement = mutation === 'reset' ? await original('Synthetic-reset-replacement') : legacy;
         await db.owner.drizzle
           .update(users)
-          .set({ passwordHash: replacement, active: mutation === 'deactivate' ? 0 : 1, version: 8, sessionVersion: 5 })
+          .set({ passwordHash: replacement, active: mutation !== 'deactivate', version: 8, sessionVersion: 5 })
           .where(eq(users.id, user.id));
         const protectedRow = await stored(user.id);
         resume.resolve();
@@ -115,8 +115,8 @@ describe('password hash upgrade under real database concurrency', () => {
   it('rechecks a current-format account after asynchronous verification races with reset', async () => {
     const user = await account(await hashing.hashPassword(password));
     const original = hashing.verifyPassword;
-    const started = deferred(),
-      resume = deferred();
+    const started = deferred();
+    const resume = deferred();
     vi.spyOn(hashing, 'verifyPassword').mockImplementationOnce(async (input, value) => {
       const result = await original(input, value);
       started.resolve();
@@ -143,8 +143,8 @@ describe('password hash upgrade under real database concurrency', () => {
     }
   });
   it('propagates unavailable crypto as a rejected login without upgrading the account', async () => {
-    const user = await account(),
-      before = await stored(user.id);
+    const user = await account();
+    const before = await stored(user.id);
     vi.spyOn(hashing, 'verifyPassword').mockRejectedValueOnce(new Error('Synthetic unavailable crypto'));
     await expect(authenticate(db.owner, user.email, password)).rejects.toThrow('Synthetic unavailable crypto');
     expect(await stored(user.id)).toEqual(before);

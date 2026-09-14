@@ -89,7 +89,11 @@ defineAction({
   handler: async () => ({}),
 });
 let db: TestDb;
-let a: string, b: string, sa: string, workA: string, workB: string;
+let a: string;
+let b: string;
+let sa: string;
+let workA: string;
+let workB: string;
 const limited = () => ({
   accessScope: 'sites' as const,
   siteIds: [a],

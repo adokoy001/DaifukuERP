@@ -12,8 +12,8 @@ const amount = (label: string, code: string, level: number, value: Decimal): Row
   rowType: '1',
 });
 export function statements(source: FilingSource, profile: AccountingProfile) {
-  const totals = new Map<string, Decimal>(),
-    members = new Map<string, { label: string; amount: Decimal }[]>();
+  const totals = new Map<string, Decimal>();
+  const members = new Map<string, { label: string; amount: Decimal }[]>();
   for (const category of HOT010_CATEGORIES) {
     totals.set(category.key, D(0));
     members.set(category.key, []);
@@ -26,11 +26,11 @@ export function statements(source: FilingSource, profile: AccountingProfile) {
     members.get(mapping.category)?.push({ label: mapping.displayName, amount: value });
   }
   const sum = (...keys: string[]) => keys.reduce((v, k) => v.plus(totals.get(k) ?? D(0)), D(0));
-  const gross = sum('sales').minus(sum('cost_of_sales')),
-    operating = gross.minus(sum('operating_expenses')),
-    ordinary = operating.plus(sum('other_income')).minus(sum('other_expenses')),
-    preTax = ordinary.plus(sum('extraordinary_income')).minus(sum('extraordinary_expenses')),
-    profit = preTax.minus(sum('income_taxes'));
+  const gross = sum('sales').minus(sum('cost_of_sales'));
+  const operating = gross.minus(sum('operating_expenses'));
+  const ordinary = operating.plus(sum('other_income')).minus(sum('other_expenses'));
+  const preTax = ordinary.plus(sum('extraordinary_income')).minus(sum('extraordinary_expenses'));
+  const profit = preTax.minus(sum('income_taxes'));
   members.get('retained_earnings')?.push({ label: '当期純損益（損益計算書より）', amount: profit });
   totals.set('retained_earnings', sum('retained_earnings').plus(profit));
   function group(key: string): Row[] {
@@ -42,11 +42,11 @@ export function statements(source: FilingSource, profile: AccountingProfile) {
     );
     return cat.title ? [title(cat.label, cat.title, cat.level), ...rows, total] : [total, ...rows];
   }
-  const assets = sum('current_assets', 'tangible_assets', 'intangible_assets', 'investments', 'deferred_assets'),
-    fixed = sum('tangible_assets', 'intangible_assets', 'investments');
-  const liabilities = sum('current_liabilities', 'fixed_liabilities'),
-    stock = sum('capital', 'capital_surplus', 'retained_earnings', 'treasury_shares'),
-    equity = stock.plus(sum('valuation', 'share_options'));
+  const assets = sum('current_assets', 'tangible_assets', 'intangible_assets', 'investments', 'deferred_assets');
+  const fixed = sum('tangible_assets', 'intangible_assets', 'investments');
+  const liabilities = sum('current_liabilities', 'fixed_liabilities');
+  const stock = sum('capital', 'capital_surplus', 'retained_earnings', 'treasury_shares');
+  const equity = stock.plus(sum('valuation', 'share_options'));
   const bs: Row[] = [
     title('資産の部', '10A000010', 2),
     ...group('current_assets'),

@@ -35,8 +35,8 @@ export const savePayrollConditionAction = workflowAction(
   (ctx, input) =>
     employeeLock(ctx, input.employeeId, async () => {
       await repo(ctx, WorkforceEmployee).get(input.employeeId);
-      const { conditionId, employeeId, expectedVersion, ...raw } = input,
-        condition = payrollConditionData.parse(raw);
+      const { conditionId, employeeId, expectedVersion, ...raw } = input;
+      const condition = payrollConditionData.parse(raw);
       await validatePayrollCondition(ctx, condition);
       const prior = conditionId ? await repo(ctx, WorkforcePayrollCondition).get(conditionId) : null;
       if (prior && prior.employeeId !== employeeId)
@@ -84,8 +84,8 @@ export const calculateStatutoryPayrollAction = workflowAction(
           expectedVersion: input.expectedVersion,
           attendanceCompleteConfirmed: true,
         });
-        const row = await repo(ctx, WorkforcePayroll).get(result.id),
-          source = await statutorySource(ctx, input, row);
+        const row = await repo(ctx, WorkforcePayroll).get(result.id);
+        const source = await statutorySource(ctx, input, row);
         const calculation = {
           ...(row.calculation as Record<string, unknown>),
           statutory: { input, evidence: source.evidence, snapshotSchema: source.snapshotSchema },
@@ -156,8 +156,8 @@ export const supersedePayrollConditionAction = workflowAction(
           '条件切替の期間が不正です',
           '切替元の期間内で新開始日を選び、終期は元条件と同じにしてください。',
         );
-      const { conditionId: _id, employeeId, expectedVersion: _version, ...raw } = input,
-        condition = payrollConditionData.parse(raw);
+      const { conditionId: _id, employeeId, expectedVersion: _version, ...raw } = input;
+      const condition = payrollConditionData.parse(raw);
       await validatePayrollCondition(ctx, condition);
       const frozen = await allRows(ctx, WorkforcePayroll, { employeeId, docstatus: 1 });
       for (const payroll of frozen) {
@@ -175,8 +175,8 @@ export const supersedePayrollConditionAction = workflowAction(
             'その給与を取り消して訂正するか、最後に使用した日より後から切り替えてください。',
           );
       }
-      const validTo = addDays(input.validFrom, -1),
-        oldCondition = { ...payrollConditionData.parse(prior.condition), validTo };
+      const validTo = addDays(input.validFrom, -1);
+      const oldCondition = { ...payrollConditionData.parse(prior.condition), validTo };
       await internalWrite(ctx, WorkforcePayrollCondition, (write) =>
         repo(write, WorkforcePayrollCondition).update(
           prior.id,

@@ -5,8 +5,8 @@ import { minutesDisplay, periodBounds } from './services/time.ts';
 import type { ManagementPortal } from './contract.ts';
 
 export async function portalData(ctx: Context, period: string, employeeId?: string) {
-  const bounds = periodBounds(period),
-    scope = employeeId ? { employeeId } : {};
+  const bounds = periodBounds(period);
+  const scope = employeeId ? { employeeId } : {};
   const within = (field: string): Domain => ({
     ...scope,
     $and: [{ [field]: { $gte: bounds.start } }, { [field]: { $lte: bounds.end } }],

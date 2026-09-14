@@ -24,16 +24,16 @@ const nextMonth = () => {
   return date.toISOString().slice(0, 7);
 };
 export function WorkSystemPage() {
-  const { t, locale } = useLocale(),
-    meta = useMeta(),
-    task = useWorkforceTask();
-  const [period, setPeriod] = useState(nextMonth),
-    [employeeId, setEmployeeId] = useState('');
-  const [editing, setEditing] = useState<{ employee: WorkSystemBoard['employees'][number]; original?: Period }>(),
-    [decision, setDecision] = useState<{ row: Period; kind: 'confirm' | 'cancel' }>();
-  const actions = meta.data?.actions.map((action) => action.name) ?? [],
-    allowed = actions.includes('workforce.work_system_board'),
-    board = useWorkSystemBoard(period, allowed);
+  const { t, locale } = useLocale();
+  const meta = useMeta();
+  const task = useWorkforceTask();
+  const [period, setPeriod] = useState(nextMonth);
+  const [employeeId, setEmployeeId] = useState('');
+  const [editing, setEditing] = useState<{ employee: WorkSystemBoard['employees'][number]; original?: Period }>();
+  const [decision, setDecision] = useState<{ row: Period; kind: 'confirm' | 'cancel' }>();
+  const actions = meta.data?.actions.map((action) => action.name) ?? [];
+  const allowed = actions.includes('workforce.work_system_board');
+  const board = useWorkSystemBoard(period, allowed);
   if (!meta.data && !meta.isError) return <LoadingView />;
   const failed = [meta, board].find((source) => source.isError && !canRetainData(source));
   if (failed)
@@ -57,9 +57,9 @@ export function WorkSystemPage() {
       </div>
     );
   if (!board.data) return <LoadingView />;
-  const data = board.data,
-    selected = data.employees.find((employee) => employee.id === employeeId),
-    rows = data.periods.filter((row) => !selected || row.employeeId === selected.id);
+  const data = board.data;
+  const selected = data.employees.find((employee) => employee.id === employeeId);
+  const rows = data.periods.filter((row) => !selected || row.employeeId === selected.id);
   return (
     <ReadRecoveryProvider sources={[meta, board]}>
       <div className="workspace-page workforce-page" data-testid="work-system-management">

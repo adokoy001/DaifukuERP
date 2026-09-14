@@ -21,8 +21,8 @@ async function receiptDraft(ctx: Context, productId: string, date: string): Prom
   });
 }
 export async function sampleIndustry(ctx: Context, profile: IndustryProfile, Job: JobDef): Promise<void> {
-  const partners = repo(ctx, Partner),
-    code = `IND-${profile.job.name.toUpperCase().slice(0, 16)}`;
+  const partners = repo(ctx, Partner);
+  const code = `IND-${profile.job.name.toUpperCase().slice(0, 16)}`;
   const found = (await partners.list({ where: { code }, limit: 1 })).items[0];
   const partner =
     found ?? (await partners.create({ code, name: `${profile.job.label.ja}の取引先（架空）`, isCustomer: true }));

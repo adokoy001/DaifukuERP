@@ -137,9 +137,9 @@ export function EdgeDevices({
       <div className="edge-devices">
         {devices.map((device) => {
           const event = events
-              .filter((item) => item.deviceId === device.id)
-              .sort((a, b) => Date.parse(String(b.observedAt)) - Date.parse(String(a.observedAt)))[0],
-            gateway = gateways.find((item) => item.id === device.gatewayId);
+            .filter((item) => item.deviceId === device.id)
+            .sort((a, b) => Date.parse(String(b.observedAt)) - Date.parse(String(a.observedAt)))[0];
+          const gateway = gateways.find((item) => item.id === device.gatewayId);
           return (
             <article className="edge-device" key={device.id}>
               <span className="edge-device-icon">

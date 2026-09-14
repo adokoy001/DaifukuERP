@@ -15,30 +15,30 @@ import { FilingAccountingProfile } from './entities.ts';
 import { ledgerIntegrityIssues } from './ledger-validation.ts';
 const D = Decimal.from;
 export async function accountingSource(ctx: Context, yearId: string): Promise<FilingSource> {
-  const company = await getCompany(ctx),
-    year = await repo(ctx, FiscalYear).get(yearId);
-  const profiles = await allRows(ctx, FilingAccountingProfile),
-    saved = profiles[0];
+  const company = await getCompany(ctx);
+  const year = await repo(ctx, FiscalYear).get(yearId);
+  const profiles = await allRows(ctx, FilingAccountingProfile);
+  const saved = profiles[0];
   if (!saved) throw new StateError('会計申告準備の設定がありません', '法人名と科目分類を保存してください。');
-  const profile = accountingProfileData.parse(saved.data),
-    accounts = await allRows(ctx, Account, {}, 2000);
+  const profile = accountingProfileData.parse(saved.data);
+  const accounts = await allRows(ctx, Account, {}, 2000);
   const periods = await allRows(ctx, FiscalPeriod, { fiscalYearId: year.id });
   const entries = await allRows(ctx, JournalEntry, { date: { $lte: year.endDate } });
   const lines = await allRows(ctx, JournalLine, { posted: true, entryDate: { $lte: year.endDate } });
-  const issues = ledgerIntegrityIssues(year, periods, entries, lines),
-    accountMap = new Map(accounts.map((a) => [a.id, a])),
-    entriesById = new Map(entries.map((e) => [e.id, e]));
+  const issues = ledgerIntegrityIssues(year, periods, entries, lines);
+  const accountMap = new Map(accounts.map((a) => [a.id, a]));
+  const entriesById = new Map(entries.map((e) => [e.id, e]));
   if (!periods.length || periods.some((r) => !r.isClosed))
     issues.push(issue('period_open', '年度の全会計期間を締めてから確認してください。'));
   if (entries.some((e) => e.date >= year.startDate && e.docstatus === 0))
     issues.push(issue('draft_entry', '年度内に未転記の仕訳が残っています。'));
   if (year.endDate > ctx.now().toISOString().slice(0, 10))
     issues.push(issue('future_year', '会計年度がまだ終了していません。'));
-  const sums = new Map<string, { opening: Decimal; debit: Decimal; credit: Decimal }>(),
-    taxGroups: TaxLineGroup[] = [];
+  const sums = new Map<string, { opening: Decimal; debit: Decimal; credit: Decimal }>();
+  const taxGroups: TaxLineGroup[] = [];
   for (const l of lines) {
-    const account = accountMap.get(l.accountId),
-      entry = entriesById.get(l.entryId);
+    const account = accountMap.get(l.accountId);
+    const entry = entriesById.get(l.entryId);
     if (
       !account ||
       !entry ||
@@ -90,8 +90,8 @@ export async function accountingSource(ctx: Context, yearId: string): Promise<Fi
         closing: v.opening.plus(v.debit).minus(v.credit).toString(),
       };
     });
-  const closing = balances.reduce((sum, r) => sum.plus(r.closing), D(0)),
-    movement = balances.reduce((sum, r) => sum.plus(r.debit).minus(r.credit), D(0));
+  const closing = balances.reduce((sum, r) => sum.plus(r.closing), D(0));
+  const movement = balances.reduce((sum, r) => sum.plus(r.debit).minus(r.credit), D(0));
   if (!closing.eq(0) || !movement.eq(0))
     issues.push(issue('unbalanced_ledger', '仕訳の借貸または期末残高が一致しません。'));
   for (const r of balances)

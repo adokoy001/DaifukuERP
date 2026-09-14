@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type TLSSocket } from 'node:tls';
 export async function smtpFixture() {
-  const directory = await mkdtemp(join(tmpdir(), 'daifuku-identity-smtp-')),
-    certPath = join(directory, 'certificate.pem'),
-    keyPath = join(directory, 'key.pem');
+  const directory = await mkdtemp(join(tmpdir(), 'daifuku-identity-smtp-'));
+  const certPath = join(directory, 'certificate.pem');
+  const keyPath = join(directory, 'key.pem');
   execFileSync(
     'openssl',
     [
@@ -29,24 +29,24 @@ export async function smtpFixture() {
     ],
     { stdio: 'ignore', timeout: 10000 },
   );
-  const cert = await readFile(certPath, 'utf8'),
-    key = await readFile(keyPath, 'utf8'),
-    messages: string[] = [],
-    sockets = new Set<TLSSocket>();
+  const cert = await readFile(certPath, 'utf8');
+  const key = await readFile(keyPath, 'utf8');
+  const messages: string[] = [];
+  const sockets = new Set<TLSSocket>();
   const server = createServer({ cert, key, minVersion: 'TLSv1.2' }, (socket) => {
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
     socket.on('error', () => undefined);
     socket.setEncoding('utf8');
     socket.write('220 localhost synthetic SMTP\r\n');
-    let pending = '',
-      data = false,
-      body = '';
+    let pending = '';
+    let data = false;
+    let body = '';
     socket.on('data', (chunk: string) => {
       pending += chunk;
       while (pending.includes('\r\n')) {
-        const end = pending.indexOf('\r\n'),
-          line = pending.slice(0, end);
+        const end = pending.indexOf('\r\n');
+        const line = pending.slice(0, end);
         pending = pending.slice(end + 2);
         if (data) {
           if (line !== '.') {

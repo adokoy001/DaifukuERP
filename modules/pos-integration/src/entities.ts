@@ -1,8 +1,8 @@
 import { defineEntity, f, label } from '@daifuku/kernel';
 import type { NormalizedPosEvent } from './contract.ts';
 import { inboxStates } from './contract.ts';
-const owned = { serverOwned: true },
-  permissions = { roles: { accounting: ['read', 'create', 'update', 'export'] as const } };
+const owned = { serverOwned: true };
+const permissions = { roles: { accounting: ['read', 'create', 'update', 'export'] as const } };
 export const PosLocation = defineEntity({
   name: 'pos_integration_location',
   label: label('POS連携店舗', 'POS integration location'),

@@ -21,12 +21,12 @@ export function BankingTransferPrepare({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    [offset, setOffset] = useState(0),
-    [selection, setSelection] = useState<Record<string, Selection>>({}),
-    [requestId] = useState(() => crypto.randomUUID());
-  const query = useFinanceList('purchase_invoice', { docstatus: 1, balance: { $gt: '0' } }, !stale, offset),
-    command = useFinanceCommand();
+  const { t } = useLocale();
+  const [offset, setOffset] = useState(0);
+  const [selection, setSelection] = useState<Record<string, Selection>>({});
+  const [requestId] = useState(() => crypto.randomUUID());
+  const query = useFinanceList('purchase_invoice', { docstatus: 1, balance: { $gt: '0' } }, !stale, offset);
+  const command = useFinanceCommand();
   const items = Object.values(selection);
   return (
     <FinanceDialog
@@ -86,8 +86,8 @@ export function BankingTransferPrepare({
           </thead>
           <tbody>
             {query.data?.items.map((invoice) => {
-              const candidates = payees.filter((payee) => payee.partnerId === invoice.partnerId && payee.active),
-                item = selection[invoice.id];
+              const candidates = payees.filter((payee) => payee.partnerId === invoice.partnerId && payee.active);
+              const item = selection[invoice.id];
               return (
                 <tr key={invoice.id}>
                   <td>
@@ -166,14 +166,14 @@ export function BankingTransferExport({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    query = useFinanceRead('banking.transfer_detail', { batchId }, !stale, bankTransferDetail.parse),
-    command = useFinanceCommand();
-  const [format, setFormat] = useState<'canonical_csv' | 'zengin120'>('zengin120'),
-    [lineEnding, setLineEnding] = useState<'none' | 'crlf'>('none');
+  const { t } = useLocale();
+  const query = useFinanceRead('banking.transfer_detail', { batchId }, !stale, bankTransferDetail.parse);
+  const command = useFinanceCommand();
+  const [format, setFormat] = useState<'canonical_csv' | 'zengin120'>('zengin120');
+  const [lineEnding, setLineEnding] = useState<'none' | 'crlf'>('none');
   const value = query.data;
-  const exported = value?.state === 'exported',
-    exportFormat = exported ? (value.format ?? format) : format;
+  const exported = value?.state === 'exported';
+  const exportFormat = exported ? (value.format ?? format) : format;
   const exportEnding = exported
     ? (value.lineEnding ?? lineEnding)
     : exportFormat === 'canonical_csv'
@@ -310,8 +310,8 @@ export function BankingTransferCancel({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand();
+  const { t } = useLocale();
+  const command = useFinanceCommand();
   return (
     <FinanceDialog
       title={t({ ja: '振込準備を取消', en: 'Cancel transfer preparation' })}

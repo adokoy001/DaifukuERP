@@ -4,8 +4,8 @@ import { expect, test, type Page, type APIRequestContext } from '@playwright/tes
 const initialPassword = 'identity-test-password';
 let recovery: string[] = [];
 function authenticator(secret: string) {
-  let bits = 0,
-    value = 0;
+  let bits = 0;
+  let value = 0;
   const bytes: number[] = [];
   for (const character of secret) {
     value = (value << 5) | 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(character);
@@ -17,8 +17,8 @@ function authenticator(secret: string) {
   }
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
-  const digest = createHmac('sha1', Buffer.from(bytes)).update(counter).digest(),
-    offset = (digest[19] ?? 0) & 15;
+  const digest = createHmac('sha1', Buffer.from(bytes)).update(counter).digest();
+  const offset = (digest[19] ?? 0) & 15;
   return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
 async function passwordLogin(page: Page, email = 'admin@example.com', password = initialPassword) {
@@ -165,8 +165,8 @@ test.describe.serial('enterprise identity with synthetic OIDC and verified TLS S
     await verify(page, 'wrong-password', recovery[5]);
     await expect(page.getByRole('alert')).toBeVisible();
     await verify(page, initialPassword, recovery[5]);
-    const dialog = page.getByRole('dialog'),
-      code = dialog.getByLabel('接続コード', { exact: true });
+    const dialog = page.getByRole('dialog');
+    const code = dialog.getByLabel('接続コード', { exact: true });
     await expect(code).toHaveValue(/^[A-Za-z0-9_-]{43}$/);
     const pairingToken = await code.inputValue();
     expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(pairingToken);

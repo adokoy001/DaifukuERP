@@ -3,8 +3,8 @@ import { z } from 'zod';
 import * as c from './contract.ts';
 import * as h from './human.ts';
 import { edgeBoard } from './board.ts';
-const manager = { roles: ['edge_manager'] },
-  operator = { roles: ['edge_manager', 'edge_operator'] };
+const manager = { roles: ['edge_manager'] };
+const operator = { roles: ['edge_manager', 'edge_operator'] };
 const allowed = { siteAccess: true };
 const record = z.object({ id: z.uuid(), version: z.number().int().positive() });
 export const boardAction = defineAction({

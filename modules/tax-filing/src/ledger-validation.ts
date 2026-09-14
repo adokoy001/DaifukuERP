@@ -17,8 +17,8 @@ interface Line {
 }
 /** Independently cross-check the persisted posting header, not only net ledger balance. */
 export function ledgerIntegrityIssues(year: Period, periods: Period[], entries: Entry[], lines: Line[]) {
-  const issues = [],
-    ordered = [...periods].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const issues = [];
+  const ordered = [...periods].sort((a, b) => a.startDate.localeCompare(b.startDate));
   let next = year.startDate;
   for (const period of ordered) {
     if (period.startDate !== next || period.endDate < period.startDate || period.endDate > year.endDate)

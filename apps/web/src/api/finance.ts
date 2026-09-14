@@ -56,8 +56,8 @@ export function useFinanceList(entity: string, where: Record<string, unknown>, e
 }
 
 export function useFinanceCommand<T = unknown>() {
-  const qc = useQueryClient(),
-    identity = financeIdentity();
+  const qc = useQueryClient();
+  const identity = financeIdentity();
   return useMutation({
     mutationKey: ['finance-command', identity],
     gcTime: 0,

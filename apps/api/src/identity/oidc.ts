@@ -19,9 +19,9 @@ export function authorizationRequest(
   browserNonce: string,
   linking: boolean,
 ) {
-  const verifier = opaqueToken(),
-    nonce = opaqueToken(),
-    redirectUri = new URL('/auth/oidc/callback', options.webUrl).toString();
+  const verifier = opaqueToken();
+  const nonce = opaqueToken();
+  const redirectUri = new URL('/auth/oidc/callback', options.webUrl).toString();
   const transaction: OidcTransaction = {
     providerId: provider.id,
     browserHash: tokenHash(browserNonce),

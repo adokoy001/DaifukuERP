@@ -65,8 +65,8 @@ async function query<T>(pending: PromiseLike<T> & { cancel(): void }, millisecon
   }
 }
 async function storageReady(directory: string): Promise<void> {
-  const path = resolve(directory),
-    info = await lstat(path);
+  const path = resolve(directory);
+  const info = await lstat(path);
   if (
     !info.isDirectory() ||
     info.isSymbolicLink() ||
@@ -80,9 +80,9 @@ async function storageReady(directory: string): Promise<void> {
 /** No tenant data, credentials or exception text crosses the public readiness boundary. */
 export function createReadiness(options: ReadinessOptions): () => Promise<ReadinessResult> {
   const expected = expectedMigrations(options.migrationsDirectory ?? defaultMigrations).catch(() => null);
-  let running: Promise<ReadinessResult> | undefined,
-    cached: ReadinessResult = { ready: false },
-    checked = 0;
+  let running: Promise<ReadinessResult> | undefined;
+  let cached: ReadinessResult = { ready: false };
+  let checked = 0;
   async function check(): Promise<ReadinessResult> {
     try {
       const timeout = options.timeoutMs ?? 2000;

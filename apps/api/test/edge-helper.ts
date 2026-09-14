@@ -42,8 +42,8 @@ export function edgeFixture(db: TestDb, app: FastifyInstance, token: string) {
     return pairingToken;
   };
   const pair = async (f: Fixture) => {
-    const pairingToken = await issue(f),
-      credentialSecret = newRelaySecret();
+    const pairingToken = await issue(f);
+    const credentialSecret = newRelaySecret();
     secrets.push(credentialSecret);
     const response = await post(
       '/relay/pair',

@@ -8,8 +8,8 @@ import {
 } from '../src/index.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
 
-let f: Fixture,
-  sequence = 0;
+let f: Fixture;
+let sequence = 0;
 beforeAll(async () => {
   f = await fixture();
 });
@@ -21,8 +21,8 @@ interface Worker {
   params: Partial<ContextParams>;
 }
 async function worker(): Promise<Worker> {
-  const name = `calendar${++sequence}`,
-    person = await f.person(name, 'workforce_employee');
+  const name = `calendar${++sequence}`;
+  const person = await f.person(name, 'workforce_employee');
   const employee = await call(f.db, f.hr.params, 'register_employee', {
     userId: person.id,
     siteId: f.siteId,
@@ -77,8 +77,8 @@ describe('full-day leave and actual work on every JST calendar date', () => {
       const w = await worker();
       await shift(w);
       if (kind === 'two halves') await approveLeave(await request(w, 'morning'));
-      const row = await request(w, kind === 'full' ? 'full' : 'afternoon'),
-        before = await usageCount(w);
+      const row = await request(w, kind === 'full' ? 'full' : 'afternoon');
+      const before = await usageCount(w);
       await expect(approveLeave(row)).rejects.toMatchObject({ code: 'INVALID_STATE' });
       expect(await usageCount(w)).toBe(before);
       expect((await f.db.run(w.params, (ctx) => repo(ctx, WorkforceLeaveRequest).get(row.id))).status).toBe('pending');
@@ -93,8 +93,8 @@ describe('full-day leave and actual work on every JST calendar date', () => {
     expect(await usageCount(w)).toBe(1);
   });
   it('rejects an approved-shift correction extending into full-day leave and preserves both records', async () => {
-    const w = await worker(),
-      row = await approveAttendance(await submit(w, await shift(w, '2026-09-10T23:00:00+09:00')));
+    const w = await worker();
+    const row = await approveAttendance(await submit(w, await shift(w, '2026-09-10T23:00:00+09:00')));
     await approveLeave(await request(w));
     const correction = await call(f.db, w.params, 'request_correction', {
       attendanceId: row.id,
@@ -157,8 +157,8 @@ describe('full-day leave and actual work on every JST calendar date', () => {
     },
   );
   it('excludes an ongoing break and does not project an open shift into future leave', async () => {
-    const w = await worker(),
-      started = await punch(w, 'clock_in', 0, '2026-09-10T22:00:00+09:00');
+    const w = await worker();
+    const started = await punch(w, 'clock_in', 0, '2026-09-10T22:00:00+09:00');
     const row = await request(w);
     await call(
       f.db,
@@ -173,8 +173,8 @@ describe('full-day leave and actual work on every JST calendar date', () => {
       },
       '2026-09-10T23:00:00+09:00',
     );
-    const second = await worker(),
-      opened = await punch(second, 'clock_in', 0, '2026-09-10T22:00:00+09:00');
+    const second = await worker();
+    const opened = await punch(second, 'clock_in', 0, '2026-09-10T22:00:00+09:00');
     await punch(second, 'break_start', opened.version, '2026-09-10T23:00:00+09:00');
     expect((await approveLeave(await request(second))).status).toBe('approved');
     expect(started.status).toBe('working');

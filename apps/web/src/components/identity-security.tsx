@@ -12,13 +12,13 @@ import '../identity.css';
 
 type Operation = { kind: 'setup' | 'disable' | 'recovery' } | { kind: 'link' | 'unlink'; providerId: string };
 export function IdentitySecurity() {
-  const { t } = useLocale(),
-    qc = useQueryClient(),
-    navigate = useNavigate();
-  const [operation, setOperation] = useState<Operation | null>(null),
-    [setup, setSetup] = useState<MfaSetup | null>(null),
-    [leaving, setLeaving] = useState(false),
-    [busy, setBusy] = useState(false);
+  const { t } = useLocale();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [operation, setOperation] = useState<Operation | null>(null);
+  const [setup, setSetup] = useState<MfaSetup | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const info = useQuery({
     queryKey: ['account-security', getUser()?.id],
     queryFn: ({ signal }) => accountSecurity(signal),

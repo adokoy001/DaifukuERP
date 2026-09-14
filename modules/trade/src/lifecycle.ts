@@ -18,8 +18,8 @@ function generated(entity: EntityDef) {
     registry.registerHook(entity.name, phase, (ctx) => assertInternal(ctx));
 }
 async function cancelDate(ctx: Context, args: HookArgs, children: EntityDef, parentField: string) {
-  const { row, correctionDate } = args,
-    date = correctionDate ?? String(row.date);
+  const { row, correctionDate } = args;
+  const date = correctionDate ?? String(row.date);
   actualDate(ctx, date, String(row.date));
   const descendants = await all(ctx, children, { where: { [parentField]: String(row.id) } });
   if (

@@ -44,9 +44,9 @@ export function CommerceGroupEditor({
   onSaved: (id: string) => void;
 }) {
   const copy = useCommerceCopy();
-  const [mapping, setMapping] = useState(() => initial?.mapping ?? defaultGroupMapping(sources)),
-    [adjustments, setAdjustments] = useState<GroupAdjustment[]>(() => initial?.adjustments ?? []),
-    task = useCommerceTask();
+  const [mapping, setMapping] = useState(() => initial?.mapping ?? defaultGroupMapping(sources));
+  const [adjustments, setAdjustments] = useState<GroupAdjustment[]>(() => initial?.adjustments ?? []);
+  const task = useCommerceTask();
   const updateMap = (index: number, patch: Partial<GroupMapping>) =>
     setMapping((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   return (
@@ -111,9 +111,9 @@ export function CommerceGroupEditor({
           </thead>
           <tbody>
             {mapping.map((row, index) => {
-              const source = sources.find((s) => s.companyId === row.companyId),
-                account = source?.rows.find((r) => r.accountId === row.accountId),
-                label = `${source?.code ?? ''} ${account?.code ?? ''}`;
+              const source = sources.find((s) => s.companyId === row.companyId);
+              const account = source?.rows.find((r) => r.accountId === row.accountId);
+              const label = `${source?.code ?? ''} ${account?.code ?? ''}`;
               return (
                 <tr key={row.companyId + row.accountId}>
                   <td>

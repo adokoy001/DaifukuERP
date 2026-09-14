@@ -28,10 +28,10 @@ export function FilingPrepare({
   onCreated: (id: string) => void;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    [idempotencyKey] = useState(() => crypto.randomUUID()),
-    accounting = board.kind === 'accounting';
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const accounting = board.kind === 'accounting';
   return (
     <FinanceDialog
       title={t(
@@ -141,9 +141,9 @@ export function FilingReview({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    confirm = mode === 'confirm';
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const confirm = mode === 'confirm';
   return (
     <FinanceDialog
       title={t(
@@ -202,10 +202,10 @@ export function FilingDownloads({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    [result, setResult] = useState<FilingExport>(),
-    [error, setError] = useState<unknown>();
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const [result, setResult] = useState<FilingExport>();
+  const [error, setError] = useState<unknown>();
   const locked = useRef(false);
   const download = async () => {
     if (locked.current || stale) return;

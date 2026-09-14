@@ -55,8 +55,8 @@ export function job(
 export async function tlsFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'daifuku-edge-test-'));
   await chmod(directory, 0o700);
-  const key = join(directory, 'key.pem'),
-    cert = join(directory, 'cert.pem');
+  const key = join(directory, 'key.pem');
+  const cert = join(directory, 'cert.pem');
   await promisify(execFile)('openssl', [
     'req',
     '-x509',
@@ -84,10 +84,10 @@ export async function tlsFixture() {
   };
 }
 export async function relayFixture() {
-  const tls = await tlsFixture(),
-    gatewayId = randomUUID(),
-    companyId = randomUUID(),
-    siteId = randomUUID();
+  const tls = await tlsFixture();
+  const gatewayId = randomUUID();
+  const companyId = randomUUID();
+  const siteId = randomUUID();
   const state = {
     credential: '',
     version: 1,
@@ -120,9 +120,9 @@ export async function relayFixture() {
   });
   const server = createServer(tls.tls, (request, response) => {
     void (async () => {
-      const body = await requestJson(request),
-        path = request.url,
-        auth = request.headers.authorization;
+      const body = await requestJson(request);
+      const path = request.url;
+      const auth = request.headers.authorization;
       if (path === edgeRoutes.pair) {
         if (body['pairingToken'] !== state.pairing) return json(response, {}, 403);
         state.pairing = '';
@@ -195,15 +195,15 @@ export async function relayFixture() {
       ws.send(JSON.stringify({ type: 'jobs_available', protocolVersion: 1 }));
     });
   });
-  const port = await listen(server),
-    config = (): EdgeConfig =>
-      parseConfig({
-        apiBaseUrl: `https://127.0.0.1:${port}`,
-        caFile: tls.cert,
-        requestTimeoutMs: 1000,
-        printWaitMs: 2500,
-        devices: [],
-      });
+  const port = await listen(server);
+  const config = (): EdgeConfig =>
+    parseConfig({
+      apiBaseUrl: `https://127.0.0.1:${port}`,
+      caFile: tls.cert,
+      requestTimeoutMs: 1000,
+      printWaitMs: 2500,
+      devices: [],
+    });
   return {
     ...tls,
     state,
@@ -235,9 +235,9 @@ export async function printerFixture(onPrint?: (count: number) => Promise<void>)
     void (async () => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk as Buffer));
-      const bytes = Buffer.concat(chunks),
-        decoded = parseIpp(bytes),
-        operation = decoded.code;
+      const bytes = Buffer.concat(chunks);
+      const decoded = parseIpp(bytes);
+      const operation = decoded.code;
       let attributes: IppAttribute[];
       if (operation === 0x000b)
         attributes = [

@@ -22,8 +22,8 @@ function stalledReceiver() {
 
 describe('bounded WSS notification sending', () => {
   it('terminates a non-draining receiver even if its heartbeat stays responsive', async () => {
-    const socket = stalledReceiver(),
-      pending = vi.fn(async () => true);
+    const socket = stalledReceiver();
+    const pending = vi.fn(async () => true);
     for (let tick = 0; tick < 1000; tick += 1) await sendRelayNotification(socket, pending);
     expect(socket.send.mock.calls.length).toBeGreaterThan(1);
     expect(socket.send.mock.calls.length).toBeLessThan(1000);

@@ -50,9 +50,9 @@ const totals = (m: Model) => ({
 });
 const pick = <T>(values: T[], n: number) => (values.length ? values[n % values.length] : undefined);
 async function verify(m: Model, order: Awaited<ReturnType<TradeFixture['order']>>) {
-  const d = await f.detail(order.id),
-    { fulfilled, billed } = totals(m),
-    p = await f.projection(order);
+  const d = await f.detail(order.id);
+  const { fulfilled, billed } = totals(m);
+  const p = await f.projection(order);
   expect(billed).toBeGreaterThanOrEqual(0);
   expect(billed).toBeLessThanOrEqual(fulfilled);
   expect(fulfilled).toBeLessThanOrEqual(order.quarters);
@@ -117,8 +117,8 @@ async function fulfill(m: Model, step: Op, d: TradeOrderDetail) {
   });
 }
 async function bill(m: Model, step: Op, d: TradeOrderDetail) {
-  const target = pick(m.fulfillments, step.pick),
-    actual = d.fulfillments.find((v) => v.id === target?.id);
+  const target = pick(m.fulfillments, step.pick);
+  const actual = d.fulfillments.find((v) => v.id === target?.id);
   const input = {
     fulfillmentId: target?.id ?? newId(),
     expectedVersion: actual?.version ?? 1,
@@ -153,8 +153,8 @@ async function cancel(m: Model, step: Op, d: TradeOrderDetail) {
       },
     );
   } else {
-    const target = pick(m.fulfillments, step.pick),
-      actual = d.fulfillments.find((v) => v.id === target?.id);
+    const target = pick(m.fulfillments, step.pick);
+    const actual = d.fulfillments.find((v) => v.id === target?.id);
     await attempt(
       m,
       !!target?.active && target.bills.every((v) => !v.active),
@@ -195,8 +195,8 @@ async function retry(m: Model, step: Op) {
   );
 }
 async function execute(m: Model, step: Op, order: Awaited<ReturnType<TradeFixture['order']>>) {
-  const before = { detail: await f.detail(order.id), effects: await f.projection(order) },
-    rejected = m.rejected;
+  const before = { detail: await f.detail(order.id), effects: await f.projection(order) };
+  const rejected = m.rejected;
   switch (step.kind) {
     case 'fulfill':
       await fulfill(m, step, before.detail);
@@ -233,17 +233,17 @@ describe('AC-2 / TRADE-QTY-01 generated operation traces', () => {
     async (direction) => {
       await fc.assert(
         fc.asyncProperty(fc.integer({ min: 12, max: 48 }), ops, async (quarters, tail) => {
-          const order = await f.order(direction, quarters),
-            model: Model = {
-              side: direction === 'sales' ? -1 : 1,
-              movements: direction === 'sales' ? [{ quarters: 400, reverse: false }] : [],
-              ordered: quarters,
-              closed: false,
-              fulfillments: [],
-              success: 0,
-              rejected: 0,
-              retries: 0,
-            };
+          const order = await f.order(direction, quarters);
+          const model: Model = {
+            side: direction === 'sales' ? -1 : 1,
+            movements: direction === 'sales' ? [{ quarters: 400, reverse: false }] : [],
+            ordered: quarters,
+            closed: false,
+            fulfillments: [],
+            success: 0,
+            rejected: 0,
+            retries: 0,
+          };
           const prefix = [
             op('fulfill', 8),
             op('retryFulfill'),

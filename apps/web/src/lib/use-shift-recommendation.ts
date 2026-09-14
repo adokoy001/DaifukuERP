@@ -11,9 +11,9 @@ function workerFactory(): ShiftWorkerPort | null {
 }
 export function useShiftRecommendation(scopeKey: string, problem: ShiftProblem | undefined) {
   const { t } = useLocale();
-  const [result, setResult] = useState<ShiftRecommendation | null>(null),
-    [running, setRunning] = useState(false),
-    [failure, setFailure] = useState<ShiftWorkerFailure | null>(null);
+  const [result, setResult] = useState<ShiftRecommendation | null>(null);
+  const [running, setRunning] = useState(false);
+  const [failure, setFailure] = useState<ShiftWorkerFailure | null>(null);
   const runner = useMemo(
     () => createShiftRunner(workerFactory, { result: setResult, pending: setRunning, failed: setFailure }),
     [],

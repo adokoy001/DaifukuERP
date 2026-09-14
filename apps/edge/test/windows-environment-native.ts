@@ -51,8 +51,8 @@ async function main(): Promise<void> {
       '[void](PrivateDirectory $edgeInput.path); Reply $null',
       "$script:edgeStage='directory_create'; throw 'synthetic-secret-must-not-escape'",
     );
-  let stdout = '',
-    stderr = '';
+  let stdout = '';
+  let stderr = '';
   try {
     await promisify(execFile)(
       executable,

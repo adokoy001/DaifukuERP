@@ -36,10 +36,10 @@ export function verifySquareSignature(
 ): boolean {
   if (!signature || !/^[A-Za-z0-9+/]{43}=$/.test(signature)) return false;
   const expected = createHmac('sha256', connection.signatureKey)
-      .update(connection.notificationUrl)
-      .update(body)
-      .digest(),
-    received = Buffer.from(signature, 'base64');
+    .update(connection.notificationUrl)
+    .update(body)
+    .digest();
+  const received = Buffer.from(signature, 'base64');
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
 const object = (value: unknown): Record<string, unknown> =>
@@ -61,13 +61,13 @@ export function normalizeSquareEvent(body: string): NormalizedPosEvent {
   } catch {
     throw new ValidationError('Malformed Square event JSON', [], 'Send the original signed JSON body.');
   }
-  const envelope = object(raw),
-    data = object(envelope.data),
-    objects = object(data.object);
-  const eventId = string(envelope.event_id),
-    merchantId = string(envelope.merchant_id),
-    eventAt = string(envelope.created_at),
-    type = string(envelope.type) ?? '';
+  const envelope = object(raw);
+  const data = object(envelope.data);
+  const objects = object(data.object);
+  const eventId = string(envelope.event_id);
+  const merchantId = string(envelope.merchant_id);
+  const eventAt = string(envelope.created_at);
+  const type = string(envelope.type) ?? '';
   if (!eventId || !merchantId || !eventAt || !z.iso.datetime({ offset: true }).safeParse(eventAt).success)
     throw new ValidationError(
       'Malformed Square event envelope',
@@ -79,14 +79,14 @@ export function normalizeSquareEvent(body: string): NormalizedPosEvent {
     : ['refund.created', 'refund.updated'].includes(type)
       ? 'refund'
       : 'unsupported';
-  const item = object(objects[kind]),
-    externalId = string(item.id) ?? string(data.id) ?? eventId,
-    state = string(item.status) ?? 'UNKNOWN',
-    locationId = string(item.location_id),
-    paymentId = kind === 'refund' ? string(item.payment_id) : null;
-  const amount = money(kind === 'payment' ? item.total_money : item.amount_money),
-    created = string(item.created_at),
-    updated = string(item.updated_at) ?? created;
+  const item = object(objects[kind]);
+  const externalId = string(item.id) ?? string(data.id) ?? eventId;
+  const state = string(item.status) ?? 'UNKNOWN';
+  const locationId = string(item.location_id);
+  const paymentId = kind === 'refund' ? string(item.payment_id) : null;
+  const amount = money(kind === 'payment' ? item.total_money : item.amount_money);
+  const created = string(item.created_at);
+  const updated = string(item.updated_at) ?? created;
   let unsupportedReason = kind === 'unsupported' ? 'Unsupported Square event type' : null;
   if (
     kind !== 'unsupported' &&

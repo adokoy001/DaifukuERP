@@ -10,10 +10,10 @@ import { deviceBindingHash, parseConfig, type EdgeConfig } from '../src/config.t
 import { notifications } from '../src/notifications.ts';
 import { actualApiFixture, apiTlsProxy } from './api-fixture.ts';
 import { until } from './fixtures.ts';
-let api: Awaited<ReturnType<typeof actualApiFixture>>,
-  proxy: Awaited<ReturnType<typeof apiTlsProxy>>,
-  config: EdgeConfig,
-  credentials: Credentials;
+let api: Awaited<ReturnType<typeof actualApiFixture>>;
+let proxy: Awaited<ReturnType<typeof apiTlsProxy>>;
+let config: EdgeConfig;
+let credentials: Credentials;
 const signal = () => new AbortController().signal;
 type Board = {
   jobs: { id: string; state: string; version: number; attempt: number }[];
@@ -66,9 +66,9 @@ describe('agent against the actual API and dedicated database through TLS', () =
     expect(journal).not.toContain(old);
   });
   it('acknowledges an expired observation and recovers an obsolete attempt without touching the current claim', async () => {
-    const journal = await Journal.open(proxy.directory),
-      codes: string[] = [],
-      agent = new EdgeAgent(credentials, journal, (code) => codes.push(code));
+    const journal = await Journal.open(proxy.directory);
+    const codes: string[] = [];
+    const agent = new EdgeAgent(credentials, journal, (code) => codes.push(code));
     await journal.event({
       eventId: randomUUID(),
       deviceId: api.deviceId,

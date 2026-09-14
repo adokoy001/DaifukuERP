@@ -21,9 +21,9 @@ function YearEndDecision({
   currentVersion: number | undefined;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    kind = decision.kind;
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const kind = decision.kind;
   const title = t(
     kind === 'review'
       ? { ja: '申告内容と証明資料を確認', en: 'Review declaration and evidence' }
@@ -129,9 +129,9 @@ function YearEndCalculate({
   current: Adjustment | undefined;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    [reviewedRule] = useState(rule);
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const [reviewedRule] = useState(rule);
   const range = reviewedRule?.manifest.applicability.adjustmentDates;
   const [adjustedOn, setAdjustedOn] = useState(range ? dateInRuleRange(businessToday(), range) : '');
   const ruleChanged =
@@ -212,9 +212,9 @@ export function FiscalYearEnd({
   employeeId: string;
   selfEmployeeId?: string;
 }) {
-  const { t } = useLocale(),
-    [decision, setDecision] = useState<Decision>(),
-    [calculate, setCalculate] = useState<{ employee: FiscalBoard['employees'][number]; prior?: Adjustment }>();
+  const { t } = useLocale();
+  const [decision, setDecision] = useState<Decision>();
+  const [calculate, setCalculate] = useState<{ employee: FiscalBoard['employees'][number]; prior?: Adjustment }>();
   const employees = data.employees.filter((employee) => !employeeId || employee.id === employeeId);
   const availableFrom = rule?.manifest.applicability.adjustmentDates.from;
   return (
@@ -226,10 +226,10 @@ export function FiscalYearEnd({
         <WorkforceEmpty>{t({ ja: '従業員を登録してください。', en: 'Register an employee to begin.' })}</WorkforceEmpty>
       ) : (
         employees.map((employee) => {
-          const declaration = data.declarations.find((row) => row.employeeId === employee.id),
-            adjustments = data.adjustments.filter((row) => row.employeeId === employee.id),
-            prior = adjustments.find((row) => row.status === 'draft'),
-            frozen = adjustments.some((row) => row.status === 'confirmed');
+          const declaration = data.declarations.find((row) => row.employeeId === employee.id);
+          const adjustments = data.adjustments.filter((row) => row.employeeId === employee.id);
+          const prior = adjustments.find((row) => row.status === 'draft');
+          const frozen = adjustments.some((row) => row.status === 'confirmed');
           return (
             <article className="workforce-record" key={employee.id}>
               <header>

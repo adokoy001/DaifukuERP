@@ -1,8 +1,8 @@
 import { z } from 'zod';
 export const direction = z.enum(['sales', 'purchase']);
-const date = z.iso.date(),
-  decimal = z.string(),
-  version = z.number().int().min(1);
+const date = z.iso.date();
+const decimal = z.string();
+const version = z.number().int().min(1);
 const quantity = z
   .string()
   .regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)

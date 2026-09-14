@@ -12,10 +12,10 @@ export function AccessCreateUser({
   const { t } = useLocale();
   const toast = useToast();
   const mutation = useAccessMutation();
-  const [name, setName] = useState(''),
-    [email, setEmail] = useState(''),
-    [password, setPassword] = useState(''),
-    [tenantAdmin, setTenantAdmin] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [tenantAdmin, setTenantAdmin] = useState(false);
   const dirty = name.length > 0 || email.length > 0 || password.length > 0 || tenantAdmin;
   useEffect(() => {
     onStatus({ dirty, busy: mutation.isPending });

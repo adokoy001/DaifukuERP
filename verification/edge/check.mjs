@@ -7,11 +7,11 @@ import { promisify } from 'node:util';
 import { Buffer } from 'node:buffer';
 import { performance } from 'node:perf_hooks';
 
-const here = dirname(fileURLToPath(import.meta.url)),
-  root = resolve(here, '../..');
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '../..');
 const tool = JSON.parse(await readFile(join(here, 'tool.json'), 'utf8'));
-const args = process.argv.slice(2),
-  options = {};
+const args = process.argv.slice(2);
+const options = {};
 for (let i = 0; i < args.length; i += 2) {
   const name = args[i];
   if (!['--jar', '--java', '--only'].includes(name) || !args[i + 1])
@@ -49,9 +49,9 @@ async function verifiedJar() {
   if (bytes.length !== tool.bytes || hash(bytes) !== tool.sha256) throw new Error('TLC asset hash mismatch');
   return path;
 }
-const jar = await verifiedJar(),
-  java = options.java ?? 'java',
-  results = [];
+const jar = await verifiedJar();
+const java = options.java ?? 'java';
+const results = [];
 const baseConfig = await readFile(join(here, 'Edge.cfg'), 'utf8');
 async function check(name, config, expected, module = 'Edge', content) {
   const directory = join(runRoot, name);
@@ -60,9 +60,9 @@ async function check(name, config, expected, module = 'Edge', content) {
   if (content) await writeFile(join(directory, module + '.tla'), content);
   await writeFile(join(directory, module + '.cfg'), config);
   const start = performance.now();
-  let stdout = '',
-    stderr = '',
-    code = 0;
+  let stdout = '';
+  let stderr = '';
+  let code = 0;
   try {
     ({ stdout, stderr } = await promisify(execFile)(
       java,

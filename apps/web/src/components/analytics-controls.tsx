@@ -18,8 +18,8 @@ function AxisEditor({
   const update = (index: number, axis: PivotAxis) => onChange(axes.map((item, at) => (at === index ? axis : item)));
   const move = (index: number, by: number) => {
     const copy = [...axes];
-    const current = copy[index],
-      other = copy[index + by];
+    const current = copy[index];
+    const other = copy[index + by];
     if (current && other) {
       copy[index] = other;
       copy[index + by] = current;

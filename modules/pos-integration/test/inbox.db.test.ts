@@ -4,7 +4,10 @@ import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import { newId, repo, runAction, registerCrudActions, type Context } from '@daifuku/kernel';
 import { Account, FiscalPeriod, JournalEntry, JournalLine, openFiscalYear } from '@daifuku/mod-accounting';
 import { PosLocation, PosInbox, PosTransaction, receivePosEvent, type NormalizedPosEvent } from '../src/index.ts';
-let db: TestDb, location: string, asset: string, suspense: string;
+let db: TestDb;
+let location: string;
+let asset: string;
+let suspense: string;
 const run = <T>(fn: (ctx: Context) => Promise<T>) => db.run({ now: () => new Date('2026-09-12T03:00:00Z') }, fn);
 function event(id: string, extra: Partial<NormalizedPosEvent> = {}): NormalizedPosEvent {
   return {

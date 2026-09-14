@@ -31,8 +31,8 @@ export function storesTable(stores: Store[], facts: Fact[], previous: Fact[], bo
     column('finalizePendingDays', label('本部確定待ち', 'Awaiting finalization'), 'int'),
   ];
   const rows = stores.map((store) => {
-    const total = totalFacts(facts.filter((f) => f.storeId === store.id)),
-      prior = totalFacts(previous.filter((f) => f.storeId === store.id)).amounts.grossSales;
+    const total = totalFacts(facts.filter((f) => f.storeId === store.id));
+    const prior = totalFacts(previous.filter((f) => f.storeId === store.id)).amounts.grossSales;
     const { target, ...counts } = summarizeBoard(board.filter((row) => row.storeId === store.id));
     const change = total.amounts.grossSales.minus(prior);
     return {

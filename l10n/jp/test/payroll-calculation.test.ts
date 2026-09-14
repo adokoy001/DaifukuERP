@@ -15,9 +15,9 @@ const D = Decimal.from;
 const bundle = JAPAN_PAYROLL_PROVIDER.bundles()[0];
 if (!bundle) throw new Error('Missing legacy distribution fixture');
 const rules = parseJapanPayrollRules(bundle);
-const FISCAL_DATA = rules.data,
-  HEALTH_GRADES = rules.data.healthGrades,
-  PENSION_GRADES = rules.data.pensionGrades;
+const FISCAL_DATA = rules.data;
+const HEALTH_GRADES = rules.data.healthGrades;
+const PENSION_GRADES = rules.data.pensionGrades;
 describe('2026 official regular payroll calculation', () => {
   it.each([
     ['740999', '0'],
@@ -54,8 +54,8 @@ describe('2026 official regular payroll calculation', () => {
     expect(annualBasic(rules, D(income)).toString()).toBe(expected);
   });
   it('keeps monthly old deduction distinct from the December annual amendment', () => {
-    const monthly = monthlyWithholding(rules, D(300000), D(45000), 0),
-      annual = annualAdjustment(rules, declaration(), D(3600000), D(600000), D(90000));
+    const monthly = monthlyWithholding(rules, D(300000), D(45000), 0);
+    const annual = annualAdjustment(rules, declaration(), D(3600000), D(600000), D(90000));
     expect(monthly.salaryDeduction.toString()).toBe('83167');
     expect(monthly.basicDeduction.toString()).toBe('48334');
     expect(monthly.incomeTax.toString()).toBe('6300');
@@ -72,8 +72,8 @@ describe('2026 official regular payroll calculation', () => {
     expect(payrollInsuranceRound(rules.manifest.parameters, D(raw)).toString()).toBe(expected);
   });
   it('uses insurance months and the wage cutoff independently of the eventual payment month', () => {
-    const march = socialInsurance(rules, condition(), '2026-03', '2026-03-31', D(300000)),
-      april = socialInsurance(rules, condition(), '2026-04', '2026-04-30', D(300000));
+    const march = socialInsurance(rules, condition(), '2026-03', '2026-03-31', D(300000));
+    const april = socialInsurance(rules, condition(), '2026-04', '2026-04-30', D(300000));
     expect(march.health.toString()).toBe('14775');
     expect(march.nursing.toString()).toBe('2430');
     expect(march.childSupport.toString()).toBe('0');

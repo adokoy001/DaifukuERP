@@ -38,7 +38,9 @@ const Store = defineEntity({
   storeAccess: { kind: 'store', field: 'id' },
 });
 registerCrudActions();
-let db: TestDb, app: FastifyInstance, adminToken: string;
+let db: TestDb;
+let app: FastifyInstance;
+let adminToken: string;
 type User = { id: string; version: number; active: boolean; tenantAdmin: boolean; defaultCompanyId: string | null };
 const password = 'access-test-password';
 
@@ -256,7 +258,7 @@ describe('tenant administration and fresh company authorization', () => {
     ]);
     expect(results.filter((r) => r.statusCode === 200)).toHaveLength(1);
     const rows = await db.owner
-      .sql`select id from users where tenant_id = ${db.tenantId} and active = 1 and tenant_admin = 1`;
+      .sql`select id from users where tenant_id = ${db.tenantId} and active = true and tenant_admin = true`;
     expect(rows).toHaveLength(1);
     const memberships = await db.owner.drizzle.select().from(companyMemberships);
     expect(memberships.length).toBeGreaterThan(0);

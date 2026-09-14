@@ -17,8 +17,8 @@ type Evidence = { rows: Record<string, unknown>[]; totals: { sales: string; sett
 async function prepareReceivable(request: APIRequestContext, headers: Headers) {
   const store = await newStore(request, headers, '再集計専用店舗 ' + Date.now());
   const products = await api<{ items: Row[] }>(request, headers, '/api/product?limit=500');
-  const rice = products.items.find((row) => row.code === 'RC-RICE'),
-    chicken = products.items.find((row) => row.code === 'RC-CHICKEN');
+  const rice = products.items.find((row) => row.code === 'RC-RICE');
+  const chicken = products.items.find((row) => row.code === 'RC-CHICKEN');
   const recipes = await api<{ items: Row[] }>(request, headers, '/api/restaurant_chain_recipe?limit=500');
   const recipe = recipes.items.find((row) => row.code === 'RC-CURRY-V1' && row.docstatus === 1);
   expect(rice).toBeDefined();
@@ -77,8 +77,8 @@ async function refreshBoth(page: Page, input: Record<string, string>): Promise<E
 test('同条件の再集計で、開いたままの入金残高を外部入金・取消後の実値へ更新する', async ({ page, request }) => {
   test.setTimeout(180_000);
   await login(page);
-  const companyId = await restaurant(page),
-    headers = await adminHeaders(request, companyId);
+  const companyId = await restaurant(page);
+  const headers = await adminHeaders(request, companyId);
   const { store, closing, invoice } = await prepareReceivable(request, headers);
   const accounts = await api<{ items: Row[] }>(request, headers, '/api/account?limit=500');
   const bank = accounts.items.find((row) => row.code === '1100');

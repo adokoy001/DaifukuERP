@@ -46,25 +46,25 @@ export function annualAdjustment(
           .times(rule.incomeAdjustment.rate)
           .roundUp(0)
       : D(0);
-  const salaryIncome = salaryBeforeAdjustment.minus(incomeAdjustment),
-    totalIncome = salaryIncome.plus(input.otherIncome);
-  const deductions = declarationDeductions(rules, input, totalIncome, socialPremium),
-    taxableIncome = positive(salaryIncome.minus(deductions.total))
-      .div(rule.taxableRoundUnit)
-      .roundDown(0)
-      .times(rule.taxableRoundUnit);
+  const salaryIncome = salaryBeforeAdjustment.minus(incomeAdjustment);
+  const totalIncome = salaryIncome.plus(input.otherIncome);
+  const deductions = declarationDeductions(rules, input, totalIncome, socialPremium);
+  const taxableIncome = positive(salaryIncome.minus(deductions.total))
+    .div(rule.taxableRoundUnit)
+    .roundDown(0)
+    .times(rule.taxableRoundUnit);
   const band = rule.tax.find((row) => taxableIncome.lte(row.to));
   if (!band)
     throw new ValidationError('Taxable income exceeds the annual adjustment table', [
       { path: 'taxablePay', message: 'Use a tax return for this income amount.' },
     ]);
   const beforeCredit = positive(taxableIncome.times(band.rate).minus(band.offset));
-  const afterCredit = positive(beforeCredit.minus(input.housingTaxCredit)),
-    annualTax = afterCredit
-      .times(rule.reconstructionFactor)
-      .div(rule.taxRoundUnit)
-      .roundDown(0)
-      .times(rule.taxRoundUnit);
+  const afterCredit = positive(beforeCredit.minus(input.housingTaxCredit));
+  const annualTax = afterCredit
+    .times(rule.reconstructionFactor)
+    .div(rule.taxRoundUnit)
+    .roundDown(0)
+    .times(rule.taxRoundUnit);
   return {
     taxablePay,
     socialPremium,

@@ -20,8 +20,8 @@ export const myPortalAction = defineAction({
   tx: 'none',
   mutates: false,
   async handler(ctx, input) {
-    const today = jstDate(ctx.now()),
-      period = input.period ?? today.slice(0, 7);
+    const today = jstDate(ctx.now());
+    const period = input.period ?? today.slice(0, 7);
     const self = (await repo(ctx, WorkforceEmployee).list({ where: { userId: userId(ctx) }, limit: 1 })).items[0];
     if (!self)
       return {
@@ -76,8 +76,8 @@ export const managementPortalAction = defineAction({
   tx: 'none',
   mutates: false,
   async handler(ctx, input) {
-    const period = input.period ?? jstDate(ctx.now()).slice(0, 7),
-      data = await portalData(ctx, period);
+    const period = input.period ?? jstDate(ctx.now()).slice(0, 7);
+    const data = await portalData(ctx, period);
     const sites = (await allRows(ctx, WorkforceSite)).map(({ id, code, name }) => ({ id, code, name }));
     const users = can(ctx, WorkforceEmployee, 'create')
       ? await companyMemberIdentities(ctx, WorkforceEmployee.name)

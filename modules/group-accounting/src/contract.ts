@@ -1,6 +1,6 @@
 import { z } from 'zod';
-const decimal = z.string().regex(/^-?\d+(\.\d+)?$/),
-  id = z.uuid();
+const decimal = z.string().regex(/^-?\d+(\.\d+)?$/);
+const id = z.uuid();
 export const groupMapping = z
   .object({
     companyId: id,

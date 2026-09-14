@@ -47,8 +47,8 @@ export async function performJob(
   job: EdgeClaimedJob,
   signal: AbortSignal,
 ): Promise<JournalRecord> {
-  const record = await journal.begin(job, deviceBindingHash(client.config, job.deviceId)),
-    lease = leaseOf(record);
+  const record = await journal.begin(job, deviceBindingHash(client.config, job.deviceId));
+  const lease = leaseOf(record);
   try {
     integrity(job, client.config);
   } catch {
@@ -63,8 +63,8 @@ export async function performJob(
   if (!start.startGranted || !start.leaseUntil)
     return journal.update(job.id, { result: { state: 'uncertain', code: 'start_permission_not_granted' } });
   await journal.update(job.id, { phase: 'executing' });
-  const controller = new AbortController(),
-    stop = () => controller.abort();
+  const controller = new AbortController();
+  const stop = () => controller.abort();
   signal.addEventListener('abort', stop, { once: true });
   if (signal.aborted) stop();
   let deadline = performance.now() + Date.parse(start.leaseUntil) - Date.parse(start.serverTime);

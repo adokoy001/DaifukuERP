@@ -63,8 +63,8 @@ test('quotation conversion → generic order submission → partial shipment and
   page,
   request,
 }) => {
-  const fixture = await financeFixture(request),
-    quotation = await financeOrder(request, fixture, 'sales', true);
+  const fixture = await financeFixture(request);
+  const quotation = await financeOrder(request, fixture, 'sales', true);
   await signInQuality(page, fixture.email, PASSWORD);
   await page.goto('/commerce/trade');
   await expect(page.getByRole('heading', { name: '商流・受発注', exact: true })).toBeVisible();
@@ -123,8 +123,8 @@ test('purchasing partial receipt and invoice work at 390px and closing retains v
   page,
   request,
 }) => {
-  const fixture = await financeFixture(request),
-    order = await financeOrder(request, fixture, 'purchase');
+  const fixture = await financeFixture(request);
+  const order = await financeOrder(request, fixture, 'purchase');
   await page.setViewportSize({ width: 390, height: 844 });
   await signInQuality(page, fixture.email, PASSWORD);
   await page.goto('/commerce/trade');

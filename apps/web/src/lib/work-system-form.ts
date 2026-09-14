@@ -2,8 +2,8 @@ import type { WorkSystemInput } from '../api/fiscal.ts';
 export type WorkSystemDay = WorkSystemInput['days'][number];
 export function monthDays(from: string, to: string): string[] {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(from) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(to) || from > to) return [];
-  const start = new Date(from + '-01T00:00:00Z'),
-    end = new Date(to + '-01T00:00:00Z');
+  const start = new Date(from + '-01T00:00:00Z');
+  const end = new Date(to + '-01T00:00:00Z');
   end.setUTCMonth(end.getUTCMonth() + 1);
   const days: string[] = [];
   while (start < end && days.length < 93) {

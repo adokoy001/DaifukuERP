@@ -3,8 +3,8 @@ import { isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import { EdgeError } from './errors.ts';
 import { readPrivateJson } from './files.ts';
-const localId = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/),
-  file = z.string().refine(isAbsolute);
+const localId = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
+const file = z.string().refine(isAbsolute);
 const device = z.discriminatedUnion('driver', [
   z
     .object({
@@ -51,8 +51,8 @@ export const loopback = (url: URL): boolean => ['127.0.0.1', '[::1]', 'localhost
 export function parseConfig(value: unknown): EdgeConfig {
   const result = configSchema.safeParse(value);
   if (!result.success) throw new EdgeError('invalid_config');
-  const config = result.data,
-    url = validateUrl(config.apiBaseUrl, ['https:', 'http:']);
+  const config = result.data;
+  const url = validateUrl(config.apiBaseUrl, ['https:', 'http:']);
   if (config.syntheticLoopbackTest && (process.env['DAIFUKU_EDGE_SYNTHETIC_TEST'] !== '1' || !loopback(url)))
     throw new EdgeError('synthetic_test_not_allowed');
   if (url.protocol !== 'https:' && !config.syntheticLoopbackTest) throw new EdgeError('https_required');

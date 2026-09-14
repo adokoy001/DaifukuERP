@@ -95,6 +95,12 @@ documents.push(
   'docs/log/2026-09-13-payroll-rule-versions.md',
   'docs/specs/l10n-jp.md',
 );
+documents.push(
+  'docs/specs/source-consistency.md',
+  'docs/log/2026-09-14-source-consistency.md',
+  'docs/conventions/errors.md',
+  'docs/conventions/source-headers.md',
+);
 let checked = 0;
 const failures = [];
 for (const document of documents) {

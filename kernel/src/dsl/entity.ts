@@ -7,7 +7,7 @@ import { registry } from '../registry.ts';
 import type { FieldMap } from './fields.ts';
 import type { EntityDef } from './defs.ts';
 export type { EntityDef, Infer, InsertInput, UpdateInput } from './defs.ts';
-import { DOCUMENT_FIELDS, SYSTEM_FIELDS, type DocumentConfig, type EntityConfig } from './types.ts';
+import { DOCSTATUS, DOCUMENT_FIELDS, SYSTEM_FIELDS, type DocumentConfig, type EntityConfig } from './types.ts';
 
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -108,7 +108,10 @@ export function defineEntity<const F extends FieldMap>(cfg: EntityConfig<F>): En
 export function defineDocument<const F extends FieldMap>(cfg: DocumentConfig<F>): EntityDef<F, 'document'> {
   if (!cfg.naming) throw new Error(`document ${cfg.name}: naming is required`);
   for (const [name, t] of Object.entries(cfg.transitions ?? {})) {
-    if (!((t.from === 0 && t.to === 1) || (t.from === 1 && t.to === 2)))
+    if (!(
+      (t.from === DOCSTATUS.draft && t.to === DOCSTATUS.submitted) ||
+      (t.from === DOCSTATUS.submitted && t.to === DOCSTATUS.cancelled)
+    ))
       throw new Error(
         `document ${cfg.name}: transition ${name} must move draft→submitted or submitted→cancelled; use amend to create a draft`,
       );

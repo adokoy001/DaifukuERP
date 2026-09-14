@@ -15,9 +15,9 @@ interface Reservation {
 const limited = () =>
   new DaifukuError('PERMISSION_DENIED', 'Too many verification attempts.', 'Wait before trying again.', undefined, 429);
 async function reserve(owner: Database, input: IdentityAttemptLimit, now: Date): Promise<Reservation> {
-  const seconds = input.seconds ?? 300,
-    key = tokenHash(input.key),
-    start = new Date(Math.floor(now.getTime() / (seconds * 1000)) * seconds * 1000);
+  const seconds = input.seconds ?? 300;
+  const key = tokenHash(input.key);
+  const start = new Date(Math.floor(now.getTime() / (seconds * 1000)) * seconds * 1000);
   const [row] = await owner.drizzle
     .insert(identityLimits)
     .values({ key, windowStart: start })

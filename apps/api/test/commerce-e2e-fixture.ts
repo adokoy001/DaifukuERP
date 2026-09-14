@@ -15,8 +15,8 @@ async function main() {
     !/^[a-f0-9]{12}$/.test(runId ?? '')
   )
     fail();
-  const ownerUrl = new URL(process.env.DATABASE_URL_OWNER ?? 'invalid'),
-    appUrl = new URL(process.env.DATABASE_URL ?? 'invalid');
+  const ownerUrl = new URL(process.env.DATABASE_URL_OWNER ?? 'invalid');
+  const appUrl = new URL(process.env.DATABASE_URL ?? 'invalid');
   for (const url of [ownerUrl, appUrl])
     if (
       !['postgres:', 'postgresql:'].includes(url.protocol) ||
@@ -34,20 +34,20 @@ async function main() {
     appUrl.username !== 'daifuku_app'
   )
     fail();
-  const owner = connect(ownerUrl.href, { max: 1 }),
-    app = connect(appUrl.href, { max: 1 });
+  const owner = connect(ownerUrl.href, { max: 1 });
+  const app = connect(appUrl.href, { max: 1 });
   try {
     const [role] = await app.sql`select rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
     const [database] =
       await owner.sql`select pg_get_userbyid(datdba)=current_user as owner from pg_database where datname=current_database()`;
     if (!database?.owner || !role || role.rolsuper || role.rolbypassrls) fail();
     const [user] = await owner.sql`select tenant_admin,active from users where id=${userId} and tenant_id=${tenantId}`;
-    if (user?.tenant_admin !== 1 || user.active !== 1) fail();
+    if (user?.tenant_admin !== true || user.active !== true) fail();
     const companies = await owner.sql.begin(async (sql) => {
       const rows = [];
       for (const suffix of ['A', 'B']) {
-        const code = `CE-${runId}-${suffix}`,
-          name = `Commerce E2E ${runId} ${suffix}`;
+        const code = `CE-${runId}-${suffix}`;
+        const name = `Commerce E2E ${runId} ${suffix}`;
         await sql`insert into companies(id,tenant_id,code,name,currency) values(${newId()},${tenantId},${code},${name},'JPY') on conflict(tenant_id,code) do nothing`;
         const [row] = await sql`select id,code,name from companies where tenant_id=${tenantId} and code=${code}`;
         if (!row || row.name !== name) fail();

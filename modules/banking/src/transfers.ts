@@ -1,3 +1,6 @@
+// Scoped transfer preparation, invoice reservations and file export through the repository and bank lock.
+// First export rechecks the snapshot; subsequent downloads return the original bytes. Export never sends money.
+// Contract: docs/specs/bank-integration.md; evidence: modules/banking/test/banking.db.test.ts.
 import {
   Conflict,
   DOCSTATUS,

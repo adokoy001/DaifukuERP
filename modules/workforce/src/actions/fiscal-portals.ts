@@ -153,14 +153,14 @@ export const myFiscalAction = defineAction({
     }
     const years = await fiscalYears(ctx, input.taxYear, self.id);
     const declarations = await allRows(ctx, WorkforceYearEndDeclaration, {
-        employeeId: self.id,
-        taxYear: years.taxYear,
-      }),
-      adjustments = await allRows(ctx, WorkforceYearEndAdjustment, {
-        employeeId: self.id,
-        taxYear: years.taxYear,
-        docstatus: 1,
-      });
+      employeeId: self.id,
+      taxYear: years.taxYear,
+    });
+    const adjustments = await allRows(ctx, WorkforceYearEndAdjustment, {
+      employeeId: self.id,
+      taxYear: years.taxYear,
+      docstatus: 1,
+    });
     return myFiscalOutput.parse({
       ...years,
       employeeId: self.id,

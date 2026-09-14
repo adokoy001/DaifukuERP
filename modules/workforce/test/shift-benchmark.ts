@@ -1,8 +1,8 @@
 // Reproducible synthetic benchmark; timing is reported, never used as a flaky correctness assertion.
 import { evaluateShift, recommendShift } from '../src/scheduling/index.ts';
 import { benchmarkProblem } from './shift-fixture.ts';
-const problem = benchmarkProblem(),
-  started = performance.now();
+const problem = benchmarkProblem();
+const started = performance.now();
 const result = recommendShift(problem, { seed: 20260912 });
 const durationMs = performance.now() - started;
 const checked = evaluateShift(problem, result.assignments);

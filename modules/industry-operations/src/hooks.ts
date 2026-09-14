@@ -27,8 +27,8 @@ function values(ctx: Context, Job: JobDef, { row, previous }: HookArgs): Record<
 async function validateDraft(ctx: Context, Job: JobDef, config: IndustryJobConfig, args: HookArgs) {
   if (args.previous && args.previous.docstatus !== DOCSTATUS.draft) return;
   const value = values(ctx, Job, args);
-  const ordered = amount(value.orderedQuantity, 'orderedQuantity'),
-    completed = amount(value.completedQuantity, 'completedQuantity');
+  const ordered = amount(value.orderedQuantity, 'orderedQuantity');
+  const completed = amount(value.completedQuantity, 'completedQuantity');
   const price = amount(value.unitPrice, 'unitPrice');
   if (!ordered.gt(0)) invalid('orderedQuantity', '受注数量は0より大きい値にしてください。');
   if (completed.lt(0) || completed.gt(ordered))

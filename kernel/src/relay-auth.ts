@@ -52,7 +52,7 @@ export async function authenticateRelay(owner: Database, secret: string, now = n
     .where(
       and(
         eq(relayCredentials.secretHash, tokenHash(secret)),
-        eq(relayCredentials.active, 1),
+        eq(relayCredentials.active, true),
         gt(relayCredentials.expiresAt, now),
       ),
     )
@@ -74,7 +74,7 @@ export async function assertRelayCredential(ctx: Context): Promise<RelayPrincipa
         eq(relayCredentials.gatewayId, ctx.actor.id),
         eq(relayCredentials.siteId, binding.siteId),
         eq(relayCredentials.credentialVersion, binding.credentialVersion),
-        eq(relayCredentials.active, 1),
+        eq(relayCredentials.active, true),
         gt(relayCredentials.expiresAt, ctx.now()),
       ),
     )
@@ -85,13 +85,13 @@ export async function assertRelayCredential(ctx: Context): Promise<RelayPrincipa
 async function retire(ctx: Context, gatewayId: string) {
   await ctx.db
     .update(relayCredentials)
-    .set({ active: 0, revokedAt: ctx.now() })
+    .set({ active: false, revokedAt: ctx.now() })
     .where(
       and(
         eq(relayCredentials.tenantId, ctx.tenantId),
         eq(relayCredentials.companyId, ctx.companyId ?? ''),
         eq(relayCredentials.gatewayId, gatewayId),
-        eq(relayCredentials.active, 1),
+        eq(relayCredentials.active, true),
       ),
     );
 }
@@ -153,8 +153,8 @@ export async function issueRelayPairing(ctx: Context, gatewayId: string, siteId:
         isNull(relayPairings.consumedAt),
       ),
     );
-  const token = opaqueToken(),
-    expiresAt = new Date(ctx.now().getTime() + 600000);
+  const token = opaqueToken();
+  const expiresAt = new Date(ctx.now().getTime() + 600000);
   await ctx.db.insert(relayPairings).values({
     id: newId(),
     tenantId: ctx.tenantId,
@@ -268,9 +268,10 @@ async function currentOperator(ctx: Context, sessionVersion: number): Promise<Co
     .limit(1)
     .for('share');
   const user = await lockIdentity(ctx, sessionVersion);
-  if (user.tenantAdmin !== 1 && (!membership || !membership.roles.includes('edge_manager'))) throw denied();
-  const authorization =
-    user.tenantAdmin === 1 ? { roles: ['admin'], accessScope: 'all' as const, storeIds: [], siteIds: [] } : membership;
+  if (!user.tenantAdmin && (!membership || !membership.roles.includes('edge_manager'))) throw denied();
+  const authorization = user.tenantAdmin
+    ? { roles: ['admin'], accessScope: 'all' as const, storeIds: [], siteIds: [] }
+    : membership;
   if (!authorization) throw denied();
   return makeContext(ctx.db, {
     tenantId: ctx.tenantId,
@@ -281,7 +282,7 @@ async function currentOperator(ctx: Context, sessionVersion: number): Promise<Co
     siteIds: authorization.siteIds,
     storeIds: authorization.storeIds,
     sessionVersion,
-    tenantAdmin: user.tenantAdmin === 1,
+    tenantAdmin: user.tenantAdmin,
     mfaVerified: ctx.mfaVerified === true,
     appliedPacks: ctx.appliedPacks ?? [],
     now: ctx.now,
@@ -322,7 +323,7 @@ export async function relayPresence(ctx: Context, gatewayEntity: string) {
       and(
         eq(relayCredentials.tenantId, ctx.tenantId),
         eq(relayCredentials.companyId, ctx.companyId ?? ''),
-        eq(relayCredentials.active, 1),
+        eq(relayCredentials.active, true),
         gt(relayCredentials.expiresAt, ctx.now()),
       ),
     );

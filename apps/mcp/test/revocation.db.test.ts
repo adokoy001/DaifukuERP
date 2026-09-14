@@ -176,7 +176,7 @@ describe('foundation-refresh MCP identity and current authorization', () => {
       expect(JSON.stringify(denied)).toContain('PERMISSION_DENIED');
       const readable = await client.readResource({ uri: 'daifuku://meta' });
       expect(JSON.stringify(readable)).toContain('viewer');
-      await db.owner.sql`update users set active = 0 where id = ${id}`;
+      await db.owner.sql`update users set active = false where id = ${id}`;
       const disabled = await client.callTool(
         { name: 'mcp_test_item_create', arguments: { name: 'After disabled' } },
         CallToolResultSchema,

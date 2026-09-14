@@ -6,7 +6,11 @@ import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server.ts';
 import { edgeFixture } from './edge-helper.ts';
-let db: TestDb, app: FastifyInstance, address: string, token: string, h: ReturnType<typeof edgeFixture>;
+let db: TestDb;
+let app: FastifyInstance;
+let address: string;
+let token: string;
+let h: ReturnType<typeof edgeFixture>;
 const logs: string[] = [];
 beforeAll(async () => {
   db = await freshDb();
@@ -43,9 +47,9 @@ afterAll(async () => {
 });
 describe('relay authentication and real websocket transport', () => {
   it('consumes pairing once, stores only a hash and recovers a lost response with the pre-saved credential', async () => {
-    const f = await h.fixture(),
-      pairingToken = await h.issue(f),
-      credentialSecret = newRelaySecret();
+    const f = await h.fixture();
+    const pairingToken = await h.issue(f);
+    const credentialSecret = newRelaySecret();
     h.secrets.push(credentialSecret);
     const input = { pairingToken, credentialSecret, protocolVersion: 1, agentVersion: 'test-1' };
     const results = await Promise.all([h.post('/relay/pair', input, ''), h.post('/relay/pair', input, '')]);
@@ -64,9 +68,9 @@ describe('relay authentication and real websocket transport', () => {
     expect((await h.post('/relay/pair', input, '')).statusCode).toBe(401);
   });
   it('rotates without response-dependent storage and isolates relay credentials from human APIs', async () => {
-    const f = await h.fixture(),
-      secret = await h.pair(f),
-      next = newRelaySecret();
+    const f = await h.fixture();
+    const secret = await h.pair(f);
+    const next = newRelaySecret();
     h.secrets.push(next);
     const rotation = await h.post(
       '/relay/credentials/rotate',
@@ -101,9 +105,9 @@ describe('relay authentication and real websocket transport', () => {
     ).toBe(401);
   });
   it('requires an active binding, expected version and a one-use step-up', async () => {
-    const f = await h.fixture(),
-      other = await h.fixture(),
-      stepUpToken = await h.step();
+    const f = await h.fixture();
+    const other = await h.fixture();
+    const stepUpToken = await h.step();
     expect(
       (await h.post('/edge/pairings', { gatewayId: f.gateway.id, expectedVersion: 99, stepUpToken })).statusCode,
     ).toBe(409);
@@ -141,8 +145,8 @@ describe('relay authentication and real websocket transport', () => {
     ).toBe(409);
   });
   it('rechecks the issuing operator membership when a pending pairing is consumed', async () => {
-    const f = await h.fixture(),
-      id = newId();
+    const f = await h.fixture();
+    const id = newId();
     await db.owner.drizzle.insert(users).values({
       id,
       tenantId: db.tenantId,
@@ -179,8 +183,8 @@ describe('relay authentication and real websocket transport', () => {
     ).toBe(401);
   });
   it('sends notification-only frames from DB hints and closes an existing connection after revocation', async () => {
-    const f = await h.fixture(),
-      secret = await h.pair(f);
+    const f = await h.fixture();
+    const secret = await h.pair(f);
     const socket = new WebSocket(address.replace('http:', 'ws:') + '/relay/notifications', {
       headers: { authorization: 'Bearer ' + secret },
     });
@@ -202,9 +206,9 @@ describe('relay authentication and real websocket transport', () => {
     expect((await h.session(secret)).statusCode).toBe(401);
   }, 20000);
   it('polls after lost notifications and never grants a second start over HTTP', async () => {
-    const f = await h.fixture(),
-      secret = await h.pair(f),
-      queued = await h.enqueue(f);
+    const f = await h.fixture();
+    const secret = await h.pair(f);
+    const queued = await h.enqueue(f);
     const claim = await h.post('/relay/jobs/claim', {}, secret);
     expect(claim.statusCode, claim.body).toBe(200);
     const job = claim.json<{ job: { id: string; leaseToken: string; attempt: number } }>().job;

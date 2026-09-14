@@ -13,12 +13,12 @@ export function AccessInviteUser({
   onClose: () => void;
   onStatus: (status: AccessEditorStatus) => void;
 }) {
-  const { t } = useLocale(),
-    qc = useQueryClient(),
-    [email, setEmail] = useState(''),
-    [name, setName] = useState(''),
-    [busy, setBusy] = useState(false),
-    [delivery, setDelivery] = useState<string | null>(null);
+  const { t } = useLocale();
+  const qc = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [delivery, setDelivery] = useState<string | null>(null);
   const security = useQuery({
     queryKey: ['account-security', getUser()?.id],
     queryFn: ({ signal }) => accountSecurity(signal),

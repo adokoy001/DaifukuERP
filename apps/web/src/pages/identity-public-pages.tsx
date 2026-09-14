@@ -9,9 +9,9 @@ import { useLocale } from '../i18n.tsx';
 import { TenantChoice, useCompleteLogin } from './login-page.tsx';
 
 export function ForgotPasswordPage() {
-  const { t } = useLocale(),
-    [email, setEmail] = useState(''),
-    [tenantId, setTenantId] = useState('');
+  const { t } = useLocale();
+  const [email, setEmail] = useState('');
+  const [tenantId, setTenantId] = useState('');
   const m = useMutation({
     mutationFn: () =>
       identityPost<{ ok: true }>('password-reset/request', { email, ...(tenantId ? { tenantId } : {}) }, true),
@@ -71,13 +71,13 @@ export function ForgotPasswordPage() {
 }
 
 export function MailPasswordPage({ invitation = false }: { invitation?: boolean }) {
-  const { t } = useLocale(),
-    qc = useQueryClient(),
-    initialized = useRef(false);
-  const [token, setToken] = useState<string | null>(null),
-    [password, setPassword] = useState(''),
-    [confirm, setConfirm] = useState(''),
-    [mismatch, setMismatch] = useState(false);
+  const { t } = useLocale();
+  const qc = useQueryClient();
+  const initialized = useRef(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [mismatch, setMismatch] = useState(false);
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
@@ -210,11 +210,11 @@ export function InvitationPage() {
 }
 
 export function SsoCallbackPage() {
-  const { t } = useLocale(),
-    navigate = useNavigate(),
-    qc = useQueryClient(),
-    complete = useCompleteLogin(),
-    started = useRef(false);
+  const { t } = useLocale();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const complete = useCompleteLogin();
+  const started = useRef(false);
   const [state, setState] = useState<'working' | 'linked' | 'error'>('working');
   useEffect(() => {
     if (started.current) return;
@@ -265,10 +265,10 @@ export function SsoCallbackPage() {
 }
 
 export function RecoveryCodesPage() {
-  const { t } = useLocale(),
-    [codes, setCodes] = useState<string[]>([]),
-    [saved, setSaved] = useState(false),
-    started = useRef(false);
+  const { t } = useLocale();
+  const [codes, setCodes] = useState<string[]>([]);
+  const [saved, setSaved] = useState(false);
+  const started = useRef(false);
   useEffect(() => {
     if (!started.current) {
       started.current = true;

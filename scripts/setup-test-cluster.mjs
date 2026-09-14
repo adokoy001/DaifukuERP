@@ -17,9 +17,9 @@ async function main() {
   const { values } = parseArgs({
     options: { directory: { type: 'string' }, bin: { type: 'string' }, port: { type: 'string' } },
   });
-  const base = values.directory,
-    bin = values.bin,
-    port = Number(values.port);
+  const base = values.directory;
+  const bin = values.bin;
+  const port = Number(values.port);
   if (
     !base ||
     !bin ||

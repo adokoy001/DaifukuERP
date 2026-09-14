@@ -14,15 +14,15 @@ import { amountValues, ratio, sourceFacts, sourceTable, totalFacts } from '../se
 import { boardRows, submissionsTable, summarizeBoard } from '../services/operations-board.ts';
 import { seriesTable, storesTable } from '../services/operations-tables.ts';
 export async function operationsSnapshot(ctx: Context, input: OperationsInput): Promise<OperationsSnapshot> {
-  const range = resolveRange(ctx, input),
-    data = await operationsData(ctx, input, range);
-  const facts = sourceFacts(data, range.from, range.to, range.asOf),
-    previous = sourceFacts(data, range.previousFrom, range.previousTo, range.asOf);
-  const board = boardRows(data, range),
-    { target, ...counts } = summarizeBoard(board);
-  const total = totalFacts(facts),
-    prior = totalFacts(previous).amounts.grossSales,
-    change = total.amounts.grossSales.minus(prior);
+  const range = resolveRange(ctx, input);
+  const data = await operationsData(ctx, input, range);
+  const facts = sourceFacts(data, range.from, range.to, range.asOf);
+  const previous = sourceFacts(data, range.previousFrom, range.previousTo, range.asOf);
+  const board = boardRows(data, range);
+  const { target, ...counts } = summarizeBoard(board);
+  const total = totalFacts(facts);
+  const prior = totalFacts(previous).amounts.grossSales;
+  const change = total.amounts.grossSales.minus(prior);
   const overview = {
     ...amountValues(total),
     targetSales: target.toString(),
@@ -64,8 +64,8 @@ export const operationsSourcesAction = defineAction({
   tx: 'none',
   mutates: false,
   handler: async (ctx, input) => {
-    const range = resolveRange(ctx, input),
-      data = await operationsData(ctx, input, range);
+    const range = resolveRange(ctx, input);
+    const data = await operationsData(ctx, input, range);
     return sourceTable(sourceFacts(data, range.from, range.to, range.asOf));
   },
 });

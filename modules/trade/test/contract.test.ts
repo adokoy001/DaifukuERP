@@ -4,8 +4,8 @@ import { billInput, boardInput, fulfillInput } from '../src/contract.ts';
 import { positiveQuantity } from '../src/internal.ts';
 describe('trade command boundary', () => {
   it('requires exact positive quantities with at most six decimal places', () => {
-    const base = { orderId: newId(), expectedVersion: 1, date: '2026-09-12', warehouseId: newId(), requestId: newId() },
-      orderLineId = newId();
+    const base = { orderId: newId(), expectedVersion: 1, date: '2026-09-12', warehouseId: newId(), requestId: newId() };
+    const orderLineId = newId();
     for (const quantity of ['0', '-1', '0.0000001', '1e3', 'NaN'])
       expect(fulfillInput.safeParse({ ...base, lines: [{ orderLineId, quantity }] }).success).toBe(false);
     expect(fulfillInput.parse({ ...base, lines: [{ orderLineId, quantity: '0.000001' }] }).lines[0]?.quantity).toBe(

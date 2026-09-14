@@ -59,8 +59,8 @@ describe('shift planner permissions, snapshots and revisions', () => {
         employeeId: f.employee.id,
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
-    const awaitOwn = await mine(f, weekStart),
-      own = defined(awaitOwn.availability);
+    const awaitOwn = await mine(f, weekStart);
+    const own = defined(awaitOwn.availability);
     await expect(
       f.db.run(f.alice.params, (ctx) =>
         repo(ctx, WorkforceShiftAvailability).update(own.id, { days: [] }, { expectedVersion: own.version }),
@@ -82,8 +82,8 @@ describe('shift planner permissions, snapshots and revisions', () => {
     ).rejects.toBeDefined();
   });
   it('validates weekly preferences and versions without accepting duplicate dates or unknown owners', async () => {
-    const weekStart = '2026-10-12',
-      days = availability(weekStart);
+    const weekStart = '2026-10-12';
+    const days = availability(weekStart);
     days[1] = { ...defined(days[0]) };
     await expect(
       call(f.db, f.alice.params, 'save_shift_availability', { weekStart, expectedVersion: 0, days }),
@@ -112,8 +112,8 @@ describe('shift planner permissions, snapshots and revisions', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
   it('requires explicit shortage acknowledgement and publishes only self assignments', async () => {
-    const weekStart = '2026-11-09',
-      row = await draft(f, weekStart, 2);
+    const weekStart = '2026-11-09';
+    const row = await draft(f, weekStart, 2);
     expect((await mine(f, weekStart)).assignments).toEqual([]);
     await expect(publish(f, row)).rejects.toMatchObject({ code: 'INVALID_STATE' });
     expect((await board(f, weekStart)).draft?.version).toBe(row.version);
@@ -132,11 +132,11 @@ describe('shift planner permissions, snapshots and revisions', () => {
     });
   });
   it('appends revision history and deactivates only replaced assignments atomically', async () => {
-    const weekStart = '2026-12-07',
-      first = await draft(f, weekStart);
+    const weekStart = '2026-12-07';
+    const first = await draft(f, weekStart);
     await publish(f, first);
-    const source = await board(f, weekStart),
-      published = defined(source.published);
+    const source = await board(f, weekStart);
+    const published = defined(source.published);
     await expect(
       call(f.db, f.manager.params, 'save_shift_plan', {
         siteId: f.siteId,
@@ -181,8 +181,8 @@ describe('shift planner permissions, snapshots and revisions', () => {
     ).toBe(2);
   });
   it('persists the maximum signed integer seed and rejects larger values before database writes', async () => {
-    const weekStart = '2027-03-01',
-      source = await ready(f, weekStart);
+    const weekStart = '2027-03-01';
+    const source = await ready(f, weekStart);
     const input = {
       siteId: f.siteId,
       weekStart,
@@ -202,8 +202,8 @@ describe('shift planner permissions, snapshots and revisions', () => {
     expect((await board(f, weekStart)).draft?.version).toBe(row.version);
   });
   it('blocks stale source saves, stale publish and duplicate concurrent drafts', async () => {
-    const weekStart = '2027-01-04',
-      source = await ready(f, weekStart);
+    const weekStart = '2027-01-04';
+    const source = await ready(f, weekStart);
     const mineBefore = await mine(f, weekStart);
     await call(f.db, f.alice.params, 'save_shift_availability', {
       weekStart,

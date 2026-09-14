@@ -29,8 +29,8 @@ async function punch(ctx: Context, input: z.infer<typeof punchInput>) {
     requireSelf(ctx, employee);
     const prior = await replay(ctx, WorkforcePunch, input.idempotencyKey, input);
     if (prior) return command(await repo(ctx, WorkforceAttendance).get(prior.attendanceId));
-    const now = ctx.now(),
-      today = jstDate(now);
+    const now = ctx.now();
+    const today = jstDate(now);
     const open = (
       await repo(ctx, WorkforceAttendance).list({
         where: { employeeId: employee.id, status: { $in: ['working', 'break'] } },

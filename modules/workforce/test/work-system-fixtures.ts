@@ -8,8 +8,8 @@ export function workSystem(
 ): WorkSystemInput {
   const days: WorkSystemInput['days'] = [];
   for (let date = startsOn; date <= endsOn; date = addDays(date, 1)) {
-    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay(),
-      scheduledMinutes = weekday > 0 && weekday < 6 ? 480 : 0;
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const scheduledMinutes = weekday > 0 && weekday < 6 ? 480 : 0;
     days.push({
       date,
       scheduledMinutes,
@@ -35,8 +35,8 @@ export function workSystem(
   };
 }
 export function workingDates(period: string): string[] {
-  const bounds = periodBounds(period),
-    dates: string[] = [];
+  const bounds = periodBounds(period);
+  const dates: string[] = [];
   for (let date = bounds.start; date <= bounds.end; date = addDays(date, 1)) {
     const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
     if (weekday > 0 && weekday < 6) dates.push(date);

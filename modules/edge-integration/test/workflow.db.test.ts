@@ -43,8 +43,8 @@ async function fixture(driver: 'simulator' | 'ipp_text' = 'simulator') {
     name: 'Printer',
     driver,
   });
-  const secret = newRelaySecret(),
-    credentialId = newId();
+  const secret = newRelaySecret();
+  const credentialId = newId();
   await db.owner.drizzle.insert(relayCredentials).values({
     id: credentialId,
     tenantId: db.tenantId,
@@ -168,8 +168,8 @@ describe('edge device execution safety', () => {
     ).rejects.toThrow();
   });
   it('deduplicates observations but rejects UUID retargeting and another gateway', async () => {
-    const f = await fixture(),
-      other = await fixture();
+    const f = await fixture();
+    const other = await fixture();
     const input = {
       eventId: newId(),
       deviceId: f.device.id,
@@ -222,8 +222,8 @@ describe('edge device execution safety', () => {
     expect((await f.machine(claimJob)).job).toBeNull();
   });
   it('denies machine role-union/sharedRead/authenticated holes and scopes site-only staff', async () => {
-    const f = await fixture(),
-      other = await fixture();
+    const f = await fixture();
+    const other = await fixture();
     await expect(f.machine((ctx) => repo(ctx, WorkforceSite).list())).rejects.toMatchObject({
       code: 'PERMISSION_DENIED',
     });

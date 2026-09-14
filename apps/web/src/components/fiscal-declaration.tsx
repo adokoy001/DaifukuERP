@@ -120,13 +120,13 @@ export function FiscalDeclaration({
   current: MyFiscal['declaration'];
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    task = useWorkforceTask(),
-    previous = original?.declaration;
-  const [spouse, setSpouse] = useState(Boolean(previous?.spouse)),
-    [relatives, setRelatives] = useState(previous?.relatives.length ?? 0),
-    [previousEmployers, setPreviousEmployers] = useState(previous?.previousEmployers.length ?? 0),
-    [unpaidMonths, setUnpaidMonths] = useState(previous?.unpaidMonths.length ?? 0);
+  const { t } = useLocale();
+  const task = useWorkforceTask();
+  const previous = original?.declaration;
+  const [spouse, setSpouse] = useState(Boolean(previous?.spouse));
+  const [relatives, setRelatives] = useState(previous?.relatives.length ?? 0);
+  const [previousEmployers, setPreviousEmployers] = useState(previous?.previousEmployers.length ?? 0);
+  const [unpaidMonths, setUnpaidMonths] = useState(previous?.unpaidMonths.length ?? 0);
   return (
     <WorkforceDialog
       title={t({ ja: `${taxYear}年 年末調整の申告`, en: `${taxYear} year-end declaration` })}

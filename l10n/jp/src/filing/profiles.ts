@@ -64,14 +64,14 @@ function validateRows(statement: FilingStatement): void {
   }
 }
 function prepareAccounting(source: FilingSource): FilingPrepared {
-  const profile = accountingProfileData.parse(source.profile),
-    issues = [...source.issues];
+  const profile = accountingProfileData.parse(source.profile);
+  const issues = [...source.issues];
   validateProfile(profile);
   if (source.currency !== 'JPY' || source.country !== 'JP')
     issues.push(issue('country_currency', '日本・円建ての単体法人帳簿のみ対応します。'));
   for (const b of source.balances) {
-    const mapping = profile.mappings.find((m) => m.accountId === b.accountId),
-      category = HOT010_CATEGORIES.find((c) => c.key === mapping?.category);
+    const mapping = profile.mappings.find((m) => m.accountId === b.accountId);
+    const category = HOT010_CATEGORIES.find((c) => c.key === mapping?.category);
     if (!mapping) issues.push(issue('mapping_missing', `${b.name} の財務諸表分類が未設定です。`, b.accountId));
     else if (!category?.accountTypes.includes(b.type))
       issues.push(issue('mapping_type', `${b.name} の借貸区分と財務諸表分類が一致しません。`, b.accountId));
@@ -119,8 +119,8 @@ function exportAccounting(source: FilingSource, prepared: FilingPrepared) {
   });
 }
 function exportPayroll(source: FilingSource, prepared: FilingPrepared) {
-  const profile = payrollProfileData.parse(source.profile),
-    sharedIssues = prepared.issues.filter((i) => i.reference === null);
+  const profile = payrollProfileData.parse(source.profile);
+  const sharedIssues = prepared.issues.filter((i) => i.reference === null);
   const header = [
     '資料区分',
     '年分',

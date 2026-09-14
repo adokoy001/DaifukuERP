@@ -44,8 +44,8 @@ export function useCommerceList(entity: string, enabled = true, offset = 0) {
   });
 }
 export function useCommerceTask<T = CommerceCommand>() {
-  const qc = useQueryClient(),
-    identity = commerceIdentity();
+  const qc = useQueryClient();
+  const identity = commerceIdentity();
   return useMutation({
     mutationKey: ['commerce-task', identity],
     gcTime: 0,

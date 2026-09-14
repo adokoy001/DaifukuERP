@@ -12,8 +12,8 @@ afterEach(async () => {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'daifuku-readiness-'));
   temporary.push(root);
-  const migrationsDirectory = join(root, 'migrations'),
-    storageDirectory = join(root, 'evidence');
+  const migrationsDirectory = join(root, 'migrations');
+  const storageDirectory = join(root, 'evidence');
   await mkdir(join(migrationsDirectory, 'meta'), { recursive: true });
   await mkdir(storageDirectory, { mode: 0o700 });
   const sql = 'select 1;';
@@ -24,8 +24,8 @@ async function fixture() {
   );
   const identity = { database: 'dedicated', address: '127.0.0.1', port: '5432', oid: '123' };
   const row = { ...identity, hash: createHash('sha256').update(sql).digest('hex'), created_at: '100' };
-  const owner = database(() => Promise.resolve([row])),
-    app = database(() => Promise.resolve([identity]));
+  const owner = database(() => Promise.resolve([row]));
+  const app = database(() => Promise.resolve([identity]));
   return { root, migrationsDirectory, storageDirectory, row, identity, owner, app, cacheMs: 0 };
 }
 function database(work: () => Promise<unknown>) {
@@ -39,8 +39,8 @@ function options(f: Awaited<ReturnType<typeof fixture>>) {
 }
 describe('opaque, bounded deployment readiness', () => {
   it('matches the entire release migration history and checks both principals without creating evidence', async () => {
-    const f = await fixture(),
-      probe = createReadiness(options(f));
+    const f = await fixture();
+    const probe = createReadiness(options(f));
     expect(await probe()).toEqual({ ready: true });
     expect(f.owner.sql).toHaveBeenCalledOnce();
     expect(f.app.sql).toHaveBeenCalledOnce();
@@ -54,8 +54,8 @@ describe('opaque, bounded deployment readiness', () => {
     }
   });
   it('does not expose connection errors and requires a private, real evidence directory', async () => {
-    const f = await fixture(),
-      failed = database(() => Promise.reject(new Error('postgres://synthetic:secret@host/db')));
+    const f = await fixture();
+    const failed = database(() => Promise.reject(new Error('postgres://synthetic:secret@host/db')));
     expect(await createReadiness({ ...options(f), app: failed.db })()).toEqual({ ready: false });
     await chmod(f.storageDirectory, 0o755);
     expect(await createReadiness(options(f))()).toEqual({ ready: false });
@@ -69,8 +69,8 @@ describe('opaque, bounded deployment readiness', () => {
     expect(await readdir(f.root)).not.toContain('missing');
   });
   it('deduplicates concurrent probes, cancels timed out queries, and recovers on a new check', async () => {
-    const f = await fixture(),
-      stalled = database(() => new Promise(() => undefined));
+    const f = await fixture();
+    const stalled = database(() => new Promise(() => undefined));
     const probe = createReadiness({ ...options(f), owner: stalled.db, timeoutMs: 10 });
     expect(await Promise.all([probe(), probe(), probe()])).toEqual([
       { ready: false },

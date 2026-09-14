@@ -51,8 +51,8 @@ async function main(): Promise<void> {
           ? macAdapter
           : undefined;
   if (!adapter) throw new Error('unsupported_platform');
-  const defaults = adapter.defaults(),
-    installRoot = values['install-root'] ?? defaults.installRoot;
+  const defaults = adapter.defaults();
+  const installRoot = values['install-root'] ?? defaults.installRoot;
   let result: unknown;
   if (operation === 'install' || operation === 'update') {
     const directory = resolve(values.bundle ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));

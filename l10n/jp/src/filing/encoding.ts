@@ -20,8 +20,8 @@ export function officialText(value: string, path: string, max: number): string {
     const lead = bytes[i] ?? 0;
     if (lead < 0x80 || (lead >= 0xa1 && lead <= 0xdf))
       invalid(path, '文字欄は全角のJIS第1・第2水準で指定してください。');
-    const trail = bytes[++i] ?? 0,
-      jisRow = (lead <= 0x9f ? (lead - 0x81) * 2 + 0x21 : (lead - 0xc1) * 2 + 0x21) + (trail >= 0x9f ? 1 : 0);
+    const trail = bytes[++i] ?? 0;
+    const jisRow = (lead <= 0x9f ? (lead - 0x81) * 2 + 0x21 : (lead - 0xc1) * 2 + 0x21) + (trail >= 0x9f ? 1 : 0);
     if (
       lead < 0x81 ||
       lead > 0xef ||

@@ -103,9 +103,9 @@ function useDrawer(open: boolean, onClose: () => void) {
         onClose();
       }
       if (event.key !== 'Tab') return;
-      const items = focusable(),
-        start = items[0],
-        end = items[items.length - 1];
+      const items = focusable();
+      const start = items[0];
+      const end = items[items.length - 1];
       if (event.shiftKey && (document.activeElement === start || !panel.contains(document.activeElement))) {
         event.preventDefault();
         (end ?? panel).focus();

@@ -19,8 +19,8 @@ function checkpoint(traceId: string, event: string): Step {
   return step;
 }
 async function projection(directory: string, prints: number) {
-  const journal = await Journal.open(directory),
-    row = journal.records()[0];
+  const journal = await Journal.open(directory);
+  const row = journal.records()[0];
   // The model's "result" means a durable result field, not an implementation enum.
   const phase = !row
     ? 'none'
@@ -50,11 +50,11 @@ async function prepare(relay: Awaited<ReturnType<typeof relayFixture>>, printerU
 
 describe('AC-8: model journal/device projections against real TLS, disk and IPP fixtures', () => {
   it('EDGE-TRACE-LOST-START: durable intent precedes HTTP; lost grant never reaches the printer', async () => {
-    const relay = await relayFixture(),
-      printer = await printerFixture();
+    const relay = await relayFixture();
+    const printer = await printerFixture();
     try {
-      const prepared = await prepare(relay, printer.uri),
-        trace = 'EDGE-TRACE-LOST-START';
+      const prepared = await prepare(relay, printer.uri);
+      const trace = 'EDGE-TRACE-LOST-START';
       const start = prepared.credentials.client.start.bind(prepared.credentials.client);
       let checkedIntent = false;
       vi.spyOn(prepared.credentials.client, 'start').mockImplementation(async (lease) => {
@@ -83,11 +83,11 @@ describe('AC-8: model journal/device projections against real TLS, disk and IPP 
   it('EDGE-TRACE-PHYSICAL-UNKNOWN: lost printer and completion replies survive restart without resend', async () => {
     const trace = 'EDGE-TRACE-PHYSICAL-UNKNOWN';
     let sendCheckpoint: Promise<void> | undefined;
-    const relay = await relayFixture(),
-      printer = await printerFixture((count) => {
-        sendCheckpoint = matches(relay.directory, count, checkpoint(trace, 'PhysicalSend:1'));
-        return sendCheckpoint;
-      });
+    const relay = await relayFixture();
+    const printer = await printerFixture((count) => {
+      sendCheckpoint = matches(relay.directory, count, checkpoint(trace, 'PhysicalSend:1'));
+      return sendCheckpoint;
+    });
     try {
       const prepared = await prepare(relay, printer.uri);
       relay.state.completeLost = true;
@@ -115,11 +115,11 @@ describe('AC-8: model journal/device projections against real TLS, disk and IPP 
     }
   });
   it('EDGE-TRACE-OBSOLETE: old journal is acknowledged only by an explicit fencing disposition', async () => {
-    const relay = await relayFixture(),
-      printer = await printerFixture();
+    const relay = await relayFixture();
+    const printer = await printerFixture();
     try {
-      const prepared = await prepare(relay, printer.uri),
-        trace = 'EDGE-TRACE-OBSOLETE';
+      const prepared = await prepare(relay, printer.uri);
+      const trace = 'EDGE-TRACE-OBSOLETE';
       relay.state.queued = null;
       await prepared.journal.begin(prepared.value, deviceBindingHash(prepared.config, prepared.value.deviceId));
       relay.state.completeAccepted = false;

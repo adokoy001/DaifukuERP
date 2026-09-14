@@ -7,8 +7,8 @@ import type { ServiceAdapter, ServiceContext } from './types.ts';
 export async function awaitService(context: ServiceContext, adapter: ServiceAdapter, startedAt: number): Promise<void> {
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
-    const inspection = await adapter.inspect(context),
-      raw = await jsonFile(join(context.statePath, 'service-status.json'));
+    const inspection = await adapter.inspect(context);
+    const raw = await jsonFile(join(context.statePath, 'service-status.json'));
     const state = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     const observed = typeof state.observedAt === 'string' ? Date.parse(state.observedAt) : NaN;
     const age = Date.now() - observed;

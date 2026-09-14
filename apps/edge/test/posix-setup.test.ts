@@ -8,8 +8,8 @@ import { PosixFixture } from './posix-fixture.js';
 for (const platform of ['linux', 'darwin'] as const)
   describe(platform + ' service adapter', () => {
     it('inspection is read-only, and non-root execution cannot create an account or service', async () => {
-      const f = new PosixFixture(platform),
-        adapter = createPosixAdapter(platform, f);
+      const f = new PosixFixture(platform);
+      const adapter = createPosixAdapter(platform, f);
       expect(await adapter.inspect(f.context)).toEqual({
         serviceExists: false,
         serviceRunning: false,
@@ -22,15 +22,15 @@ for (const platform of ['linux', 'darwin'] as const)
       expect(f.changes).toEqual([]);
     });
     it('install, stop, start, version update and uninstall retain private data and the managed account', async () => {
-      const f = new PosixFixture(platform),
-        adapter = createPosixAdapter(platform, f),
-        context = f.context;
+      const f = new PosixFixture(platform);
+      const adapter = createPosixAdapter(platform, f);
+      const context = f.context;
       await adapter.prepare(context);
       f.addRelease();
       await adapter.protect(context);
       const uid = Number(f.user?.UniqueID);
-      const credential = join(context.statePath, 'credentials.json'),
-        journal = join(context.statePath, 'journal.json');
+      const credential = join(context.statePath, 'credentials.json');
+      const journal = join(context.statePath, 'journal.json');
       f.put(credential, 'synthetic private credentials', uid);
       f.put(journal, 'unresolved physical work must remain', uid);
       await adapter.register(context);
@@ -73,8 +73,8 @@ for (const platform of ['linux', 'darwin'] as const)
       expect(await f.stat(join(context.installRoot, 'installation.json'))).not.toBeNull();
     });
     it('refuses a same-name foreign account and changed marker without provisioning anything', async () => {
-      const f = new PosixFixture(platform),
-        adapter = createPosixAdapter(platform, f);
+      const f = new PosixFixture(platform);
+      const adapter = createPosixAdapter(platform, f);
       f.user = { UniqueID: '402', RealName: 'some existing account', Password: '!' };
       expect((await adapter.inspect(f.context)).conflicts).not.toEqual([]);
       await expect(adapter.prepare(f.context)).rejects.toThrow(/not owned/);
@@ -85,8 +85,8 @@ for (const platform of ['linux', 'darwin'] as const)
       expect(f.changes).toEqual([]);
     });
     it('refuses hard-linked data and preserves its existing mode/content instead of recursively repairing it', async () => {
-      const f = new PosixFixture(platform),
-        adapter = createPosixAdapter(platform, f);
+      const f = new PosixFixture(platform);
+      const adapter = createPosixAdapter(platform, f);
       await adapter.prepare(f.context);
       f.addRelease();
       const path = join(f.context.statePath, 'journal.json');
@@ -100,8 +100,8 @@ for (const platform of ['linux', 'darwin'] as const)
       expect(await f.read(path)).toBe('unresolved job');
     });
     it('retains stopped old registration, credentials and releases if new registration fails', async () => {
-      const f = new PosixFixture(platform),
-        adapter = createPosixAdapter(platform, f);
+      const f = new PosixFixture(platform);
+      const adapter = createPosixAdapter(platform, f);
       await adapter.prepare(f.context);
       f.addRelease();
       await adapter.protect(f.context);
@@ -145,8 +145,8 @@ it('rejects service command injection and cross-layout paths before rendering', 
   expect(renderLaunchDaemon(mac.context)).not.toContain('root</string>');
 });
 it('rejects loaded systemd drop-ins without trying to reload, stop or rewrite the service', async () => {
-  const f = new PosixFixture('linux'),
-    adapter = createPosixAdapter('linux', f);
+  const f = new PosixFixture('linux');
+  const adapter = createPosixAdapter('linux', f);
   await adapter.prepare(f.context);
   f.addRelease();
   await adapter.protect(f.context);
@@ -159,8 +159,8 @@ it('rejects loaded systemd drop-ins without trying to reload, stop or rewrite th
   expect(f.changes.length).toBe(before);
 });
 it('macOS resumes only its own tagged partial account and selects an unused UID before exposing it', async () => {
-  const f = new PosixFixture('darwin'),
-    adapter = createPosixAdapter('darwin', f);
+  const f = new PosixFixture('darwin');
+  const adapter = createPosixAdapter('darwin', f);
   f.failAt = '-create /Users/_daifukuedge PrimaryGroupID';
   await expect(adapter.prepare(f.context)).rejects.toThrow(/Injected/);
   expect(f.user?.RealName).toContain(f.context.installationId);
@@ -176,8 +176,8 @@ it('macOS resumes only its own tagged partial account and selects an unused UID 
   );
 });
 it('macOS rejects inherited ACLs on existing private data and removes ACLs only from new managed paths', async () => {
-  const f = new PosixFixture('darwin'),
-    adapter = createPosixAdapter('darwin', f);
+  const f = new PosixFixture('darwin');
+  const adapter = createPosixAdapter('darwin', f);
   await adapter.prepare(f.context);
   f.addRelease();
   await adapter.protect(f.context);

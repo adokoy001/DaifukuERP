@@ -26,13 +26,13 @@ export function FilingPayrollProfile({
   stale: boolean;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    command = useFinanceCommand(),
-    current = board.payrollProfile;
-  const [profileCode, setProfileCode] = useState(current?.countryProfile ?? board.profiles[0]?.code ?? ''),
-    [recipients, setRecipients] = useState<Record<string, Facts>>(
-      Object.fromEntries((current?.recipients ?? []).map((row) => [row.employeeId, row])),
-    );
+  const { t } = useLocale();
+  const command = useFinanceCommand();
+  const current = board.payrollProfile;
+  const [profileCode, setProfileCode] = useState(current?.countryProfile ?? board.profiles[0]?.code ?? '');
+  const [recipients, setRecipients] = useState<Record<string, Facts>>(
+    Object.fromEntries((current?.recipients ?? []).map((row) => [row.employeeId, row])),
+  );
   const option = board.profiles.find((row) => row.code === profileCode);
   return (
     <FinanceDialog

@@ -9,7 +9,8 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setup, stock, type Fixture, type Page, type Row } from './fixture.ts';
 let s: Fixture;
-let staff: Partial<ContextParams>, manager: Partial<ContextParams>;
+let staff: Partial<ContextParams>;
+let manager: Partial<ContextParams>;
 beforeAll(async () => {
   s = await setup();
   staff = {
@@ -149,8 +150,8 @@ describe('店舗提出・店長確認・本部転記', () => {
     });
   });
   it('同日同店舗の二重提出を競合時も拒否し、将来日を提出できない', async () => {
-    const a = await draft('2026-09-16'),
-      b = await draft('2026-09-16');
+    const a = await draft('2026-09-16');
+    const b = await draft('2026-09-16');
     const results = await Promise.allSettled([review(a), review(b)]);
     expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((row) => row.status === 'rejected')).toHaveLength(1);

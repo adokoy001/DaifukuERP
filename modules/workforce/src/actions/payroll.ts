@@ -148,8 +148,8 @@ async function confirm(ctx: Context, input: z.infer<typeof payrollConfirmInput>)
       const grossPay = row.basePay
         .plus(row.premiumPay)
         .plus(input.allowances.reduce((sum, item) => sum.plus(item.amount), D(0)));
-      const deductionTotal = input.deductions.reduce((sum, item) => sum.plus(item.amount), D(0)),
-        netPay = grossPay.minus(deductionTotal);
+      const deductionTotal = input.deductions.reduce((sum, item) => sum.plus(item.amount), D(0));
+      const netPay = grossPay.minus(deductionTotal);
       if (netPay.lt(0))
         throw new ValidationError('Deductions exceed gross pay', [
           {

@@ -3,8 +3,8 @@ import { expect, test, type APIRequestContext, type Page, type Locator } from '@
 import type { ManagementPortal, MyPortal } from '@daifuku/mod-workforce/contract';
 import { API, api, PASSWORD, type Row } from './operations-helpers.ts';
 
-const ADMIN = process.env.E2E_EMAIL ?? 'admin@example.com',
-  ADMIN_PASSWORD = process.env.E2E_PASSWORD ?? 'password';
+const ADMIN = process.env.E2E_EMAIL ?? 'admin@example.com';
+const ADMIN_PASSWORD = process.env.E2E_PASSWORD ?? 'password';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
 const localTime = (iso: string) =>
   new Date(new Date(iso).getTime() + 9 * 3600000).toISOString().slice(0, 19).replace(/:00$/, '');
@@ -28,20 +28,20 @@ async function auth(request: APIRequestContext, email = ADMIN, password = ADMIN_
   };
 }
 async function fixture(request: APIRequestContext) {
-  const { session, headers } = await auth(request),
-    suffix = Date.now().toString(36),
-    day = today();
+  const { session, headers } = await auth(request);
+  const suffix = Date.now().toString(36);
+  const day = today();
   const sites = await Promise.all(
     ['中央拠点', '別拠点'].map((name, i) =>
       api(request, headers, '/api/workforce_site', { code: `WF-${i}-${suffix}`, name: `${name} ${suffix}` }),
     ),
   );
-  const site = sites[0],
-    otherSite = sites[1];
+  const site = sites[0];
+  const otherSite = sites[1];
   if (!site || !otherSite) throw new Error('Expected two work sites');
   const member = async (name: string, roles: string[], scope: 'sites' | 'all', siteIds: string[]) => {
-    const email = `wf.${roles[0]}.${siteIds[0] ?? 'hq'}.${suffix}@example.com`,
-      user = await api(request, headers, '/admin/users', { name: `${name} ${suffix}`, email, password: PASSWORD });
+    const email = `wf.${roles[0]}.${siteIds[0] ?? 'hq'}.${suffix}@example.com`;
+    const user = await api(request, headers, '/admin/users', { name: `${name} ${suffix}`, email, password: PASSWORD });
     await api(
       request,
       headers,
@@ -110,12 +110,12 @@ test('workforce: mobile clock, reviewed correction and leave, receipt expense, h
 }) => {
   test.setTimeout(240_000);
   page.setDefaultTimeout(15_000);
-  const f = await fixture(request),
-    period = f.day.slice(0, 7);
+  const f = await fixture(request);
+  const period = f.day.slice(0, 7);
   const previous = new Date(f.day + 'T00:00:00Z');
   previous.setUTCDate(0);
-  const leaveDate = previous.toISOString().slice(0, 10),
-    payrollPeriod = leaveDate.slice(0, 7);
+  const leaveDate = previous.toISOString().slice(0, 10);
+  const payrollPeriod = leaveDate.slice(0, 7);
   await signIn(page);
   await page.goto('/workforce');
   await expect(page.getByTestId('workforce-management')).toBeVisible();
@@ -346,8 +346,8 @@ test('workforce: mobile clock, reviewed correction and leave, receipt expense, h
     ]),
   });
   expect(portal.leaveBalance).toBe('9');
-  const other = await auth(request, f.other.email, PASSWORD),
-    manager = await auth(request, f.manager.email, PASSWORD);
+  const other = await auth(request, f.other.email, PASSWORD);
+  const manager = await auth(request, f.manager.email, PASSWORD);
   for (const [headers, path] of [
     [other.headers, '/api/workforce_payroll/' + payroll.id],
     [manager.headers, '/api/workforce_employee/' + f.foreign.id],
@@ -388,8 +388,8 @@ test('workforce: workflow-only creation, self-review denial and company cache se
     name: f.manager.name,
     hiredOn: f.day.slice(0, 8) + '01',
   });
-  const own = await auth(request, f.manager.email, PASSWORD),
-    description = '自己承認できない申請 ' + f.suffix;
+  const own = await auth(request, f.manager.email, PASSWORD);
+  const description = '自己承認できない申請 ' + f.suffix;
   const expense = await api(request, own.headers, '/actions/workforce.save_expense', {
     expectedVersion: 0,
     idempotencyKey: crypto.randomUUID(),
@@ -450,14 +450,14 @@ test('workforce: workflow-only creation, self-review denial and company cache se
     },
   });
   expect(denied.status()).toBe(403);
-  const catalog = await api<{ companies: { id: string }[] }>(request, f.headers, '/admin/access'),
-    otherCompany = catalog.companies.find((c) => c.id !== f.session.user.defaultCompanyId);
+  const catalog = await api<{ companies: { id: string }[] }>(request, f.headers, '/admin/access');
+  const otherCompany = catalog.companies.find((c) => c.id !== f.session.user.defaultCompanyId);
   if (!otherCompany) throw new Error('Expected a second synthetic company');
-  const secondHeaders = { ...f.headers, 'x-company-id': otherCompany.id },
-    site = await api(request, secondHeaders, '/api/workforce_site', {
-      code: 'WF-X-' + f.suffix,
-      name: '別会社拠点 ' + f.suffix,
-    });
+  const secondHeaders = { ...f.headers, 'x-company-id': otherCompany.id };
+  const site = await api(request, secondHeaders, '/api/workforce_site', {
+    code: 'WF-X-' + f.suffix,
+    name: '別会社拠点 ' + f.suffix,
+  });
   await api(
     request,
     f.headers,

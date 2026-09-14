@@ -43,13 +43,13 @@ function employeeFeasible(problem: ShiftProblem, employee: ShiftEmployee, own: S
   ];
   for (let first = 0; first < rows.length; first++)
     for (let second = first + 1; second < rows.length; second++) {
-      const a = rows[first],
-        b = rows[second];
+      const a = rows[first];
+      const b = rows[second];
       if (!a || !b || (!a.planned && !b.planned)) continue;
-      const aStart = dayNumber(a.date) * 1440 + a.startMinute,
-        bStart = dayNumber(b.date) * 1440 + b.startMinute;
-      const aEnd = dayNumber(a.date) * 1440 + a.endMinute,
-        bEnd = dayNumber(b.date) * 1440 + b.endMinute;
+      const aStart = dayNumber(a.date) * 1440 + a.startMinute;
+      const bStart = dayNumber(b.date) * 1440 + b.startMinute;
+      const aEnd = dayNumber(a.date) * 1440 + a.endMinute;
+      const bEnd = dayNumber(b.date) * 1440 + b.endMinute;
       if (Math.max(aStart, bStart) < Math.min(aEnd, bEnd)) return false;
       if ((aStart <= bStart ? bStart - aEnd : aStart - bEnd) < profile.minRestMinutes) return false;
     }
@@ -63,8 +63,8 @@ function employeeFeasible(problem: ShiftProblem, employee: ShiftEmployee, own: S
     return false;
   if (new Set(weekRows.map((row) => row.date)).size > profile.maxDays) return false;
   for (const rule of problem.rules) {
-    const daily = weekRows.filter((row) => row.date === rule.date),
-      work = daily.reduce((sum, row) => sum + minutes(row), 0);
+    const daily = weekRows.filter((row) => row.date === rule.date);
+    const work = daily.reduce((sum, row) => sum + minutes(row), 0);
     if (work > Math.min(profile.maxDailyMinutes, rule.dailyLimitMinutes)) return false;
     if (daily.reduce((sum, row) => sum + row.breakMinutes, 0) < breakRequired(rule, work)) return false;
   }

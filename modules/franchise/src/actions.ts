@@ -36,8 +36,8 @@ export const franchiseBoardAction = defineAction({
   permission: { entity: FranchiseSettlement.name, op: 'read' },
   mutates: false,
   handler: async (ctx, { settlementId }) => {
-    const row = await repo(ctx, FranchiseSettlement).get(settlementId),
-      invoice = await currentInvoice(ctx, row);
+    const row = await repo(ctx, FranchiseSettlement).get(settlementId);
+    const invoice = await currentInvoice(ctx, row);
     return {
       ...result(row),
       agreementId: row.agreementId,

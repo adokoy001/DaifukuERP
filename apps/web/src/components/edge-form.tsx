@@ -16,10 +16,10 @@ export function EdgeForm({
   onSubmit: (data: FormData) => Promise<void>;
   onClose: () => void;
 }) {
-  const { t } = useLocale(),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState<unknown>(),
-    pending = useRef(false);
+  const { t } = useLocale();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const pending = useRef(false);
   const submit = async (data: FormData) => {
     if (pending.current) return;
     pending.current = true;

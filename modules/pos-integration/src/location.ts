@@ -2,8 +2,8 @@ import { repo, registry, StateError, ValidationError, type Context, type HookArg
 import { Account } from '@daifuku/mod-accounting';
 import { PosLocation } from './entities.ts';
 export async function assertLocationAccounts(ctx: Context, row: Record<string, unknown>) {
-  const asset = await repo(ctx, Account).get(String(row.settlementAccountId)),
-    suspense = await repo(ctx, Account).get(String(row.suspenseAccountId));
+  const asset = await repo(ctx, Account).get(String(row.settlementAccountId));
+  const suspense = await repo(ctx, Account).get(String(row.suspenseAccountId));
   if (
     !asset.isActive ||
     asset.type !== 'asset' ||
