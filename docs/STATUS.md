@@ -2,6 +2,12 @@
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
 
+## 配信保護と転記処理の仕上げ
+
+[仕上げ仕様](specs/release-finishing.md)では、cloud/onpremのCaddy生成へCSPと関連ヘッダーを追加し、印刷のinline handlerを外部scriptへ移した。仕訳転記の勘定分類をフェーズごとにまとめて読み、明細の権限・参照整合性・更新・監査を保つ。20明細の実SQLは338→320回、書込48回は同じであり、全ての行処理を定数回にしたわけではない。setupの上限を認証契約の200文字へ揃え、DB更新前の拒否を確認した。実NULを含むソース2件は実行時の文字列を保つ明示エスケープへ直した。
+
+検証方法と残る受入は [作業記録](log/2026-09-14-release-finishing.md) と対象PRのChecksを参照する。配備済みCaddyやAWSの試用DBはこの変更では更新しない。初めて試す領域を本部・店舗・従業員業務としてREADMEに示し、多業種へ拡張する目的は維持する。第三者が新規pack追加を手順だけで完走した実績はまだなく、[引継ぎ記録の条件](architecture/extension-guide.md#引継ぎを確認する記録)を明記した。
+
 ## 認証・検索・配布の補強
 
 [追加レビュー仕様](specs/review-hardening.md)に基づき、非同期scryptと旧形式の互換移行、計算負荷の上限、JANの宣言的な完全一致索引、分析画面の重要な非同期操作の回帰試験、[ビルド済みAPI](architecture/compiled-api.md)を追加した。索引はRLSを維持した実行計画を確認し、内部計算列とスコープ付きB-treeを採用する。[0016の導入条件](adr/0026-ext-equality-indexes.md)と[新ハッシュの復旧条件](operations/enterprise-identity.md)を更新手順と合わせて確認する。

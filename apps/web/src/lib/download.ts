@@ -1,5 +1,5 @@
 // Browser-side "save this blob as a file" (CSV export, attachment download) and "show this HTML in that tab" (print view).
-// Authenticated endpoints cannot be plain links (the Bearer token lives in localStorage), so bytes are fetched first and
+// Authenticated endpoints cannot be plain links (the Bearer token lives in sessionStorage), so bytes are fetched first and
 // handed to the browser as an object URL.
 
 /** Long enough for a print dialog; a reload of the tab after this shows a blank page (the app tab must stay open anyway). */
@@ -8,6 +8,7 @@ const HTML_URL_TTL_MS = 10 * 60_000;
 /** Navigates an already-opened window (opened synchronously in the click, so pop-up blockers allow it) to rendered HTML. */
 export function showHtmlIn(win: Window, html: string): void {
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  win.opener = null;
   win.location.replace(url);
   globalThis.setTimeout(() => URL.revokeObjectURL(url), HTML_URL_TTL_MS);
 }

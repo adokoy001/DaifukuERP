@@ -16,6 +16,8 @@ flowchart LR
 
 Web は build 時に `/api` を埋め込み、Caddy の `handle_path /api/*` が prefix を取り除く。API 本体の `/auth`、`/actions`、機器接続などの route は変更しない。Web の公開 origin と API の入口が同じなので、配備ごとの Web 再build や CORS wildcard は不要。開発と E2E は従来どおり明示 `VITE_API_URL` を利用できる。Vite の `VITE_*` は公開成果物に入るため秘密を渡さない。
 
+参照profileは[ブラウザ保護ヘッダー](../operations/deployment.md#ブラウザの保護ヘッダー)を強制適用する。スクリプト・Worker・APIの接続先を同一originに限定し、inline JavaScript・eval・外部frame埋込を拒否する。inline CSSの例外は動的UIと印刷HTMLのために残す。印刷の外部制御スクリプトもWeb成果物の一部としてmanifestに含まれる。CSP・TLS・キャッシュ・Swagger・blob印刷の動作は[実Caddy/ブラウザ試験](../../deploy/test/browser-security.test.mjs)で確認する。
+
 Caddy は最終の外部入口とし、転送元 IP を自身が観測した接続元へ置換する。API は `TRUSTED_PROXY_CIDRS=127.0.0.1/32` だけを信頼する。クラウドロードバランサーや別 proxy を重ねる構成はこの profile で検証しておらず、そのままでは本来の IP を認識できない。信頼対象を全ネットワークへ広げて解決しない。
 
 bundle は commit、Node/pnpm 版、lockfile hash、全ファイル hash・mode・内部 symlink を manifest に持つ。配布元から別途確認した manifest hash と archive hash で検証する。これは内容照合であり、電子署名や信頼された発行者の証明そのものではない。runtime 依存には既存 API の実行と setup に必要な workspace package が含まれる。固定 install の実ファイルと解決用リンクをコピーし、配備時には version range を再解決しない。上流 drizzle-kit の consumer 側読み込みに必要な hoist は、すでに選択した package のものだけを保持する。pnpm 10 の legacy deploy は専用 lock を作らないため今回の固定配布では採用していない。API は現在も identity 処理で owner 接続を必要とするため、owner 秘密を「移行時だけ」と説明してはならない。

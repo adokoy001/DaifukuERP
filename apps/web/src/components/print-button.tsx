@@ -46,7 +46,7 @@ export function PrintButton({ entity, record }: { entity: EntityMeta; record: Re
             toast.push({ kind: 'error', title: t(S.printNoHtml) });
             return;
           }
-          showHtmlIn(win, withPrintBar(html, { print: t(S.print), close: t(S.close) }));
+          showHtmlIn(win, withPrintBar(html, { print: t(S.print), close: t(S.close) }, globalThis.location.origin));
         },
         onError: (e) => {
           win.close();

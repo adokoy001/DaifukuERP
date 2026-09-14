@@ -2,12 +2,12 @@
 
 `ci.yml` は `push(main)`、`pull_request`、手動実行を対象にします。GitHub 上の実行結果は Actions で確認してください。ローカル検証の成功は GitHub Hosted Runner 上の成功を意味しません。
 
-| Job | 検証 | データ |
-| --- | --- | --- |
-| gate | 型・lint・依存境界・unit（Web含む）・DB・配布補助・文書リンク、API/Web 型とWeb/中継agentビルド | job 専用 PostgreSQL 16、`daifuku_ci_test` |
-| e2e | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与・店舗機器・権限再取得などのブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e` |
-| identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定・中継pairing/失効の専用ブラウザ試験 | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
-| setup | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開 | 一時ディレクトリに新規クラスタ、ランダム資格情報 |
+| Job      | 検証                                                                                           | データ                                                                                |
+| -------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| gate     | 型・lint・依存境界・unit（Web含む）・DB・配布補助・文書リンク、API/Web 型とWeb/中継agentビルド | job 専用 PostgreSQL 16、`daifuku_ci_test`                                             |
+| e2e      | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与・店舗機器・権限再取得などのブラウザ試験         | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e`                                      |
+| identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定・中継pairing/失効の専用ブラウザ試験     | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |
+| setup    | 初回導入・再実行・0008 からの更新・復元検証・失敗と再開                                        | 一時ディレクトリに新規クラスタ、ランダム資格情報                                      |
 
 `verification.yml`も同じイベントで実行し、Decimal/貸借検査の全147変異と、エッジの有限安全性・ガード破壊・到達性・共有トレースを別jobにする。通常gateは生成unit/DBと台帳検査を含む。権限や秘密の扱いは通常CIと同じ。mutationは全件Killedのみ成功とし、TLCは公式固定jarのbyte数/SHA-256を起動前に検査する。[検証設計](../../docs/architecture/practical-verification.md)を参照。
 
@@ -29,14 +29,15 @@ TLS SMTP fixture は OpenSSL で一時証明書を作り、その CA を明示�
 
 2026-09-12 に公式リリースと `git ls-remote` のタグ参照を照合し、以下の完全な commit SHA を指定しました。注釈付きタグは `^{}` で参照先の commit を確認しています。更新は Dependabot の PR を確認して行い、浮動タグに戻しません。
 
-| Action | リリース | commit |
-| --- | --- | --- |
-| actions/checkout | [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
-| actions/setup-node | [v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0) | `820762786026740c76f36085b0efc47a31fe5020` |
+| Action                  | リリース                                                                 | commit                                     |
+| ----------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| actions/checkout        | [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1)        | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| actions/setup-node      | [v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0)      | `820762786026740c76f36085b0efc47a31fe5020` |
 | actions/upload-artifact | [v7.0.1](https://github.com/actions/upload-artifact/releases/tag/v7.0.1) | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
-| pnpm/action-setup | [v6.1.0](https://github.com/pnpm/action-setup/releases/tag/v6.1.0) | `ea17c68df8912ef543352723c149a84f56e3d413` |
+| pnpm/action-setup       | [v6.1.0](https://github.com/pnpm/action-setup/releases/tag/v6.1.0)       | `ea17c68df8912ef543352723c149a84f56e3d413` |
 
 これらの Action は Node 24 の runner runtime を使い、アプリの検証には Node 22.23.2 を指定します。[Ubuntu 24.04 Hosted Runner のツール一覧](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) で PostgreSQL 16 の同梱を確認しました。setup job はそのバイナリを明示確認し、OS の PostgreSQL サービスを変更せず別ポートに自分のクラスタを作成します。コンテナは PostgreSQL 16.15 の patch tag、runner は `ubuntu-24.04` で固定しますが、Hosted Runner の OS イメージそのものは更新されます。
+
 # エッジサービスの追加受入
 
 `edge-services.yml`はLinux x64/arm64、Windows x64、macOS Intel/Apple Siliconの5種類で同梱Node配布物を作り、使い捨てrunnerの実SCM/systemd/LaunchDaemonへ導入します。
@@ -44,3 +45,21 @@ TLS SMTP fixture は OpenSSL で一時証明書を作り、その CA を明示�
 この試験を開発PCで実行しません。公開artifactは配布物とチェックサムのみで、runnerの私有状態・ログ・トークンはアップロードしません。
 
 Linuxの使い捨てrunnerでは、[実行イメージ ubuntu24/20260907.300 の公式生成処理](https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/scripts/build/configure-system.sh#L12-L13)が`/opt`を0777にします。受入harnessはroot・明示CIフラグ・既存サービス/専用account/導入先の不存在を確認した後、`/opt`がリンクでないroot所有ディレクトリかつ0777の場合だけ、その1ディレクトリを0755へ変更します。再帰変更・所有者変更・他の祖先変更は行わず、変更前後の固定pathのstatを記録します。これは既定`/opt/daifuku-edge`を試すためのrunner準備で、本番インストーラーのroot所有・他者書込禁止検査は緩めません。診断は固定システムpathと配布入力の固定ラベルについてtype/uid/gid/modeだけを出し、設定・資格情報・入力path本文を出しません。
+
+# 配布 profile のブラウザ保護受入
+
+`browser-security.yml` は通常 CI と同じイベント・読み取り専用権限・固定 Action / Node 22.23.2 / pnpm lockfile を使う独立 workflow です。
+DB・repository secrets・外部 IdP・本番の資格情報を使わず、`VITE_API_URL=/api` でビルドした Web を実際の Caddy で配信して `pnpm test:browser-security` を実行します。
+cloud / onprem の生成 profile それぞれで、CSP による拒否とログイン画面・同一 origin API・深い URL・Swagger UI・Worker・出力・SSO 遷移の経路を検証します。
+API / IdP はループバックの合成 fixture なので、本物の認証・業務永続化の検証は引き続き通常 E2E / identity job が担います。
+
+Caddy は [公式 2.11.4 Linux amd64 配布](https://github.com/caddyserver/caddy/releases/tag/v2.11.4)をダウンロードし、展開・実行前に workflow 内の固定 SHA-512 と照合します。
+2026-09-14 に[公式チェックサム](https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_checksums.txt)との一致を確認しました。検証時に取得したチェックサムをそのまま信頼する方式ではありません。
+更新時は配布バージョンと固定チェックサムを同じ PR で変更し、この受入を再実行します。
+
+TLS は試験ごとに発行する CA を専用の browser HOME / NSS ストアへ登録します。開発者や runner の通常の信頼ストアを変更せず、証明書検証の無効化フラグも使いません。
+ローカル再現には Linux、Caddy 2.11.4、OpenSSL、`certutil`（Ubuntu の `libnss3-tools`）と lockfile に対応する Playwright Chromium を用意します。
+`VITE_API_URL=/api pnpm --filter @daifuku/web build` の後、`CADDY_BIN=/absolute/path/to/caddy pnpm test:browser-security` で実行できます。
+
+artifact は成功・失敗にかかわらず `apps/web/test-results/browser-security` に生成した合成 Caddy ログと結果だけを 7 日保持します。
+一時 CA 秘密鍵・証明書・browser HOME / NSS・runtime env・配布物・開発者の `review/` は収集しません。
