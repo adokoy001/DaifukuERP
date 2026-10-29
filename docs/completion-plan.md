@@ -13,9 +13,9 @@
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む） | STATUS、`vitest.config.mts` の unit project |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件 | STATUS、`vitest.config.mts` の unit project |
 | DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成） | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker | `apps/web/e2e`、`playwright.config.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -41,10 +41,10 @@
 
 | ID | 名称 | 波 | サイズ | 依存 | spec slug | 主な変更先 |
 | --- | --- | --- | --- | --- | --- | --- |
-| A1 | 3 段階の回帰テスト（quick / light / full） | 0 | M | なし | [test-tiers](specs/test-tiers.md) | `scripts/gate.mjs`、`package.json`、`ci.yml`、CONTRIBUTING |
+| A1 | 3 段階の回帰テスト（quick / light / full）**済** | 0 | M | なし | [test-tiers](specs/test-tiers.md) | `scripts/gate.mjs`、`package.json`、`ci.yml`、CONTRIBUTING |
 | A2 | E2E の smoke タグとアクセシビリティ自動検査 | 0 | S | A1 | e2e-smoke-a11y | `apps/web/e2e` |
-| A3 | DB suite 起動の短縮（計測後に判断） | 任意 | M | A1 の計測 | db-test-startup | `kernel/src/testing.ts` |
-| D1 | UI キットとデザイントークン、状態表示の統一 | 0 | M | なし | ui-kit | `apps/web/src/ui/`、`styles.css`、汎用画面 |
+| A3 | DB suite 起動の短縮と light の DB 選択の絞り込み | 0（A1 の計測で前倒し） | M | A1 の計測 | db-test-startup | `kernel/src/testing.ts` |
+| D1 | UI キットとデザイントークン、状態表示の統一 **済** | 0 | M | なし | ui-kit | `apps/web/src/ui/`、`styles.css`、汎用画面 |
 | B1 | 設定定義の拡張と設定画面の再構成 | 1 | M | D1（最小） | settings-console | `kernel/src/registry.ts`、`apps/api/src/routes/settings.ts`、`settings-page.tsx` |
 | B2 | 会社の追加・編集と会社プロフィール | 1 | M | B1 | company-admin | kernel 会社作成、`/admin/companies` |
 | B3 | 導入チェック（ヘルスチェック） | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
@@ -87,6 +87,8 @@
 
 ### A1. 3 段階の回帰テスト
 
+実装済み（2026-10-29）。設計からの変更点（vitest の Node API による選択、setupFile と子プロセスの依存規則、AC-15〜AC-18、`--provision`、認証試験用の `GATE_IDENTITY_DATABASE_URL*`）と実測は [spec](specs/test-tiers.md) と [記録](log/2026-10-29-test-tiers.md) を正とする。light は module 変更で 10〜13 分かかり目標 6 分に届かないため、A3 を波0に前倒しした。
+
 spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 - `scripts/gate.mjs` に `--tier quick|light|full` を実装し、`pnpm gate:quick` / `gate:light` / `gate:full` を追加する。`pnpm gate` は不変。
@@ -109,6 +111,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 - 対象外: テストの並列化（`fileParallelism: false` は維持）。
 
 ### D1. UI キットとデザイントークン、状態表示の統一
+
+実装済み（2026-10-29）。`FieldRow` は D3 へ移した。部品と規約は [spec](specs/ui-kit.md)、[UI 規約](conventions/ui.md) の「UI キットとトークン」、[記録](log/2026-10-29-ui-kit.md) を参照する。新しい画面は `apps/web/src/ui/token-usage.test.ts` の `CONVERTED` に登録する。
 
 現状: 汎用画面（一覧・フォーム・設定・アクション・状態表示）は Tailwind ユーティリティの直書き、専用画面は 13 本の手書き CSS。色は hex 直書きが多く、分岐点は 12 種類。`<html lang="ja">` は英語表示でも固定。
 
