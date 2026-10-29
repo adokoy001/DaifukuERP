@@ -16,9 +16,13 @@
 - [実測] 修正後、`pnpm test:deploy` が `NODE_PATH` あり・なしの両方で 16 件成功。`vitest run --project db apps/api/test/identity-rate-limit.db.test.ts` が成功。対象ファイルの eslint、`apps/api` の型検査が成功。
 - [レビュー] 固定窓の境界をまたぐ失敗は `reserve` の `floor(now / seconds)` から導いた。境界をまたぐ時刻を作って再現する試験は追加していない。
 
+- [実測] Claude Code のエージェント作業ツリー（`.claude/worktrees/`、メインの checkout の中に作られる別 checkout）があると、メインの checkout で実行した vitest が unit 517 ファイルを余分に拾い、DB project も他の作業ツリーの suite を拾う状態だった（`vitest list --project unit --filesOnly`）。ESLint も flat config の既定では dot directory を除外しない。`eslint.config.js` の ignores、`vitest.config.mts` の unit / db の exclude、`.gitignore`（Prettier と gate の変更集合）に `.claude/worktrees/` を足し、修正後は unit・db とも 0 ファイルになることを確認した。
+
 ## 見つけた問題と修正（発見経路つき）
 - 招待上限の試験が窓の境界で失敗する — 発見: 実測（基準計測）、修正: この記録と同じコミット
 - コンパイラ取得元の試験が `NODE_PATH` のある環境で失敗する — 発見: 実測（基準計測）、修正: 同上
+
+- エージェント作業ツリーがメインの checkout の検査に混入する — 発見: 実測（統合後の gate:full が vitest で他の作業ツリーの試験を拾った）、修正: 除外設定の追加
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 - 招待上限の境界をまたぐ時刻を明示的に作る回帰試験
