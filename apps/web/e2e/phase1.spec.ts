@@ -157,7 +157,9 @@ async function fillRow(row: Locator, line: Entity, rowIndex: number): Promise<Ro
   return { picked, decimals };
 }
 
-test('AC-6: document with 2 lines -> submit -> grid read-only -> report page shows the rows', async ({ page }) => {
+test('AC-6: document with 2 lines -> submit -> grid read-only -> report page shows the rows @smoke', async ({
+  page,
+}) => {
   await login(page);
   const subjects = pickSubjects(await fetchMeta(page));
   // Missing fixture metadata is a setup regression, not a successful skipped test.

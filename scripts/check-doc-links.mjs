@@ -102,6 +102,7 @@ documents.push(
   'docs/conventions/source-headers.md',
 );
 documents.push('docs/specs/release-finishing.md', 'docs/log/2026-09-14-release-finishing.md');
+documents.push('docs/specs/test-tiers.md', 'docs/log/2026-10-29-test-tiers.md');
 let checked = 0;
 const failures = [];
 for (const document of documents) {

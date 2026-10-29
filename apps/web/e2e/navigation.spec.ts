@@ -55,7 +55,7 @@ async function cancelledLeave(page: Page, click: () => Promise<unknown>, value: 
   await expect(page.getByTestId('record-form').locator('#f-name')).toHaveValue(value);
 }
 
-test('navigation AC-1/2/4/5/11: compact areas, complete paged directory and bilingual local search', async ({
+test('navigation AC-1/2/4/5/11: compact areas, complete paged directory and bilingual local search @smoke', async ({
   page,
 }) => {
   const meta = await loginWithMeta(page);
@@ -164,7 +164,7 @@ test('navigation AC-6/7: area and original list breadcrumbs preserve a cancelled
   await expect(page.getByRole('heading', { name: '販売・仕入', exact: true })).toBeVisible();
 });
 
-test('navigation AC-8: 390px modal drawer traps focus, closes with Escape and returns to its trigger', async ({
+test('navigation AC-8: 390px modal drawer traps focus, closes with Escape and returns to its trigger @smoke', async ({
   page,
 }) => {
   await login(page);
@@ -200,7 +200,7 @@ test('navigation AC-8: 390px modal drawer traps focus, closes with Escape and re
   await shot(page, 'navigation-mobile-390.png');
 });
 
-test('navigation AC-3/10: a store employee finds permitted operations but no privileged destination', async ({
+test('navigation AC-3/10: a store employee finds permitted operations but no privileged destination @smoke', async ({
   page,
   request,
   browser,

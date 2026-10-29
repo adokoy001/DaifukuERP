@@ -49,7 +49,7 @@ async function selectRef(cell: Locator, name: string) {
   await expect(cell.getByRole('combobox')).toHaveValue(name);
 }
 
-test('invoice UI defaults, dirty save protection, submit and dated cancellation', async ({ page, request }) => {
+test('invoice UI defaults, dirty save protection, submit and dated cancellation @smoke', async ({ page, request }) => {
   const { partnerName, productName } = await fixtures(request);
   await login(page);
   await page.goto('/e/sales_invoice/new');

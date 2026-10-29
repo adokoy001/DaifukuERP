@@ -4,6 +4,7 @@
 
 | Job      | 検証                                                                                           | データ                                                                                |
 | -------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| quick    | format:check・型・lint（依存境界含む）・unit（Web含む）。DB を使わず先に結果を返す             | なし（DB・secrets なし）                                                              |
 | gate     | 型・lint・依存境界・unit（Web含む）・DB・配布補助・文書リンク、API/Web 型とWeb/中継agentビルド | job 専用 PostgreSQL 16、`daifuku_ci_test`                                             |
 | e2e      | 3 業界の画面導入 → 会計/運営/スマホ従業員/給与・店舗機器・権限再取得などのブラウザ試験         | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_e2e`                                      |
 | identity | OIDC 紐付け/ログイン、TOTP/単回回復コード、招待/再設定・中継pairing/失効の専用ブラウザ試験     | 別 job 専用 PostgreSQL 16、空の `daifuku_ci_enterprise_e2e`、合成 OIDC/JWKS・TLS SMTP |

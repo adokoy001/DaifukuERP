@@ -18,7 +18,7 @@ async function login(page: Page) {
   await expect.poll(() => page.evaluate(() => globalThis.sessionStorage.getItem('daifuku.token'))).not.toBeNull();
 }
 
-test('AC-9 smoke: login, create partner, list, edit, audit', async ({ page }) => {
+test('AC-9 smoke: login, create partner, list, edit, audit @smoke', async ({ page }) => {
   await login(page);
 
   // AC-2: entity reachable from the menu; AC-3: list page with New button
@@ -68,7 +68,7 @@ test('AC-9 smoke: login, create partner, list, edit, audit', async ({ page }) =>
   await expect(audit).toContainText('Audit');
 });
 
-test('AC-1/AC-8: no token shows login; bad password shows the error hint', async ({ page }) => {
+test('AC-1/AC-8: no token shows login; bad password shows the error hint @smoke', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel('メールアドレス').fill(EMAIL);

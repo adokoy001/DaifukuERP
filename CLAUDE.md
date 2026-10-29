@@ -18,6 +18,10 @@ docs/      adr/ conventions/ domain/ specs/ log/ metrics/  <- READ THESE, WRITE 
 - `pnpm install` — workspace install
 - `pnpm format` / `pnpm format:check` — format source with pinned Prettier / verify formatting without changes.
 - `pnpm gate` — format check + typecheck + lint/boundaries + unit + DB + deployment tests + documentation links + assurance checks. **Must pass before any PR/commit claiming "done".**
+- `pnpm gate:quick` — changed-file format/lint + boundaries + typecheck + related unit tests (~1 min). Use while editing. See [test tiers](docs/specs/test-tiers.md).
+- `pnpm gate:light` — whole static checks + all unit + related DB suites (needs `TEST_DATABASE_URL_*`). Use before push.
+- `pnpm gate:full` — every `pnpm gate` step + API/Web builds + browser + identity suites (`--provision` creates loopback fixtures). Required before claiming "done" and for escalated changes.
+- `pnpm e2e:smoke` — the `@smoke` browser tests (plus the industry dependency project) against running servers.
 - `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm test:db` (needs Postgres: `DATABASE_URL` in `.env`, see `.env.example`)
 - `pnpm db:schema && pnpm db:generate && pnpm db:migrate` — regenerate drizzle schema from the entity registry, generate migration, apply
 - `pnpm dev:api`, `pnpm dev:web`

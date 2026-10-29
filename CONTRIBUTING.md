@@ -12,6 +12,26 @@
 
 金額・数量は `Decimal`、データ定義は kernel DSL を使います。データ操作は `Context` と `Repository`、会計・在庫の操作は既存の業務 action を通します。会社や店舗の分離、確定伝票の不変性、入力できない自動計算項目を保ち、必要な回帰テストを追加してください。日本の制度に基づく仕様は一次資料と確認日を `docs/domain/` に記載します。
 
+## 検査の段階（quick / light / full）
+
+編集中は変更に関係する検査だけを素早く回し、「完了」の前に全体を回します。選択は実行するファイルを選ぶだけで、テストを skip したり期待値を緩めたりしません。仕様は [3 段階の回帰テスト](docs/specs/test-tiers.md) です。
+
+| 段階 | コマンド | 内容 | 目安 | 使う場面 |
+| --- | --- | --- | --- | --- |
+| quick | `pnpm gate:quick` | 変更ファイルの Prettier / ESLint、依存境界、typecheck（`apps/api`・`apps/web` を変えたら各 app も）、関連する unit 試験、文書リンクと台帳 | 1 分前後 | 編集ごと、コミット前 |
+| light | `pnpm gate:light` | 全体の format・typecheck・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件 | 数分 | push 前、作業の区切り |
+| full | `pnpm gate:full` | `pnpm gate` の全工程、API/Web の typecheck と build、中継 agent build、通常ブラウザ試験、認証ブラウザ試験 | CI 並列で約 15 分、ローカル直列で 25〜40 分 | 「完了」の主張前、PR を ready にする前、main 取込後 |
+
+- 基準点は `origin/main` との merge-base です（無ければ `HEAD~1`）。`--base <ref>` か `GATE_BASE` で変えられます。未コミット・未追跡のファイルも対象です。
+- `kernel/`、migration、`package.json` / lockfile、tsconfig・lint・CI の設定、削除したソースなどを含む変更は「フル回帰が必要」と表示されます。light は DB を全件に広げますが、完了前には `pnpm gate:full` が必要です。
+- DB を使う light / full は、下の DB テストと同じく破棄可能な専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に明示してください。未設定のときは既定の `daifuku_test` を使わずに止まります。
+- full のブラウザ試験は、下の「ブラウザ試験を新規環境で再現する」の環境変数とサーバー、「認証ブラウザ試験」用の空 DB（`GATE_IDENTITY_DATABASE_URL_OWNER` / `GATE_IDENTITY_DATABASE_URL` に設定すると、gate が認証工程にだけ `TEST_DATABASE_URL_*` として渡します）を使います。準備がなければ何も実行せずに案内を出して止まります。
+- `pnpm gate:full --provision` は、ループバックの PostgreSQL（`TEST_DATABASE_URL_OWNER` の role に CREATEDB が必要）に一意な名前の新しい空 DB を作り、fixture 準備、compiled API と Web の空きポートでの起動、Playwright、停止までを行います。止めるのは自分が起動したプロセスだけで、作った DB は削除しません（報告に名前が出るので、不要になったら自分で `dropdb` してください）。
+- `--without-browser` はブラウザ 2 種を省いた部分実行で、報告に `partial: true` が付きます。`--` の後ろは Playwright に渡します（例: `pnpm gate:full --provision -- --grep @smoke`。これも部分実行の扱いです）。
+- `--dry-run` は対象ファイル・昇格判定・実行予定の工程と選ばれた試験ファイルを表示するだけです。既定は最初の失敗で止まり、`--keep-going` で全工程を実行します。
+- 結果は標準出力の表と `.runtime/gate/<UTC時刻>-<段階>.json` に残ります。
+- `pnpm e2e:smoke` は試験名に `@smoke` を付けた代表的なブラウザ試験だけを、起動済みのサーバーに対して実行します。Playwright は依存 project を絞らないため、3 業界の `industry` project も先に実行されます。`pnpm gate:light --with-smoke`（`--provision` 併用可）で light の最後にも実行できます。
+
 ## 型・単体・DB・Web の検証
 
 Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用します。依存は `pnpm install --frozen-lockfile` で導入します。[開発用の初期化](README.md) は専用の開発 DB で行ってください。以下の DB テストはテーブルを作り直すため、`TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に必ず破棄可能な専用テスト DB を設定します。
