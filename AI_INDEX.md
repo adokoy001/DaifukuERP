@@ -28,6 +28,7 @@
 | 配信時のブラウザ保護・転記の照会数 | [仕上げ仕様](docs/specs/release-finishing.md)、[配備手順](docs/operations/deployment.md)、[引継ぎの記録](docs/architecture/extension-guide.md#引継ぎを確認する記録) | [Caddy生成](deploy/profile.mjs)、[転記検証](modules/accounting/src/hooks/validate-entry.ts) |
 | 従業員スマホ・労務 | [従業員の構造](docs/architecture/workforce.md)、[統合受入基準](docs/specs/workforce-platform.md)、[日本の労務・給与](docs/domain/japan-workforce.md) | [Web routes](apps/web/src/router.tsx)、[module catalog](apps/runtime/src/catalog.ts) |
 | 社員条件・シフト推薦 | [シフト構造](docs/architecture/shift-planning.md)、[仕様](docs/specs/employee-shift-planner.md)、[操作](docs/operations/shift-planning.md)、[ADR-0020](docs/adr/0020-browser-shift-planning.md) | [純粋エンジン](modules/workforce/src/scheduling/index.ts)、[snapshot](modules/workforce/src/shift-source.ts)、[管理UI](apps/web/src/pages/shift-page.tsx) |
+| 完成度向上の作業・3段階回帰 | [実装計画](docs/completion-plan.md)、[候補一覧](docs/improvement-candidates.md)、[回帰テスト階層の仕様](docs/specs/test-tiers.md) | 計画の作業項目 ID ごとの spec と `scripts/gate.mjs`（A1 で追加） |
 | 業界テンプレート | [15業界の範囲](docs/domain/industry-catalog.md)、[pack規約](docs/conventions/packs.md)、[拡張手順](docs/architecture/extension-guide.md) | [pack catalog](apps/runtime/src/packs.ts)、[pack適用](kernel/src/pack.ts) |
 | REST/MCP・外部呼出 | [処理経路](docs/architecture/runtime-and-data.md) | [REST](apps/api/src/routes/rest.ts)、[actions](apps/api/src/routes/actions.ts)、[MCP](apps/mcp/src/tools.ts) |
 | UI・フォーム・レポート | [UI規約](docs/conventions/ui.md)、[report規約](docs/conventions/reports.md) | [router](apps/web/src/router.tsx)、[Web API](apps/web/src/api/)、[pages](apps/web/src/pages/) |
