@@ -10,16 +10,21 @@ import { copyRuntime } from '../runtime.mjs';
 import { inventory } from '../files.mjs';
 
 test('AC-5 the emission compiler comes from the selected frozen source, not the release tool checkout', async () => {
+  // Separate directories: Node caches a module path per lookup location, and a developer's NODE_PATH may already
+  // expose a global TypeScript for the first (rejected) lookup.
+  const missing = await mkdtemp(join(tmpdir(), 'daifuku-compiler-missing-'));
   const source = await mkdtemp(join(tmpdir(), 'daifuku-compiler-origin-'));
   try {
+    await writeFile(join(missing, 'package.json'), '{}');
+    await assert.rejects(loadCompiler(missing));
     await writeFile(join(source, 'package.json'), '{}');
-    await assert.rejects(loadCompiler(source));
     const dependency = join(source, 'node_modules/typescript');
     await mkdir(dependency, { recursive: true });
     await writeFile(join(dependency, 'package.json'), JSON.stringify({ name: 'typescript', main: 'index.cjs' }));
     await writeFile(join(dependency, 'index.cjs'), "module.exports = { version: 'frozen-source-sentinel' };");
     assert.equal((await loadCompiler(source)).version, 'frozen-source-sentinel');
   } finally {
+    await rm(missing, { recursive: true, force: true });
     await rm(source, { recursive: true, force: true });
   }
 });

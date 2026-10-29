@@ -67,6 +67,15 @@ describe('authentication budgets for shared networks', () => {
     }
   }, 120000);
   it('bounds administrator invitation issuance separately from successful authentication', async () => {
+    // The invitation budget is a fixed wall-clock window; pin Date so the 31 attempts cannot straddle a boundary.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await assertInvitationBudget();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  async function assertInvitationBudget(): Promise<void> {
     const token = (await login()).json<{ token: string }>().token;
     const headers = { authorization: `Bearer ${token}` };
     for (let index = 0; index < 31; index++) {
@@ -91,7 +100,7 @@ describe('authentication budgets for shared networks', () => {
     }
     expect((await login()).statusCode).toBe(200);
     expect((await app.inject({ url: '/auth/security', headers })).statusCode).toBe(200);
-  });
+  }
   it('does not accumulate successful step-up proofs as failures', async () => {
     const token = (await login()).json<{ token: string }>().token;
     for (let index = 0; index < 12; index++) {
