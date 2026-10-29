@@ -1,12 +1,22 @@
 // Tier runner (docs/specs/test-tiers.md): change-set classification, escalation, base fallbacks, per-tier plans,
 // preflight guidance, fail-fast semantics, dry-run and report shape. Each test name carries its AC id.
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   ALWAYS_DB_SUITES,
+  CHANGED_FILES_IN_TABLE,
   ESCALATION_RULES,
   E2E_DATABASE_NAME,
   FILE_ARGUMENT_LIMIT,
@@ -17,6 +27,7 @@ import {
   ROOT,
   applyPreflight,
   applySelection,
+  browserFixtureEnv,
   browserPrerequisites,
   buildReport,
   classifyChanges,
@@ -28,6 +39,7 @@ import {
   formatTable,
   gitRunner,
   globToRegExp,
+  identityStepEnv,
   loadWorkspacePackages,
   packageOf,
   parseCli,
@@ -35,26 +47,37 @@ import {
   parseWorkspacePatterns,
   planSteps,
   provisionDatabaseName,
+  provisionGuard,
   provisionTargets,
   referenceTriggers,
   reportFileName,
   resolveBase,
   runSteps,
+  scopeOf,
+  scrubbedEnv,
   selectByReference,
+  selectBySubprocessScope,
   selectByTestDirectory,
+  setupFileTargets,
+  smokePrerequisites,
+  spawnsProcesses,
+  subprocessEntries,
+  testDatabaseProblems,
+  workspaceClosure,
 } from '../gate.mjs';
-import type { Base, Change, Git, GitResult, Options, Step, Tier } from '../gate.mjs';
+import type { Base, Change, Git, GitResult, Options, Report, Step, Tier } from '../gate.mjs';
 
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
 const gateScripts = parseGateScript(manifest.scripts.gate ?? '');
 const packages = [
-  { dir: 'kernel', name: '@daifuku/kernel' },
-  { dir: 'modules/sales', name: '@daifuku/mod-sales' },
-  { dir: 'modules/banking', name: '@daifuku/mod-banking' },
-  { dir: 'apps/api', name: '@daifuku/api' },
-  { dir: 'apps/web', name: '@daifuku/web' },
+  { dir: 'kernel', name: '@daifuku/kernel', dependencies: [] },
+  { dir: 'modules/sales', name: '@daifuku/mod-sales', dependencies: ['@daifuku/kernel'] },
+  { dir: 'modules/banking', name: '@daifuku/mod-banking', dependencies: ['@daifuku/kernel', '@daifuku/mod-sales'] },
+  { dir: 'modules/franchise', name: '@daifuku/mod-franchise', dependencies: ['@daifuku/kernel'] },
+  { dir: 'apps/api', name: '@daifuku/api', dependencies: ['@daifuku/kernel', '@daifuku/mod-sales'] },
+  { dir: 'apps/web', name: '@daifuku/web', dependencies: ['@daifuku/mod-banking'] },
 ];
-const base: Base = { ref: 'origin/main', commit: 'a'.repeat(40), source: 'merge-base', notes: [] };
+const base: Base = { ref: 'origin/main', commit: 'a'.repeat(40), source: 'merge-base', fallback: false, notes: [] };
 const COMMIT = 'b'.repeat(40);
 
 function options(overrides: Partial<Options> = {}): Options {
@@ -106,6 +129,41 @@ const fullEnv = {
   GATE_IDENTITY_DATABASE_URL: 'postgres://daifuku_app:app@127.0.0.1:5432/daifuku_e2e_test_enterprise_y',
 };
 
+// A throwaway repository with a copy of scripts/gate.mjs: ROOT follows the script, so runs stay inside it and need
+// neither this checkout's .git nor its .runtime/.
+function sandbox(scripts: Record<string, string>, files: Record<string, string> = {}): string {
+  const dir = mkdtempSync(join(tmpdir(), 'daifuku-gate-sandbox-'));
+  mkdirSync(join(dir, 'scripts'));
+  copyFileSync(join(ROOT, 'scripts/gate.mjs'), join(dir, 'scripts/gate.mjs'));
+  writeFileSync(
+    join(dir, 'package.json'),
+    `${JSON.stringify({ name: 'gate-sandbox', private: true, scripts }, null, 2)}\n`,
+  );
+  writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'packages: []\n');
+  writeFileSync(join(dir, '.gitignore'), '.runtime/\n');
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+  for (const args of [
+    ['init', '-q', '-b', 'main'],
+    ['add', '.'],
+    ['commit', '-q', '-m', 'sandbox'],
+  ]) {
+    const result = spawnSync(
+      'git',
+      ['-c', 'user.name=gate', '-c', 'user.email=gate@example.invalid', '-c', 'commit.gpgsign=false', ...args],
+      { cwd: dir, encoding: 'utf8' },
+    );
+    if (result.status !== 0) throw new Error(result.stderr);
+  }
+  return dir;
+}
+function sandboxReport(dir: string, tier: Tier) {
+  const directory = join(dir, '.runtime/gate');
+  const file = existsSync(directory)
+    ? readdirSync(directory).find((name) => name.endsWith(`-${tier}.json`))
+    : undefined;
+  return file ? (JSON.parse(readFileSync(join(directory, file), 'utf8')) as Report) : null;
+}
+
 describe('AC-15 base resolution', () => {
   it('AC-15 uses merge-base(HEAD, origin/main) by default', () => {
     const git = fakeGit({
@@ -117,6 +175,7 @@ describe('AC-15 base resolution', () => {
       ref: 'origin/main',
       commit: 'd'.repeat(40),
       source: 'merge-base',
+      fallback: false,
       notes: [],
     });
   });
@@ -137,11 +196,32 @@ describe('AC-15 base resolution', () => {
     expect(() => resolveBase({ explicit: 'no-such-ref', git })).toThrow(GateUsageError);
     expect(() => resolveBase({ env: { GATE_BASE: '--output=x' }, git })).toThrow(/not an option/);
   });
-  it('AC-15 falls back to HEAD~1 without origin/main', () => {
+  it('AC-15 falls back to HEAD~1 without origin/main, origin/HEAD, main or an upstream', () => {
     const git = fakeGit({ [verify('HEAD')]: COMMIT, [verify('HEAD~1')]: 'c'.repeat(40) });
     const resolved = resolveBase({ git });
-    expect(resolved).toMatchObject({ ref: 'HEAD~1', commit: 'c'.repeat(40), source: 'parent' });
+    expect(resolved).toMatchObject({ ref: 'HEAD~1', commit: 'c'.repeat(40), source: 'parent', fallback: true });
     expect(resolved.notes.join(' ')).toMatch(/origin\/main is not available/);
+    expect(resolved.notes.join(' ')).toMatch(/only the last commit/);
+  });
+  it('AC-15 tries origin/HEAD, local main and the upstream through merge-base before HEAD~1', () => {
+    const git = fakeGit({
+      [verify('HEAD')]: COMMIT,
+      [verify('main')]: 'c'.repeat(40),
+      'merge-base HEAD main': `${'d'.repeat(40)}\n`,
+      [verify('@{upstream}')]: 'e'.repeat(40),
+      'merge-base HEAD @{upstream}': `${'e'.repeat(40)}\n`,
+    });
+    const resolved = resolveBase({ git });
+    expect(resolved).toMatchObject({ ref: 'main', commit: 'd'.repeat(40), source: 'merge-base', fallback: true });
+    expect(resolved.notes.join(' ')).toMatch(/merge-base\(HEAD, main\)/);
+    const onMain = fakeGit({
+      [verify('HEAD')]: COMMIT,
+      [verify('main')]: COMMIT,
+      'merge-base HEAD main': `${COMMIT}\n`,
+      [verify('@{upstream}')]: 'e'.repeat(40),
+      'merge-base HEAD @{upstream}': `${'e'.repeat(40)}\n`,
+    });
+    expect(resolveBase({ git: onMain })).toMatchObject({ ref: '@{upstream}', commit: 'e'.repeat(40) });
   });
   it('AC-15 falls back to HEAD~1 when merge-base fails in a shallow clone', () => {
     const git = fakeGit({
@@ -157,8 +237,28 @@ describe('AC-15 base resolution', () => {
       ref: 'HEAD',
       commit: COMMIT,
       source: 'head',
+      fallback: true,
     });
     expect(resolveBase({ git: fakeGit({}) })).toMatchObject({ ref: null, commit: null, source: 'none' });
+  });
+  it('AC-15 marks only explicit and origin/main bases as non-fallback and warns about the others', () => {
+    const git = fakeGit({ [verify('topic')]: 'e'.repeat(40) });
+    expect(resolveBase({ explicit: 'topic', git }).fallback).toBe(false);
+    const fallback = { ...base, ref: 'HEAD~1', source: 'parent' as const, fallback: true };
+    const report = buildReport({
+      tier: 'quick',
+      options: options(),
+      base: fallback,
+      changes: [],
+      cls: classifyChanges([]),
+      escalation: detectEscalation([]),
+      steps: [],
+      startedAt: new Date(0),
+      finishedAt: new Date(0),
+      result: 'no-changes',
+    });
+    expect(report.baseFallback).toBe(true);
+    expect(formatTable(report)).toMatch(/^WARNING: the base fell back to HEAD~1 \(parent\)/m);
   });
 });
 
@@ -215,6 +315,41 @@ describe('AC-16 change set', () => {
         { path: 'new ü.ts', deleted: false },
       ]);
     });
+    it('AC-15 AC-16 keeps every commit of a topic branch without a remote by using merge-base with local main', () => {
+      const topic = mkdtempSync(join(tmpdir(), 'daifuku-gate-topic-'));
+      try {
+        const git = (...args: string[]) => {
+          const result = spawnSync(
+            'git',
+            ['-c', 'user.name=gate', '-c', 'user.email=gate@example.invalid', '-c', 'commit.gpgsign=false', ...args],
+            { cwd: topic, encoding: 'utf8' },
+          );
+          if (result.status !== 0) throw new Error(result.stderr);
+        };
+        git('init', '-q', '-b', 'main');
+        mkdirSync(join(topic, 'a'));
+        writeFileSync(join(topic, 'a/old.ts'), 'export const a = 1;\n');
+        git('add', '.');
+        git('commit', '-q', '-m', 'base');
+        git('checkout', '-q', '-b', 'topic');
+        git('mv', 'a/old.ts', 'a/new.ts');
+        git('commit', '-q', '-m', 'rename');
+        writeFileSync(join(topic, 'second.ts'), 'export const s = 1;\n');
+        git('add', '.');
+        git('commit', '-q', '-m', 'second');
+        const runner = gitRunner(topic);
+        const resolved = resolveBase({ git: runner });
+        expect(resolved).toMatchObject({ ref: 'main', source: 'merge-base', fallback: true });
+        const changes = collectChangeSet({
+          base: resolved,
+          git: runner,
+          exists: (path) => existsSync(join(topic, path)),
+        });
+        expect(changes.map((change) => change.path)).toEqual(['a/new.ts', 'a/old.ts', 'second.ts']);
+      } finally {
+        rmSync(topic, { recursive: true, force: true });
+      }
+    });
   });
 });
 
@@ -258,7 +393,8 @@ describe('AC-1 quick plan', () => {
     expect(commandText(find(steps, 'assurance').command)).toBe(
       `node scripts/check-assurance.mjs --changed ${base.commit}`,
     );
-    expect(find(steps, 'typecheck:api').skip?.result).toBe('skipped');
+    expect(commandText(find(steps, 'typecheck:api').command)).toBe('pnpm --filter @daifuku/api typecheck');
+    expect(commandText(find(steps, 'typecheck:web').command)).toBe('pnpm --filter @daifuku/web typecheck');
     expect(find(steps, 'deploy').skip?.result).toBe('skipped');
     expect(find(steps, 'unit').selection).toEqual({
       project: 'unit',
@@ -268,7 +404,7 @@ describe('AC-1 quick plan', () => {
     });
     expect(cls.packages).toEqual(['@daifuku/mod-sales']);
   });
-  it('AC-1 adds the API or Web typecheck only when that app changed', () => {
+  it('AC-1 adds the API or Web typecheck when that app or a workspace package it imports changed', () => {
     expect(commandText(find(plan('quick', ['apps/web/src/pages/home-page.tsx']).steps, 'typecheck:web').command)).toBe(
       'pnpm --filter @daifuku/web typecheck',
     );
@@ -277,8 +413,37 @@ describe('AC-1 quick plan', () => {
       'pnpm --filter @daifuku/api typecheck',
     );
     expect(find(plan('quick', ['apps/web/src/styles.css']).steps, 'typecheck:web').skip?.reason).toBe(
-      'apps/web unchanged',
+      'apps/web and the workspace packages it imports unchanged',
     );
+    // kernel is imported by both apps (apps/api/test is typechecked only by the API typecheck).
+    const kernel = plan('quick', ['kernel/src/testing.ts']).steps;
+    expect(find(kernel, 'typecheck:api').skip).toBeNull();
+    expect(find(kernel, 'typecheck:web').skip).toBeNull();
+    const banking = plan('quick', ['modules/banking/src/matching.ts']).steps;
+    expect(find(banking, 'typecheck:api').skip).not.toBeNull();
+    expect(find(banking, 'typecheck:web').skip).toBeNull();
+    const franchise = plan('quick', ['modules/franchise/src/index.ts']).steps;
+    expect(find(franchise, 'typecheck:api').skip).not.toBeNull();
+    expect(find(franchise, 'typecheck:web').skip).not.toBeNull();
+    for (const config of ['tsconfig.base.json', 'modules/franchise/package.json', 'pnpm-lock.yaml']) {
+      const steps = plan('quick', [config]).steps;
+      expect(find(steps, 'typecheck').skip, config).toBeNull();
+      expect(find(steps, 'typecheck:api').skip, config).toBeNull();
+      expect(find(steps, 'typecheck:web').skip, config).toBeNull();
+    }
+  });
+  it('AC-1 follows workspace dependencies transitively from the app packages', () => {
+    expect(workspaceClosure('@daifuku/web', packages).sort()).toEqual([
+      'apps/web',
+      'kernel',
+      'modules/banking',
+      'modules/sales',
+    ]);
+    const real = loadWorkspacePackages(ROOT);
+    const api = workspaceClosure('@daifuku/api', real);
+    expect(api).toContain('kernel');
+    expect(api).toContain('l10n/jp');
+    expect(real.find((pkg) => pkg.dir === 'apps/web')?.dependencies).toContain('@daifuku/mod-banking');
   });
   it('AC-1 runs documentation and ledger checks for a Markdown-only change without typecheck', () => {
     const { steps } = plan('quick', ['docs/conventions/testing.md']);
@@ -332,15 +497,15 @@ describe('AC-2 empty change set', () => {
 });
 
 describe('AC-3 light plan', () => {
-  it('AC-3 runs whole static checks, every unit test and related DB suites plus the kernel sentinels', () => {
-    const { steps } = plan('light', ['modules/banking/src/matching.ts']);
+  it('AC-3 runs whole static checks with both app typechecks, every unit test and related DB suites plus the kernel sentinels', () => {
+    const { steps } = plan('light', ['modules/franchise/src/index.ts']);
     expect(steps.map((item) => [item.id, commandText(item.command)])).toEqual([
       ['format', 'pnpm format:check'],
       ['docs', 'pnpm docs:check'],
       ['assurance', `node scripts/check-assurance.mjs --changed ${base.commit}`],
       ['typecheck', 'pnpm typecheck'],
-      ['typecheck:api', ''],
-      ['typecheck:web', ''],
+      ['typecheck:api', 'pnpm --filter @daifuku/api typecheck'],
+      ['typecheck:web', 'pnpm --filter @daifuku/web typecheck'],
       ['lint', 'pnpm lint'],
       ['unit', 'pnpm test'],
       ['db', ''],
@@ -348,7 +513,7 @@ describe('AC-3 light plan', () => {
     ]);
     expect(find(steps, 'db').selection).toMatchObject({
       project: 'db',
-      sources: ['modules/banking/src/matching.ts'],
+      sources: ['modules/franchise/src/index.ts'],
       extra: [...ALWAYS_DB_SUITES],
     });
   });
@@ -378,36 +543,76 @@ describe('AC-3 light plan', () => {
 });
 
 describe('AC-4 escalation', () => {
-  it.each([
-    'kernel/src/decimal.ts',
-    'apps/api/drizzle/migrations/0001_init.sql',
-    'apps/api/src/db/reset.ts',
-    'apps/api/src/modules.ts',
-    'apps/api/test/payroll-provider-setup.ts',
-    'modules/sales/package.json',
-    'pnpm-lock.yaml',
-    'tsconfig.base.json',
-    'apps/web/tsconfig.json',
-    'vitest.config.mts',
-    'eslint.config.js',
-    '.github/workflows/ci.yml',
-    'scripts/gate.mjs',
-  ])('AC-4 escalates %s', (path) => {
-    expect(detectEscalation(changesOf([path])).required).toBe(true);
+  // One example path per rule; the test below fails when a rule is added without an example.
+  const examples: Record<string, string> = {
+    'kernel/**': 'kernel/src/decimal.ts',
+    'apps/api/drizzle/**': 'apps/api/drizzle/migrations/0001_init.sql',
+    'apps/api/src/db/**': 'apps/api/src/db/reset.ts',
+    'apps/api/src/modules.ts': 'apps/api/src/modules.ts',
+    'apps/api/test/payroll-provider-setup.ts': 'apps/api/test/payroll-provider-setup.ts',
+    'vitest.config.mts': 'vitest.config.mts',
+    '**/package.json': 'modules/sales/package.json',
+    'pnpm-lock.yaml': 'pnpm-lock.yaml',
+    'pnpm-workspace.yaml': 'pnpm-workspace.yaml',
+    '.npmrc': '.npmrc',
+    '**/tsconfig*.json': 'apps/web/tsconfig.json',
+    'eslint.config.js': 'eslint.config.js',
+    '.dependency-cruiser.cjs': '.dependency-cruiser.cjs',
+    '.prettierrc.json': '.prettierrc.json',
+    '.prettierignore': '.prettierignore',
+    'turbo.json': 'turbo.json',
+    '.github/**': '.github/workflows/ci.yml',
+    'apps/web/playwright.config.ts': 'apps/web/playwright.config.ts',
+    'apps/web/vite.config.ts': 'apps/web/vite.config.ts',
+    'apps/web/index.html': 'apps/web/index.html',
+    'scripts/test-identity-e2e.mjs': 'scripts/test-identity-e2e.mjs',
+    'scripts/gate.mjs': 'scripts/gate.mjs',
+    'scripts/gate-select.mjs': 'scripts/gate-select.mjs',
+  };
+  it('AC-4 every escalation rule matches its example path and is the rule reported for it', () => {
+    expect(Object.keys(examples).sort()).toEqual(ESCALATION_RULES.map((rule) => rule.pattern).sort());
+    for (const rule of ESCALATION_RULES) {
+      const example = examples[rule.pattern] ?? '';
+      expect(detectEscalation(changesOf([example])).reasons[0]?.rule, example).toBe(rule.pattern);
+    }
+    expect(globToRegExp('**/tsconfig*.json').test('tsconfig.json')).toBe(true);
+    expect(globToRegExp('kernel/**').test('kernelx/src/a.ts')).toBe(false);
   });
   it.each([
     'modules/sales/src/index.ts',
     'apps/web/src/pages/home-page.tsx',
     'docs/specs/test-tiers.md',
     'scripts/metrics-add.mjs',
+    '.github/ci/README.md',
   ])('AC-4 does not escalate %s', (path) => {
     expect(detectEscalation(changesOf([path])).required).toBe(false);
+  });
+  it('AC-4 widens light DB suites only for changes that can alter DB behaviour outside the module graph', () => {
+    const widening = ESCALATION_RULES.filter((rule) => rule.widenDb).map((rule) => rule.pattern);
+    expect(widening).toEqual([
+      'kernel/**',
+      'apps/api/drizzle/**',
+      'apps/api/src/db/**',
+      'apps/api/src/modules.ts',
+      'apps/api/test/payroll-provider-setup.ts',
+      'vitest.config.mts',
+      '**/package.json',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      '.npmrc',
+      '**/tsconfig*.json',
+    ]);
+    for (const path of ['.prettierignore', '.github/workflows/ci.yml', 'eslint.config.js', 'scripts/gate.mjs']) {
+      const light = plan('light', [path]);
+      expect(light.escalation, path).toMatchObject({ required: true, widenDb: false });
+      expect(find(light.steps, 'db').selection, path).not.toBeNull();
+    }
   });
   it('AC-4 light runs every DB suite for kernel changes while quick keeps its steps and reports the notice', () => {
     const light = plan('light', ['kernel/src/decimal.ts']);
     expect(commandText(find(light.steps, 'db').command)).toBe('pnpm test:db');
     expect(light.escalation.reasons).toEqual([
-      { path: 'kernel/src/decimal.ts', rule: 'kernel/**', why: expect.any(String) },
+      { path: 'kernel/src/decimal.ts', rule: 'kernel/**', why: expect.any(String), widenDb: true },
     ]);
     const quick = plan('quick', ['kernel/src/decimal.ts']);
     expect(find(quick.steps, 'unit').selection).not.toBeNull();
@@ -423,7 +628,11 @@ describe('AC-4 escalation', () => {
       finishedAt: new Date(0),
       result: 'dry-run',
     });
-    expect(report.escalation).toMatchObject({ required: true, message: 'includes changes that need full regression' });
+    expect(report.escalation).toMatchObject({
+      required: true,
+      widenDb: true,
+      message: 'includes changes that need full regression',
+    });
     expect(report.hints.join(' ')).toMatch(/pnpm gate:full/);
   });
   it('AC-4 treats deleted sources as escalation and widens quick unit selection to every test', () => {
@@ -436,12 +645,6 @@ describe('AC-4 escalation', () => {
     expect(commandText(find(steps, 'unit').command)).toBe('pnpm test');
     const light = plan('light', [], { deleted: ['modules/sales/src/services/aging.ts'] });
     expect(commandText(find(light.steps, 'db').command)).toBe('pnpm test:db');
-  });
-  it('AC-4 every escalation rule matches at least one path form', () => {
-    for (const rule of ESCALATION_RULES) expect(globToRegExp(rule.pattern).source.startsWith('^')).toBe(true);
-    expect(globToRegExp('**/tsconfig*.json').test('tsconfig.json')).toBe(true);
-    expect(globToRegExp('**/tsconfig*.json').test('apps/web/tsconfig.json')).toBe(true);
-    expect(globToRegExp('kernel/**').test('kernelx/src/a.ts')).toBe(false);
   });
 });
 
@@ -608,6 +811,21 @@ describe('AC-17 provisioned database names', () => {
     expect(commerceFixture).toContain(`/^\\/${e2eBody}/`);
     expect(identityFixture).toContain(`/^\\/${identityBody}/`);
   });
+  it('AC-17 never lets Playwright fall back to the caller environment or start an older compiled API', () => {
+    const state = {
+      provision: true,
+      browserEnv: null,
+      passed: [] as string[],
+      planned: ['build:api', 'browser:prepare'],
+    };
+    expect(provisionGuard({ special: 'browser:prepare' }, state)).toMatch(/build:api did not pass/);
+    expect(provisionGuard({ special: 'browser:prepare' }, { ...state, passed: ['build:api'] })).toBeNull();
+    expect(provisionGuard({ special: 'browser' }, state)).toMatch(/fixture was not prepared/);
+    expect(provisionGuard({ special: 'smoke' }, state)).toMatch(/fixture was not prepared/);
+    expect(provisionGuard({ special: 'smoke' }, { ...state, browserEnv: { E2E_API_URL: 'http://x' } })).toBeNull();
+    expect(provisionGuard({ special: 'browser' }, { ...state, provision: false })).toBeNull();
+    expect(provisionGuard({ special: null }, state)).toBeNull();
+  });
 });
 
 describe('AC-18 explicit DB-test variables', () => {
@@ -616,13 +834,95 @@ describe('AC-18 explicit DB-test variables', () => {
       env: {},
       options: options({ tier: 'light' }),
     });
-    expect(find(steps, 'db').blocked).toBe(GUIDANCE.testDb);
+    expect(find(steps, 'db').blocked).toContain(GUIDANCE.testDb);
+    expect(find(steps, 'db').blocked).toMatch(/must both be set/);
     expect(GUIDANCE.testDb).toMatch(/never falls back to the default daifuku_test/);
     const allowed = applyPreflight(plan('light', ['modules/banking/src/matching.ts']).steps, {
       env: fullEnv,
       options: options({ tier: 'light' }),
     });
     expect(find(allowed, 'db').blocked).toBeNull();
+    expect(find(allowed, 'db').note).toBe('resets the schema of daifuku_test_x on 127.0.0.1:5432');
+  });
+  it('AC-18 accepts only a loopback disposable test database with separate owner and daifuku_app roles', () => {
+    const env = {
+      TEST_DATABASE_URL_OWNER: fullEnv.TEST_DATABASE_URL_OWNER,
+      TEST_DATABASE_URL: fullEnv.TEST_DATABASE_URL,
+    };
+    expect(testDatabaseProblems(env)).toEqual([]);
+    for (const name of ['daifuku_test', 'daifuku_ci_test', 'daifuku_test_w1'])
+      expect(
+        testDatabaseProblems({
+          TEST_DATABASE_URL_OWNER: `postgres://daifuku_owner:owner@localhost:5432/${name}`,
+          TEST_DATABASE_URL: `postgres://daifuku_app:app@localhost:5432/${name}`,
+        }),
+        name,
+      ).toEqual([]);
+    const cases: [Record<string, string>, RegExp][] = [
+      [{ TEST_DATABASE_URL_OWNER: 'postgres://daifuku_owner:owner@db.example.test:5432/daifuku_test_x' }, /loopback/],
+      [{ TEST_DATABASE_URL: 'postgres://daifuku_app:app@127.0.0.1:5432/daifuku_test_y' }, /same database/],
+      [
+        {
+          TEST_DATABASE_URL_OWNER: 'postgres://daifuku_owner:owner@127.0.0.1:5432/daifuku',
+          TEST_DATABASE_URL: 'postgres://daifuku_app:app@127.0.0.1:5432/daifuku',
+        },
+        /not named daifuku_test/,
+      ],
+      [{ TEST_DATABASE_URL: 'postgres://daifuku_owner:owner@127.0.0.1:5432/daifuku_test_x' }, /different roles/],
+      [{ TEST_DATABASE_URL: 'postgres://someone:app@127.0.0.1:5432/daifuku_test_x' }, /daifuku_app/],
+      [{ TEST_DATABASE_URL: 'postgres://daifuku_app:app@127.0.0.1:5433/daifuku_test_x' }, /same server/],
+    ];
+    for (const [override, problem] of cases)
+      expect(testDatabaseProblems({ ...env, ...override }).join('; ')).toMatch(problem);
+    const prod = {
+      ...env,
+      TEST_DATABASE_URL_OWNER: 'postgres://o:o@127.0.0.1:5432/daifuku',
+      TEST_DATABASE_URL: 'postgres://a:a@127.0.0.1:5432/daifuku',
+    };
+    expect(testDatabaseProblems({ ...prod, GATE_ALLOW_DB_URL: '1' })).toEqual([]);
+    const blocked = applyPreflight(plan('light', ['modules/banking/src/matching.ts']).steps, {
+      env: prod,
+      options: options({ tier: 'light' }),
+    });
+    expect(find(blocked, 'db').blocked).toMatch(/Problems: .*not named daifuku_test/);
+  });
+  it('AC-18 passes GATE_IDENTITY_* (or provisioned URLs) to the identity step only and scrubs fixture environments', () => {
+    const env = { ...fullEnv, PATH: '/usr/bin', E2E_INVOICE_DATE: '2026-10-29' };
+    const identity = identityStepEnv(env);
+    expect(identity).toMatchObject({
+      TEST_DATABASE_URL_OWNER: fullEnv.GATE_IDENTITY_DATABASE_URL_OWNER,
+      TEST_DATABASE_URL: fullEnv.GATE_IDENTITY_DATABASE_URL,
+      E2E_IDENTITY_PREPARE: '1',
+      PATH: '/usr/bin',
+    });
+    for (const name of [
+      'GATE_IDENTITY_DATABASE_URL_OWNER',
+      'GATE_IDENTITY_DATABASE_URL',
+      'E2E_API_URL',
+      'DATABASE_URL',
+      'DATABASE_URL_OWNER',
+    ])
+      expect(identity, name).not.toHaveProperty(name);
+    expect(identityStepEnv(env, { owner: 'postgres://o@127.0.0.1/i', app: 'postgres://a@127.0.0.1/i' })).toMatchObject({
+      TEST_DATABASE_URL_OWNER: 'postgres://o@127.0.0.1/i',
+      TEST_DATABASE_URL: 'postgres://a@127.0.0.1/i',
+    });
+    const fixture = browserFixtureEnv(env, {
+      owner: 'postgres://o@127.0.0.1/f',
+      app: 'postgres://a@127.0.0.1/f',
+      date: '2026-10-30',
+    });
+    expect(fixture).toMatchObject({
+      DATABASE_URL_OWNER: 'postgres://o@127.0.0.1/f',
+      DATABASE_URL: 'postgres://a@127.0.0.1/f',
+      E2E_PREPARE: '1',
+      E2E_INVOICE_DATE: '2026-10-30',
+      TZ: 'Asia/Tokyo',
+      PATH: '/usr/bin',
+    });
+    for (const name of ['TEST_DATABASE_URL_OWNER', 'TEST_DATABASE_URL', 'GATE_IDENTITY_DATABASE_URL', 'E2E_API_URL'])
+      expect(fixture, name).not.toHaveProperty(name);
+    expect(scrubbedEnv(env, ['E2E_API_URL'])).toHaveProperty('E2E_API_URL', fullEnv.E2E_API_URL);
   });
 });
 
@@ -669,7 +969,7 @@ describe('AC-7 report', () => {
       seconds: 1.25,
       selected: { files: 3, total: 124 },
     });
-    expect(report.skipped.map((item) => item.id)).toEqual(['typecheck:api', 'typecheck:web', 'deploy']);
+    expect(report.skipped.map((item) => item.id)).toEqual(['deploy']);
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
   });
   it('AC-7 prints a table that matches the JSON report', () => {
@@ -679,6 +979,32 @@ describe('AC-7 report', () => {
     expect(table).toMatch(/3\/124 files/);
     expect(table).toContain(`base=origin/main@${base.commit?.slice(0, 7)} (merge-base)`);
     expect(table).toMatch(/escalation: includes changes that need full regression/);
+    expect(table).toContain(
+      'changed files (3):\n  modules/sales/src/index.ts\n  docs/x.md\n  modules/sales/src/gone.ts (deleted)\n',
+    );
+    expect(table).not.toMatch(/WARNING/);
+  });
+  it('AC-7 AC-13 lists changed paths on stdout, capped outside dry-runs', () => {
+    const many = changesOf(Array.from({ length: CHANGED_FILES_IN_TABLE + 5 }, (_, index) => `docs/f${index}.md`));
+    const input = {
+      tier: 'quick' as const,
+      options: options(),
+      base,
+      changes: many,
+      cls: classifyChanges(many),
+      escalation: detectEscalation(many),
+      steps: [],
+      startedAt: new Date(0),
+      finishedAt: new Date(0),
+      result: 'passed',
+    };
+    const table = formatTable(buildReport(input));
+    expect(table).toContain(`  docs/f${CHANGED_FILES_IN_TABLE - 1}.md\n`);
+    expect(table).not.toContain(`  docs/f${CHANGED_FILES_IN_TABLE}.md\n`);
+    expect(table).toMatch(/\.\.\. 5 more \(full list in the JSON report/);
+    const dry = formatTable(buildReport({ ...input, options: options({ dryRun: true }), result: 'dry-run' }));
+    expect(dry).toContain(`  docs/f${CHANGED_FILES_IN_TABLE + 4}.md`);
+    expect(dry).not.toMatch(/more \(full list/);
   });
   it('AC-7 names report files by UTC time and tier and truncates huge change lists', () => {
     expect(reportFileName('light', new Date('2026-10-29T14:22:33.456Z'))).toBe('20261029T142233Z-light.json');
@@ -741,7 +1067,18 @@ describe('AC-9 fail-fast and keep-going', () => {
         return { ok: item.id !== 'typecheck' };
       },
     });
-    expect(ran).toEqual(['format', 'docs', 'assurance', 'typecheck', 'lint', 'unit', 'db', 'deploy']);
+    expect(ran).toEqual([
+      'format',
+      'docs',
+      'assurance',
+      'typecheck',
+      'typecheck:api',
+      'typecheck:web',
+      'lint',
+      'unit',
+      'db',
+      'deploy',
+    ]);
     expect(outcome.ok).toBe(false);
     expect(find(outcome.steps, 'deploy').result).toBe('passed');
   });
@@ -752,6 +1089,32 @@ describe('AC-9 fail-fast and keep-going', () => {
     });
     expect(outcome.interrupted).toBe(true);
     expect(find(outcome.steps, 'assurance')).toMatchObject({ result: 'not-run', reason: 'interrupted' });
+  });
+  it('AC-9 carries an interruption through a failed selection or fixture step even with --keep-going', async () => {
+    let interrupted = false;
+    const ran: string[] = [];
+    const outcome = await runSteps(steps, {
+      keepGoing: true,
+      isInterrupted: () => interrupted,
+      prepare: async (item) => {
+        if (item.id === 'typecheck') {
+          interrupted = true;
+          throw new Error('test selection for unit failed');
+        }
+        return item;
+      },
+      execute: async (item) => {
+        ran.push(item.id);
+        return { ok: true };
+      },
+    });
+    expect(ran).toEqual(['format', 'docs', 'assurance']);
+    expect(outcome).toMatchObject({ ok: false, interrupted: true });
+    expect(find(outcome.steps, 'typecheck')).toMatchObject({
+      result: 'failed',
+      reason: 'interrupted (test selection for unit failed)',
+    });
+    expect(find(outcome.steps, 'lint')).toMatchObject({ result: 'not-run', reason: 'interrupted' });
   });
 });
 
@@ -794,6 +1157,23 @@ describe('AC-11 smoke tests', () => {
     });
     expect(find(blocked, 'smoke').blocked).toContain(GUIDANCE.smoke);
   });
+  it('AC-11 the smoke preflight needs only reachable E2E_API_URL and E2E_BASE_URL', () => {
+    const env = { E2E_API_URL: 'http://localhost:3000', E2E_BASE_URL: 'http://localhost:5173' };
+    expect(smokePrerequisites(env, { api: true, web: true })).toEqual([]);
+    expect(smokePrerequisites({ E2E_API_URL: env.E2E_API_URL }, { api: true })).toEqual(['E2E_BASE_URL']);
+    expect(smokePrerequisites(env, { api: false, web: true })).toEqual(['reachable http://localhost:3000/health']);
+    const steps = plan('light', ['docs/x.md'], { opts: { withSmoke: true } }).steps;
+    const checked = applyPreflight(steps, {
+      env: {
+        ...env,
+        TEST_DATABASE_URL_OWNER: fullEnv.TEST_DATABASE_URL_OWNER,
+        TEST_DATABASE_URL: fullEnv.TEST_DATABASE_URL,
+      },
+      options: options({ tier: 'light', withSmoke: true }),
+      reach: { api: true, web: true },
+    });
+    expect(checked.filter((item) => item.blocked)).toEqual([]);
+  });
 });
 
 describe('AC-12 CI quick job', () => {
@@ -813,6 +1193,12 @@ describe('AC-12 CI quick job', () => {
     expect(quick).toContain('persist-credentials: false');
     expect(workflow).toMatch(/^permissions:\n {2}contents: read$/m);
     for (const job of ['gate', 'e2e', 'identity', 'setup']) expect(workflow).toMatch(new RegExp(`\\n {2}${job}:\\n`));
+    // The quick job pins exactly the same actions as the gate job, so a pin bump cannot miss one of them.
+    const gate = /\n {2}gate:\n([\s\S]*?)\n {2}[\w-]+:\n/.exec(workflow)?.[1] ?? '';
+    const pins = (block: string) =>
+      Object.fromEntries([...block.matchAll(/uses: ([^@\s]+)@(\S+)/g)].map((match) => [match[1], match[2]]));
+    expect(Object.keys(pins(quick))).toEqual(['actions/checkout', 'pnpm/action-setup', 'actions/setup-node']);
+    for (const [action, sha] of Object.entries(pins(quick))) expect(pins(gate)[action], action).toBe(sha);
   });
 });
 
@@ -837,29 +1223,132 @@ describe('AC-13 CLI and dry-run', () => {
     ])
       expect(() => parseCli(argv)).toThrow(GateUsageError);
   });
-  it('AC-13 dry-run prints the plan and writes a report without running any step', () => {
-    const result = spawnSync(
-      process.execPath,
-      [join(ROOT, 'scripts/gate.mjs'), '--tier', 'full', '--dry-run', '--without-browser'],
-      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, GATE_BASE: 'HEAD' } },
-    );
-    expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/gate:full {2}result=dry-run/);
-    expect(result.stdout).toMatch(/^format:check|^format\s+planned/m);
-    const file = /report: (\.runtime\/gate\/\S+-full\.json)/.exec(result.stdout)?.[1];
-    if (!file) throw new Error(result.stdout + result.stderr);
-    const report = JSON.parse(readFileSync(join(ROOT, file), 'utf8')) as {
-      dryRun: boolean;
-      steps: { result: string; seconds: number }[];
-      partial: boolean;
-    };
-    expect(report.dryRun).toBe(true);
-    expect(report.partial).toBe(true);
-    expect(
-      report.steps.every((item) => ['planned', 'skipped', 'blocked'].includes(item.result) && item.seconds === 0),
-    ).toBe(true);
-    rmSync(join(ROOT, file));
+  it('AC-13 dry-run prints the change set and plan and writes a report without running any step', () => {
+    const dir = sandbox({ gate: manifest.scripts.gate ?? '' });
+    try {
+      writeFileSync(join(dir, 'notes file.md'), '# notes\n');
+      const result = spawnSync(
+        process.execPath,
+        [join(dir, 'scripts/gate.mjs'), '--tier', 'full', '--dry-run', '--without-browser'],
+        { cwd: dir, encoding: 'utf8', env: { ...process.env, GATE_BASE: 'HEAD' } },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toMatch(/gate:full {2}result=dry-run/);
+      expect(result.stdout).toContain('changed files (1):\n  notes file.md\n');
+      expect(result.stdout).toMatch(/^format\s+planned/m);
+      expect(result.stdout).toMatch(/report: \.runtime\/gate\/\S+-full\.json/);
+      const report = sandboxReport(dir, 'full');
+      expect(report).toMatchObject({ dryRun: true, partial: true, changed: { files: ['notes file.md'] } });
+      expect(
+        report?.steps.every((item) => ['planned', 'skipped', 'blocked'].includes(item.result) && item.seconds === 0),
+      ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
+  it('AC-15 quick refuses to report success when it has no base and no change to look at', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daifuku-gate-unborn-'));
+    try {
+      mkdirSync(join(dir, 'scripts'));
+      copyFileSync(join(ROOT, 'scripts/gate.mjs'), join(dir, 'scripts/gate.mjs'));
+      writeFileSync(join(dir, 'package.json'), '{"name":"x","private":true,"scripts":{"gate":"pnpm a"}}\n');
+      writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'packages: []\n');
+      for (const args of [
+        ['init', '-q', '-b', 'main'],
+        ['add', '.'],
+        ['-c', 'user.name=g', '-c', 'user.email=g@x.invalid', 'commit', '-q', '-m', 'one'],
+      ])
+        spawnSync('git', args, { cwd: dir });
+      writeFileSync(join(dir, '.gitignore'), '*\n');
+      const env = { ...process.env, GATE_BASE: '' };
+      const result = spawnSync(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'quick'], {
+        cwd: dir,
+        encoding: 'utf8',
+        env,
+      });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stdout).toMatch(/result=base-unknown/);
+      expect(result.stderr).toMatch(/WARNING: the base fell back to HEAD \(head\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('AC-9 interruption stops the whole process tree', () => {
+  const slow = [
+    "import { spawn } from 'node:child_process';",
+    "import { writeFileSync } from 'node:fs';",
+    "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+    "writeFileSync('pids.json', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));",
+    'setInterval(() => {}, 1000);',
+    '',
+  ].join('\n');
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const waitFor = async (condition: () => boolean, ms: number) => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (condition()) return true;
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    return condition();
+  };
+  const pnpmCommand = (args: string[]): [string, string[]] => {
+    const cli = process.env.npm_execpath;
+    if (cli && /pnpm/i.test(cli)) return /\.[cm]?js$/.test(cli) ? [process.execPath, [cli, ...args]] : [cli, args];
+    return ['pnpm', args];
+  };
+  const scripts = {
+    gate: 'pnpm slow',
+    slow: 'node slow.mjs',
+    'gate:full': 'node scripts/gate.mjs --tier full --without-browser',
+  };
+  it('AC-9 SIGTERM to the gate stops the running step, the pnpm it started and every descendant', async () => {
+    const dir = sandbox(scripts, { 'slow.mjs': slow });
+    try {
+      const gate = spawn(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'full', '--without-browser'], {
+        cwd: dir,
+        stdio: 'ignore',
+      });
+      const exited = new Promise<number | null>((done) => gate.once('exit', (code) => done(code)));
+      expect(await waitFor(() => existsSync(join(dir, 'pids.json')), 30_000)).toBe(true);
+      const pids = JSON.parse(readFileSync(join(dir, 'pids.json'), 'utf8')) as { child: number; grandchild: number };
+      gate.kill('SIGTERM');
+      expect(await exited).toBe(143);
+      expect(await waitFor(() => !alive(pids.child) && !alive(pids.grandchild), 5_000)).toBe(true);
+      const report = sandboxReport(dir, 'full');
+      expect(report?.result).toBe('interrupted');
+      expect(report?.steps[0]).toMatchObject({ id: 'slow', result: 'failed' });
+      expect(report?.steps.find((item) => item.id === 'typecheck:api')).toMatchObject({
+        result: 'not-run',
+        reason: 'interrupted',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+  it('AC-9 SIGTERM to the outer pnpm of pnpm gate:full still stops the gate and its step processes', async () => {
+    const dir = sandbox(scripts, { 'slow.mjs': slow });
+    try {
+      const [command, args] = pnpmCommand(['gate:full']);
+      const outer = spawn(command, args, { cwd: dir, stdio: 'ignore' });
+      expect(await waitFor(() => existsSync(join(dir, 'pids.json')), 30_000)).toBe(true);
+      const pids = JSON.parse(readFileSync(join(dir, 'pids.json'), 'utf8')) as { child: number; grandchild: number };
+      outer.kill('SIGTERM');
+      expect(await waitFor(() => !alive(pids.child) && !alive(pids.grandchild), 15_000)).toBe(true);
+      expect(await waitFor(() => sandboxReport(dir, 'full') !== null, 15_000)).toBe(true);
+      expect(sandboxReport(dir, 'full')?.result).toBe('interrupted');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe('AC-14 dependencies', () => {
@@ -933,6 +1422,80 @@ describe('selection rules beyond the module graph', () => {
       expect(selection.selected).toContainEqual({ file: 'scripts/test/gate.test.ts', via: 'graph' });
       expect(selection.selected).toContainEqual({ file: 'modules/sales/test/recalculate.test.ts', via: 'directory' });
       expect(selection.selected.some((entry) => entry.file.endsWith('.db.test.ts'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+  it('AC-1 AC-3 selects tests that run code of their own scope in a child process', () => {
+    const spawning = ['apps/edge/test/bundle.test.ts', 'apps/mcp/test/stdio.db.test.ts', 'scripts/test/gate.test.ts'];
+    const real = loadWorkspacePackages(ROOT);
+    expect(spawnsProcesses("import { execFile, spawn } from 'node:child_process';")).toBe(true);
+    expect(spawnsProcesses("import { readFile } from 'node:fs';")).toBe(false);
+    expect(scopeOf('apps/edge/test/bundle.test.ts', real)).toBe('apps/edge');
+    expect(scopeOf('scripts/test/gate.test.ts', real)).toBe('scripts');
+    expect(selectBySubprocessScope(['apps/edge/scripts/build.mjs'], spawning, real)).toEqual([
+      'apps/edge/test/bundle.test.ts',
+    ]);
+    expect(selectBySubprocessScope(['apps/mcp/src/main.ts', 'scripts/gate.mjs'], spawning, real)).toEqual([
+      'apps/mcp/test/stdio.db.test.ts',
+      'scripts/test/gate.test.ts',
+    ]);
+    expect(selectBySubprocessScope(['modules/sales/src/index.ts'], spawning, real)).toEqual([]);
+  });
+  it('AC-1 AC-3 finds subprocess entry files named in a test, inside its scope only', () => {
+    const exists = (path: string) => existsSync(join(ROOT, path));
+    const entries = (spec: string) =>
+      subprocessEntries(
+        spec,
+        readFileSync(join(ROOT, spec), 'utf8'),
+        scopeOf(spec, loadWorkspacePackages(ROOT)),
+        exists,
+      );
+    expect(entries('apps/mcp/test/stdio.db.test.ts')).toContain('apps/mcp/test/fixtures/stdio-entry.ts');
+    expect(entries('apps/runtime/test/runtime.test.ts')).toContain('apps/runtime/test/fixtures/catalog.ts');
+    expect(entries('apps/edge/test/bundle.test.ts')).toContain('apps/edge/scripts/build.mjs');
+    const text = "spawn('x', [new URL('../../../scripts/test-identity-e2e.mjs', import.meta.url), './dist/a.mjs'])";
+    expect(subprocessEntries('apps/api/test/identity-runner.test.ts', text, 'apps/api', () => true)).toEqual([]);
+  });
+  it('AC-3 selects the suites a DB setup file prepares, parsed from the setup file itself', () => {
+    const setup = readFileSync(join(ROOT, 'apps/api/test/payroll-provider-setup.ts'), 'utf8');
+    const specs = [
+      'modules/workforce/test/fiscal.db.test.ts',
+      'modules/workforce/test/fiscal-rule-integrity.db.test.ts',
+      'modules/workforce/test/workforce.db.test.ts',
+    ];
+    expect(setupFileTargets(setup, specs)).toEqual(specs.slice(0, 2));
+    for (const file of specs.slice(0, 2)) expect(existsSync(join(ROOT, file)), file).toBe(true);
+    expect(setup).toContain("import('@daifuku/l10n-jp')");
+    expect(setupFileTargets("import './register.ts';", specs)).toEqual(specs);
+  });
+  it('AC-3 selects setup-prepared and subprocess DB suites through vitest and rejects unknown always-run suites', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daifuku-gate-select-db-'));
+    try {
+      const run = (input: Record<string, unknown>) => {
+        const file = join(dir, 'input.json');
+        writeFileSync(file, JSON.stringify({ project: 'db', triggers: [], ...input, output: join(dir, 'out.json') }));
+        return spawnSync(process.execPath, [join(ROOT, 'scripts/gate-select.mjs'), file], {
+          cwd: ROOT,
+          encoding: 'utf8',
+        });
+      };
+      const sources = ['l10n/jp/src/payroll/provider.ts', 'apps/mcp/src/main.ts'];
+      const result = run({ sources, extra: [...ALWAYS_DB_SUITES] });
+      expect(result.status, result.stderr).toBe(0);
+      const selection = JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as {
+        selected: { file: string; via: string }[];
+      };
+      expect(selection.selected).toContainEqual({ file: 'modules/workforce/test/fiscal.db.test.ts', via: 'setup' });
+      expect(selection.selected).toContainEqual({
+        file: 'modules/workforce/test/fiscal-rule-integrity.db.test.ts',
+        via: 'setup',
+      });
+      expect(selection.selected).toContainEqual({ file: 'apps/mcp/test/stdio.db.test.ts', via: 'subprocess' });
+      expect(selection.selected).toContainEqual({ file: ALWAYS_DB_SUITES[0], via: 'always' });
+      const stale = run({ sources: [], extra: ['kernel/test/renamed-away.db.test.ts'] });
+      expect(stale.status).not.toBe(0);
+      expect(stale.stderr).toMatch(/always-run suites are not db tests: kernel\/test\/renamed-away\.db\.test\.ts/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

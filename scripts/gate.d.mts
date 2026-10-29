@@ -10,6 +10,8 @@ export interface Base {
   ref: string | null;
   commit: string | null;
   source: 'option' | 'env' | 'merge-base' | 'parent' | 'head' | 'none';
+  /** true unless the base is explicit or merge-base(HEAD, origin/main). */
+  fallback: boolean;
   notes: string[];
 }
 export interface Change {
@@ -19,6 +21,8 @@ export interface Change {
 export interface WorkspacePackage {
   dir: string;
   name: string;
+  /** Names of the workspace packages this package depends on. */
+  dependencies?: string[];
 }
 export interface Classification {
   all: string[];
@@ -40,10 +44,18 @@ export interface EscalationReason {
   path: string;
   rule: string;
   why: string;
+  widenDb: boolean;
 }
 export interface Escalation {
   required: boolean;
+  widenDb: boolean;
   reasons: EscalationReason[];
+}
+export interface EscalationRule {
+  pattern: string;
+  exclude?: string[];
+  widenDb: boolean;
+  why: string;
 }
 export interface Options {
   help: false;
@@ -113,9 +125,10 @@ export interface Report {
   seconds: number;
   head: string | null;
   base: Base;
+  baseFallback: boolean;
   changed: { count: number; deleted: number; files: string[]; truncated: boolean };
   packages: string[];
-  escalation: { required: boolean; message: string | null; reasons: EscalationReason[] };
+  escalation: { required: boolean; widenDb: boolean; message: string | null; reasons: EscalationReason[] };
   partial: boolean;
   partialReasons: string[];
   skipped: { id: string; result: string; reason: string | null }[];
@@ -139,17 +152,23 @@ export const MODULE_EXTENSIONS: ReadonlySet<string>;
 export const FILE_ARGUMENT_LIMIT: number;
 export const MAX_REPORTED_FILES: number;
 export const ALWAYS_DB_SUITES: readonly string[];
-export const ESCALATION_RULES: readonly { pattern: string; why: string }[];
+export const ESCALATION_RULES: readonly EscalationRule[];
 export const WIDEN_RULES: Readonly<{ format: string[]; eslint: string[]; unit: string[] }>;
+export const TYPECHECK_ALL: readonly string[];
 export const DEPLOY_PATTERNS: readonly string[];
 export const E2E_DATABASE_NAME: RegExp;
 export const IDENTITY_DATABASE_NAME: RegExp;
+export const TEST_DATABASE_NAME: RegExp;
+export const CHANGED_FILES_IN_TABLE: number;
+export const STOP_GRACE_MS: number;
+export const BASE_FALLBACK_REFS: readonly string[];
 export const GUIDANCE: Readonly<Record<'testDb' | 'browser' | 'identity' | 'provision' | 'smoke', string>>;
 export const USAGE: string;
 export class GateUsageError extends Error {}
 
 export function globToRegExp(pattern: string): RegExp;
 export function matchesAny(path: string, patterns: readonly string[]): boolean;
+export function matchesRule(path: string, rule: Pick<EscalationRule, 'pattern' | 'exclude'>): boolean;
 export function isTestFile(path: string): boolean;
 export function isDeletedSource(change: Change): boolean;
 export function quoteArg(arg: string): string;
@@ -164,11 +183,9 @@ export function collectChangeSet(input: { base: Base; git: Git; exists: (path: s
 export function parseWorkspacePatterns(yaml: string): string[];
 export function loadWorkspacePackages(root?: string): WorkspacePackage[];
 export function packageOf(path: string, packages: readonly WorkspacePackage[]): WorkspacePackage | null;
+export function workspaceClosure(name: string, packages: readonly WorkspacePackage[]): string[];
 export function classifyChanges(changes: readonly Change[], packages?: readonly WorkspacePackage[]): Classification;
-export function detectEscalation(
-  changes: readonly Change[],
-  rules?: readonly { pattern: string; why: string }[],
-): Escalation;
+export function detectEscalation(changes: readonly Change[], rules?: readonly EscalationRule[]): Escalation;
 export function referenceTriggers(paths: readonly string[]): string[];
 export function selectByReference(
   triggers: readonly string[],
@@ -176,6 +193,20 @@ export function selectByReference(
   readText: (file: string) => string,
 ): string[];
 export function selectByTestDirectory(paths: readonly string[], specFiles: readonly string[]): string[];
+export function spawnsProcesses(text: string): boolean;
+export function scopeOf(path: string, packages: readonly WorkspacePackage[]): string | null;
+export function selectBySubprocessScope(
+  paths: readonly string[],
+  spawningSpecs: readonly string[],
+  packages: readonly WorkspacePackage[],
+): string[];
+export function subprocessEntries(
+  spec: string,
+  text: string,
+  scope: string | null,
+  exists: (path: string) => boolean,
+): string[];
+export function setupFileTargets(text: string, specFiles: readonly string[]): string[];
 export function parseGateScript(script: string): string[] | null;
 export function planSteps(input: {
   tier: Tier;
@@ -186,6 +217,12 @@ export function planSteps(input: {
   gateScripts?: string[] | null;
 }): Step[];
 export function provisionTargets(env: Record<string, string | undefined>): { owner: URL; app: URL } | null;
+export function testDatabaseProblems(env: Record<string, string | undefined>): string[];
+export function testDatabaseLabel(env: Record<string, string | undefined>): string;
+export function smokePrerequisites(
+  env: Record<string, string | undefined>,
+  reach?: { api?: boolean; web?: boolean },
+): string[];
 export function browserPrerequisites(
   env: Record<string, string | undefined>,
   reach?: { api?: boolean; web?: boolean },
@@ -202,6 +239,7 @@ export function runSteps(
     execute: (step: Step) => Promise<{ ok: boolean; result?: string; reason?: string | null; interrupted?: boolean }>;
     prepare?: (step: Step) => Promise<Step>;
     now?: () => number;
+    isInterrupted?: () => boolean;
   },
 ): Promise<{ steps: StepResult[]; ok: boolean; interrupted: boolean }>;
 export function buildReport(input: {
@@ -219,17 +257,29 @@ export function buildReport(input: {
   provisioned?: { databases: string[]; ports: Record<string, number> } | null;
 }): Report;
 export function formatTable(report: Report): string;
+export function baseWarning(base: Base): string;
 export function reportFileName(tier: Tier, startedAt: Date): string;
 export function parseCli(argv: string[]): Options | { help: true };
 export function gitRunner(cwd?: string): Git;
 export function provisionDatabaseName(kind: 'e2e' | 'identity', now?: Date, random?: string): string;
 export function databaseUrl(url: URL, name: string): string;
+type Env = Record<string, string | undefined>;
+export function scrubbedEnv(env: Env, keep?: readonly string[]): Env;
+export function identityStepEnv(env: Env, provisioned?: { owner: string; app: string } | null): Env;
+export function browserFixtureEnv(env: Env, fixture: { owner: string; app: string; date: string }): Env;
+export function provisionGuard(
+  step: Pick<Step, 'special'>,
+  state: { provision: boolean; browserEnv: Env | null; passed: readonly string[]; planned: readonly string[] },
+): string | null;
 export interface Session {
   runDir: string;
   databases: string[];
   ports: Record<string, number>;
-  browserEnv: Record<string, string | undefined> | null;
+  browserEnv: Env | null;
   interrupted: number | null;
+  passed: string[];
+  planned: string[];
+  interruptCurrent(signal: NodeJS.Signals): void;
   stop(): Promise<void>;
 }
 export function createSession(runDir: string): Session;

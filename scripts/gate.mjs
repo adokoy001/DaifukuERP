@@ -38,33 +38,49 @@ export const ALWAYS_DB_SUITES = Object.freeze([
   'kernel/test/access-boundary.db.test.ts',
   'kernel/test/noninterference.db.test.ts',
 ]);
-// Changes that quick/light cannot cover by selection. light widens DB suites to all; quick reports the notice.
+// Changes that quick/light cannot cover by selection. Every match gets the "full regression" notice and the
+// `pnpm gate:full` hint. Only rules with `widenDb` can change DB-suite behaviour outside the module graph, so only
+// those make light run every DB suite; the others (formatting, lint, CI, browser-only configuration) are covered by
+// light's whole-repository static checks or only by full. `exclude` keeps documentation out of a rule.
 export const ESCALATION_RULES = Object.freeze([
-  { pattern: 'kernel/**', why: 'the kernel is imported by every module and DB suite' },
-  { pattern: 'apps/api/drizzle/**', why: 'migrations' },
-  { pattern: 'apps/api/src/db/**', why: 'schema, seed and fixture tooling' },
-  { pattern: 'apps/api/src/modules.ts', why: 'module registration' },
-  { pattern: 'apps/api/test/payroll-provider-setup.ts', why: 'DB project setup file, outside the module graph' },
-  { pattern: 'vitest.config.mts', why: 'test project definitions' },
-  { pattern: '**/package.json', why: 'dependencies and scripts' },
-  { pattern: 'pnpm-lock.yaml', why: 'dependency versions' },
-  { pattern: 'pnpm-workspace.yaml', why: 'workspace layout' },
-  { pattern: '**/tsconfig*.json', why: 'compiler settings' },
-  { pattern: 'eslint.config.js', why: 'lint rules' },
-  { pattern: '.dependency-cruiser.cjs', why: 'dependency boundaries' },
-  { pattern: '.prettierrc.json', why: 'formatting rules' },
-  { pattern: '.prettierignore', why: 'formatting scope' },
-  { pattern: 'turbo.json', why: 'task graph' },
-  { pattern: '.github/**', why: 'CI definitions' },
-  { pattern: 'scripts/gate.mjs', why: 'this tier runner' },
-  { pattern: 'scripts/gate-select.mjs', why: 'test selection' },
+  { pattern: 'kernel/**', widenDb: true, why: 'the kernel is imported by every module and DB suite' },
+  { pattern: 'apps/api/drizzle/**', widenDb: true, why: 'migrations' },
+  { pattern: 'apps/api/src/db/**', widenDb: true, why: 'schema, seed and fixture tooling' },
+  { pattern: 'apps/api/src/modules.ts', widenDb: true, why: 'module registration' },
+  { pattern: 'apps/api/test/payroll-provider-setup.ts', widenDb: true, why: 'DB project setup file' },
+  { pattern: 'vitest.config.mts', widenDb: true, why: 'test project definitions' },
+  { pattern: '**/package.json', widenDb: true, why: 'dependencies and scripts' },
+  { pattern: 'pnpm-lock.yaml', widenDb: true, why: 'dependency versions' },
+  { pattern: 'pnpm-workspace.yaml', widenDb: true, why: 'workspace layout' },
+  { pattern: '.npmrc', widenDb: true, why: 'dependency installation settings' },
+  { pattern: '**/tsconfig*.json', widenDb: true, why: 'compiler settings' },
+  { pattern: 'eslint.config.js', widenDb: false, why: 'lint rules' },
+  { pattern: '.dependency-cruiser.cjs', widenDb: false, why: 'dependency boundaries' },
+  { pattern: '.prettierrc.json', widenDb: false, why: 'formatting rules' },
+  { pattern: '.prettierignore', widenDb: false, why: 'formatting scope' },
+  { pattern: 'turbo.json', widenDb: false, why: 'task graph' },
+  { pattern: '.github/**', exclude: ['**/*.md'], widenDb: false, why: 'CI definitions' },
+  { pattern: 'apps/web/playwright.config.ts', widenDb: false, why: 'browser test configuration' },
+  { pattern: 'apps/web/vite.config.ts', widenDb: false, why: 'Web build and dev server' },
+  { pattern: 'apps/web/index.html', widenDb: false, why: 'Web entry document' },
+  { pattern: 'scripts/test-identity-e2e.mjs', widenDb: false, why: 'identity browser runner' },
+  { pattern: 'scripts/gate.mjs', widenDb: false, why: 'this tier runner' },
+  { pattern: 'scripts/gate-select.mjs', widenDb: false, why: 'test selection' },
 ]);
 // quick replaces a file-limited step by its whole-repository form when its own configuration changed.
 export const WIDEN_RULES = Object.freeze({
   format: ['.prettierrc.json', '.prettierignore', 'package.json', 'pnpm-lock.yaml'],
   eslint: ['eslint.config.js', 'package.json', 'pnpm-lock.yaml'],
-  unit: ['vitest.config.mts', '**/package.json', 'pnpm-lock.yaml', '**/tsconfig*.json'],
+  unit: ['vitest.config.mts', '**/package.json', 'pnpm-lock.yaml', '.npmrc', '**/tsconfig*.json'],
 });
+// Changes that can alter every TypeScript program: the root and app typechecks all run.
+export const TYPECHECK_ALL = Object.freeze([
+  '**/tsconfig*.json',
+  '**/package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  '.npmrc',
+]);
 // Release tooling exercised only by `pnpm test:deploy` (node --test, outside vitest).
 export const DEPLOY_PATTERNS = Object.freeze([
   'deploy/**',
@@ -79,6 +95,14 @@ const APP_PACKAGES = Object.freeze({ api: '@daifuku/api', web: '@daifuku/web' })
 // Mirror the database-name rules of apps/api/src/db/e2e-fixture.ts and apps/api/test/identity-e2e-database.ts.
 export const E2E_DATABASE_NAME = /^(daifuku_ci_e2e|daifuku_e2e_test(?:_[a-z0-9]+)?)$/;
 export const IDENTITY_DATABASE_NAME = /^daifuku_(?:ci_enterprise_e2e|e2e_test_enterprise(?:_[a-z0-9]+)?)$/;
+// DB suites drop and recreate the schema of TEST_DATABASE_URL*: only a disposable test database is accepted
+// (daifuku_test, daifuku_ci_test, daifuku_test_<suffix>) unless GATE_ALLOW_DB_URL=1.
+export const TEST_DATABASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?$/;
+// Changed paths printed under the stdout header; a dry-run prints up to MAX_REPORTED_FILES.
+export const CHANGED_FILES_IN_TABLE = 20;
+// After an interruption (or when a step exits and leaves members of its process group running) the group gets
+// SIGTERM, then SIGKILL after this grace period.
+export const STOP_GRACE_MS = 10_000;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const SYNTHETIC_JWT_SECRET = 'synthetic-local-gate-only-not-for-deployment';
 const PLAYWRIGHT = ['--filter', '@daifuku/web', 'exec', 'playwright', 'test'];
@@ -87,7 +111,9 @@ export const GUIDANCE = Object.freeze({
   testDb:
     'DB suites drop and recreate the schema of the database they use. Export TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
     'for a dedicated disposable test database (CONTRIBUTING.md, section "型・単体・DB・Web の検証"). The tier runner never ' +
-    'falls back to the default daifuku_test database.',
+    'falls back to the default daifuku_test database. Both URLs must be loopback postgres URLs for the same database ' +
+    'named daifuku_test, daifuku_ci_test or daifuku_test_<suffix>, with separate owner and daifuku_app roles; set ' +
+    'GATE_ALLOW_DB_URL=1 only for another disposable database.',
   browser:
     'Browser suites need a prepared empty fixture database and running API/Web (CONTRIBUTING.md, section "ブラウザ試験を新規環境で再現する"): ' +
     'set DATABASE_URL_OWNER, DATABASE_URL, E2E_PREPARE=1, E2E_INVOICE_DATE, E2E_API_URL and E2E_BASE_URL and start both servers; ' +
@@ -100,8 +126,8 @@ export const GUIDANCE = Object.freeze({
     '--provision creates NEW databases on the server of TEST_DATABASE_URL_OWNER: both TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
     'must be loopback postgres URLs on the same server, the owner role needs CREATEDB, and the app role must be daifuku_app.',
   smoke:
-    '--with-smoke needs reachable E2E_BASE_URL and E2E_API_URL servers on a prepared fixture (CONTRIBUTING.md, section ' +
-    '"ブラウザ試験を新規環境で再現する"), or --provision.',
+    '--with-smoke needs E2E_API_URL and E2E_BASE_URL pointing to running servers on a prepared fixture (CONTRIBUTING.md, ' +
+    'section "ブラウザ試験を新規環境で再現する"), or --provision.',
 });
 
 export class GateUsageError extends Error {}
@@ -128,6 +154,10 @@ export function globToRegExp(pattern) {
 
 export function matchesAny(path, patterns) {
   return patterns.some((pattern) => globToRegExp(pattern).test(path));
+}
+
+export function matchesRule(path, rule) {
+  return globToRegExp(rule.pattern).test(path) && !matchesAny(path, rule.exclude ?? []);
 }
 
 export function isTestFile(path) {
@@ -164,10 +194,18 @@ export function commandSummary(command) {
 
 // ---- base and change set ------------------------------------------------------------------------------------
 
+// Fallback bases tried in order when origin/main is unavailable, each through merge-base with HEAD (a merge-base equal
+// to HEAD is skipped). Then HEAD~1, then HEAD.
+export const BASE_FALLBACK_REFS = Object.freeze(['origin/HEAD', 'main', '@{upstream}']);
+
 export function resolveBase({ explicit, env = {}, git }) {
   const requested = explicit ?? env.GATE_BASE;
   const verify = (ref) => {
     const result = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return result.ok && result.stdout.trim() ? result.stdout.trim() : null;
+  };
+  const mergeBase = (ref) => {
+    const result = git(['merge-base', 'HEAD', ref]);
     return result.ok && result.stdout.trim() ? result.stdout.trim() : null;
   };
   const notes = [];
@@ -176,23 +214,34 @@ export function resolveBase({ explicit, env = {}, git }) {
     if (requested.startsWith('-')) throw new GateUsageError(`${origin} must name a git commit, not an option.`);
     const commit = verify(requested);
     if (!commit) throw new GateUsageError(`${origin} ${requested} is not a commit in this repository.`);
-    return { ref: requested, commit, source: explicit === undefined ? 'env' : 'option', notes };
+    return { ref: requested, commit, source: explicit === undefined ? 'env' : 'option', fallback: false, notes };
   }
   const head = verify('HEAD');
   if (!head) {
     notes.push('HEAD has no commit yet; only staged and untracked files are considered.');
-    return { ref: null, commit: null, source: 'none', notes };
+    return { ref: null, commit: null, source: 'none', fallback: true, notes };
   }
   if (verify('origin/main')) {
-    const mergeBase = git(['merge-base', 'HEAD', 'origin/main']);
-    if (mergeBase.ok && mergeBase.stdout.trim())
-      return { ref: 'origin/main', commit: mergeBase.stdout.trim(), source: 'merge-base', notes };
-    notes.push('merge-base(HEAD, origin/main) is unavailable (shallow or unrelated history); falling back to HEAD~1.');
-  } else notes.push('origin/main is not available; falling back to HEAD~1.');
+    const commit = mergeBase('origin/main');
+    if (commit) return { ref: 'origin/main', commit, source: 'merge-base', fallback: false, notes };
+    notes.push('merge-base(HEAD, origin/main) is unavailable (shallow or unrelated history).');
+  } else notes.push('origin/main is not available.');
+  for (const ref of BASE_FALLBACK_REFS) {
+    if (!verify(ref)) continue;
+    const commit = mergeBase(ref);
+    // A fallback whose merge-base is HEAD itself (e.g. local main while on main) cannot show any commit.
+    if (commit && commit !== head) {
+      notes.push(`Using merge-base(HEAD, ${ref}) instead; pass --base <ref> if the branch started elsewhere.`);
+      return { ref, commit, source: 'merge-base', fallback: true, notes };
+    }
+  }
   const parent = verify('HEAD~1');
-  if (parent) return { ref: 'HEAD~1', commit: parent, source: 'parent', notes };
+  if (parent) {
+    notes.push(`No ${BASE_FALLBACK_REFS.join(', ')} merge-base either; falling back to HEAD~1 (only the last commit).`);
+    return { ref: 'HEAD~1', commit: parent, source: 'parent', fallback: true, notes };
+  }
   notes.push('HEAD has no parent in this clone; only uncommitted changes are considered.');
-  return { ref: 'HEAD', commit: head, source: 'head', notes };
+  return { ref: 'HEAD', commit: head, source: 'head', fallback: true, notes };
 }
 
 // Union of committed (base..HEAD), staged, unstaged and untracked paths. NUL-separated output keeps spaces and
@@ -233,10 +282,28 @@ export function loadWorkspacePackages(root = ROOT) {
       : [pattern];
     for (const dir of dirs) {
       const manifest = join(root, dir, 'package.json');
-      if (existsSync(manifest)) packages.push({ dir, name: JSON.parse(readFileSync(manifest, 'utf8')).name });
+      if (!existsSync(manifest)) continue;
+      const json = JSON.parse(readFileSync(manifest, 'utf8'));
+      const dependencies = Object.keys({ ...json.dependencies, ...json.devDependencies, ...json.peerDependencies });
+      packages.push({ dir, name: json.name, dependencies });
     }
   }
-  return packages;
+  const names = new Set(packages.map((pkg) => pkg.name));
+  return packages.map((pkg) => ({ ...pkg, dependencies: pkg.dependencies.filter((name) => names.has(name)) }));
+}
+
+// Directories of a workspace package and every workspace package it depends on, transitively.
+export function workspaceClosure(name, packages) {
+  const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
+  const seen = new Set();
+  const queue = [name];
+  while (queue.length) {
+    const current = queue.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const dependency of byName.get(current)?.dependencies ?? []) queue.push(dependency);
+  }
+  return packages.filter((pkg) => seen.has(pkg.name)).map((pkg) => pkg.dir);
 }
 
 export function packageOf(path, packages) {
@@ -253,7 +320,14 @@ export function classifyChanges(changes, packages = []) {
   const present = changes.filter((change) => !change.deleted).map((change) => change.path);
   const deletedSources = changes.filter(isDeletedSource).map((change) => change.path);
   const typeRelevant = (path) => MODULE_EXTENSIONS.has(extname(path)) || extname(path) === '.json';
-  const inApp = (app) => all.some((path) => path.startsWith(`apps/${app}/`) && typeRelevant(path));
+  const everyProgram = all.some((path) => matchesAny(path, TYPECHECK_ALL));
+  // apps/api and apps/web typecheck their own test/ and e2e/ directories against the workspace packages they import,
+  // which the root typecheck does not include: a change in any of those packages can break them.
+  const inApp = (app) => {
+    const name = APP_PACKAGES[app];
+    const dirs = packages.some((pkg) => pkg.name === name) ? workspaceClosure(name, packages) : [`apps/${app}`];
+    return everyProgram || all.some((path) => typeRelevant(path) && dirs.some((dir) => path.startsWith(`${dir}/`)));
+  };
   const widen = (rule) => all.filter((path) => matchesAny(path, WIDEN_RULES[rule]));
   return {
     all,
@@ -263,7 +337,7 @@ export function classifyChanges(changes, packages = []) {
     formattable: present.filter((path) => FORMAT_EXTENSIONS.has(extname(path))),
     lintable: present.filter((path) => LINT_EXTENSIONS.has(extname(path))),
     markdown: all.filter((path) => extname(path) === '.md'),
-    typecheck: all.some(typeRelevant),
+    typecheck: everyProgram || all.some(typeRelevant),
     boundaries: all.some(
       (path) =>
         (isUnderPackageRoot(path) && MODULE_EXTENSIONS.has(extname(path))) ||
@@ -281,16 +355,17 @@ export function classifyChanges(changes, packages = []) {
 export function detectEscalation(changes, rules = ESCALATION_RULES) {
   const reasons = [];
   for (const change of changes) {
-    const rule = rules.find((candidate) => globToRegExp(candidate.pattern).test(change.path));
-    if (rule) reasons.push({ path: change.path, rule: rule.pattern, why: rule.why });
+    const rule = rules.find((candidate) => matchesRule(change.path, candidate));
+    if (rule) reasons.push({ path: change.path, rule: rule.pattern, why: rule.why, widenDb: Boolean(rule.widenDb) });
     else if (isDeletedSource(change))
       reasons.push({
         path: change.path,
         rule: 'deleted-source',
         why: 'a deleted source cannot be followed by module-graph selection',
+        widenDb: true,
       });
   }
-  return { required: reasons.length > 0, reasons };
+  return { required: reasons.length > 0, widenDb: reasons.some((reason) => reason.widenDb), reasons };
 }
 
 // ---- selection rules applied on top of the vitest module graph (used by scripts/gate-select.mjs) ----------------
@@ -320,6 +395,61 @@ export function selectByTestDirectory(paths, specFiles) {
     .map((path) => /^(.*?\/)?(test|e2e)\//.exec(path)?.[0])
     .filter(Boolean);
   return specFiles.filter((file) => directories.some((directory) => file.startsWith(directory)));
+}
+
+// A test that starts a child process runs code its own module graph does not show (an entry file executed with tsx or
+// node, a script that bundles sources with esbuild).
+export function spawnsProcesses(text) {
+  return /\bfrom\s+['"](?:node:)?child_process['"]/.test(text);
+}
+
+// Scope of a path for the subprocess rule: its workspace package, else its top-level directory (scripts/, deploy/).
+export function scopeOf(path, packages) {
+  const pkg = packageOf(path, packages);
+  if (pkg) return pkg.dir;
+  const slash = path.indexOf('/');
+  return slash > 0 ? path.slice(0, slash) : null;
+}
+
+// Rule 1 for spawning tests: any change inside the test's own scope selects it, because a subprocess may reach that
+// file by a path built at run time or through a bundler entry string (apps/edge/scripts/build.mjs -> src/main.ts).
+export function selectBySubprocessScope(paths, spawningSpecs, packages) {
+  return spawningSpecs.filter((spec) => {
+    const scope = scopeOf(spec, packages);
+    return scope !== null && paths.some((path) => path.startsWith(`${scope}/`));
+  });
+}
+
+// Rule 2 for spawning tests: module files named by a literal in the test and inside its scope are subprocess entry
+// points (fixtures/stdio-entry.ts, ./fixtures/catalog.ts, scripts/build.mjs). gate-select follows each entry's import
+// graph so a change in another package that the entry imports (apps/mcp/src/main.ts -> modules) selects the test.
+// A literal is resolved against the test's directory, the scope root and the repository root.
+export function subprocessEntries(spec, text, scope, exists) {
+  if (!scope) return [];
+  const entries = new Set();
+  for (const match of text.matchAll(/['"`]((?:\.{1,2}\/)*[\w@-][\w./@-]*\.[cm]?[jt]sx?)['"`]/g)) {
+    const literal = match[1];
+    for (const candidate of [
+      posix.join(posix.dirname(spec), literal),
+      posix.join(scope, literal),
+      posix.normalize(literal),
+    ]) {
+      if (candidate === spec || !candidate.startsWith(`${scope}/`)) continue;
+      if (/(^|\/)(node_modules|dist|\.runtime)\//.test(candidate) || !MODULE_EXTENSIONS.has(extname(candidate)))
+        continue;
+      if (exists(candidate)) entries.add(candidate);
+    }
+  }
+  return [...entries].sort();
+}
+
+// A vitest setupFile runs before the suites of its project but is not part of any suite's module graph. When a
+// changed source is in the setup file's import graph, the suites it names are selected (every suite of the project when
+// it names none). apps/api/test/payroll-provider-setup.ts imports @daifuku/l10n-jp for the two fiscal suites.
+export function setupFileTargets(text, specFiles) {
+  const named = [...text.matchAll(/['"`]\/?([\w./@-]+\.(?:test|spec)\.[cm]?[jt]sx?)['"`]/g)].map((match) => match[1]);
+  const targets = specFiles.filter((file) => named.some((name) => file === name || file.endsWith(`/${name}`)));
+  return named.length && targets.length ? targets : [...specFiles];
 }
 
 // ---- planning ----------------------------------------------------------------------------------------------------
@@ -360,11 +490,11 @@ function assuranceStep(base) {
     : step('assurance', pnpm('verify:assurance'));
 }
 
-function appTypechecks(cls) {
+function appTypechecks(cls, always = false) {
   return Object.entries(APP_PACKAGES).map(([app, name]) =>
-    cls.apps[app]
+    always || cls.apps[app]
       ? step(`typecheck:${app}`, pnpm('--filter', name, 'typecheck'))
-      : skipped(`typecheck:${app}`, `apps/${app} unchanged`),
+      : skipped(`typecheck:${app}`, `apps/${app} and the workspace packages it imports unchanged`),
   );
 }
 
@@ -410,7 +540,7 @@ function planQuick({ cls, base }) {
 }
 
 function dbStep(cls, escalation) {
-  if (escalation.required)
+  if (escalation.widenDb)
     return step('db', pnpm('test:db'), { note: 'escalated: every DB suite (see escalation reasons)' });
   return step('db', null, {
     selection: { project: 'db', sources: cls.present, triggers: cls.all, extra: [...ALWAYS_DB_SUITES] },
@@ -436,7 +566,7 @@ function planLight({ cls, base, escalation, options }) {
     step('docs', pnpm('docs:check')),
     assuranceStep(base),
     step('typecheck', pnpm('typecheck')),
-    ...appTypechecks(cls),
+    ...appTypechecks(cls, true),
     step('lint', pnpm('lint')),
     step('unit', pnpm('test')),
     dbStep(cls, escalation),
@@ -503,6 +633,44 @@ export function provisionTargets(env) {
   return { owner, app };
 }
 
+// Problems with TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL for the DB suites, which reset that database's schema.
+export function testDatabaseProblems(env) {
+  if (!env.TEST_DATABASE_URL_OWNER || !env.TEST_DATABASE_URL)
+    return ['TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL must both be set'];
+  if (env.GATE_ALLOW_DB_URL === '1') return [];
+  let owner;
+  let app;
+  try {
+    owner = new URL(env.TEST_DATABASE_URL_OWNER);
+    app = new URL(env.TEST_DATABASE_URL);
+  } catch {
+    return ['TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL must be postgres URLs'];
+  }
+  const problems = [];
+  if (![owner, app].every((url) => ['postgres:', 'postgresql:'].includes(url.protocol)))
+    problems.push('both URLs must use postgres://');
+  if (![owner, app].every((url) => LOOPBACK_HOSTS.has(url.hostname) && !url.search))
+    problems.push('both URLs must point to a loopback host without query overrides');
+  if (owner.host !== app.host) problems.push('both URLs must use the same server');
+  if (owner.pathname !== app.pathname) problems.push('both URLs must name the same database');
+  if (!TEST_DATABASE_NAME.test(decodeURIComponent(owner.pathname.slice(1))))
+    problems.push(
+      `the database ${owner.pathname.slice(1) || '(none)'} is not named daifuku_test[_suffix] or daifuku_ci_test`,
+    );
+  if (!owner.username || owner.username === app.username) problems.push('owner and app must be different roles');
+  if (app.username !== 'daifuku_app') problems.push('the app role must be daifuku_app');
+  return problems;
+}
+
+export function testDatabaseLabel(env) {
+  try {
+    const url = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+    return `${url.pathname.slice(1)} on ${url.host}`;
+  } catch {
+    return 'an unparsable TEST_DATABASE_URL_OWNER';
+  }
+}
+
 export function browserPrerequisites(env, reach = {}) {
   const missing = ['DATABASE_URL_OWNER', 'DATABASE_URL', 'E2E_API_URL', 'E2E_BASE_URL'].filter((name) => !env[name]);
   if (env.E2E_PREPARE !== '1') missing.push('E2E_PREPARE=1');
@@ -511,23 +679,35 @@ export function browserPrerequisites(env, reach = {}) {
   return missing;
 }
 
+// The smoke tests only talk to running servers; the fixture variables are needed by the full browser step only.
+export function smokePrerequisites(env, reach = {}) {
+  const missing = ['E2E_API_URL', 'E2E_BASE_URL'].filter((name) => !env[name]);
+  if (env.E2E_API_URL && !reach.api) missing.push(`reachable ${env.E2E_API_URL}/health`);
+  if (env.E2E_BASE_URL && !reach.web) missing.push(`reachable ${env.E2E_BASE_URL}`);
+  return missing;
+}
+
 export function applyPreflight(steps, { env, options, reach = {} }) {
-  const block = (target, guidance, missing = []) => ({
+  const block = (target, guidance, missing = [], label = 'Missing') => ({
     ...target,
-    blocked: missing.length ? `${guidance} Missing: ${missing.join(', ')}.` : guidance,
+    blocked: missing.length ? `${guidance} ${label}: ${missing.join('; ')}.` : guidance,
   });
   const provision = options.provision ? provisionTargets(env) : null;
   return steps.map((item) => {
     if (item.skip) return item;
-    if (item.id === 'db' && (!env.TEST_DATABASE_URL_OWNER || !env.TEST_DATABASE_URL))
-      return block(item, GUIDANCE.testDb);
+    if (item.id === 'db') {
+      const problems = testDatabaseProblems(env);
+      if (problems.length) return block(item, GUIDANCE.testDb, problems, 'Problems');
+      const resets = `resets the schema of ${testDatabaseLabel(env)}`;
+      return { ...item, note: item.note ? `${item.note}; ${resets}` : resets };
+    }
     if (item.special === 'browser:prepare' && !provision) return block(item, GUIDANCE.provision);
     if (item.special === 'browser' && !options.provision) {
       const missing = browserPrerequisites(env, reach);
       return missing.length ? block(item, GUIDANCE.browser, missing) : item;
     }
     if (item.special === 'smoke' && !options.provision) {
-      const missing = browserPrerequisites(env, reach);
+      const missing = smokePrerequisites(env, reach);
       return missing.length ? block(item, GUIDANCE.smoke, missing) : item;
     }
     if (item.special === 'identity') {
@@ -558,8 +738,13 @@ export function applySelection(item, selection, root = ROOT) {
 // ---- execution ---------------------------------------------------------------------------------------------------
 
 // Runs planned steps in order. Fail-fast by default: a missing prerequisite fails before anything runs, and after
-// the first failure the remaining steps are "not-run". --keep-going runs every runnable step and still fails.
-export async function runSteps(steps, { keepGoing = false, execute, prepare = async (item) => item, now = () => 0 }) {
+// the first failure the remaining steps are "not-run". --keep-going runs every runnable step and still fails. An
+// interruption (isInterrupted) stops the run under either mode: the step in progress fails, even when its own error
+// came from selection or fixture preparation, and the rest are "not-run".
+export async function runSteps(
+  steps,
+  { keepGoing = false, execute, prepare = async (item) => item, now = () => 0, isInterrupted = () => false },
+) {
   const firstBlocked = keepGoing ? null : steps.find((item) => item.blocked && !item.skip);
   if (firstBlocked)
     return {
@@ -579,6 +764,7 @@ export async function runSteps(steps, { keepGoing = false, execute, prepare = as
       results.push({ ...planned, result: planned.skip.result, seconds: 0, reason: planned.skip.reason });
       continue;
     }
+    if (isInterrupted()) stopped = true;
     if (stopped || (failed && !keepGoing)) {
       results.push({
         ...planned,
@@ -601,6 +787,11 @@ export async function runSteps(steps, { keepGoing = false, execute, prepare = as
       outcome = item.skip ? { ok: true, result: item.skip.result, reason: item.skip.reason } : await execute(item);
     } catch (error) {
       outcome = { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+    if (outcome.interrupted || isInterrupted()) {
+      const reason =
+        outcome.reason && outcome.reason !== 'interrupted' ? `interrupted (${outcome.reason})` : 'interrupted';
+      outcome = { ok: false, interrupted: true, reason };
     }
     const seconds = Math.round((now() - started) * 10) / 10;
     const result = outcome.result ?? (outcome.ok ? 'passed' : 'failed');
@@ -646,6 +837,7 @@ export function buildReport({
     seconds: Math.round((finishedAt.getTime() - startedAt.getTime()) / 100) / 10,
     head,
     base,
+    baseFallback: Boolean(base.fallback),
     changed: {
       count: changes.length,
       deleted: changes.filter((change) => change.deleted).length,
@@ -657,6 +849,7 @@ export function buildReport({
     packages: cls.packages,
     escalation: {
       required: escalation.required,
+      widenDb: Boolean(escalation.widenDb),
       message: escalation.required ? 'includes changes that need full regression' : null,
       reasons: escalation.reasons,
     },
@@ -706,7 +899,16 @@ export function formatTable(report) {
   const lines = [
     `gate:${report.tier}  result=${report.result}  base=${base}  changed=${report.changed.count} (deleted ${report.changed.deleted})  ${report.seconds}s`,
   ];
+  if (report.baseFallback) lines.push(baseWarning(report.base));
   for (const note of report.base.notes) lines.push(`  note: ${note}`);
+  const shown = report.changed.files.slice(0, report.dryRun ? MAX_REPORTED_FILES : CHANGED_FILES_IN_TABLE);
+  if (shown.length) {
+    lines.push(`changed files (${report.changed.count}):`, ...shown.map((file) => `  ${file}`));
+    if (report.changed.count > shown.length)
+      lines.push(
+        `  ... ${report.changed.count - shown.length} more (full list in the JSON report, up to ${MAX_REPORTED_FILES})`,
+      );
+  }
   const rows = report.steps.map((item) => [
     item.id,
     item.result,
@@ -733,6 +935,13 @@ export function formatTable(report) {
       `provisioned databases (left in place; drop them yourself when done): ${report.provisioned.databases.join(', ')}`,
     );
   return lines.join('\n');
+}
+
+export function baseWarning(base) {
+  return (
+    `WARNING: the base fell back to ${base.ref ?? 'nothing'} (${base.source}); commits before it are not in the change ` +
+    'set. Pass --base <ref> (or GATE_BASE) to compare with the commit the branch started from.'
+  );
 }
 
 export function reportFileName(tier, startedAt) {
@@ -831,7 +1040,7 @@ function spawnTarget(command) {
 
 // Environment for child steps: the identity fixture reads TEST_DATABASE_URL_* for its own database, so the gate
 // passes per-step values and keeps the DB-test variables away from browser fixtures.
-function scrubbedEnv(env, keep = []) {
+export function scrubbedEnv(env, keep = []) {
   const out = { ...env };
   for (const name of Object.keys(out))
     if (
@@ -840,6 +1049,40 @@ function scrubbedEnv(env, keep = []) {
     )
       delete out[name];
   return out;
+}
+
+// The identity step receives GATE_IDENTITY_* (or the databases --provision created) as TEST_DATABASE_URL_*.
+export function identityStepEnv(env, provisioned = null) {
+  return {
+    ...scrubbedEnv(env),
+    TEST_DATABASE_URL_OWNER: provisioned?.owner ?? env.GATE_IDENTITY_DATABASE_URL_OWNER,
+    TEST_DATABASE_URL: provisioned?.app ?? env.GATE_IDENTITY_DATABASE_URL,
+    E2E_IDENTITY_PREPARE: '1',
+  };
+}
+
+// Environment of the --provision fixture CLI and servers: only the new fixture database, never the DB-test database.
+export function browserFixtureEnv(env, { owner, app, date }) {
+  return {
+    ...scrubbedEnv(env),
+    DATABASE_URL_OWNER: owner,
+    DATABASE_URL: app,
+    E2E_PREPARE: '1',
+    E2E_INVOICE_DATE: date,
+    TZ: 'Asia/Tokyo',
+    DAIFUKU_PACKS: 'all',
+  };
+}
+
+// --provision guards: Playwright must not fall back to the caller's environment when this run prepared no fixture,
+// and the fixture must not start a compiled API left by an earlier build when this run's build:api did not pass.
+export function provisionGuard(item, { provision, browserEnv, passed, planned }) {
+  if (!provision) return null;
+  if (item.special === 'browser:prepare' && planned.includes('build:api') && !passed.includes('build:api'))
+    return 'build:api did not pass in this run; refusing to start an older compiled API';
+  if ((item.special === 'browser' || item.special === 'smoke') && !browserEnv)
+    return 'the browser fixture was not prepared in this run (browser:prepare did not pass)';
+  return null;
 }
 
 function tokyoDate() {
@@ -889,26 +1132,40 @@ async function reachable(url) {
   }
 }
 
+function groupAlive(child) {
+  if (!child?.pid) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function signalGroup(child, name) {
+  try {
+    if (child?.pid) process.kill(-child.pid, name);
+  } catch {
+    /* group already exited */
+  }
+}
+
+const sleep = (ms) => new Promise((done) => globalThis.setTimeout(done, ms));
+
+// Signals a process group, waits up to `graceMs` for it to exit, then sends SIGKILL.
+async function stopGroup(child, name = 'SIGTERM', graceMs = STOP_GRACE_MS) {
+  if (!groupAlive(child)) return;
+  signalGroup(child, name);
+  const deadline = Date.now() + graceMs;
+  while (groupAlive(child) && Date.now() < deadline) await sleep(50);
+  if (groupAlive(child)) signalGroup(child, 'SIGKILL');
+}
+
 // Runner state for one invocation: started process groups, provisioned databases and the browser environment.
+// Every child runs in its own process group (spawn detached), so stopping a group reaches the whole tree: pnpm does
+// not forward SIGTERM to the command it runs, and a vitest DB worker left running would keep resetting the database.
 export function createSession(runDir) {
   const children = [];
-  const alive = (child) => {
-    if (!child.pid) return false;
-    try {
-      process.kill(-child.pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const signal = (child, name) => {
-    try {
-      if (child.pid) process.kill(-child.pid, name);
-    } catch {
-      /* group already exited */
-    }
-  };
-  const sleep = (ms) => new Promise((done) => globalThis.setTimeout(done, ms));
   return {
     runDir,
     children,
@@ -917,6 +1174,8 @@ export function createSession(runDir) {
     browserEnv: null,
     current: null,
     interrupted: null,
+    passed: [],
+    planned: [],
     startDetached(target, args, options, logName) {
       mkdirSync(runDir, { recursive: true });
       const log = openSync(join(runDir, logName), 'a');
@@ -925,39 +1184,49 @@ export function createSession(runDir) {
       children.push(child);
       return child;
     },
+    // Forwards an interruption to the running step's process group; SIGKILL follows after the grace period.
+    interruptCurrent(name) {
+      const child = this.current;
+      if (!child) return;
+      signalGroup(child, name);
+      globalThis.setTimeout(() => signalGroup(child, 'SIGKILL'), STOP_GRACE_MS).unref();
+    },
     // Stops only the process groups this run started.
     async stop() {
-      for (const child of [...children].reverse()) {
-        if (!alive(child)) continue;
-        signal(child, 'SIGTERM');
-        const deadline = Date.now() + 5000;
-        while (alive(child) && Date.now() < deadline) await sleep(50);
-        if (alive(child)) signal(child, 'SIGKILL');
-      }
+      if (this.current) await stopGroup(this.current);
+      for (const child of [...children].reverse()) await stopGroup(child, 'SIGTERM', 5000);
     },
   };
 }
 
 function runCommand(command, env, session, { log } = {}) {
+  if (session.interrupted)
+    return Promise.resolve({ ok: false, interrupted: true, reason: 'interrupted before the step started' });
   return new Promise((done) => {
     const [target, args] = spawnTarget(command);
-    let stdio = 'inherit';
+    let stdio = ['ignore', 'inherit', 'inherit'];
     let fd = null;
     if (log) {
       mkdirSync(dirname(log), { recursive: true });
       fd = openSync(log, 'a');
       stdio = ['ignore', fd, fd];
     }
-    const child = spawn(target, args, { cwd: ROOT, env, stdio });
+    const child = spawn(target, args, { cwd: ROOT, env, stdio, detached: true });
     if (fd !== null) closeSync(fd);
     session.current = child;
-    child.once('error', (error) => done({ ok: false, reason: error.message }));
-    child.once('exit', (code, signal) => {
+    child.once('error', (error) => {
       session.current = null;
-      done({
-        ok: code === 0 && !session.interrupted,
-        interrupted: Boolean(session.interrupted),
-        reason: code === 0 ? null : `exit ${code ?? signal}`,
+      done({ ok: false, reason: error.message });
+    });
+    child.once('exit', (code, signal) => {
+      // Members of the step's group that outlive its main process (a worker pnpm did not wait for) are stopped too.
+      stopGroup(child).finally(() => {
+        session.current = null;
+        done({
+          ok: code === 0 && !session.interrupted,
+          interrupted: Boolean(session.interrupted),
+          reason: code === 0 ? null : `exit ${code ?? signal}`,
+        });
       });
     });
   });
@@ -969,7 +1238,7 @@ async function waitReady(urls, children, session, seconds = 120) {
     if (children.some((child) => child.exitCode !== null || child.signalCode !== null))
       throw new Error('a fixture server exited before readiness; see its log in the run directory');
     if ((await Promise.all(urls.map(reachable))).every(Boolean)) return;
-    await new Promise((done) => globalThis.setTimeout(done, 500));
+    await sleep(500);
   }
   throw new Error('fixture servers did not become ready within 120 seconds');
 }
@@ -981,15 +1250,11 @@ export async function prepareBrowserFixture(session) {
   const name = provisionDatabaseName('e2e');
   await createDatabase(targets.owner, name, E2E_DATABASE_NAME);
   session.databases.push(name);
-  const fixtureEnv = {
-    ...scrubbedEnv(process.env),
-    DATABASE_URL_OWNER: databaseUrl(targets.owner, name),
-    DATABASE_URL: databaseUrl(targets.app, name),
-    E2E_PREPARE: '1',
-    E2E_INVOICE_DATE: tokyoDate(),
-    TZ: 'Asia/Tokyo',
-    DAIFUKU_PACKS: 'all',
-  };
+  const fixtureEnv = browserFixtureEnv(process.env, {
+    owner: databaseUrl(targets.owner, name),
+    app: databaseUrl(targets.app, name),
+    date: tokyoDate(),
+  });
   const fixture = await runCommand(
     pnpm('--filter', APP_PACKAGES.api, 'exec', 'tsx', 'src/db/e2e-fixture.ts'),
     fixtureEnv,
@@ -1039,27 +1304,18 @@ export async function prepareBrowserFixture(session) {
 }
 
 async function identityEnv(session) {
-  if (!session.provision)
-    return {
-      ...scrubbedEnv(process.env),
-      TEST_DATABASE_URL_OWNER: process.env.GATE_IDENTITY_DATABASE_URL_OWNER,
-      TEST_DATABASE_URL: process.env.GATE_IDENTITY_DATABASE_URL,
-      E2E_IDENTITY_PREPARE: '1',
-    };
+  if (!session.provision) return identityStepEnv(process.env);
   const targets = provisionTargets(process.env);
   if (!targets) throw new Error(GUIDANCE.provision);
   const name = provisionDatabaseName('identity');
   await createDatabase(targets.owner, name, IDENTITY_DATABASE_NAME);
   session.databases.push(name);
-  return {
-    ...scrubbedEnv(process.env),
-    TEST_DATABASE_URL_OWNER: databaseUrl(targets.owner, name),
-    TEST_DATABASE_URL: databaseUrl(targets.app, name),
-    E2E_IDENTITY_PREPARE: '1',
-  };
+  return identityStepEnv(process.env, { owner: databaseUrl(targets.owner, name), app: databaseUrl(targets.app, name) });
 }
 
 async function executeStep(item, session) {
+  const guard = provisionGuard(item, session);
+  if (guard) return { ok: false, reason: guard };
   if (item.special === 'browser:prepare') return await prepareBrowserFixture(session);
   if (item.special === 'identity') return await runCommand(item.command, await identityEnv(session), session);
   if (item.special === 'browser' || item.special === 'smoke')
@@ -1067,21 +1323,20 @@ async function executeStep(item, session) {
   return await runCommand(item.command, process.env, session);
 }
 
-function selectTests(selection, session) {
+// Selection runs as an interruptible child step (own process group) and reads its input from a file.
+async function selectTests(selection, session) {
   const output = join(session.runDir, `select-${selection.project}.json`);
+  const input = join(session.runDir, `select-${selection.project}.input.json`);
   mkdirSync(session.runDir, { recursive: true });
-  const result = spawnSync(process.execPath, [join(ROOT, 'scripts/gate-select.mjs')], {
-    cwd: ROOT,
-    input: JSON.stringify({ ...selection, output }),
-    stdio: ['pipe', 'inherit', 'inherit'],
-    env: process.env,
-  });
-  if (result.status !== 0) throw new Error(`test selection for ${selection.project} failed`);
+  writeFileSync(input, JSON.stringify({ ...selection, output }));
+  const result = await runCommand({ program: 'node', args: ['scripts/gate-select.mjs', input] }, process.env, session);
+  if (result.interrupted) throw new Error('interrupted during test selection');
+  if (!result.ok) throw new Error(`test selection for ${selection.project} failed (${result.reason})`);
   return JSON.parse(readFileSync(output, 'utf8'));
 }
 
-function resolveSelection(item, session) {
-  return item.selection ? applySelection(item, selectTests(item.selection, session)) : item;
+async function resolveSelection(item, session) {
+  return item.selection ? applySelection(item, await selectTests(item.selection, session)) : item;
 }
 
 async function main(argv) {
@@ -1147,58 +1402,98 @@ async function main(argv) {
       console.error(`\n[${item.id}] ${item.blocked}`);
     return report;
   };
+  if (base.fallback) console.warn(`${baseWarning(base)}\n${base.notes.map((note) => `  note: ${note}`).join('\n')}`);
   if (options.tier === 'quick' && !changes.length) {
+    // Without a usable base an empty change set proves nothing: the branch's commits may simply be invisible here.
+    if (base.source === 'head' || base.source === 'none') {
+      console.error('gate:quick: no base commit to compare with and no uncommitted change; pass --base <ref>.');
+      finish([], 'base-unknown');
+      return 1;
+    }
     console.log('gate:quick: no changes since the base; nothing to check.');
     finish([], 'no-changes');
     return 0;
   }
-  if (options.dryRun) {
-    const planned = steps.map((item) => {
-      const resolved = item.blocked || item.skip ? item : resolveSelection(item, session);
-      return {
-        ...resolved,
-        result: resolved.skip?.result ?? (resolved.blocked ? 'blocked' : 'planned'),
-        reason: resolved.skip?.reason ?? resolved.blocked ?? null,
-      };
-    });
-    for (const item of planned.filter((entry) => entry.selectedFiles?.length))
-      console.log(`\n${item.id} would run ${item.selectedFiles.length} files:\n  ${item.selectedFiles.join('\n  ')}`);
-    finish(planned, 'dry-run');
-    return 0;
-  }
-  const onSignal = (name, code) => () => {
+  // Interruption: SIGINT/SIGTERM/SIGHUP, or the parent going away (`pnpm gate:*` does not pass SIGTERM on to this
+  // process, so a dead parent is treated as SIGTERM). The running child's whole process group is stopped.
+  const interrupt = (forward, code) => {
+    if (session.interrupted) {
+      session.interruptCurrent('SIGKILL');
+      return;
+    }
     session.interrupted = code;
-    session.current?.kill(name);
+    console.error(`\ngate:${options.tier}: interrupted; stopping the running step and its processes.`);
+    session.interruptCurrent(forward);
   };
   const handlers = [
-    ['SIGINT', onSignal('SIGINT', 130)],
-    ['SIGTERM', onSignal('SIGTERM', 143)],
+    ['SIGINT', () => interrupt('SIGINT', 130)],
+    ['SIGTERM', () => interrupt('SIGTERM', 143)],
+    ['SIGHUP', () => interrupt('SIGTERM', 129)],
   ];
   for (const [name, handler] of handlers) process.on(name, handler);
-  let outcome;
+  const parent = process.ppid;
+  const watchParent = globalThis.setInterval(() => {
+    if (process.ppid !== parent && !session.interrupted) interrupt('SIGTERM', 143);
+  }, 1000);
   try {
-    outcome = await runSteps(steps, {
+    if (options.dryRun) {
+      const planned = await planDryRun(steps, session);
+      for (const item of planned.filter((entry) => entry.selectedFiles?.length))
+        console.log(`\n${item.id} would run ${item.selectedFiles.length} files:\n  ${item.selectedFiles.join('\n  ')}`);
+      finish(planned, session.interrupted ? 'interrupted' : 'dry-run');
+      return session.interrupted ?? 0;
+    }
+    session.planned = steps.map((item) => item.id);
+    const outcome = await runSteps(steps, {
       keepGoing: options.keepGoing,
       now: () => globalThis.performance.now() / 1000,
+      isInterrupted: () => Boolean(session.interrupted),
       prepare: async (item) => {
         console.log(`\n==> gate:${options.tier} ${item.id}${item.command ? `: ${commandText(item.command)}` : ''}`);
-        const resolved = resolveSelection(item, session);
+        const resolved = await resolveSelection(item, session);
         if (resolved !== item && resolved.command)
           console.log(`    selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}`);
         return resolved;
       },
       execute: async (item) => {
         const result = await executeStep(item, session);
+        if (result.ok && !session.interrupted) session.passed.push(item.id);
         return session.interrupted ? { ...result, ok: false, interrupted: true } : result;
       },
     });
+    finish(outcome.steps, outcome.interrupted ? 'interrupted' : outcome.ok ? 'passed' : 'failed');
+    if (session.interrupted) return session.interrupted;
+    return outcome.ok ? 0 : 1;
   } finally {
+    globalThis.clearInterval(watchParent);
     await session.stop();
     for (const [name, handler] of handlers) process.off(name, handler);
   }
-  finish(outcome.steps, outcome.interrupted ? 'interrupted' : outcome.ok ? 'passed' : 'failed');
-  if (session.interrupted) return session.interrupted;
-  return outcome.ok ? 0 : 1;
+}
+
+// --dry-run: resolves the test selections (read-only listing) and marks every step planned, skipped or blocked.
+async function planDryRun(steps, session) {
+  const planned = [];
+  for (const item of steps) {
+    if (session.interrupted) {
+      planned.push({ ...item, result: 'not-run', reason: 'interrupted' });
+      continue;
+    }
+    let resolved;
+    try {
+      resolved = item.blocked || item.skip ? item : await resolveSelection(item, session);
+    } catch (error) {
+      if (!session.interrupted) throw error;
+      planned.push({ ...item, result: 'not-run', reason: 'interrupted' });
+      continue;
+    }
+    planned.push({
+      ...resolved,
+      result: resolved.skip?.result ?? (resolved.blocked ? 'blocked' : 'planned'),
+      reason: resolved.skip?.reason ?? resolved.blocked ?? null,
+    });
+  }
+  return planned;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
