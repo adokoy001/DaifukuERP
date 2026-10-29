@@ -76,3 +76,59 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 - 最大桁: 6（numeric(20,6)）。有効な小数は切り捨てずに見せる: JPY で `150` → `150`、`33.3` → `33.3`、`1234.500000` → `1,234.5`。USD なら `100` → `100.00`。
 - 入力欄: フォーカス中は生の文字列、非フォーカス時は同じ規則の表示形（6 桁を超えて入力された値は生のまま見せる）。フォーカス時の差し替えは focus イベント内で DOM に反映し、Tab や全選択の選択範囲を保つ。貼り付けのカンマは除去。
 - ハードコードの会社通貨は無い。`/auth/me` の読込前・会社なしは最小 0 桁。
+
+## UI キットとトークン（UI kit and tokens）
+
+2026-10-29 に `apps/web/src/ui/` を追加した（[spec](../specs/ui-kit.md)）。新しい画面・置き換える画面はこの部品と意味トークンで作る。見た目の作り直しではなく土台であり、既存の `.btn` / `.input` / 専用画面のクラスはそのまま使える。
+
+### どの部品を使うか
+
+| 目的 | 部品（`import { … } from '../ui/index.ts'`） | 要点 |
+|---|---|---|
+| 画面の題名 | `PageHeader` | `h1` は画面に 1 つ。`back`（戻るリンク）、`eyebrow`、`meta`（技術名・番号・状態）、`subtitle`、`actions`（右側の主操作）、`titleTestId`。専用画面の見た目を保つときは `className` に既存クラス（`control-heading` など）を渡す |
+| 検索・絞り込みの行 | `Toolbar` | `end` は右寄せ（件数・ページ送り）。`role="toolbar"` ではない（Tab 順を変えない）。名前を付けるときだけ `label` |
+| 囲み | `Card` | `as="form"` でフォーム全体を 1 枚にできる |
+| 入力のまとまり | `FormSection` | 題名・説明・右側の操作。入力群の意味的なまとまりは `as="fieldset"`（`legend`） |
+| 0 件・未実行 | `EmptyState` | 何が無いかと次の一手（新規・検索をクリア・取込）。live region にしない。画面の主内容なら `titleAs="h2"` |
+| 読込中 | `Skeleton` / `SkeletonRows` / `SkeletonCard`、画面単位は `LoadingView` | 骨格は `aria-hidden`。容器に `aria-busy="true"`、文字は `sr-only` |
+| 表 | `DataTableShell` | 枠・固定見出し・数値列の右寄せ（`cellAlignClass('right')` = `ui-cell-num`）・空状態・骨格行。`skeleton` は初回と条件変更後（前の結果が誤解を招くとき）、`busy` だけなら行を残して上端の帯で示す。`fill` で高さを画面に合わせ、見出しを固定する |
+| ボタン | `Button`、リンクには `buttonClass()` | variant は primary / default / danger / ghost（既存 `.btn` 系クラスへ対応）、size は md / sm。既定の `type="button"` |
+| 状態・件数 | `Badge` | tone は neutral / accent / success / warning / danger。伝票状態は `DocstatusBadge` |
+| タブ | `Tabs` + `TabPanel` | `idPrefix` で tab と panel を対応させる。roving tabindex、← → Home End、無効タブは飛ばす |
+| ダイアログ | `Dialog` | native `<dialog>` を modal で開く。焦点の閉じ込め・Escape・復帰は native。安全な操作（戻る）に `autoFocus`。**新しいダイアログは `Dialog` を使う**。既存の `WorkforceDialog` / `CommerceDialog` / `ControlDialog` は触ったときに寄せる |
+| 読込の失敗 | `MetaError`（`pages/status-views.tsx`） | 「読み込みに失敗しました」→ コード別の説明 → サーバーのメッセージ → 閉じた「技術情報」（コード・HTTP・hint）→ 再試行。`role="alert"` は 1 つ |
+| 操作の失敗 | `toast.error(e)` | 題名はメッセージ、次に hint、最後にコード。表示内容は `lib/error-view.ts` の `toastFromError` |
+
+部品は翻訳済みの文字列を受け取り、`useLocale()` を呼ばない（`renderToStaticMarkup` で単体検査できるようにするため）。`ui/` が import してよいのは React と `components/icon.tsx` だけ。
+
+### 意味トークン
+
+`styles.css` の `:root` に定義し、`@theme inline` で同じ名前の Tailwind 色にしている。ユーティリティ名は「プロパティ接頭辞 + トークン名」（`bg-surface`、`text-text-muted`、`border-border`、`text-danger-text`）。CSS では `var(--surface)` のように直接使う。
+
+| 系統 | トークン |
+|---|---|
+| 面 | `--canvas`（ページ背景）、`--surface`、`--surface-muted`（表の見出しなど） |
+| 線 | `--border`、`--border-subtle`、`--border-strong`（入力欄） |
+| 文字 | `--text`、`--text-strong`、`--text-heading`、`--text-secondary`、`--text-muted`、`--text-subtle`、`--text-faint`、`--text-on-accent` |
+| 強調 | `--accent`、`--accent-strong`（hover）、`--accent-soft`、`--accent-border`、`--accent-on-soft`、`--link`、`--focus-ring` |
+| 状態 | `--danger` / `--success` / `--warning` と、それぞれの `-soft`（背景）・`-muted`（バッジ背景）・`-border`・`-on-soft`（淡い背景上の文字）。`--danger-strong`、`--danger-text`（白背景上の文字） |
+| その他 | `--neutral-muted` / `--neutral-on-muted`（中立バッジ）、`--skeleton` / `--skeleton-shine`、`--shadow-raised`、`--radius-control`、`--radius-card` |
+
+値は既存の配色を写したもの。ダークモードはこの `:root` を再定義すれば足せる（現在は対象外）。
+
+規則:
+
+- 置き換えた画面（`ui/token-usage.test.ts` の `CONVERTED`）と `ui/` には hex の色リテラルと Tailwind の生パレット色（`text-red-700`、`bg-neutral-50`、`bg-white` など）を書かない。unit テストが走査する。画面を置き換えたらそのファイルを `CONVERTED` に足す。
+- 新しい色が必要なら、まずトークンを足す（値は既存色から選ぶ）。部品の CSS は `ui/ui.css` の `@layer components` に書き、色は `var(--token)` だけを使う。
+- 専用画面の手書き CSS は、触った画面から順にトークンへ寄せる。一括書き換えはしない。
+
+### 画面幅の分岐点
+
+新規・置き換えの CSS は 480 / 768 / 1024 / 1280 px だけを使う（`max-width: 479px` / `767px` / `1023px` / `1279px`、または `min-width` の同じ値）。Tailwind の responsive 接頭辞は `sm` = 480px、`md` = 768px、`lg` = 1024px、`xl` = 1280px で、`2xl` は無効にしている。既存の専用画面にある 600 / 760 / 1200 px などは触ったときに寄せる。
+
+### 状態表示の決まり
+
+- 読込中は骨格（文字だけの「読み込み中…」や半透明にしない）。同じ条件の再取得では内容を残す。
+- 0 件は `EmptyState` で理由と次の一手。検索語があるときは「検索をクリア」、作成できるときは「<名前>を登録する」（見出しの「+ 新規」と名前を分ける）。取得に失敗したときは 0 件と表示しない。
+- 失敗は人向けの文を先に、技術情報（コード・HTTP・hint）は折りたたみやトーストの補助行に残す。情報は削らない。
+- `<html lang>` は表示言語に合わせる（`i18n.tsx` の `syncDocumentLang`）。

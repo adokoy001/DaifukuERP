@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './ui/ui.css';
 @theme {
   --font-sans: 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Meiryo, ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -19,6 +20,90 @@
   --color-sky-600: #7548dd;
   --color-sky-700: #6336c9;
   --color-sky-800: #5129ac;
+  /* Breakpoints: 480 / 768 / 1024 / 1280 px only (docs/conventions/ui.md "UI kit and tokens"). */
+  --breakpoint-sm: 30rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: initial;
+}
+/*
+ * Semantic design tokens. Screens and the UI kit (src/ui) use these names, never raw hex or palette utilities.
+ * Values copy the colours the screens already used; a future dark theme redefines only this block.
+ * Tailwind utilities use the same names: bg-surface, text-text-muted, border-border, text-danger-text, ...
+ */
+:root {
+  --canvas: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f7f8fc;
+  --border: #e3e7f1;
+  --border-subtle: #f0f2f8;
+  --border-strong: #d5dbea;
+  --text: #24324b;
+  --text-strong: #17243b;
+  --text-heading: #2f3c57;
+  --text-secondary: #505d76;
+  --text-muted: #65718a;
+  --text-subtle: #8490a8;
+  --text-faint: #cbd2e2;
+  --text-on-accent: #ffffff;
+  --accent: #7245d7;
+  --accent-strong: #6035c1;
+  --accent-soft: #f2efff;
+  --accent-border: #d4c4ff;
+  --accent-on-soft: #5129ac;
+  --link: #6336c9;
+  --focus-ring: #9e7ef1;
+  --neutral-muted: #e3e7f1;
+  --neutral-on-muted: #253149;
+  --danger: #c93754;
+  --danger-strong: #ae2943;
+  --danger-text: oklch(50.5% 0.213 27.518);
+  --danger-soft: oklch(97.1% 0.013 17.38);
+  --danger-muted: oklch(93.6% 0.032 17.717);
+  --danger-border: oklch(88.5% 0.062 18.334);
+  --danger-on-soft: oklch(39.6% 0.141 25.723);
+  --success: oklch(50.8% 0.118 165.612);
+  --success-soft: oklch(97.9% 0.021 166.113);
+  --success-muted: oklch(95% 0.052 163.051);
+  --success-border: oklch(90.5% 0.093 164.15);
+  --success-on-soft: oklch(37.8% 0.077 168.94);
+  --warning: oklch(55.5% 0.163 48.998);
+  --warning-soft: oklch(98.7% 0.022 95.277);
+  --warning-muted: oklch(96.2% 0.059 95.617);
+  --warning-border: oklch(87.9% 0.169 91.605);
+  --warning-on-soft: oklch(41.4% 0.112 45.904);
+  --skeleton: #e9ecf4;
+  --skeleton-shine: #f6f7fb;
+  --shadow-raised: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
+  --radius-control: 9px;
+  --radius-card: 13px;
+}
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-strong: var(--text-strong);
+  --color-text-heading: var(--text-heading);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-link: var(--link);
+  --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
 }
 @layer base {
   html {
@@ -27,8 +112,8 @@
   }
   body {
     margin: 0;
-    background: #f6f7fb;
-    color: #24324b;
+    background: var(--canvas);
+    color: var(--text);
     -webkit-font-smoothing: antialiased;
   }
   input,
@@ -50,7 +135,7 @@
     cursor: pointer;
   }
   :focus-visible {
-    outline: 3px solid #9e7ef1;
+    outline: 3px solid var(--focus-ring);
     outline-offset: 3px;
   }
   ::selection {
@@ -67,12 +152,12 @@
   .input {
     width: 100%;
     min-height: 40px;
-    border: 1px solid #d5dbea;
-    border-radius: 9px;
-    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--surface);
     padding: 9px 11px;
     line-height: 1.45;
-    color: #24324b;
+    color: var(--text);
     outline: none;
     transition:
       border-color 0.15s,
@@ -122,23 +207,39 @@
     box-shadow: 0 3px 9px #43216b09;
   }
   .btn-primary {
-    background: #7245d7;
-    border-color: #7245d7;
-    color: #fff;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-accent);
     box-shadow: 0 4px 10px #7245d722;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #6035c1;
-    border-color: #6035c1;
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
   .btn-danger {
-    background: #c93754;
-    border-color: #c93754;
-    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--text-on-accent);
   }
   .btn-danger:hover:not(:disabled) {
-    background: #ae2943;
-    border-color: #ae2943;
+    background: var(--danger-strong);
+    border-color: var(--danger-strong);
+  }
+  /* UI kit Button variant="ghost": text-only action that keeps the .btn box for alignment. */
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--link);
+    box-shadow: none;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: transparent;
+    box-shadow: none;
+  }
+  /* UI kit Button size="sm": compact horizontal padding (pager, inline actions). */
+  .btn-sm {
+    padding: 2px 8px;
   }
   .btn:disabled {
     opacity: 0.5;

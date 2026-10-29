@@ -17,6 +17,22 @@ export const S = {
   loading: L('読み込み中…', 'Loading…'),
   loadFailed: L('読み込みに失敗しました', 'Failed to load'),
   retry: L('再試行', 'Retry'),
+  // ui-kit: state views (AC-4/5/8)
+  technicalDetails: L('技術情報', 'Technical details'),
+  errorCode: L('エラーコード', 'Error code'),
+  errorHint: L('対処のヒント', 'Hint'),
+  noResponse: L('応答なし', 'No response'),
+  listEmptyTitle: L('まだ記録がありません', 'No records yet'),
+  listEmptyDescription: L(
+    '最初の記録を登録すると、ここに一覧で表示されます。',
+    'Records appear here once the first one is added.',
+  ),
+  listEmptyReadOnly: L(
+    'この画面から登録できる記録はありません。作成元の業務画面を確認してください。',
+    'Records are not added from this screen. Check the business screen that creates them.',
+  ),
+  listNoMatch: L('検索条件に一致する記録はありません', 'No records match the search'),
+  clearSearch: L('検索をクリア', 'Clear search'),
   unknownEntity: L(
     'このエンティティは存在しないか、閲覧権限がありません。',
     'This entity does not exist or you may not read it.',

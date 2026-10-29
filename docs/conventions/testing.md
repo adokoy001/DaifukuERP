@@ -6,6 +6,7 @@
 | property | 同上（fast-check） | 丸め・集計・状態遷移の不変条件 | 同上 |
 | golden | `test/golden/*.json` | 仕訳・帳票・在庫評価・税計算の決定論的出力。差分は `pnpm test -- -u` で更新し、**更新理由を作業記録に書く** | 同上 |
 | db | `test/*.db.test.ts` | Repository・RLS・採番・docstatus・監査。`daifuku_test` DB を毎回 migrate | `pnpm test:db` |
+| web unit | `apps/web/src/**/*.test.ts` | 画面の純粋関数と、React 部品の描画結果（role・aria・順序）。DOM ライブラリは足さず `react-dom/server` の `renderToStaticMarkup` と `createElement` を使う（vitest の include は `.test.ts`）。例: `src/ui/ui-kit.test.ts` | `pnpm --filter @daifuku/web test` |
 | e2e | `apps/web/e2e/*.spec.ts`（Playwright） | 画面経由の主要シナリオ。role-based locator、`waitForTimeout` 禁止、データは API fixture でシード | `pnpm e2e` |
 | mutation | Decimal・貸借検査の全ソース（StrykerJS 10.0.0） | 故意の変更を検出するか。全件Killedを要求 | `pnpm verify:mutation`、別CI |
 | finite model | `verification/edge/`（TLA+/TLC） | 有限範囲の安全性、到達性、実装との共有trace | `pnpm verify:edge:model`、別CI |

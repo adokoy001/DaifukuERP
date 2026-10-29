@@ -67,7 +67,7 @@ Windows/Linux/macOS端末への常駐サービス導入と更新は [エッジ�
 | [10 制限事項と既知の問題](10-limitations.md) | できないこと、画面の既知の問題 |
 | [付録 A 用語集](appendix-a-glossary.md) | |
 | [付録 B 台本の要約](appendix-b-scenarios.md) | 個人事業・小売・不動産の練習用データ |
-| [付録 C 新UIの使い方](appendix-c-ui-refresh.md) | 2026-09-12更新。画面構成、商品補完、自動計算、未保存保護、取消日 |
+| [付録 C 新UIの使い方](appendix-c-ui-refresh.md) | 2026-09-12更新。画面構成、商品補完、自動計算、未保存保護、取消日。2026-10-29追補: 読込中・0件・失敗の表示 |
 | [付録 D 業界テンプレートを試す](appendix-d-industry-templates.md) | 3つのサンプル会社と最初の業務操作 |
 | [付録 E 運営・権限・BI](appendix-e-operations-control.md) | 本部と店舗の分担、運営指標、権限管理 |
 | [付録 F 従業員・労務](appendix-f-workforce.md) | スマホ勤怠、有給、経費、給与明細 |

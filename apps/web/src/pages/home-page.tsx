@@ -14,6 +14,7 @@ import { workspaceForModule } from '../lib/navigation.ts';
 import { reportTitle } from '../lib/report.ts';
 import { canRetainData } from '../lib/read-recovery.ts';
 import { S } from '../strings.ts';
+import { buttonClass } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
 function DocCard({ entity, count }: { entity: EntityMeta; count: CountLookup }) {
@@ -169,12 +170,12 @@ export function HomePage() {
         </div>
       </header>
       <div className="home-entry-actions">
-        <Link to="/workspaces" className="btn btn-primary">
+        <Link to="/workspaces" className={buttonClass('primary')}>
           <Icon name="search" size={18} />
           {t({ ja: 'すべての画面を探す', en: 'Find a screen' })}
         </Link>
         {catalog.entries.some((entry) => entry.href === '/me') ? (
-          <Link to="/me" className="btn">
+          <Link to="/me" className={buttonClass()}>
             <Icon name="clock" size={18} />
             {t({ ja: '自分の勤怠・申請', en: 'My workday' })}
           </Link>

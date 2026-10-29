@@ -1,5 +1,5 @@
 // AC-4..7: /e/:entity/new and /e/:entity/:id — header (docstatus, number, actions, print view), form, attachments
-// (phase1 AC-4), audit panel.
+// (phase1 AC-4), audit panel. ui-kit: the header is a PageHeader.
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useEntityMeta, useRecord } from '../api/queries.ts';
@@ -20,6 +20,7 @@ import { S } from '../strings.ts';
 import { EntityMissing, LoadingView, MetaError } from './status-views.tsx';
 import { canRetainData } from '../lib/read-recovery.ts';
 import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
+import { PageHeader } from '../ui/index.ts';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -33,12 +34,12 @@ function SystemInfo({ record }: { record: RecordJson }) {
   const { t, locale } = useLocale();
   const item = (label: string, value: string) => (
     <span>
-      <span className="text-neutral-400">{label} </span>
+      <span className="text-text-subtle">{label} </span>
       <span className="font-mono">{value}</span>
     </span>
   );
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-neutral-500">
+    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-text-muted">
       {item(t(S.id), record.id)}
       {item(t(S.version), String(record.version))}
       {item(t(S.createdAt), formatTimestamp(record.createdAt, locale))}
@@ -73,36 +74,41 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
   return (
     <div className="flex flex-col gap-3 p-3">
       <ReadRefreshNotice />
-      <header className="flex flex-wrap items-center gap-2">
-        <Link to="/e/$entity" params={{ entity: entity.name }} className="text-sky-700 hover:underline">
-          ← {t(entity.label)}
-        </Link>
-        <h1 className="text-base font-semibold" data-testid="record-title">
-          {titleOf(entity, record, t(S.new))}
-        </h1>
-        {entity.kind === 'document' && record ? (
-          <>
-            {record.number ? <span className="code text-neutral-600">{record.number}</span> : null}
-            <DocstatusBadge docstatus={record.docstatus} />
-          </>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          {record ? <PrintButton entity={entity} record={record} /> : null}
-          {record ? (
-            <DocActions
-              entity={entity}
-              record={record}
-              submitBlocked={submitBlocked}
-              blocked={blocked}
-              onBusy={setActionBusy}
-              onAfter={(op, rec) => {
-                if (op === 'delete') toList();
-                else if (rec && rec.id !== record.id) toRecord(rec.id);
-              }}
-            />
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        back={
+          <Link to="/e/$entity" params={{ entity: entity.name }} className="ui-link w-max">
+            ← {t(entity.label)}
+          </Link>
+        }
+        title={titleOf(entity, record, t(S.new))}
+        titleTestId="record-title"
+        meta={
+          entity.kind === 'document' && record ? (
+            <>
+              {record.number ? <span className="code text-text-secondary">{record.number}</span> : null}
+              <DocstatusBadge docstatus={record.docstatus} />
+            </>
+          ) : null
+        }
+        actions={
+          record ? (
+            <>
+              <PrintButton entity={entity} record={record} />
+              <DocActions
+                entity={entity}
+                record={record}
+                submitBlocked={submitBlocked}
+                blocked={blocked}
+                onBusy={setActionBusy}
+                onAfter={(op, rec) => {
+                  if (op === 'delete') toList();
+                  else if (rec && rec.id !== record.id) toRecord(rec.id);
+                }}
+              />
+            </>
+          ) : null
+        }
+      />
       {record ? <SystemInfo record={record} /> : null}
       <WorkforceWorkflowLink entity={entity.name} />
       <RecordForm
