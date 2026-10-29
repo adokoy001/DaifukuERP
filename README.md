@@ -98,6 +98,9 @@ AWSで既存システムからリソースを分けて試す場合は、[AWS試�
 
 ```bash
 pnpm gate                          # 型、lint、依存境界、単体、DB試験、配布回帰、文書リンク
+pnpm gate:quick                    # 編集中: 変更ファイルの検査と関連する単体試験
+pnpm gate:light                    # push 前: 全体の静的検査・単体全件と関連 DB 試験
+pnpm gate:full                     # 完了前: pnpm gate の全工程 + API/Web build + ブラウザ・認証試験
 pnpm --filter @daifuku/web test
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build

@@ -23,7 +23,7 @@
 
 ## 段階実行（quick / light / full）
 
-`scripts/gate.mjs` は基準点（`origin/main` との merge-base）からの変更集合を求め、quick は変更ファイルに限定した検査と vitest のモジュールグラフで選んだ unit 試験、light は全体の静的検査と unit 全件に関連 DB suite と kernel の常時実行 suite を足し、full は `pnpm gate` の各工程に API/Web の型・build、中継 agent build、ブラウザ・認証試験を足します。kernel・migration・依存・設定・CI・削除したソースを含む変更は昇格扱いで、light は DB を全件にし、完了前の full を案内します。選択はファイル単位で、試験の skip や絞込みはしません。`pnpm gate` 自体と CI の gate job は変えず、CI には DB を使わない `quick` job を先に返す job として足しています。各実行は `.runtime/gate/` に JSON の報告を残します。
+`scripts/gate.mjs` は基準点（`origin/main` との merge-base）からの変更集合を求め、quick は変更ファイルに限定した検査と vitest のモジュールグラフで選んだ unit 試験、light は全体の静的検査（API/Web の型を含む）と unit 全件に関連 DB suite と kernel の常時実行 suite を足し、full は `pnpm gate` の各工程に API/Web の型・build、中継 agent build、ブラウザ・認証試験を足します。関連 suite にはモジュールグラフに加え、vitest の setupFile が対象 suite のために読むモジュール（日本の給与 provider）と、試験が子プロセスで実行する入口の import グラフを含めます。kernel・migration・依存・設定・CI・ブラウザ設定・削除したソースを含む変更は昇格扱いで完了前の full を案内し、そのうち DB 試験に影響しうるものでは light が DB を全件にします。選択はファイル単位で、試験の skip や絞込みはしません。中断時は各工程の process group ごと停止します。`pnpm gate` 自体と CI の gate job は変えず、CI には DB を使わない `quick` job を先に返す job として足しています。各実行は `.runtime/gate/` に JSON の報告を残します。
 
 DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。
 

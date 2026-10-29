@@ -1305,6 +1305,21 @@ describe('AC-9 interruption stops the whole process tree', () => {
     if (cli && /pnpm/i.test(cli)) return /\.[cm]?js$/.test(cli) ? [process.execPath, [cli, ...args]] : [cli, args];
     return ['pnpm', args];
   };
+  // A failing run must not leak the sandbox processes into later tests.
+  const cleanup = (dir: string, extra: (number | undefined)[]) => {
+    const file = join(dir, 'pids.json');
+    const pids = existsSync(file)
+      ? Object.values(JSON.parse(readFileSync(file, 'utf8')) as Record<string, number>)
+      : [];
+    for (const pid of [...pids, ...extra])
+      if (pid && alive(pid))
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+    rmSync(dir, { recursive: true, force: true });
+  };
   const scripts = {
     gate: 'pnpm slow',
     slow: 'node slow.mjs',
@@ -1312,16 +1327,19 @@ describe('AC-9 interruption stops the whole process tree', () => {
   };
   it('AC-9 SIGTERM to the gate stops the running step, the pnpm it started and every descendant', async () => {
     const dir = sandbox(scripts, { 'slow.mjs': slow });
+    let gate: ReturnType<typeof spawn> | undefined;
     try {
-      const gate = spawn(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'full', '--without-browser'], {
+      const child = spawn(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'full', '--without-browser'], {
         cwd: dir,
         stdio: 'ignore',
       });
-      const exited = new Promise<number | null>((done) => gate.once('exit', (code) => done(code)));
+      gate = child;
+      const exited = new Promise<number | null>((done) => child.once('exit', (code) => done(code)));
       expect(await waitFor(() => existsSync(join(dir, 'pids.json')), 30_000)).toBe(true);
       const pids = JSON.parse(readFileSync(join(dir, 'pids.json'), 'utf8')) as { child: number; grandchild: number };
-      gate.kill('SIGTERM');
-      expect(await exited).toBe(143);
+      child.kill('SIGTERM');
+      const timeout = new Promise<string>((done) => setTimeout(() => done('still running after 20 s'), 20_000));
+      expect(await Promise.race([exited, timeout])).toBe(143);
       expect(await waitFor(() => !alive(pids.child) && !alive(pids.grandchild), 5_000)).toBe(true);
       const report = sandboxReport(dir, 'full');
       expect(report?.result).toBe('interrupted');
@@ -1331,22 +1349,24 @@ describe('AC-9 interruption stops the whole process tree', () => {
         reason: 'interrupted',
       });
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir, [gate?.pid]);
     }
   }, 60_000);
   it('AC-9 SIGTERM to the outer pnpm of pnpm gate:full still stops the gate and its step processes', async () => {
     const dir = sandbox(scripts, { 'slow.mjs': slow });
+    let outer: ReturnType<typeof spawn> | undefined;
     try {
       const [command, args] = pnpmCommand(['gate:full']);
-      const outer = spawn(command, args, { cwd: dir, stdio: 'ignore' });
+      const child = spawn(command, args, { cwd: dir, stdio: 'ignore' });
+      outer = child;
       expect(await waitFor(() => existsSync(join(dir, 'pids.json')), 30_000)).toBe(true);
       const pids = JSON.parse(readFileSync(join(dir, 'pids.json'), 'utf8')) as { child: number; grandchild: number };
-      outer.kill('SIGTERM');
+      child.kill('SIGTERM');
       expect(await waitFor(() => !alive(pids.child) && !alive(pids.grandchild), 15_000)).toBe(true);
       expect(await waitFor(() => sandboxReport(dir, 'full') !== null, 15_000)).toBe(true);
       expect(sandboxReport(dir, 'full')?.result).toBe('interrupted');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir, [outer?.pid]);
     }
   }, 60_000);
 });

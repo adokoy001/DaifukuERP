@@ -18,17 +18,19 @@
 
 | 段階 | コマンド | 内容 | 目安 | 使う場面 |
 | --- | --- | --- | --- | --- |
-| quick | `pnpm gate:quick` | 変更ファイルの Prettier / ESLint、依存境界、typecheck（`apps/api`・`apps/web` を変えたら各 app も）、関連する unit 試験、文書リンクと台帳 | 1 分前後 | 編集ごと、コミット前 |
-| light | `pnpm gate:light` | 全体の format・typecheck・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件 | 数分 | push 前、作業の区切り |
+| quick | `pnpm gate:quick` | 変更ファイルの Prettier / ESLint、依存境界、typecheck（`apps/api`・`apps/web` の typecheck は、その app か app が依存する package を変えたとき）、関連する unit 試験、文書リンクと台帳 | 1〜2 分（sales の 1 ファイル変更で 71 秒） | 編集ごと、コミット前 |
+| light | `pnpm gate:light` | 全体の format・typecheck（API/Web を含む）・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件 | 文書だけの変更で約 2〜4 分、module の 1 ファイル変更で約 10〜14 分、kernel など DB 全件に広がる変更で約 17 分 | push 前、作業の区切り |
 | full | `pnpm gate:full` | `pnpm gate` の全工程、API/Web の typecheck と build、中継 agent build、通常ブラウザ試験、認証ブラウザ試験 | CI 並列で約 15 分、ローカル直列で 25〜40 分 | 「完了」の主張前、PR を ready にする前、main 取込後 |
 
-- 基準点は `origin/main` との merge-base です（無ければ `HEAD~1`）。`--base <ref>` か `GATE_BASE` で変えられます。未コミット・未追跡のファイルも対象です。
-- `kernel/`、migration、`package.json` / lockfile、tsconfig・lint・CI の設定、削除したソースなどを含む変更は「フル回帰が必要」と表示されます。light は DB を全件に広げますが、完了前には `pnpm gate:full` が必要です。
-- DB を使う light / full は、下の DB テストと同じく破棄可能な専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に明示してください。未設定のときは既定の `daifuku_test` を使わずに止まります。
+- 目安の時間は 4 CPU を他の作業と共有する一時 container での計測です（CI では未計測）。light は module を 1 ファイル変えるだけでも、全 module を読む `apps/api` の DB suite が約 30 件選ばれるため 10 分を超えます（[仕様](docs/specs/test-tiers.md) の未決事項）。
+- 基準点は `origin/main` との merge-base です。無ければ `origin/HEAD`、ローカルの `main`、upstream との merge-base、最後に `HEAD~1` を使い、そのときは `WARNING: the base fell back ...` と表示します。枝分かれ元が違う場合は `--base <ref>` か `GATE_BASE` で指定してください。未コミット・未追跡のファイルも対象です。
+- `kernel/`、migration、`package.json` / lockfile、tsconfig・lint・CI・ブラウザ試験の設定、削除したソースなどを含む変更は「フル回帰が必要」と表示されます。そのうち DB 試験に影響しうるもの（kernel、migration、依存、tsconfig、DB の setupFile など）では light が DB を全件に広げます。どちらの場合も完了前には `pnpm gate:full` が必要です。
+- DB を使う light / full は、下の DB テストと同じく破棄可能な専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に明示してください。ループバックの同じ DB（名前は `daifuku_test`、`daifuku_ci_test`、`daifuku_test_<suffix>`）と、別の owner / `daifuku_app` role が必要です。未設定や条件外のときは既定の `daifuku_test` を使わずに止まります（別名の破棄可能な DB を使う場合だけ `GATE_ALLOW_DB_URL=1`）。
 - full のブラウザ試験は、下の「ブラウザ試験を新規環境で再現する」の環境変数とサーバー、「認証ブラウザ試験」用の空 DB（`GATE_IDENTITY_DATABASE_URL_OWNER` / `GATE_IDENTITY_DATABASE_URL` に設定すると、gate が認証工程にだけ `TEST_DATABASE_URL_*` として渡します）を使います。準備がなければ何も実行せずに案内を出して止まります。
 - `pnpm gate:full --provision` は、ループバックの PostgreSQL（`TEST_DATABASE_URL_OWNER` の role に CREATEDB が必要）に一意な名前の新しい空 DB を作り、fixture 準備、compiled API と Web の空きポートでの起動、Playwright、停止までを行います。止めるのは自分が起動したプロセスだけで、作った DB は削除しません（報告に名前が出るので、不要になったら自分で `dropdb` してください）。
 - `--without-browser` はブラウザ 2 種を省いた部分実行で、報告に `partial: true` が付きます。`--` の後ろは Playwright に渡します（例: `pnpm gate:full --provision -- --grep @smoke`。これも部分実行の扱いです）。
-- `--dry-run` は対象ファイル・昇格判定・実行予定の工程と選ばれた試験ファイルを表示するだけです。既定は最初の失敗で止まり、`--keep-going` で全工程を実行します。
+- `--dry-run` は変更ファイル・昇格判定・実行予定の工程と選ばれた試験ファイルを表示するだけです。既定は最初の失敗で止まり、`--keep-going` で全工程を実行します。
+- Ctrl-C、SIGTERM（`pnpm gate:*` の外側の pnpm に送った場合を含む）、端末の切断で止めると、実行中の工程を子孫プロセスごと止め、残りを実行せずに `interrupted` として報告します。
 - 結果は標準出力の表と `.runtime/gate/<UTC時刻>-<段階>.json` に残ります。
 - `pnpm e2e:smoke` は試験名に `@smoke` を付けた代表的なブラウザ試験だけを、起動済みのサーバーに対して実行します。Playwright は依存 project を絞らないため、3 業界の `industry` project も先に実行されます。`pnpm gate:light --with-smoke`（`--provision` 併用可）で light の最後にも実行できます。
 
