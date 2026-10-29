@@ -8,8 +8,8 @@ export interface EmptyStateProps {
   /** Primary next step (create, clear search, import). */
   action?: ReactNode;
   icon?: ReactNode;
-  /** Use a heading when the empty state is the main content of a page region. */
-  titleAs?: 'p' | 'h2' | 'h3';
+  /** Use a heading when the empty state is the main content of a page region (h1 when it is the whole screen). */
+  titleAs?: 'p' | 'h1' | 'h2' | 'h3';
   className?: string;
   testId?: string;
 }

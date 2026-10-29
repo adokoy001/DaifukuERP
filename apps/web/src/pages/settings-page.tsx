@@ -94,7 +94,7 @@ function SettingsView({ meta }: { meta: AppMeta }) {
   const settings = useSettings(allowed);
   if (!allowed) {
     return (
-      <div role="alert" className="ui-notice ui-notice-warning">
+      <div role="alert" className="ui-notice ui-notice-warning m-4">
         {t(S.settingsForbidden)}
       </div>
     );

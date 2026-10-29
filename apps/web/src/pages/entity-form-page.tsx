@@ -32,10 +32,11 @@ function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: s
 
 function SystemInfo({ record }: { record: RecordJson }) {
   const { t, locale } = useLocale();
+  // Label in text-muted, value one step darker: both keep 4.5:1 on the canvas (text-subtle is decoration only).
   const item = (label: string, value: string) => (
     <span>
-      <span className="text-text-subtle">{label} </span>
-      <span className="font-mono">{value}</span>
+      <span>{label} </span>
+      <span className="font-mono text-text-secondary">{value}</span>
     </span>
   );
   return (

@@ -4,7 +4,13 @@ export { Badge, type BadgeProps, type BadgeTone } from './badge.tsx';
 export { Button, buttonClass, type ButtonProps, type ButtonSize, type ButtonVariant } from './button.tsx';
 export { Card, type CardProps } from './card.tsx';
 export { cx } from './cx.ts';
-export { cellAlignClass, DataTableShell, type CellAlign, type DataTableShellProps } from './data-table-shell.tsx';
+export {
+  ariaSortFor,
+  cellAlignClass,
+  DataTableShell,
+  type CellAlign,
+  type DataTableShellProps,
+} from './data-table-shell.tsx';
 export { Dialog, type DialogProps } from './dialog.tsx';
 export { EmptyState, type EmptyStateProps } from './empty-state.tsx';
 export { FormSection, type FormSectionProps } from './form-section.tsx';

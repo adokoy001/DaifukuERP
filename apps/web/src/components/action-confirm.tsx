@@ -1,5 +1,5 @@
 // Confirmation for document actions (submit / cancel / delete / generic actions), built on the UI kit Dialog
-// (ui-kit AC-12). The native modal supplies focus trapping, Escape handling and focus restoration.
+// (ui-kit AC-12): first focus on "Go back", the message as the dialog's description, focus back to the opener on close.
 import { useLocale } from '../i18n.tsx';
 import { S } from '../strings.ts';
 import { Button, Dialog } from '../ui/index.ts';
@@ -34,7 +34,7 @@ export function ActionConfirm({ title, message, cancelDocument, destructive, onC
       }}
       actions={
         <>
-          <Button onClick={onClose} autoFocus>
+          <Button onClick={onClose} data-autofocus>
             {t({ ja: '戻る', en: 'Go back' })}
           </Button>
           <Button type="submit" variant={destructive ? 'danger' : 'primary'}>

@@ -3,6 +3,7 @@ import { createElement as h, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
+  ariaSortFor,
   Badge,
   Button,
   buttonClass,
@@ -21,6 +22,7 @@ import {
   Tabs,
   Toolbar,
   type BadgeProps,
+  type ButtonProps,
   type TabItem,
 } from './index.ts';
 
@@ -66,6 +68,20 @@ describe('ui-kit AC-1: exported building blocks', () => {
     expect(markup.indexOf('← 取引先')).toBeLessThan(markup.indexOf('<h1'));
   });
 
+  it('AC-1: PageHeader keeps the icon and the text block in one non-wrapping group; only the actions wrap', () => {
+    const markup = html(
+      h(PageHeader, {
+        title: '見出し',
+        icon: h('span', { className: 'icon-tile' }, 'i'),
+        actions: h('button', null, '操作'),
+      }),
+    );
+    expect(markup).toMatch(
+      /^<header class="ui-page-header"><div class="ui-page-header-main"><span class="icon-tile">i<\/span><div class="ui-page-header-text">/,
+    );
+    expect(markup).toContain('</div></div><div class="ui-page-header-actions"><button>操作</button></div></header>');
+  });
+
   it('AC-1: Toolbar is a plain row, exposed as a named group only when labelled', () => {
     expect(html(h(Toolbar, { end: 'pager' }, 'search'))).toBe(
       '<div class="ui-toolbar">search<div class="ui-toolbar-end">pager</div></div>',
@@ -77,17 +93,32 @@ describe('ui-kit AC-1: exported building blocks', () => {
     const markup = html(h(Card, { as: 'form', noValidate: true, 'aria-label': '設定' }, 'body'));
     // HTML attribute names are case-insensitive; React's server output spells it noValidate.
     expect(markup).toMatch(/^<form novalidate="" aria-label="設定" class="ui-card">body<\/form>$/i);
+    expect(html(h(Card, null, 'x'))).toBe('<section class="ui-card">x</section>');
+    // Form-only attributes are a type error on a non-form card (checked by `pnpm typecheck`).
+    // @ts-expect-error noValidate belongs to <form>
+    expect(html(h(Card, { as: 'section', noValidate: true }, 'x'))).toContain('class="ui-card"');
   });
 
-  it('AC-1: FormSection labels its region by the heading, or by a legend as a fieldset', () => {
-    const section = html(h(FormSection, { title: '税込入力', description: '説明', meta: 'tax.price' }, 'fields'));
-    const id = /<h2 id="([^"]+)"/.exec(section)?.[1];
+  it('AC-1: FormSection is a group labelled by its heading by default, not a landmark', () => {
+    const group = html(h(FormSection, { title: '税込入力', description: '説明', meta: 'tax.price' }, 'fields'));
+    const id = /<h2 id="([^"]+)"/.exec(group)?.[1];
     expect(id).toBeTruthy();
-    expect(section).toContain(`<section class="ui-form-section" aria-labelledby="${id}">`);
-    expect(section).toContain('<p class="ui-section-description">説明</p>fields');
-    const fieldset = html(h(FormSection, { title: '基本', as: 'fieldset', headingLevel: 3 }, 'x'));
-    expect(fieldset).toMatch(
-      /^<fieldset class="ui-form-section" aria-labelledby="[^"]+"><div class="ui-section-head"><legend/,
+    expect(group).toContain(`<div role="group" class="ui-form-section" aria-labelledby="${id}">`);
+    expect(group).not.toContain('<section');
+    expect(group).toContain('<p class="ui-section-description">説明</p>fields');
+  });
+
+  it('AC-1: FormSection is a named region only on request, and a fieldset names itself with a first-child legend', () => {
+    const region = html(h(FormSection, { title: '会社', landmark: true }, 'x'));
+    const id = /<h2 id="([^"]+)"/.exec(region)?.[1];
+    expect(region).toMatch(new RegExp(`^<section class="ui-form-section" aria-labelledby="${id}">`));
+    const fieldset = html(
+      h(FormSection, { title: '基本', as: 'fieldset', meta: 'basic', actions: h('button', null, 'JSON') }, 'x'),
+    );
+    expect(fieldset).toMatch(/^<fieldset class="ui-form-section"><legend class="ui-section-title">基本<\/legend>/);
+    expect(fieldset).not.toContain('aria-labelledby');
+    expect(fieldset).toContain(
+      '<div class="ui-section-head">basic<div class="ui-section-actions"><button>JSON</button>',
     );
   });
 
@@ -115,6 +146,7 @@ describe('ui-kit AC-4/AC-6/AC-7: empty and loading states', () => {
     expect(markup).toContain('<div class="ui-empty-actions"><a href="/e/partner/new">取引先を登録する</a></div>');
     expect(markup).not.toMatch(/role="(alert|status)"|aria-live/);
     expect(html(h(EmptyState, { title: 'x', titleAs: 'h2' }))).toContain('<h2 class="ui-empty-title">x</h2>');
+    expect(html(h(EmptyState, { title: 'x', titleAs: 'h1' }))).toContain('<h1 class="ui-empty-title">x</h1>');
   });
 
   it('AC-6/AC-7: skeleton placeholders are hidden from assistive technology', () => {
@@ -155,18 +187,41 @@ describe('ui-kit AC-14: DataTableShell', () => {
     expect(markup).not.toContain('is-refreshing');
   });
 
+  it('AC-6: the loading text is a polite live region outside the busy frame, filled only while skeleton rows show', () => {
+    const loading = html(
+      h(DataTableShell, { head, columnCount: 2, busy: true, skeleton: true, loadingLabel: '読み込み中…' }, row),
+    );
+    expect(loading).toMatch(
+      /^<p class="sr-only" aria-live="polite">読み込み中…<\/p><div class="ui-table-frame" aria-busy="true">/,
+    );
+    const loaded = html(h(DataTableShell, { head, columnCount: 2, loadingLabel: '読み込み中…' }, row));
+    expect(loaded).toMatch(
+      /^<p class="sr-only" aria-live="polite"><\/p><div class="ui-table-frame" aria-busy="false">/,
+    );
+    expect(loaded).not.toMatch(/role="(status|alert)"/);
+  });
+
   it('AC-6: a background refetch keeps the rows and shows the refreshing bar', () => {
     const markup = html(h(DataTableShell, { head, columnCount: 2, busy: true }, row));
     expect(markup).toContain('class="ui-table-frame is-refreshing" aria-busy="true"');
     expect(markup).toContain('data-testid="row"');
   });
 
-  it('AC-4/AC-14: the empty body spans every column', () => {
+  it('AC-4/AC-14: the empty state follows the table inside the frame, so it is as wide as the visible frame', () => {
     const markup = html(
       h(DataTableShell, { head, columnCount: 2, isEmpty: true, empty: h(EmptyState, { title: 'なし' }), fill: true }),
     );
     expect(markup).toContain('class="ui-table-frame is-fill"');
-    expect(markup).toContain('<td colSpan="2" class="ui-cell-empty"><div class="ui-empty" data-testid="empty-state">');
+    expect(markup).toContain(
+      '<tbody></tbody></table><div class="ui-table-empty"><div class="ui-empty" data-testid="empty-state">',
+    );
+    expect(markup).not.toContain('colSpan');
+  });
+
+  it('AC-14: only the sorted column header carries aria-sort', () => {
+    expect(ariaSortFor('asc')).toBe('ascending');
+    expect(ariaSortFor('desc')).toBe('descending');
+    expect(ariaSortFor(false)).toBeUndefined();
   });
 });
 
@@ -238,16 +293,27 @@ describe('ui-kit AC-12: Dialog', () => {
           closeLabel: '閉じる',
           onClose: noop,
           onSubmit: noop,
-          actions: h(Button, { autoFocus: true }, '戻る'),
+          actions: h(Button, { 'data-autofocus': true } as ButtonProps, '戻る'),
         },
         h('p', null, 'body'),
       ),
     );
     const id = /<h2 id="([^"]+)">確定<\/h2>/.exec(markup)?.[1];
+    const descriptionId = /<p id="([^"]+)">確定すると編集できません。<\/p>/.exec(markup)?.[1];
     expect(id).toBeTruthy();
-    expect(markup).toMatch(new RegExp(`^<dialog class="action-dialog" aria-labelledby="${id}"><form>`));
+    expect(descriptionId).toBeTruthy();
+    expect(markup).toMatch(
+      new RegExp(`^<dialog class="action-dialog" aria-labelledby="${id}" aria-describedby="${descriptionId}"><form>`),
+    );
     expect(markup).toContain('<button type="button" aria-label="閉じる">');
-    expect(markup).toContain('<p>確定すると編集できません。</p><p>body</p><div class="dialog-actions">');
+    expect(markup).toContain('確定すると編集できません。</p><p>body</p><div class="dialog-actions">');
+    expect(markup).toContain('<button type="button" class="btn" data-autofocus="true">戻る</button>');
     expect(markup).not.toContain(' open=');
+  });
+
+  it('AC-12: without a description the dialog has no aria-describedby', () => {
+    const markup = html(h(Dialog, { title: '確認', closeLabel: '閉じる', onClose: noop }));
+    expect(markup).toMatch(/^<dialog class="action-dialog" aria-labelledby="[^"]+"><div>/);
+    expect(markup).not.toContain('aria-describedby');
   });
 });

@@ -1,5 +1,8 @@
-// UI kit: FormSection — a titled group of fields. `as="fieldset"` puts the title in a <legend> (grouped inputs);
-// the default <section> uses a heading and is labelled by it.
+// UI kit: FormSection — a titled group of fields.
+// - default: <div role="group"> labelled by its heading (a group, not a landmark, so nested sections inside a form
+//   do not flood the landmark list);
+// - `landmark`: a <section> labelled by its heading (a region landmark) for a top-level part of a page;
+// - `as="fieldset"`: the title is the fieldset's <legend> (its first child), for grouped inputs.
 import { useId, type ReactNode } from 'react';
 import { cx } from './cx.ts';
 
@@ -10,7 +13,9 @@ export interface FormSectionProps {
   meta?: ReactNode;
   /** Right side of the heading row (e.g. "Edit as JSON"). */
   actions?: ReactNode;
-  as?: 'section' | 'fieldset';
+  as?: 'group' | 'fieldset';
+  /** Render a named region landmark (<section>) instead of a group; ignored for fieldsets. */
+  landmark?: boolean;
   headingLevel?: 2 | 3;
   children?: ReactNode;
   className?: string;
@@ -21,41 +26,50 @@ export function FormSection({
   description,
   meta,
   actions,
-  as = 'section',
+  as = 'group',
+  landmark = false,
   headingLevel = 2,
   children,
   className,
 }: FormSectionProps) {
   const id = useId();
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
-  const titleNode =
-    as === 'fieldset' ? (
-      <legend id={id} className="ui-section-title">
-        {title}
-      </legend>
-    ) : (
-      <Heading id={id} className="ui-section-title">
-        {title}
-      </Heading>
+  const actionsNode = actions ? <div className="ui-section-actions">{actions}</div> : null;
+  const descriptionNode = description ? <p className="ui-section-description">{description}</p> : null;
+  if (as === 'fieldset')
+    return (
+      <fieldset className={cx('ui-form-section', className)}>
+        <legend className="ui-section-title">{title}</legend>
+        {meta || actionsNode ? (
+          <div className="ui-section-head">
+            {meta}
+            {actionsNode}
+          </div>
+        ) : null}
+        {descriptionNode}
+        {children}
+      </fieldset>
     );
   const content = (
     <>
       <div className="ui-section-head">
-        {titleNode}
+        <Heading id={id} className="ui-section-title">
+          {title}
+        </Heading>
         {meta}
-        {actions ? <div className="ui-section-actions">{actions}</div> : null}
+        {actionsNode}
       </div>
-      {description ? <p className="ui-section-description">{description}</p> : null}
+      {descriptionNode}
       {children}
     </>
   );
-  return as === 'fieldset' ? (
-    <fieldset className={cx('ui-form-section', className)} aria-labelledby={id}>
-      {content}
-    </fieldset>
-  ) : (
+  return landmark ? (
     <section className={cx('ui-form-section', className)} aria-labelledby={id}>
       {content}
     </section>
+  ) : (
+    <div role="group" className={cx('ui-form-section', className)} aria-labelledby={id}>
+      {content}
+    </div>
   );
 }

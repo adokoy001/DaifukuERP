@@ -88,6 +88,9 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
     void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id: row.id } });
   const page = search.page ?? 1;
   const canCreate = entity.ops.includes('create');
+  // "Clear search" and "Retry" sit in the table body and disappear when the list reloads; keep keyboard and
+  // screen-reader users in place by moving focus to the search box (their next step is to type or read on).
+  const searchBox = useRef<HTMLInputElement>(null);
   if (entity.name.startsWith('workforce_') && list.isError)
     return <MetaError error={list.error} retry={() => void list.refetch()} />;
   const empty = list.data ? (
@@ -98,6 +101,7 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
       onClearSearch={() => {
         setText('');
         setSearch({ q: '' });
+        searchBox.current?.focus();
       }}
       {...(canCreate
         ? {
@@ -110,7 +114,19 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
         : {})}
     />
   ) : list.isError ? (
-    <EmptyState title={t(S.loadFailed)} action={<Button onClick={() => void list.refetch()}>{t(S.retry)}</Button>} />
+    <EmptyState
+      title={t(S.loadFailed)}
+      action={
+        <Button
+          onClick={() => {
+            searchBox.current?.focus();
+            void list.refetch();
+          }}
+        >
+          {t(S.retry)}
+        </Button>
+      }
+    />
   ) : undefined;
   return (
     <div className="flex h-full flex-col gap-2 p-3">
@@ -129,6 +145,7 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
         end={list.data ? <Pager total={list.data.total} page={page} onPage={(p) => setSearch({ page: p })} /> : null}
       >
         <input
+          ref={searchBox}
           type="search"
           role="searchbox"
           aria-label={t(S.search)}

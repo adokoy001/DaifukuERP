@@ -76,18 +76,60 @@ describe('ui-kit AC-2: semantic tokens', () => {
     expect(themeInline).toContain(`--color-${token}: var(--${token});`);
   });
 
-  it('AC-2: every var() used by the kit CSS is a defined token', () => {
+  it('AC-2: every colour token on :root is also a Tailwind colour of the same name', () => {
+    const colours = [...root.matchAll(/\n\s*--([\w-]+): (#|oklch\(|rgb)/g)].map((m) => m[1]);
+    expect(colours.length).toBeGreaterThan(40);
+    const missing = colours.filter((name) => !themeInline.includes(`--color-${name}: var(--${name});`));
+    expect(missing).toEqual([]);
+    const exposed = [...themeInline.matchAll(/--color-([\w-]+): var\(--([\w-]+)\);/g)];
+    expect(exposed.filter((m) => m[1] !== m[2] || !colours.includes(m[1] ?? ''))).toEqual([]);
+  });
+
+  it('AC-2: every var() used by the kit CSS is a defined token or a sanctioned Tailwind theme variable', () => {
     const defined = new Set([...root.matchAll(/--([\w-]+):/g)].map((m) => m[1]));
-    for (const name of ['font-mono']) defined.add(name);
+    // The app's rem scale (html is 14px): kit sizes follow the utility classes they replaced.
+    const theme = ['font-mono', 'spacing', 'text-xs', 'text-xs--line-height', 'text-sm', 'text-sm--line-height'];
+    for (const name of [...theme, 'radius-sm']) defined.add(name);
     const used = [...read('ui/ui.css').matchAll(/var\(--([\w-]+)\)/g)].map((m) => m[1]);
     expect(used.length).toBeGreaterThan(0);
     expect(used.filter((name) => !defined.has(name))).toEqual([]);
+  });
+
+  it('AC-2: low-contrast tokens are not used for text that carries information', () => {
+    // --text-subtle (3.0:1 on canvas) and --text-faint (1.5:1) are for icons and decoration only.
+    for (const path of [...CONVERTED, ...KIT.filter((name) => name.endsWith('.tsx'))])
+      expect(read(path).match(/\btext-text-(?:subtle|faint)\b/g) ?? []).toEqual([]);
+    const css = read('ui/ui.css');
+    expect(css).not.toContain('var(--text-subtle)');
+    const faint = [...css.matchAll(/\n {2}([^{}\n]+) \{[^}]*color: var\(--text-faint\)/g)].map((m) => m[1]);
+    expect(faint).toEqual(['.ui-empty-icon', '.ui-sort-icon']);
   });
 
   it('AC-2: base controls in styles.css read the tokens', () => {
     expect(styles).toMatch(/\.btn-primary \{\s*background: var\(--accent\);/);
     expect(styles).toMatch(/\.btn-danger \{\s*background: var\(--danger\);/);
     expect(styles).toMatch(/body \{\s*margin: 0;\s*background: var\(--canvas\);\s*color: var\(--text\);/);
+  });
+
+  it('AC-2: the unlayered generic table rules (which win over the kit layer) read the same tokens as the kit', () => {
+    const rule = (selector: string) =>
+      new RegExp(`\\n${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`).exec(styles)?.[1] ?? '';
+    const th = rule('.page-content th');
+    expect(th).toContain('background: var(--surface-muted);');
+    expect(th).toContain('color: var(--text-muted);');
+    expect(th).toContain('border-bottom: 1px solid var(--border);');
+    expect(th.match(HEX) ?? []).toEqual([]);
+    expect(rule('.page-content tbody tr:nth-child(even)')).toContain('background: var(--row-stripe);');
+    expect(rule('.page-content tbody tr:hover')).toContain('background: var(--row-hover);');
+    const kitTh = /\.ui-table th \{([^}]*)\}/.exec(read('ui/ui.css'))?.[1] ?? '';
+    expect(kitTh).toContain('color: var(--text-muted);');
+    expect(kitTh).toContain('background: var(--surface-muted);');
+  });
+});
+
+describe('ui-kit AC-11: Tabs focus ring', () => {
+  it('AC-11: the focus outline of a tab is drawn inside it, so the scrolling tab list does not clip it', () => {
+    expect(read('ui/ui.css')).toMatch(/\.ui-tab:focus-visible \{\s*outline-offset: -3px;/);
   });
 });
 

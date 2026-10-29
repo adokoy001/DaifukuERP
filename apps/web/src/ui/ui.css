@@ -1,6 +1,10 @@
 /*
  * UI kit styles (docs/conventions/ui.md "UI kit and tokens").
  * Colours come only from the semantic tokens in styles.css; no hex literals here (unit-tested).
+ * Sizes follow the app's rem scale (html is 14px): font sizes, paddings and gaps use Tailwind's theme variables
+ * (--text-xs, --text-sm, --spacing, --radius-sm) so a kit element matches the utility classes it replaced
+ * (text-xs = 10.5px, p-3 = 10.5px). Fixed px remain only where the replaced rule was px (the 22px page title, the
+ * 11px inline link, the 40px control height).
  * Breakpoints: 480 / 768 / 1024 / 1280 px only.
  * Everything is in the components layer so Tailwind utilities and dedicated screen CSS can still adjust a use site.
  */
@@ -21,40 +25,50 @@
   }
   .ui-code {
     font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-subtle);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--text-muted);
   }
 
-  /* ---- PageHeader ---- */
+  /* ---- PageHeader ----
+   * Only the actions wrap below on a narrow screen; the icon and the text block stay on one row (.ui-page-header-main
+   * never wraps, and the text block shrinks instead). */
   .ui-page-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 12px;
+    gap: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  }
+  .ui-page-header-main {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: inherit;
+    gap: inherit;
   }
   .ui-page-header-text {
     display: flex;
     min-width: 0;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 2px;
   }
   .ui-page-header-title {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 10px;
+    gap: calc(var(--spacing) * 2);
   }
+  /* Same as the old generic `.page-content header > h1` (22px, line-height of text-base; letter-spacing is base). */
   .ui-page-header-title h1 {
     font-size: 22px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.5;
     color: var(--text-heading);
     overflow-wrap: anywhere;
   }
   .ui-page-header-subtitle {
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.8;
     color: var(--text-muted);
   }
@@ -62,7 +76,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--spacing) * 2);
     margin-left: auto;
   }
 
@@ -71,13 +85,13 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--spacing) * 2);
   }
   .ui-toolbar-end {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--spacing) * 2);
     margin-left: auto;
   }
 
@@ -86,35 +100,41 @@
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 8px;
+    gap: calc(var(--spacing) * 2);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface);
-    padding: 12px;
+    padding: calc(var(--spacing) * 3);
   }
   .ui-section-head {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 4px 8px;
+    gap: calc(var(--spacing) * 2);
   }
   .ui-section-title {
-    font-size: 14px;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
     font-weight: 600;
     color: var(--text);
   }
+  /* A flex box, so its baseline and height are its controls' own (a block would add a 14px-font line box). */
   .ui-section-actions {
+    display: flex;
+    align-items: baseline;
+    gap: calc(var(--spacing) * 2);
     margin-left: auto;
   }
   .ui-section-description {
-    font-size: 12px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
     color: var(--text-muted);
   }
   .ui-form-section {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 8px;
+    gap: calc(var(--spacing) * 2);
     border: 0;
     margin: 0;
     padding: 0;
@@ -124,13 +144,14 @@
   }
 
   /* ---- Badge ---- */
+  /* Same box as the old `inline-block rounded px-1.5 py-0.5 text-xs font-medium` docstatus badge. */
   .ui-badge {
     display: inline-block;
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 12px;
+    border-radius: var(--radius-sm);
+    padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1.5);
+    font-size: var(--text-xs);
     font-weight: 500;
-    line-height: 1.4;
+    line-height: var(--text-xs--line-height);
     white-space: nowrap;
   }
   .ui-badge-neutral {
@@ -143,22 +164,22 @@
   }
   .ui-badge-success {
     background: var(--success-muted);
-    color: var(--success-on-soft);
+    color: var(--success-on-muted);
   }
   .ui-badge-warning {
     background: var(--warning-muted);
-    color: var(--warning-on-soft);
+    color: var(--warning-on-muted);
   }
   .ui-badge-danger {
     background: var(--danger-muted);
-    color: var(--danger-on-soft);
+    color: var(--danger-on-muted);
   }
 
   /* ---- Notices (MetaError, permission notices, toasts) ---- */
   .ui-notice {
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
     background: var(--surface);
     color: var(--text);
   }
@@ -183,27 +204,31 @@
     color: var(--accent-on-soft);
   }
   .ui-field-error {
-    font-size: 12px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
     color: var(--danger-text);
   }
 
-  /* ---- MetaError ---- */
+  /* ---- MetaError (same box as the old `m-4 rounded border p-3` alert) ---- */
   .ui-error-panel {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
-    margin: 16px;
+    gap: var(--spacing);
+    margin: calc(var(--spacing) * 4);
+    padding: calc(var(--spacing) * 3);
   }
   .ui-error-title {
-    font-weight: 600;
+    font-weight: 500;
   }
   .ui-error-message {
-    font-size: 12px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
     overflow-wrap: anywhere;
   }
   .ui-error-details {
-    font-size: 11px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
     opacity: 0.9;
   }
   .ui-error-details summary {
@@ -212,14 +237,14 @@
   .ui-error-details dl {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
-    gap: 2px 10px;
-    margin-top: 4px;
+    gap: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2.5);
+    margin-top: var(--spacing);
   }
   .ui-error-details dd {
     overflow-wrap: anywhere;
   }
   .ui-error-panel > .btn {
-    margin-top: 4px;
+    margin-top: var(--spacing);
   }
 
   /* ---- EmptyState ---- */
@@ -227,8 +252,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 28px 16px;
+    gap: calc(var(--spacing) * 1.5);
+    padding: calc(var(--spacing) * 6) calc(var(--spacing) * 4);
     text-align: center;
     color: var(--text-muted);
   }
@@ -236,13 +261,14 @@
     color: var(--text-faint);
   }
   .ui-empty-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
     font-weight: 600;
     color: var(--text-secondary);
   }
   .ui-empty-description {
     max-width: 520px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.8;
     white-space: normal;
   }
@@ -250,8 +276,8 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 8px;
-    margin-top: 6px;
+    gap: calc(var(--spacing) * 2);
+    margin-top: calc(var(--spacing) * 1.5);
   }
 
   /* ---- Skeleton ---- */
@@ -259,7 +285,7 @@
     display: block;
     height: 0.9em;
     max-width: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 40%, var(--skeleton) 60%);
     background-size: 300% 100%;
     animation: ui-skeleton-sweep 1.4s ease-in-out infinite;
@@ -278,10 +304,12 @@
     padding: 18px;
   }
   .ui-loading {
+    padding: calc(var(--spacing) * 4);
+  }
+  .ui-loading-skeleton {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px;
+    gap: calc(var(--spacing) * 4);
   }
   @keyframes ui-skeleton-sweep {
     from {
@@ -298,7 +326,7 @@
     min-width: 0;
     overflow: auto;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface);
   }
   /* Bounded height so the sticky header stays visible while the rows scroll (list screens). */
@@ -329,19 +357,23 @@
   }
   .ui-table {
     width: 100%;
-    font-size: 12px;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
   }
   .ui-table thead {
     text-align: left;
     user-select: none;
   }
+  /* Matches the generic `.page-content th` rule in styles.css, which (unlayered) decides inside the page area. */
   .ui-table th {
     position: sticky;
     top: 0;
     z-index: 2;
     background: var(--surface-muted);
-    color: var(--text-secondary);
-    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: var(--text-xs--line-height);
+    font-weight: 600;
     white-space: nowrap;
     border-bottom: 1px solid var(--border);
   }
@@ -352,9 +384,10 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
-  .ui-table td.ui-cell-empty {
-    padding: 0;
-    white-space: normal;
+  /* The empty state sits after the table, inside the frame: a block is as wide as the visible frame, so its text
+   * and next step stay in view however wide the column headers make the table. */
+  .ui-table-empty {
+    border-top: 1px solid var(--border-subtle);
   }
   .ui-sort-button {
     display: inline-flex;
@@ -365,8 +398,8 @@
   }
   .ui-sort-icon {
     display: inline-block;
-    width: 12px;
-    margin-left: 4px;
+    width: calc(var(--spacing) * 3);
+    margin-left: var(--spacing);
     color: var(--text-faint);
   }
   .ui-sort-icon.is-active {
@@ -386,17 +419,21 @@
   /* ---- Tabs ---- */
   .ui-tabs {
     display: flex;
-    gap: 4px;
+    gap: var(--spacing);
     overflow-x: auto;
     border-bottom: 1px solid var(--border);
   }
   .ui-tab {
     min-height: 40px;
-    padding: 8px 14px;
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3.5);
     border-bottom: 2px solid transparent;
     color: var(--text-muted);
     font-weight: 600;
     white-space: nowrap;
+  }
+  /* The tab list scrolls (overflow-x), which clips an outline drawn outside the tab; draw it inside instead. */
+  .ui-tab:focus-visible {
+    outline-offset: -3px;
   }
   .ui-tab[aria-selected='true'] {
     border-bottom-color: var(--accent);
@@ -411,18 +448,26 @@
   }
 
   /* ---- Toast ---- */
+  /* Same box as the old `rounded border px-3 py-2 shadow-md` toast. */
   .ui-toast {
-    /* border colour comes from the ui-notice-<tone> class on the same element */
+    /* border colour comes from the ui-notice-<tone> class on the same element (one shade stronger for toasts) */
     border-width: 1px;
     border-style: solid;
-    border-radius: 4px;
-    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
     box-shadow: var(--shadow-raised);
   }
+  .ui-toast.ui-notice-danger {
+    border-color: var(--danger-border-strong);
+  }
+  .ui-toast.ui-notice-success {
+    border-color: var(--success-border-strong);
+  }
   .ui-toast-code {
-    margin-top: 2px;
+    margin-top: calc(var(--spacing) * 0.5);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
     opacity: 0.75;
   }
 
@@ -439,7 +484,7 @@
   }
   @media (max-width: 479px) {
     .ui-empty {
-      padding: 20px 10px;
+      padding: calc(var(--spacing) * 5) calc(var(--spacing) * 2.5);
     }
   }
 }

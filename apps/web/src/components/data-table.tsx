@@ -18,7 +18,7 @@ import { fieldValue, isExtFieldName } from '../lib/ext.ts';
 import { formatValue } from '../lib/format.ts';
 import { formatSort, parseSort } from '../lib/query.ts';
 import { S } from '../strings.ts';
-import { cellAlignClass, cx, DataTableShell, EmptyState, type CellAlign } from '../ui/index.ts';
+import { ariaSortFor, cellAlignClass, cx, DataTableShell, EmptyState, type CellAlign } from '../ui/index.ts';
 import { DocstatusBadge } from './docstatus-badge.tsx';
 
 const features = tableFeatures({ rowSortingFeature });
@@ -122,10 +122,6 @@ function alignOf(meta: unknown): CellAlign | undefined {
   return (meta as { align?: CellAlign } | undefined)?.align;
 }
 
-function ariaSort(dir: false | 'asc' | 'desc'): 'ascending' | 'descending' | 'none' {
-  return dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none';
-}
-
 export function DataTable(props: DataTableProps) {
   const {
     entity,
@@ -167,7 +163,7 @@ export function DataTable(props: DataTableProps) {
             key={h.id}
             scope="col"
             className={cx('px-2 py-1.5', cellAlignClass(align))}
-            aria-sort={canSort ? ariaSort(dir) : undefined}
+            aria-sort={canSort ? ariaSortFor(dir) : undefined}
           >
             {h.isPlaceholder ? null : canSort ? (
               <button type="button" className="ui-sort-button" onClick={h.column.getToggleSortingHandler()}>
@@ -189,6 +185,7 @@ export function DataTable(props: DataTableProps) {
       busy={loading}
       skeleton={loading && (rows === undefined || stale)}
       skeletonRows={8}
+      loadingLabel={t(S.loading)}
       isEmpty={bodyRows.length === 0}
       empty={empty ?? <EmptyState title={t(S.noRows)} />}
       label={t(entity.label)}

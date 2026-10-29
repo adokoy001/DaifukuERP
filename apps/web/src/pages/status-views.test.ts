@@ -15,11 +15,13 @@ const failure = new ApiError(503, {
 });
 
 describe('ui-kit AC-7: LoadingView', () => {
-  it('AC-7: busy skeleton with hidden placeholders and a visually hidden loading text', () => {
+  it('AC-7: busy skeleton with hidden placeholders, and the loading text as a live region outside the busy part', () => {
     const markup = render(h(LoadingView));
-    expect(markup).toMatch(/^<div class="ui-loading" aria-busy="true" data-testid="loading-view">/);
-    expect(markup).toContain('<span class="sr-only">読み込み中…</span>');
+    expect(markup).toMatch(
+      /^<div class="ui-loading" data-testid="loading-view"><p class="sr-only" aria-live="polite">読み込み中…<\/p><div class="ui-loading-skeleton" aria-busy="true">/,
+    );
     expect(markup).toContain('class="ui-skeleton ui-skeleton-title"');
+    // aria-live without role="status": no extra match for the toasts' getByRole('status') in browser tests.
     expect(markup).not.toMatch(/role="(status|alert)"/);
   });
 });

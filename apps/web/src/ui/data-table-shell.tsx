@@ -11,6 +11,11 @@ export function cellAlignClass(align: CellAlign | undefined): string | undefined
   return align === 'right' ? 'ui-cell-num' : undefined;
 }
 
+/** aria-sort for a column header: only the sorted column carries it (ARIA: at most one sorted header at a time). */
+export function ariaSortFor(dir: false | 'asc' | 'desc'): 'ascending' | 'descending' | undefined {
+  return dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined;
+}
+
 export interface DataTableShellProps {
   /** Header row(s): <tr><th scope="col">…</th></tr>. */
   head: ReactNode;
@@ -22,8 +27,13 @@ export interface DataTableShellProps {
   /** Replace the body with placeholder rows (first load, or a changed query whose old rows would mislead). */
   skeleton?: boolean;
   skeletonRows?: number;
+  /**
+   * Already-translated "Loading…" text. When given, a visually hidden polite live region (outside the busy frame, so
+   * it is not muted with it) says it while the skeleton rows are shown.
+   */
+  loadingLabel?: string;
   isEmpty?: boolean;
-  /** Body shown when `isEmpty` (usually an <EmptyState>). */
+  /** Shown when `isEmpty` (usually an <EmptyState>), after the table and as wide as the visible frame. */
   empty?: ReactNode;
   /** Accessible name of the table. */
   label?: string;
@@ -40,6 +50,7 @@ export function DataTableShell({
   busy = false,
   skeleton = false,
   skeletonRows = 6,
+  loadingLabel,
   isEmpty = false,
   empty,
   label,
@@ -47,27 +58,30 @@ export function DataTableShell({
   className,
   testId,
 }: DataTableShellProps) {
-  const columns = Math.max(1, columnCount);
-  let body: ReactNode = children;
-  if (skeleton) body = <SkeletonRows rows={skeletonRows} columns={columns} />;
-  else if (isEmpty)
-    body = (
-      <tr>
-        <td colSpan={columns} className="ui-cell-empty">
-          {empty}
-        </td>
-      </tr>
-    );
+  const showEmpty = !skeleton && isEmpty;
+  const body = skeleton ? (
+    <SkeletonRows rows={skeletonRows} columns={Math.max(1, columnCount)} />
+  ) : showEmpty ? null : (
+    children
+  );
   return (
-    <div
-      className={cx('ui-table-frame', fill && 'is-fill', busy && !skeleton && 'is-refreshing', className)}
-      aria-busy={busy || skeleton}
-      data-testid={testId}
-    >
-      <table className="ui-table" aria-label={label}>
-        <thead>{head}</thead>
-        <tbody>{body}</tbody>
-      </table>
-    </div>
+    <>
+      {loadingLabel !== undefined ? (
+        <p className="sr-only" aria-live="polite">
+          {skeleton ? loadingLabel : ''}
+        </p>
+      ) : null}
+      <div
+        className={cx('ui-table-frame', fill && 'is-fill', busy && !skeleton && 'is-refreshing', className)}
+        aria-busy={busy || skeleton}
+        data-testid={testId}
+      >
+        <table className="ui-table" aria-label={label}>
+          <thead>{head}</thead>
+          <tbody>{body}</tbody>
+        </table>
+        {showEmpty ? <div className="ui-table-empty">{empty}</div> : null}
+      </div>
+    </>
   );
 }

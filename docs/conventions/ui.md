@@ -85,41 +85,53 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 | 目的 | 部品（`import { … } from '../ui/index.ts'`） | 要点 |
 |---|---|---|
-| 画面の題名 | `PageHeader` | `h1` は画面に 1 つ。`back`（戻るリンク）、`eyebrow`、`meta`（技術名・番号・状態）、`subtitle`、`actions`（右側の主操作）、`titleTestId`。専用画面の見た目を保つときは `className` に既存クラス（`control-heading` など）を渡す |
+| 画面の題名 | `PageHeader` | `h1` は画面に 1 つ。`back`（戻るリンク）、`eyebrow`、`meta`（技術名・番号・状態）、`icon`、`subtitle`、`actions`（右側の主操作）、`titleTestId`。`icon` と文字は折り返さない 1 行（`ui-page-header-main`）で、幅が足りないときは `actions` だけが下の行へ回る。専用画面の見た目を保つときは `className` に既存クラス（`control-heading` など）を渡し、その CSS で `flex-wrap: nowrap` などを決める |
 | 検索・絞り込みの行 | `Toolbar` | `end` は右寄せ（件数・ページ送り）。`role="toolbar"` ではない（Tab 順を変えない）。名前を付けるときだけ `label` |
-| 囲み | `Card` | `as="form"` でフォーム全体を 1 枚にできる |
-| 入力のまとまり | `FormSection` | 題名・説明・右側の操作。入力群の意味的なまとまりは `as="fieldset"`（`legend`） |
-| 0 件・未実行 | `EmptyState` | 何が無いかと次の一手（新規・検索をクリア・取込）。live region にしない。画面の主内容なら `titleAs="h2"` |
-| 読込中 | `Skeleton` / `SkeletonRows` / `SkeletonCard`、画面単位は `LoadingView` | 骨格は `aria-hidden`。容器に `aria-busy="true"`、文字は `sr-only` |
-| 表 | `DataTableShell` | 枠・固定見出し・数値列の右寄せ（`cellAlignClass('right')` = `ui-cell-num`）・空状態・骨格行。`skeleton` は初回と条件変更後（前の結果が誤解を招くとき）、`busy` だけなら行を残して上端の帯で示す。`fill` で高さを画面に合わせ、見出しを固定する |
+| 囲み | `Card` | `as="form"` でフォーム全体を 1 枚にできる（フォーム専用の属性は `as="form"` のときだけ型が通る） |
+| 入力のまとまり | `FormSection` | 題名・説明・右側の操作。既定は見出しで名前を付けた `role="group"`（landmark にしない。フォームの中に並べても landmark 一覧が増えない）。ページの大きな区画にするときだけ `landmark`（`<section>`）。入力群は `as="fieldset"`（`legend` が最初の子） |
+| 0 件・未実行 | `EmptyState` | 何が無いかと次の一手（新規・検索をクリア・取込）。live region にしない。画面の区画の主内容なら `titleAs="h2"`、画面全体なら `titleAs="h1"`（`NotFoundView` など） |
+| 読込中 | `Skeleton` / `SkeletonRows` / `SkeletonCard`、画面単位は `LoadingView` | 骨格は `aria-hidden`。骨格の容器に `aria-busy="true"`。「読み込み中…」は `sr-only` の `aria-live="polite"` で、busy の容器の**外**に置く（中に置くと busy の間読まれないことがある）。`role="status"` にしないのは、トーストの `getByRole('status')` と重ならないようにするため |
+| 表 | `DataTableShell` | 枠・固定見出し・数値列の右寄せ（`cellAlignClass('right')` = `ui-cell-num`）・空状態・骨格行。`skeleton` は初回と条件変更後（前の結果が誤解を招くとき）、`busy` だけなら行を残して上端の帯で示す。`fill` で高さを画面に合わせ、見出しを固定する。`loadingLabel` を渡すと骨格行の間だけ live region が「読み込み中…」と言う。空状態は表の後ろ（枠の中）に出すので、列が多く横に長い表でも見えている枠の幅に収まる。`aria-sort` は並べ替え中の列見出しだけに付ける（`ariaSortFor`） |
 | ボタン | `Button`、リンクには `buttonClass()` | variant は primary / default / danger / ghost（既存 `.btn` 系クラスへ対応）、size は md / sm。既定の `type="button"` |
 | 状態・件数 | `Badge` | tone は neutral / accent / success / warning / danger。伝票状態は `DocstatusBadge` |
 | タブ | `Tabs` + `TabPanel` | `idPrefix` で tab と panel を対応させる。roving tabindex、← → Home End、無効タブは飛ばす |
-| ダイアログ | `Dialog` | native `<dialog>` を modal で開く。焦点の閉じ込め・Escape・復帰は native。安全な操作（戻る）に `autoFocus`。**新しいダイアログは `Dialog` を使う**。既存の `WorkforceDialog` / `CommerceDialog` / `ControlDialog` は触ったときに寄せる |
+| ダイアログ | `Dialog` | native `<dialog>` を modal で開く（焦点の閉じ込めと Escape は native）。題名が `aria-labelledby`、`description` が `aria-describedby`。最初の焦点は `data-autofocus` を付けた安全な操作（戻る）。React の `autoFocus` はダイアログが開く前に走るので効かない。閉じるときは呼び出し側が部品を外す（unmount）前提で、`Dialog` が外される直前に `close()` して開いた要素へ焦点を戻す（開いたままの `<dialog>` を DOM から外すとブラウザは焦点を戻さないため）。**新しいダイアログは `Dialog` を使う**。既存の `WorkforceDialog` / `CommerceDialog` / `ControlDialog` は触ったときに寄せる |
 | 読込の失敗 | `MetaError`（`pages/status-views.tsx`） | 「読み込みに失敗しました」→ コード別の説明 → サーバーのメッセージ → 閉じた「技術情報」（コード・HTTP・hint）→ 再試行。`role="alert"` は 1 つ |
 | 操作の失敗 | `toast.error(e)` | 題名はメッセージ、次に hint、最後にコード。表示内容は `lib/error-view.ts` の `toastFromError` |
 
 部品は翻訳済みの文字列を受け取り、`useLocale()` を呼ばない（`renderToStaticMarkup` で単体検査できるようにするため）。`ui/` が import してよいのは React と `components/icon.tsx` だけ。
 
+`Tabs` は画面での利用者がまだ無い（B1 の設定画面が最初の利用者の予定）。キーボード操作は純粋関数 `nextTabIndex` と描画結果だけを unit で確かめており、ブラウザでの焦点移動は未検証。最初に使う画面で ← → Home End と無効タブの飛ばしをブラウザ試験に入れる。
+
+### 大きさ
+
+`html` の文字の大きさは 14px。キットの CSS は Tailwind の theme 変数（`--text-xs` = 10.5px、`--text-sm` = 12.25px、`--spacing` = 3.5px、`--radius-sm`）で書き、置き換えたユーティリティ（`text-xs`、`p-3` など）と同じ大きさになるようにしている。固定の px は元の規則が px だったものだけ（画面題名の 22px、11px のリンク、操作部品の高さ 40px）。新しい部品も同じにする。
+
 ### 意味トークン
 
-`styles.css` の `:root` に定義し、`@theme inline` で同じ名前の Tailwind 色にしている。ユーティリティ名は「プロパティ接頭辞 + トークン名」（`bg-surface`、`text-text-muted`、`border-border`、`text-danger-text`）。CSS では `var(--surface)` のように直接使う。
+`styles.css` の `:root` に定義し、**色のトークンはすべて** `@theme inline` で同じ名前の Tailwind 色にしている（`ui/token-usage.test.ts` が両方の一覧の一致を確かめる）。ユーティリティ名は「プロパティ接頭辞 + トークン名」（`bg-surface`、`text-text-muted`、`border-border`、`text-danger-text`、`border-danger-border`）。CSS では `var(--surface)` のように直接使う。影と角丸（`--shadow-raised`、`--radius-*`）は CSS 専用。
 
 | 系統 | トークン |
 |---|---|
-| 面 | `--canvas`（ページ背景）、`--surface`、`--surface-muted`（表の見出しなど） |
+| 面 | `--canvas`（ページ背景）、`--surface`、`--surface-muted`（表の見出しなど）、`--row-stripe` / `--row-hover`（表の縞と hover） |
 | 線 | `--border`、`--border-subtle`、`--border-strong`（入力欄） |
 | 文字 | `--text`、`--text-strong`、`--text-heading`、`--text-secondary`、`--text-muted`、`--text-subtle`、`--text-faint`、`--text-on-accent` |
 | 強調 | `--accent`、`--accent-strong`（hover）、`--accent-soft`、`--accent-border`、`--accent-on-soft`、`--link`、`--focus-ring` |
-| 状態 | `--danger` / `--success` / `--warning` と、それぞれの `-soft`（背景）・`-muted`（バッジ背景）・`-border`・`-on-soft`（淡い背景上の文字）。`--danger-strong`、`--danger-text`（白背景上の文字） |
+| 状態 | `--danger` / `--success` / `--warning` と、それぞれの `-soft`（通知の背景）・`-muted`（バッジの背景）・`-border`（通知の枠）・`-on-soft`（通知の文字）・`-on-muted`（バッジの文字）。トーストの枠は 1 段濃い `--danger-border-strong` / `--success-border-strong`。`--danger-strong`、`--danger-text`（白背景上の文字） |
 | その他 | `--neutral-muted` / `--neutral-on-muted`（中立バッジ）、`--skeleton` / `--skeleton-shine`、`--shadow-raised`、`--radius-control`、`--radius-card` |
 
-値は既存の配色を写したもの。ダークモードはこの `:root` を再定義すれば足せる（現在は対象外）。
+値は既存の配色を写したもの。ダークモードはこの `:root` を再定義すれば足せる（現在は対象外）。例外はコントラストのために変えた 2 点: `--focus-ring` は旧 `#9e7ef1` から 1 段濃い `#8f6cee`（ページ背景 `--canvas` 上で 3:1 以上）、汎用の表見出しの文字は旧 `#6e7990`（4.1:1）から `--text-muted`（4.6:1）。
+
+コントラスト（WCAG AA）:
+
+- 情報を伝える文字は `--text-muted` 以上の濃さを使う（`--canvas` / `--surface` / `--surface-muted` のどれの上でも 4.5:1 以上）。
+- `--text-subtle`（`--canvas` 上で 3.0:1）と `--text-faint`（1.5:1）は**アイコン・区切り・装飾専用**。技術名やラベルなど読ませる文字に使わない（unit テストが `ui/` と置き換えた画面を走査する）。
 
 規則:
 
 - 置き換えた画面（`ui/token-usage.test.ts` の `CONVERTED`）と `ui/` には hex の色リテラルと Tailwind の生パレット色（`text-red-700`、`bg-neutral-50`、`bg-white` など）を書かない。unit テストが走査する。画面を置き換えたらそのファイルを `CONVERTED` に足す。
-- 新しい色が必要なら、まずトークンを足す（値は既存色から選ぶ）。部品の CSS は `ui/ui.css` の `@layer components` に書き、色は `var(--token)` だけを使う。
+- 新しい色が必要なら、まずトークンを足し（値は既存色から選ぶ）、`@theme inline` にも同じ名前で足す。部品の CSS は `ui/ui.css` の `@layer components` に書き、色は `var(--token)` だけを使う。
+- キットの規則は `@layer components` にあるため、layer の外にある規則（`styles.css` の `.page-content th` など汎用の規則や、専用画面の CSS）が常に勝つ。汎用の規則もトークンで書き、キットの規則と同じ値にしておく（表の見出し・縞・hover はそうしてある）。
 - 専用画面の手書き CSS は、触った画面から順にトークンへ寄せる。一括書き換えはしない。
 
 ### 画面幅の分岐点
@@ -130,5 +142,6 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 - 読込中は骨格（文字だけの「読み込み中…」や半透明にしない）。同じ条件の再取得では内容を残す。
 - 0 件は `EmptyState` で理由と次の一手。検索語があるときは「検索をクリア」、作成できるときは「<名前>を登録する」（見出しの「+ 新規」と名前を分ける）。取得に失敗したときは 0 件と表示しない。
+- 表の中の「検索をクリア」「再試行」を押したら、焦点を検索欄へ移す。押したボタンは再読込で消え、焦点が `<body>` に落ちるため。
 - 失敗は人向けの文を先に、技術情報（コード・HTTP・hint）は折りたたみやトーストの補助行に残す。情報は削らない。
 - `<html lang>` は表示言語に合わせる（`i18n.tsx` の `syncDocumentLang`）。

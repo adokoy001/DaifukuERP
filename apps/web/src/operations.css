@@ -1,6 +1,8 @@
 /* Operations, reporting and access management share the workspace visual language. */
+/* The report screen renders this with the UI kit PageHeader; nowrap keeps its decorative icon beside the text. */
 .control-heading {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
@@ -932,9 +934,20 @@
   margin: 0 auto 18px;
   color: #bfa5df;
 }
+/* .report-ready is a UI kit EmptyState: keep the old muted colour, weight and spacing of this block. */
+.report-ready {
+  gap: 0;
+}
 .report-ready h2 {
   font-size: 16px;
   margin-bottom: 10px;
+  color: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+.report-ready .ui-empty-description {
+  font-size: inherit;
+  line-height: inherit;
 }
 .control-back {
   display: inline-block;

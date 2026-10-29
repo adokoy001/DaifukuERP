@@ -5,15 +5,22 @@ import { describeError } from '../lib/error-view.ts';
 import { S } from '../strings.ts';
 import { Button, cx, EmptyState, Skeleton, SkeletonCard } from '../ui/index.ts';
 
-/** Skeleton placeholder while a screen's data loads; the text is for assistive technology only. */
+/**
+ * Skeleton placeholder while a screen's data loads. The "Loading…" text is for assistive technology only; it is a
+ * polite live region beside (not inside) the busy skeleton, so the busy state does not mute it.
+ */
 export function LoadingView({ className }: { className?: string }) {
   const { t } = useLocale();
   return (
-    <div className={cx('ui-loading', className)} aria-busy="true" data-testid="loading-view">
-      <span className="sr-only">{t(S.loading)}</span>
-      <Skeleton className="ui-skeleton-title" />
-      <SkeletonCard lines={3} />
-      <SkeletonCard lines={2} />
+    <div className={cx('ui-loading', className)} data-testid="loading-view">
+      <p className="sr-only" aria-live="polite">
+        {t(S.loading)}
+      </p>
+      <div className="ui-loading-skeleton" aria-busy="true">
+        <Skeleton className="ui-skeleton-title" />
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={2} />
+      </div>
     </div>
   );
 }
@@ -63,6 +70,7 @@ export function EntityMissing({ name }: { name: string }) {
   return (
     <div className="p-4">
       <EmptyState
+        titleAs="h1"
         title={t(S.unknownEntity)}
         description={<span className="ui-code">{name}</span>}
         action={
@@ -80,6 +88,7 @@ export function NotFoundView() {
   return (
     <div className="p-4">
       <EmptyState
+        titleAs="h1"
         title={t(S.notFound)}
         action={
           <Link to="/" className="ui-link">
