@@ -23,7 +23,7 @@
 - AC-9: WHEN エラーのトーストを出す THE SYSTEM SHALL サーバーのメッセージを題名にし、hint を次の行、エラーコードを補助の小さな文字で示す（情報は削らない）。
 - AC-10: WHEN 言語を切り替えた、または保存済みの言語で起動した THE SYSTEM SHALL `document.documentElement.lang` をその言語（`ja` / `en`）にする。
 - AC-11: THE SYSTEM SHALL `Tabs` を `role="tablist"` / `tab` / `tabpanel`、`aria-selected`、`aria-controls`、選択中だけ `tabIndex=0` の roving tabindex で描画し、← → Home End で無効なタブを飛ばして移動・選択する。
-- AC-12: WHEN `Dialog` が表示される THE SYSTEM SHALL native `<dialog>` を modal で開き、題名で `aria-labelledby`、説明文で `aria-describedby` を付け、`data-autofocus` の要素（`ActionConfirm` では「戻る」）に最初の焦点を置き、Escape・閉じるボタン・「戻る」で `onClose` を呼ぶ。WHEN 呼び出し側が `Dialog` を外す（unmount）THE SYSTEM SHALL 外す前に閉じて、開いた要素へ焦点を戻す（焦点の閉じ込めは native）。`ActionConfirm` は `Dialog` の上に作り直し、既存の題名・ボタン名・訂正日のラベルを保つ。
+- AC-12: WHEN `Dialog` が表示される THE SYSTEM SHALL native `<dialog>` を modal で開き、題名で `aria-labelledby`、説明文で `aria-describedby` を付け、`data-autofocus` の要素（`ActionConfirm` では「戻る」）に最初の焦点を置き、Escape・閉じるボタン・「戻る」で `onClose` を呼ぶ。WHEN 呼び出し側が `Dialog` を外す（unmount）THE SYSTEM SHALL 外す前に閉じ、焦点がダイアログの中か `<body>` にあれば、開いた要素へ焦点を戻す（焦点の閉じ込めは native）。開いた要素は `Dialog` を最初に描画した時点（ダイアログが DOM に入る前）に焦点があった要素で、StrictMode の effect の再実行でも取り直さない。呼び出し側が確認中に開いた要素を無効にしている場合（`busy`）は、ダイアログを外す commit が終わった後（念のため次の frame でも）にもう一度戻す。開いた要素が DOM から消えた場合、またはその後も無効なままの場合（確定後に処理中で無効など）は戻さない。`ActionConfirm` は `Dialog` の上に作り直し、既存の題名・ボタン名・訂正日のラベルを保つ。
 - AC-13: THE SYSTEM SHALL `Button` の variant を既存クラスに対応させる（primary → `btn btn-primary`、default → `btn`、danger → `btn btn-danger`、ghost → `btn btn-ghost`）。既定の `type` は `button`。
 - AC-14: THE SYSTEM SHALL `DataTableShell` で表の枠・固定見出し（`position: sticky`）・数値列の右寄せ（`ui-cell-num`）・空状態・骨格行を提供し、汎用一覧の `DataTable` はそれを使う。並べ替えの `aria-sort` は並べ替え中の列見出し（`th`）だけに付ける。
 - AC-15: THE SYSTEM SHALL 新規・置換した CSS の画面幅の分岐点を 480 / 768 / 1024 / 1280 px に限り、Tailwind の `sm` を 480px（30rem）にし `2xl` を無効にする。
@@ -76,4 +76,5 @@
 - Web unit の DOM 検査は依存を足さず `react-dom/server` の `renderToStaticMarkup` と `React.createElement` を使う `.test.ts` にした（vitest の include は `**/src/**/*.test.ts` のままで、設定は変えない）。
 - レビュー後の修正で意図して変えた見た目（AC-2 の例外以外）: 情報のトースト（「保存しました」など）の枠と文字を、以前の「紫の背景に Tailwind 既定の青の枠・文字」から紫の強調色（`--accent-border` / `--accent-on-soft`）にそろえた。以前の配色は `@theme` が `sky` の 300 と 900 だけ上書きしていなかったことによる偶然の混色と判断した。レポート画面の飾りのグラフアイコンは、390px で 20px 幅に潰れていたのが 32px のまま題名の横に並ぶ。アクション画面の「利用できません」の文は警告の枠付きになった。
 - `Tabs` は利用画面が無いまま置いた（AC-1 で名指しされ、B1 が最初の利用者）。「未使用の部品を先に置かない」として `FieldRow` を作らなかった判断とは別扱いの例外。ブラウザでのキー操作は未検証で、B1 の受入試験に ← → Home End と無効タブの飛ばしを入れる。
+- `Dialog` の焦点の復帰は、確認中に開いた要素を無効にする呼び出し側（会社へのアクセスの保存と所属の解除、テンプレートの導入）でも効くように `Dialog` 側で直した（開いた要素を描画時に記録し、commit の後に再試行する）。呼び出し側が確認中に開いた要素を無効にしない形へ変える案もあったが、modal の外は元々操作できず、今後の呼び出し側も同じ書き方をしうるため部品側で受けた。確定した後に開いた要素が処理中で無効なままのときは、処理が終わって有効になっても後から焦点を移さない（利用者が別の場所へ移った後に焦点を奪わないため）。この場合の焦点は `<body>` に落ちうる。確定後の焦点の置き場所は各画面の処理（再読込・遷移・トースト）と一緒に決める。
 - 本 spec は実装と同じセッションで確定し、最初のコミットの時点で「状態: implemented」になっていた（spec を先に draft で置く手順を守れていない）。以後の項目では spec を draft でコミットしてから実装する。

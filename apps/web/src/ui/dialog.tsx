@@ -4,7 +4,11 @@
 //   (usually "Go back") with `data-autofocus` and it receives focus when the dialog opens, never a destructive button;
 // - focus return: callers close the dialog by unmounting it, and removing an open <dialog> skips the browser's own
 //   focus restoration, so on unmount the dialog is closed while still attached and focus goes back to the opener.
-import { useId, useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react';
+//   The opener is the element focused when the dialog first renders, before the commit that opens it: callers often
+//   disable it in that commit (a `busy` flag), and StrictMode's effect remount would otherwise see the dialog's own
+//   button as focused. Such a caller re-enables the opener in the commit that removes the dialog, but React runs this
+//   cleanup before that update reaches the DOM, so focus is retried once the commit is over (and on the next frame).
+import { useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '../components/icon.tsx';
 import { cx } from './cx.ts';
 
@@ -31,6 +35,36 @@ function initialFocusTarget(dialog: ParentNode): HTMLElement | null {
   return dialog.querySelector<HTMLElement>('[data-autofocus]');
 }
 
+/** The focused element, if there is one that focus can go back to. Read while rendering, before the dialog exists. */
+function currentFocus(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active !== document.body ? active : null;
+}
+
+/** Focus is nowhere useful: on <body>, gone, or still inside the (closed or detached) dialog. */
+function focusLost(dialog: Element): boolean {
+  const active = document.activeElement;
+  return !active || active === document.body || dialog.contains(active);
+}
+
+/**
+ * Sends focus back to `opener` after `dialog` closed, unless focus has already moved somewhere useful or the dialog
+ * was opened again (StrictMode remount). A disabled opener ignores focus(), so retry after the current commit, when
+ * the caller has re-enabled it, and once more on the next frame for a re-enable that lands in a later render.
+ */
+function returnFocus(dialog: HTMLDialogElement, opener: HTMLElement) {
+  const attempt = () => {
+    if (dialog.open || !focusLost(dialog) || !opener.isConnected) return true;
+    opener.focus();
+    return !focusLost(dialog);
+  };
+  if (attempt()) return;
+  queueMicrotask(() => {
+    if (!attempt() && typeof requestAnimationFrame === 'function') requestAnimationFrame(() => void attempt());
+  });
+}
+
 export function Dialog({
   title,
   onClose,
@@ -45,20 +79,21 @@ export function Dialog({
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  // Captured once, on the first render, before this dialog exists; kept across StrictMode's effect remount.
+  const [opener] = useState(currentFocus);
   // Layout effect: its cleanup runs before React detaches the node, while close() can still restore focus.
   useLayoutEffect(() => {
     const element = dialog.current;
     if (!element) return;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!element.open) element.showModal();
     initialFocusTarget(element)?.focus();
     return () => {
-      const active = document.activeElement;
-      const focusInside = !active || active === document.body || element.contains(active);
+      // Focus that the caller already moved out of the dialog is left where it is.
+      const ownsFocus = focusLost(element);
       if (element.open) element.close();
-      if (focusInside && opener?.isConnected && document.activeElement !== opener) opener.focus();
+      if (ownsFocus && opener) returnFocus(element, opener);
     };
-  }, []);
+  }, [opener]);
   const content = (
     <>
       <div className="dialog-heading">

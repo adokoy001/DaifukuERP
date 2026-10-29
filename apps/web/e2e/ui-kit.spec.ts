@@ -1,7 +1,7 @@
 // ui-kit (docs/specs/ui-kit.md): loading, empty and error states of the generic screens, and <html lang>.
 // Synthetic route responses only change this browser's view; data writes go to the isolated E2E database.
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { assertNoOverflow, qualityPartner, qualitySession, signInQuality } from './quality-helpers.ts';
+import { assertNoOverflow, qualityEmployee, qualityPartner, qualitySession, signInQuality } from './quality-helpers.ts';
 
 const LIST = '**/api/partner?*';
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -210,6 +210,60 @@ test('ui-kit AC-12: a confirmation opens on "Go back", describes the consequence
     await expect(opener).toBeFocused();
   }
   await expect(page.getByTestId('record-title')).toBeVisible();
+});
+
+/**
+ * Opens a confirmation from `opener`, closes it without confirming in each given way, and expects focus back on the
+ * opener every time. The callers below disable their opener while the confirmation is open (a `busy` flag), so focus
+ * can only return once the commit that removes the dialog has re-enabled it.
+ */
+async function expectFocusReturnsAfterEachClose(
+  page: Page,
+  opener: Locator,
+  closes: readonly ('back' | 'Escape' | 'x')[],
+) {
+  const dialog = page.getByRole('dialog');
+  for (const close of closes) {
+    await opener.click();
+    await expect(dialog).toBeVisible();
+    await expect(opener).toBeDisabled();
+    const back = dialog.getByRole('button', { name: '戻る', exact: true });
+    await expect(back).toBeFocused();
+    if (close === 'back') await back.click();
+    else if (close === 'Escape') await page.keyboard.press('Escape');
+    else await dialog.getByRole('button', { name: '閉じる', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeEnabled();
+    await expect(opener, `focus after closing with ${close}`).toBeFocused();
+  }
+}
+
+test('ui-kit AC-12: focus returns to an opener that its page disables while the confirmation is open (membership removal)', async ({
+  page,
+  request,
+}) => {
+  const { email, companyId } = await qualityEmployee(request);
+  await signInQuality(page);
+  await page.goto('/admin/users');
+  await page.getByRole('searchbox', { name: '利用者を検索' }).fill(email);
+  await page.locator('.access-user').filter({ hasText: email }).click();
+  await page.getByLabel('権限を設定する会社', { exact: true }).selectOption(companyId);
+  const form = page.getByRole('form', { name: '会社へのアクセス設定', exact: true });
+  const opener = form.getByRole('button', { name: 'この会社の所属を解除', exact: true });
+  await expect(opener).toBeEnabled();
+  await expectFocusReturnsAfterEachClose(page, opener, ['back', 'Escape', 'x']);
+  // Nothing was confirmed: the membership is still there to remove.
+  await expect(opener).toBeVisible();
+});
+
+test('ui-kit AC-12: focus returns to a disabled-while-open opener deep in another subtree (template apply)', async ({
+  page,
+}) => {
+  await signInQuality(page);
+  await page.goto('/templates');
+  const opener = page.getByRole('button', { name: 'この会社に導入' }).first();
+  await expect(opener).toBeEnabled();
+  await expectFocusReturnsAfterEachClose(page, opener, ['back', 'Escape']);
 });
 
 test('ui-kit AC-1: header icons stay beside the title on a phone; full-screen states have a level-1 heading', async ({

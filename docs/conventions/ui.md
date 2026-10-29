@@ -95,7 +95,7 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 | ボタン | `Button`、リンクには `buttonClass()` | variant は primary / default / danger / ghost（既存 `.btn` 系クラスへ対応）、size は md / sm。既定の `type="button"` |
 | 状態・件数 | `Badge` | tone は neutral / accent / success / warning / danger。伝票状態は `DocstatusBadge` |
 | タブ | `Tabs` + `TabPanel` | `idPrefix` で tab と panel を対応させる。roving tabindex、← → Home End、無効タブは飛ばす |
-| ダイアログ | `Dialog` | native `<dialog>` を modal で開く（焦点の閉じ込めと Escape は native）。題名が `aria-labelledby`、`description` が `aria-describedby`。最初の焦点は `data-autofocus` を付けた安全な操作（戻る）。React の `autoFocus` はダイアログが開く前に走るので効かない。閉じるときは呼び出し側が部品を外す（unmount）前提で、`Dialog` が外される直前に `close()` して開いた要素へ焦点を戻す（開いたままの `<dialog>` を DOM から外すとブラウザは焦点を戻さないため）。**新しいダイアログは `Dialog` を使う**。既存の `WorkforceDialog` / `CommerceDialog` / `ControlDialog` は触ったときに寄せる |
+| ダイアログ | `Dialog` | native `<dialog>` を modal で開く（焦点の閉じ込めと Escape は native）。題名が `aria-labelledby`、`description` が `aria-describedby`。最初の焦点は `data-autofocus` を付けた安全な操作（戻る）。React の `autoFocus` はダイアログが開く前に走るので効かない。閉じるときは呼び出し側が部品を外す（unmount）前提で、`Dialog` が外される直前に `close()` して開いた要素へ焦点を戻す（開いたままの `<dialog>` を DOM から外すとブラウザは焦点を戻さないため）。開いた要素は `Dialog` を最初に描画した時点で焦点があった要素（StrictMode の再実行でも取り直さない）。確認中に開いた要素を `busy` で無効にしてよい: 外す commit の後に焦点を戻し直す。開いた要素が消えた、または確定後の処理中で無効なままなら焦点は戻らないので、確定後の焦点はその画面で決める。**新しいダイアログは `Dialog` を使う**。既存の `WorkforceDialog` / `CommerceDialog` / `ControlDialog` は触ったときに寄せる |
 | 読込の失敗 | `MetaError`（`pages/status-views.tsx`） | 「読み込みに失敗しました」→ コード別の説明 → サーバーのメッセージ → 閉じた「技術情報」（コード・HTTP・hint）→ 再試行。`role="alert"` は 1 つ |
 | 操作の失敗 | `toast.error(e)` | 題名はメッセージ、次に hint、最後にコード。表示内容は `lib/error-view.ts` の `toastFromError` |
 
