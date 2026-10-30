@@ -64,6 +64,10 @@ B2 に関わる指摘 9 件をコードで確かめ、8 件を直し、1 件は�
 - [レビュー] `apps/web/src/router.tsx` の AppLayout は `/meta` の失敗で `MetaError` を出すので、導入チェック画面が読込中のまま止まる指摘（B3）は実際には起きない。設定画面と同じ防御として画面にも分岐を足した（B3 の記録）。
 - [未検証] `pnpm gate:full`（統合担当）。スクリーンリーダーの実機での読み上げ（焦点の移動はブラウザ試験で確かめたが、読み上げそのものは確かめていない）。
 
+## 統合時の修正（2026-10-30、統合担当）
+
+- 検証担当が残した minor（発見経路: 独立検証のブラウザ確認）: 作成フォームと名称変更ダイアログの入力欄が送信中に native `disabled` になるため、入力欄で Enter を押して送信し、検証エラー以外（seed 失敗の 409、5xx、通信失敗）で失敗すると focus が `<body>` に落ちていた。送信中は `readOnly` と `aria-disabled` に変えた（`apps/web/src/pages/companies-page.tsx` の `TextField`）。送信中の二重送信は従来どおり submit ハンドラの `busy` 判定で止まる。確認は統合後の `pnpm gate:full --provision`（company-admin.spec.ts を含む）による。
+
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
 - B4 のセットアップウィザードへの導線（現在は会社タブと会計年度の一覧。`apps/web/src/lib/companies.ts` の `SETUP_DESTINATIONS`）。

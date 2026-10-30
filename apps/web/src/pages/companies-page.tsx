@@ -75,8 +75,10 @@ function TextField({
         name={field}
         className="input w-full"
         value={value}
-        disabled={disabled}
-        readOnly={readOnly}
+        // Read-only rather than disabled while sending: a natively disabled input that has focus (Enter submits from it)
+        // drops keyboard focus to <body> when the request fails with no field to return to.
+        readOnly={readOnly || disabled}
+        aria-disabled={disabled || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy || undefined}
         autoComplete="off"
@@ -110,8 +112,8 @@ const NOT_CREATED: Label = {
 const CHECK_VALUES: Label = { ja: '入力内容を確認してください。', en: 'Check the entered values.' };
 
 /**
- * Moves focus to `field` once the inputs are enabled again: a server answer arrives while the form is still busy
- * (disabled inputs cannot take focus), so the request is kept until the next render with `busy` false.
+ * Moves focus to `field` once the form is editable again: a server answer arrives while the form is still busy
+ * (inputs read-only), so the request is kept until the next render with `busy` false.
  */
 function useFieldFocus(idPrefix: string, busy: boolean) {
   const [field, setField] = useState<CompanyField | null>(null);

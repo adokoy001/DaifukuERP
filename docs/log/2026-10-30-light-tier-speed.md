@@ -93,6 +93,10 @@
   - `AC-5 SIGTERM to the gate stops every DB shard process and its descendants and reports interrupted`: 両 shard の vitest の起動後に gate へ SIGTERM。20 秒以内に終了コード 143、5 秒以内に両 shard の vitest と孫がすべて止まること、`vitest-runs.jsonl` が空、報告が `interrupted` で db と両 shard が `failed`（`failed` の試験名は空）であることを確かめる。
 - 検証の probe（固定の待ち 13 秒と、vitest の記録の有無だけを見るもの）と違い、起動の記録を待ってから失敗・中断させ、残った pid を直接確かめるため、待ちの時間に依存せず、実行も短い（2.5 秒と 3.0 秒）。
 
+## 統合時の修正（2026-10-30、統合担当）
+
+- 上記で記録した `apps/api/test/identity-rate-limit.db.test.ts` の不安定なテスト（失敗した login の上限が固定 300 秒窓をまたぐと 429 にならない）は、同じファイルの他 2 件と同じく `vi.useFakeTimers({ toFake: ['Date'] })` で Date を固定した。期待値は変えていない（テストを弱めていない）。lane 並列化で負荷が上がると窓をまたぐ確率が上がるため、本項目の統合で直した。
+
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
 - 負荷の低い時間帯（load average が CPU 数以下）での実装後の sales・banking の計測。
