@@ -49,6 +49,7 @@ const STABLE_IDS = [
   'sales.issuer',
   'inventory.stock_settings',
   'expense.accounts',
+  'fixed_assets.depreciation_rules',
   'system.mail',
   'system.oidc',
   'system.migrations',
@@ -70,6 +71,7 @@ const KNOWN_HREFS = new Set([
   '/settings?tab=inventory',
   '/settings?tab=accounting',
   '/settings?tab=purchase',
+  '/finance/depreciation',
 ]);
 const SECRET = 'oidc-client-secret-must-not-leak';
 const ENCRYPTION = 'a'.repeat(64);
