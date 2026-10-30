@@ -4,7 +4,7 @@
 // `?status=`) with a resend for failed rows. The issued secret lives only in this component's state: closing the Dialog
 // drops it, and nothing writes it to the URL, storage, toasts or the console.
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { isApiError } from '../api/client.ts';
 import { useDeliveries, useIssueSecret, useRetryDelivery, useWebhooks } from '../api/event-deliveries.ts';
 import { useMeta } from '../api/queries.ts';
@@ -391,7 +391,6 @@ export function EventDeliveriesPage() {
   const [confirming, setConfirming] = useState<WebhookEndpointView | null>(null);
   const [issued, setIssued] = useState<{ secret: IssuedSecret; label: string } | null>(null);
   const tab = selectedTab(search);
-  useEffect(() => () => setIssued(null), []);
   if (meta.isError && !meta.data) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (!meta.data) return <LoadingView />;
   // AC-27: the navigation shows this screen to admins only; a direct URL explains instead of failing. A store- or
