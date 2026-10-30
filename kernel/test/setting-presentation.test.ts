@@ -239,3 +239,51 @@ describe('settingShape (the JSON Schema view the console renders)', () => {
     expect(settingShape(z.array(z.string()))).toEqual({ kind: 'other' });
   });
 });
+
+describe('setup-wizard AC-12: managedBy (a dedicated screen keeps the setting)', () => {
+  const schema = z.object({ step: z.string().optional() });
+  const fields = { step: { label: label('段階', 'Step') } };
+
+  it('AC-12: an in-app path and a ja/en label register and are kept on the definition', () => {
+    const k = key('wizard');
+    registry.registerSetting({
+      key: k,
+      label: label('進捗', 'Progress'),
+      schema,
+      fields,
+      managedBy: { href: '/setup', label: label('セットアップ', 'Setup') },
+    });
+    expect(registry.setting(k).managedBy).toEqual({ href: '/setup', label: { ja: 'セットアップ', en: 'Setup' } });
+  });
+
+  it.each([
+    ['https://example.com/setup', 'in-app path'],
+    ['//example.com/setup', 'in-app path'],
+    ['javascript:alert(1)', 'in-app path'],
+    ['setup', 'in-app path'],
+    ['/e/../admin', 'in-app path'],
+  ])('AC-12: href %j is refused at registration', (href, message) => {
+    const k = key('wizard');
+    expect(() =>
+      registry.registerSetting({
+        key: k,
+        label: label('進捗', 'Progress'),
+        schema,
+        fields,
+        managedBy: { href, label: label('セットアップ', 'Setup') },
+      }),
+    ).toThrow(message);
+    expect(registry.hasSetting(k)).toBe(false);
+  });
+
+  it('AC-12: a label without ja or en text is refused', () => {
+    expect(() =>
+      register({
+        label: label('進捗', 'Progress'),
+        schema,
+        fields,
+        managedBy: { href: '/setup', label: { ja: 'セットアップ', en: ' ' } },
+      }),
+    ).toThrow('managedBy.label');
+  });
+});

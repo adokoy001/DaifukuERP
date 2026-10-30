@@ -1,9 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import type { Principal } from './principal.ts';
 import type { Database } from './db/client.ts';
 import { companies, companyMemberships, users } from './db/system-tables.ts';
-import { PermissionDenied } from './errors.ts';
-import type { Context } from './context.ts';
+import { NotFound, PermissionDenied } from './errors.ts';
+import { isAdmin, type Context } from './context.ts';
 import { assertOp } from './permissions.ts';
 import { registry } from './registry.ts';
 
@@ -96,6 +96,30 @@ export async function companyMemberIdentities(ctx: Context, targetEntity: string
     )
     .where(and(eq(users.tenantId, ctx.tenantId), eq(users.active, true)))
     .orderBy(users.name, users.id);
+}
+
+/**
+ * How many active users belong to the context's company (setup-wizard AC-13, ADR-0027 §8): the users step of the setup
+ * wizard. The tenant and company are explicit conditions because RLS on these tables isolates tenants only. Admin with
+ * company-wide access only; returns the count and nothing about the users.
+ */
+export async function activeCompanyMemberCount(ctx: Context): Promise<number> {
+  if (!isAdmin(ctx) || (ctx.accessScope && ctx.accessScope !== 'all'))
+    throw new PermissionDenied('company_membership', 'count', ctx.roles);
+  if (!ctx.companyId) throw new NotFound('company', 'null');
+  const [row] = await ctx.db
+    .select({ n: count() })
+    .from(companyMemberships)
+    .innerJoin(users, and(eq(users.tenantId, companyMemberships.tenantId), eq(users.id, companyMemberships.userId)))
+    .where(
+      and(
+        eq(companyMemberships.tenantId, ctx.tenantId),
+        eq(companyMemberships.companyId, ctx.companyId),
+        eq(users.tenantId, ctx.tenantId),
+        eq(users.active, true),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
 
 export async function selectableCompanies(owner: Database, principal: Principal) {

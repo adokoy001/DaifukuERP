@@ -16,6 +16,7 @@ import {
   checkSettingDef,
   type SettingCategory,
   type SettingFieldDef,
+  type SettingManagedBy,
   type SettingWidget,
 } from './setting-presentation.ts';
 
@@ -83,6 +84,11 @@ export interface SettingDef<T = unknown> {
   widget?: SettingWidget;
   /** Scalar enum schemas only: labels of the enum values. */
   valueLabels?: Readonly<Record<string, Label>>;
+  /**
+   * The screen that keeps this setting (setup-wizard AC-12, ADR-0027 §8). The settings console then shows no editor and
+   * links there instead. Presentation only: PUT / DELETE validation and permissions do not change.
+   */
+  managedBy?: SettingManagedBy;
 }
 
 export type HealthStatus = 'ok' | 'warn' | 'fail';

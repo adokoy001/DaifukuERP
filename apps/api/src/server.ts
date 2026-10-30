@@ -18,6 +18,7 @@ import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
 import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
 import { registerHealthRoutes } from './routes/health.ts';
+import { registerSetupStatusRoutes } from './routes/setup-status.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
 import { registerSquarePosRoutes } from './routes/square-pos.ts';
 import { registerWorkforceEvidenceRoutes } from './routes/workforce-evidence.ts';
@@ -91,6 +92,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
       ...(opts.migrationsDirectory ? { migrationsDirectory: opts.migrationsDirectory } : {}),
     },
   });
+  registerSetupStatusRoutes(server, { db: opts.app });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
   registerAnalyticsRoutes(server, { db: opts.app });
   await registerSquarePosRoutes(server, {

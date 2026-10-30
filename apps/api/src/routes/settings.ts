@@ -1,7 +1,7 @@
 // web-phase1 AC-5 / settings-console AC-4..AC-7: company settings declared by modules (registry.registerSetting,
 // ADR-0013 L1) with their presentation (ADR-0027).
 //   GET    /meta/settings              -> [ { key, label, description?, schema (JSON Schema), value, category, order?,
-//                                            fields?, widget?, valueLabels?, defaultValue?, isDefault } ]
+//                                            fields?, widget?, valueLabels?, defaultValue?, isDefault, managedBy? } ]
 //   PUT    /meta/settings/:key         body { value } -> the same shape for that key
 //   DELETE /meta/settings/:key         -> removes the stored value (back to the module default); the same shape
 //   GET    /meta/settings/:key/audit   -> the latest 20 changes of that key, newest first
@@ -23,6 +23,7 @@ import {
   type SettingChange,
   type SettingDef,
   type SettingFieldDef,
+  type SettingManagedBy,
   type SettingWidget,
 } from '@daifuku/kernel';
 import type { FastifyInstance } from 'fastify';
@@ -52,6 +53,8 @@ export interface SettingOut {
   defaultValue?: unknown;
   /** True when the company has no stored value (the module default applies). */
   isDefault: boolean;
+  /** A dedicated screen keeps this setting (setup-wizard AC-12): the console links there instead of editing. */
+  managedBy?: SettingManagedBy;
 }
 
 function unknownSetting(key: string): DaifukuError {
@@ -93,6 +96,7 @@ function toOut(def: SettingDef, stored: Record<string, unknown>, toJsonSchema: J
   if (def.widget) out.widget = def.widget;
   if (def.valueLabels) out.valueLabels = def.valueLabels;
   if (def.default !== undefined) out.defaultValue = def.default;
+  if (def.managedBy) out.managedBy = def.managedBy;
   return out;
 }
 

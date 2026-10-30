@@ -2,6 +2,7 @@
 // labels / widgets for the generic settings console. checkSettingDef runs at registerSetting, so a label for a property
 // that does not exist, a widget on the wrong kind of value or a default the schema rejects fails at definition time.
 import { z } from 'zod';
+import { isAppHref } from './app-href.ts';
 import type { Label } from './i18n.ts';
 
 /** Tabs of the settings console, in display order. */
@@ -37,6 +38,17 @@ export interface SettingFieldDef {
 }
 
 /**
+ * A setting kept by a dedicated screen (setup-wizard AC-12, ADR-0027 §8): the settings console shows its state, help,
+ * history and a link to that screen instead of an editor. Presentation only: PUT / DELETE and their checks are unchanged.
+ */
+export interface SettingManagedBy {
+  /** In-app path of the screen (isAppHref). */
+  href: string;
+  /** Name of the screen, used as "Change in <label>". */
+  label: Label;
+}
+
+/**
  * The parts of a SettingDef (registry.ts) this module reads. Declared structurally here so the registry can call
  * checkSettingDef without an import cycle.
  */
@@ -51,6 +63,7 @@ export interface SettingPresentation {
   fields?: Readonly<Record<string, SettingFieldDef>>;
   widget?: SettingWidget;
   valueLabels?: Readonly<Record<string, Label>>;
+  managedBy?: SettingManagedBy;
 }
 
 /** Key prefixes whose category differs from "industry" when the definition does not name one (spec AC-3). */
@@ -202,4 +215,10 @@ export function checkSettingDef(def: SettingPresentation): void {
   }
   if (def.default !== undefined && !def.schema.safeParse(def.default).success)
     throw new Error(`setting "${key}": default does not match the schema`);
+  if (def.managedBy !== undefined) {
+    if (!isAppHref(def.managedBy.href))
+      throw new Error(`setting "${key}": managedBy.href must be an in-app path such as /setup`);
+    if (!isLabel(def.managedBy.label))
+      throw new Error(`setting "${key}": managedBy.label must have non-empty ja and en text`);
+  }
 }

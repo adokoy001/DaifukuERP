@@ -32,6 +32,8 @@ describe('settings-console AC-13: labels of registered settings', () => {
         'wholesale.due_days',
         'packs.applied',
         'company.profile',
+        // setup-wizard AC-11: the kernel's setup record is registered by loadRuntime too.
+        'setup.progress',
       ]),
     );
   });

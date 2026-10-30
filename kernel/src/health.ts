@@ -4,6 +4,7 @@
 // caller's Context, so it sees only what the caller may read; a check that throws becomes a `warn` item and the others
 // still run. Outcomes carry labels and an in-app path only: never secrets, connection strings or file paths.
 import { and, count, eq, isNotNull, isNull } from 'drizzle-orm';
+import { isAppHref } from './app-href.ts';
 import { isAdmin, type Context } from './context.ts';
 import { companyProfileOf, companyProfileSchema, COMPANY_PROFILE_KEY } from './company-profile.ts';
 import { outbox } from './db/system-tables.ts';
@@ -32,16 +33,10 @@ export interface HealthReport {
 
 /**
  * In-app paths only (AC-8): one leading slash, then letters, digits and `/ _ - . ? = &`; no `//`, no `..`, no scheme.
- * The web app opens it with the router; anything else is dropped from the item.
+ * The web app opens it with the router; anything else is dropped from the item. Same rule as `managedBy` (app-href.ts).
  */
 export function isHealthHref(href: unknown): href is string {
-  return (
-    typeof href === 'string' &&
-    href.length <= 200 &&
-    /^\/(?!\/)[A-Za-z0-9/_.?=&-]*$/.test(href) &&
-    !href.includes('..') &&
-    !href.includes('//')
-  );
+  return isAppHref(href);
 }
 
 function isLabel(value: unknown): value is Label {

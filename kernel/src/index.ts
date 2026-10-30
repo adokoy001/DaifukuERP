@@ -133,6 +133,7 @@ export {
   settingShape,
   type SettingCategory,
   type SettingFieldDef,
+  type SettingManagedBy,
   type SettingPresentation,
   type SettingShape,
   type SettingValueInfo,
@@ -258,6 +259,7 @@ export {
   selectableCompanies,
   assertCompanyUser,
   companyMemberIdentities,
+  activeCompanyMemberCount,
 } from './company-access.ts';
 export { createManagedUser, updateManagedUser } from './access-users.ts';
 export { putCompanyMembership, removeCompanyMembership } from './access-memberships.ts';
@@ -297,6 +299,19 @@ export {
   getCompanyProfile,
   type CompanyProfile,
 } from './company-profile.ts';
+export { isAppHref } from './app-href.ts';
+export {
+  ensureSetupProgressSetting,
+  SETUP_PROGRESS_KEY,
+  SETUP_PROGRESS_SETTING,
+  SETUP_STEP_IDS,
+  setupProgressOf,
+  setupProgressSchema,
+  setupStepRecordSchema,
+  type SetupProgress,
+  type SetupStepId,
+  type SetupStepRecord,
+} from './setup-progress.ts';
 
 export * from './identity/index.ts';
 
