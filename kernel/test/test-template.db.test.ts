@@ -391,7 +391,8 @@ describe('db-test-startup schema templates on the real server', () => {
     try {
       expect(prepared.outcome).toEqual({ used: 'built', template: name, key, base: 'in-place' });
       expect(await oidOf(ready().database)).not.toBeNull();
-      const [probe] = await prepared.owner!.sql<
+      if (!prepared.owner) throw new Error('expected an owner connection to the rebuilt test database');
+      const [probe] = await prepared.owner.sql<
         { name: string | null }[]
       >`select to_regclass('public.tpl_probe_restore')::text as name`;
       expect(probe?.name).toBe('tpl_probe_restore');
