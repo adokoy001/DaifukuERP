@@ -1,6 +1,6 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-30（第6波まで統合: 波0〜3 の大半、B2・B3・D3・A4、B6・B7・C6・E2・E4、B4・C5 を実装。E4 は行の読取規則が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（第7波まで統合: E6 以外の全項目を実装。E4 は行の読取規則、E1 は率表の一次資料での照合が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
 
 ## 0. この文書の使い方
 
@@ -13,9 +13,9 @@
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件、第6波の統合後 2,045 件 | STATUS、`vitest.config.mts` の unit project |
-| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル、第6波の統合後 1,075 件・152 ファイル | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件、第6波の統合後 203 件 | `apps/web/e2e`、`playwright.config.ts` |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件、第6波の統合後 2,045 件、第7波の統合後 2,337 件 | STATUS、`vitest.config.mts` の unit project |
+| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル、第6波の統合後 1,075 件・152 ファイル、第7波の統合後 1,350 件・178 ファイル | STATUS、`kernel/src/testing.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件、第6波の統合後 203 件、第7波の統合後 227 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -63,13 +63,13 @@
 | C6 | 役割別ホーム **済** | 4 | S | C3 | role-home | `home-page.tsx` |
 | E4 | 証憑の横断検索（電帳法の検索要件）**実装済み（AC-6 は判断待ち）** | 4 | M | C1 | evidence-search | `/finance/evidence` |
 | E2 | 定期仕訳 **済** | 4 | M | なし | recurring-journals | accounting |
-| E1 | 固定資産台帳と減価償却 | 5 | L | E2 | fixed-assets | 新 module `fixed-assets`、l10n/jp |
-| E3 | 資金繰り表と支払予定 | 5 | M | なし | cash-forecast | 新 action と画面 |
-| E5 | 経費精算の一般化 | 5 | M | なし | expense-settlement | workforce / payment / accounting |
+| E1 | 固定資産台帳と減価償却 **済（率表の照合は判断待ち）** | 5 | L | E2 | fixed-assets | 新 module `fixed-assets`、l10n/jp |
+| E3 | 資金繰り表と支払予定 **済** | 5 | M | なし | cash-forecast | 新 action と画面 |
+| E5 | 経費精算の一般化 **済** | 5 | M | なし | expense-settlement | workforce / payment / accounting |
 | E6 | 給与 2027 年版の制度データ **保留（公表待ち）** | 5 | M | 一次資料 | payroll-2027 | l10n/jp |
-| F1 | 業務イベントの配送 worker | 5 | M | C3 | event-delivery | kernel outbox、`apps/api` worker |
-| F2 | 機械用資格情報（API キー） | 5 | M | なし | machine-credentials | kernel identity、`/admin/tokens` |
-| F3 | 権限マトリクスと監査の横断検索 | 5 | M | D1 | access-insight | `/admin/permissions`、`/admin/audit` |
+| F1 | 業務イベントの配送 worker **済** | 5 | M | C3 | event-delivery | kernel outbox、`apps/api` worker |
+| F2 | 機械用資格情報（API キー） **済** | 5 | M | なし | machine-credentials | kernel identity、`/admin/tokens` |
+| F3 | 権限マトリクスと監査の横断検索 **済** | 5 | M | D1 | access-insight | `/admin/permissions`、`/admin/audit` |
 
 ## 4. 実施順（スプリント案）
 
@@ -334,15 +334,21 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 償却資産申告の準備資料（CSV）は B/S 科目別の集計まで。申告書そのものは対象外。
 - 受入基準の骨子: WHEN 償却を実行した THE SYSTEM SHALL golden の手計算と一致する仕訳を期間ごとに 1 本作る。IF 期間が締まっている THEN THE SYSTEM SHALL 作らない。
 
+実装済み（2026-10-30 統合）。新しい module `fixed-assets`（`fixed_asset`、明細付きの `depreciation_run`、`fixed_asset_disposal`）。定額法と 200% 定率法（保証額と改定取得価額への切替）、月割、期中の取得、備忘価額 1 円、年額の円未満切捨て。率表は l10n/jp の期間付きデータで、国税庁・e-Gov の一次資料にこの環境から接続できず照合していないため、会社が率表の確認を記録するまで償却の仕訳は作らない。償却は期間ごとに 1 本の仕訳（冪等、締めた期間は拒否）、除却・売却、償却資産申告の資産区分別 CSV、`/finance/depreciation`、マニュアル付録 O。詳細と設計からの変更は [spec](specs/fixed-assets.md) と [記録](log/2026-10-30-fixed-assets.md) を正とする。
+
 ### E3. 資金繰り表と支払予定
 
 - action `finance.cash_forecast { from, to }` が、売上請求の支払期日、仕入請求の支払期日、契約請求予定、給与の支払日、銀行振込予約を日別に集計し、入金予定・支払予定・残高推移を返す。督促状は C5 の帳票として `sales.render_reminder_html`。
 - 受入基準の骨子: THE SYSTEM SHALL 確定済み伝票だけを予定に含め、下書きは別色で任意表示とする。
 
+実装済み（2026-10-30 統合）。action は banking の `banking.cash_forecast` / `banking.cash_schedule`（計画の `finance.*` には module が無い）。確定済みの売上・仕入請求書の期日別の未消込残高、契約の請求予定、給与の支払日（給与を読める利用者だけ。読めなければ除いたと表示）、振込予約、銀行残高の期首から日ごとの入金・出金・残高を出す。下書きは別に印を付けて任意表示。`/finance/cash-forecast` に表とグラフ。経費精算・固定資産・定期仕訳の資金への影響は対象外。詳細と設計からの変更は [spec](specs/cash-forecast.md) と [記録](log/2026-10-30-cash-forecast.md) を正とする。
+
 ### E5. 経費精算の一般化
 
 - 従業員経費に加え、法人カード・仮払・立替の区分、精算 document から支払（payment）と仕訳までを 1 本の流れにする。承認は既存の workforce の確認待ちに載せる。
 - 受入基準の骨子: WHEN 精算を確定した THE SYSTEM SHALL 支払と仕訳を同じトランザクションで作る。
+
+実装済み（2026-10-30 統合）。新しい module `expense`（`expense_settlement`（明細付き）と `expense_advance`）。精算書の確定で、accounting の `postFromSource` による仕訳、payment の `createClearingPayment` による相手科目付きの入出金、従業員経費の精算済み、仮払の消込を 1 トランザクションで作る（[ADR-0039](adr/0039-expense-settlement-posting.md)）。仮払は確定で支払い、精算で差額を支払うか戻す。本人の精算・API キーによる精算は拒否。`/finance/expenses`、l10n/jp に 1800 仮払金。帳簿のみ保存・少額特例などの税の一次資料は未確認。詳細と設計からの変更は [spec](specs/expense-settlement.md) と [記録](log/2026-10-30-expense-settlement.md) を正とする。
 
 ### E6. 給与 2027 年版の制度データ
 
@@ -355,15 +361,21 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - `apps/api` に outbox の配送 worker（`deliverPending` の定期実行）と、購読者の初版: メール（認証用 transport を共有）、Webhook（署名付き POST、再試行、失敗の可視化）。購読の設定は会社設定 `integration.webhooks`。C3 の受信箱の件数変化を通知する購読を 1 つ用意する。
 - 受入基準の骨子: WHEN 配送に失敗した THE SYSTEM SHALL 再試行し、上限後は失敗として記録して管理画面に表示する。THE SYSTEM SHALL 同じイベントを 2 回配送しても受信側で区別できる ID を付ける。
 
+実装済み（2026-10-30 統合）。apps/api の配送 worker（既定 off、複数プロセスでも二重配送しない）と `events:deliver` CLI、メールと HMAC 署名付き Webhook（配送 id、8 回の再試行の後 dead）、送信先の URL の制限（SSRF）、署名鍵は設定値に入れず暗号化した別表、kernel の設定 `integration.webhooks`、受信箱の件数が増えたときのメール、`/admin/event-deliveries` での再送、導入チェック `system.outbox` での dead の警告（[ADR-0037](adr/0037-business-event-delivery.md)、ADR-0027 の 9 節）。詳細と設計からの変更は [spec](specs/event-delivery.md) と [記録](log/2026-10-30-event-delivery.md) を正とする。
+
 ### F2. 機械用資格情報（API キー）
 
 - テナント管理者が発行する、期限・会社・ロール・用途（MCP / 連携）を持つトークン。人の JWT と同じ `Context` に解決し、権限は同じ経路。失効と最終使用時刻、監査。ADR-0023 の機械認可の考え方を一般化する。
 - 受入基準の骨子: IF 期限切れか失効済み THEN THE SYSTEM SHALL 401 を返す。THE SYSTEM SHALL トークン本体を発行時に一度だけ表示し、ハッシュだけを保存する。
 
+実装済み（2026-10-30 統合）。テナント管理者が本人確認（step-up）の後に、会社・ロール（発行者が与えられる範囲）・用途（MCP / 連携）・期限付きの API キーを発行する。保存はハッシュだけで、本体は発行時に一度だけ表示。失効、最終利用時刻、発行・失効・利用拒否の監査。キーは人の JWT と同じ `Context`（actor は `machine`）に解決し、`/admin`・`/auth` などの人だけの経路と、承認・精算など人の判断の操作（`human-actor-required`）は拒否する。`/admin/tokens`、MCP の `DAIFUKU_API_KEY`（ADR-0023 の追補。ADR-0035 は使っていない）。詳細と設計からの変更は [spec](specs/machine-credentials.md) と [記録](log/2026-10-30-machine-credentials.md) を正とする。
+
 ### F3. 権限マトリクスと監査の横断検索
 
 - `/admin/permissions`: entity × ロール × 操作の表（`registry` から導出、会社・拠点の制限は注記）。`/admin/audit`: 期間・利用者・entity・操作で監査を横断検索（既存の監査表に索引が足りなければ移行を伴う）。
 - 受入基準の骨子: THE SYSTEM SHALL 表の内容をソースの permission 定義から導出し、手書きの一覧を持たない。
+
+実装済み（2026-10-30 統合）。`/admin/permissions` は registry の権限定義から entity × ロール × 操作の表を導出し、行の規則・項目のまとまりを注記する。`/admin/audit` は期間・利用者・対象・操作・レコード id で監査を検索する（会社またはテナントの範囲、カーソルで頁送り、CSV 出力の監査を含む）。検索に出す対象は閉じた許可リストで、読めない entity の行は返さない。監査表に索引 3 本（ADR-0007 の追補。ADR-0038 は使っていない）。詳細と設計からの変更は [spec](specs/access-insight.md) と [記録](log/2026-10-30-access-insight.md) を正とする。
 
 ## 6. 横断する設計決定（ADR 候補）
 
@@ -374,6 +386,9 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 | ADR-0029 会社作成と初期データ | テナント管理者の会社作成で module seed を system context で実行する境界 | B2 |
 | ADR-0030 期首残高 | 期首残高日付・期首残高仮勘定・開始仕訳と module ごとの期首伝票への分割 | B6 |
 | ADR-0031 entity の明細 | `defineEntity` の `lines`（伝票以外の明細。凍結は伝票だけ） | E2 |
+| ADR-0037 業務イベントの配送 | outbox の配送 worker、Webhook の署名・再試行・dead、送信先の制限、秘密は設定値に入れない（ADR-0027 の 9 節） | F1 |
+| ADR-0039 経費精算の転記 | 精算書の確定で仕訳と相手科目付きの入出金を同じトランザクションで作る | E5 |
+| ADR-0023・ADR-0007 の追補 | API キー（machine の actor、人だけの操作の拒否）、権限マトリクスと監査の検索 | F2、F3 |
 | ADR-0002 追補 `views.form` のラベル付きグループ | DSL の後方互換な拡張 | D3 |
 | 規約追加（ui.md） | `*.todo` provider、`render_<document>_html`、一覧 export の監査、UI キットの使用 | C3、C5、C1、D1 |
 | 規約追加（testing.md、verification-and-release.md） | 3 段階の使い分け、`@smoke`、axe の例外ファイル | A1、A2 |

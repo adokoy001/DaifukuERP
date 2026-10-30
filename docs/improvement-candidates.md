@@ -156,11 +156,11 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 | 領域 | 現状 | 候補 | 使える足場 |
 | --- | --- | --- | --- |
-| 固定資産 | 資産台帳・減価償却なし | 資産台帳、定額/定率、月割、除却・売却、償却仕訳の自動生成、償却資産申告の準備資料 | 期間付き制度データの扱い（ADR-0011/0024）、`post_from_source` |
+| 固定資産（済: 2026-10-30、[fixed-assets](specs/fixed-assets.md)。率表の照合は判断待ち） | 資産台帳・減価償却なし | 資産台帳、定額/定率、月割、除却・売却、償却仕訳の自動生成、償却資産申告の準備資料 | 期間付き制度データの扱い（ADR-0011/0024）、`post_from_source` |
 | 定期仕訳（済: 2026-10-30、[recurring-journals](specs/recurring-journals.md)） | 契約請求の予定はあるが、仕訳側の定期仕訳・按分なし | 家賃・減価償却・前払費用の按分を期日に下書き生成し、確認して確定 | `contract.schedule` の考え方 |
 | 予算・部門 | 予算なし。部門などの分析軸は pack の ext キーに依存 | 部門・プロジェクトの共通軸、科目×期間×部門の予算、予実レポート | [postingDimensions](../modules/accounting/src/dimensions.ts) |
-| 資金繰り・支払予定 | 年齢表と未消込残高はある | 入金予定・支払予定（契約請求、給与、振込バッチ、支払サイト）を統合した資金繰り表、督促状 | `sales.ar_aging` / `purchase.ap_aging`、銀行振込予約 |
-| 経費精算の一般化 | 従業員経費と領収書はある | 法人カード・仮払・立替の精算、支払と仕訳までの一貫処理 | workforce expense、payment |
+| 資金繰り・支払予定（済: 2026-10-30、[cash-forecast](specs/cash-forecast.md)。督促状は未実施） | 年齢表と未消込残高はある | 入金予定・支払予定（契約請求、給与、振込バッチ、支払サイト）を統合した資金繰り表、督促状 | `sales.ar_aging` / `purchase.ap_aging`、銀行振込予約 |
+| 経費精算の一般化（済: 2026-10-30、[expense-settlement](specs/expense-settlement.md)） | 従業員経費と領収書はある | 法人カード・仮払・立替の精算、支払と仕訳までの一貫処理 | workforce expense、payment |
 | 証憑（電帳法）の横断検索（実装済み、行の読取規則は判断待ち: [evidence-search](specs/evidence-search.md)） | `attachment` に取引日・金額・取引先の列と索引がある | 取引日範囲×金額範囲×取引先の複合検索、差替履歴の表示、一括ダウンロード、伝票との相互リンク | [attachment](../modules/attachments/src/entities/attachment.ts)、範囲検索（quality-foundation） |
 | インボイス制度 | 経過措置の控除率は実装済み（`transitional-credit.ts`）。登録番号の実在照合なし | 公表サイト Web-API/全件データとの照合（任意・オフライン可）、適格返還請求書 | [日本の制度事実](domain/japan-tax.md) |
 | デジタルインボイス | JP PINT/Peppol なし | 認定プロバイダー向け JP PINT 出力（アクセスポイント運用は対象外） | 調査ノート B5 |
@@ -175,10 +175,10 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 | 領域 | 現状 | 候補 |
 | --- | --- | --- |
-| 権限 | ロールは module が宣言し、entity ごとに role×op を固定。実行時のカスタムロールなし | 権限マトリクス閲覧画面（誰が何をできるか）、ロールの雛形（経理・店長・従業員）、所属一覧の CSV |
-| 監査 | レコード単位の監査パネルと管理操作の監査一覧 | 期間・利用者・entity・操作種別で横断検索する監査画面、設定変更の履歴 |
-| 外部システム用資格情報 | 人の JWT と機器用資格情報のみ。API キー/サービスアカウントなし | 期限・権限範囲付きの機械用トークン（MCP/連携用）、失効、監査。ADR-0023 の機械認可の考え方を一般化 |
-| 業務イベントの配送 | transactional outbox はあるが業務 module の購読者は 0。メール配送は認証用に限定 | 汎用の配送 worker（メール・Webhook・ブラウザ通知）、再試行と失敗の可視化、2-3 の受信箱と接続 |
+| 権限（権限マトリクスは済: 2026-10-30、[access-insight](specs/access-insight.md)。実行時のカスタムロールは未実施） | ロールは module が宣言し、entity ごとに role×op を固定。実行時のカスタムロールなし | 権限マトリクス閲覧画面（誰が何をできるか）、ロールの雛形（経理・店長・従業員）、所属一覧の CSV |
+| 監査（横断検索は済: 2026-10-30、[access-insight](specs/access-insight.md)） | レコード単位の監査パネルと管理操作の監査一覧 | 期間・利用者・entity・操作種別で横断検索する監査画面、設定変更の履歴 |
+| 外部システム用資格情報（済: 2026-10-30、[machine-credentials](specs/machine-credentials.md)） | 人の JWT と機器用資格情報のみ。API キー/サービスアカウントなし | 期限・権限範囲付きの機械用トークン（MCP/連携用）、失効、監査。ADR-0023 の機械認可の考え方を一般化 |
+| 業務イベントの配送（済: 2026-10-30、[event-delivery](specs/event-delivery.md)） | transactional outbox はあるが業務 module の購読者は 0。メール配送は認証用に限定 | 汎用の配送 worker（メール・Webhook・ブラウザ通知）、再試行と失敗の可視化、2-3 の受信箱と接続 |
 | 運用 | バックアップ・復元は CLI、監視は導入先 | 管理画面でのバックアップ状態・移行状態・outbox 滞留の表示、1-4 と統合 |
 | 個人情報 | 従業員・本人条件の列マスクはある | 退職者データの保持期間と匿名化、アクセスログの本人開示 |
 
@@ -234,5 +234,11 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | セットアップウィザード | ホームのカードを「表示しない」操作を置くか（現状は理由付きのスキップ）。勤怠・給与の段階を使う会社だけに出すか。`packs.applied` にも `managedBy` を付けるか。設定の PUT に版の検査を足すか。seed が作る暦年の会計年度を決算月に合わせて置き換える手段（短い初年度など）。確認だけの段階を確認するまで未完了にするか。期首残高の取込（B6）への導線と「通常の入出庫より先に期首在庫を取り込む」案内を足すか（現状はスコープ外）。店舗・拠点に限った admin では `/meta/setup-status` が 403 でカードが出ない（spec の想定）。`/setup` を共通の axe 検査の画面一覧に入れるか | [setup-wizard](specs/setup-wizard.md) |
 | 帳票 | 領収書の記載事項と印紙税の注意（国税庁の一次資料を確認してから）。給与明細の法定の文言。売上請求書も `print_layout.date_style` に従うか。合計請求書の前回請求額・入金額・繰越（期首残高を含む）。API の言語が画面の言語ではなくブラウザの Accept-Language に従う点（全体の課題） | [print-templates](specs/print-templates.md) |
 | pack 雛形 | ルートに `pnpm pack:new` を足すか。ext の対象を取引先以外にも広げるか。第三者が雛形から完走した記録（未実施） | [pack-scaffold](specs/pack-scaffold.md) |
+| API キー | 利用者の直接作成とテナント管理者の付与にも step-up を求めるか。多要素認証の無い最小構成でキーの発行を許すか。キーをパスワード変更・全セッション失効でも残すか、キーごとの要求回数の上限、期限の通知（現状は一覧の「残り N 日」だけ） | [machine-credentials](specs/machine-credentials.md) |
+| 業務イベントの配送 | worker を既定 off のままにするか、再試行の回数と間隔（8 回・約 2 時間）、署名鍵の暗号鍵を本人確認と共有してよいか、独自の署名形式でよいか、配送済みの保持 30 日、受信箱のメールを増えたときだけにするか、settings ロールが送信先を編集できる範囲、個人情報を載せる場合の第三者提供の法的整理。CLAUDE.md 規約 2 に配送 worker の systemParams 利用を明記するか | [event-delivery](specs/event-delivery.md) |
+| 権限マトリクス・監査の検索 | MCP の検索ツール、会社をまたぐ検索、検索結果の CSV、利用者ごとの実効権限、`audit_log_at_idx` の削除、settings ロールに検索を許すか、レポートの CSV 出力の監査。監査の行に API キーの名前を出すか（テナント管理者だけが鍵を読めるため権限の設計が要る） | [access-insight](specs/access-insight.md) |
+| 資金繰り表 | CSV が現状のロールでは管理者だけ（経理に請求書・契約の export が無い）。給与の支払の仕訳が支払日以前に転記されると二重に数える点（給与と仕訳の結び付けが要る）。経費精算・固定資産・定期仕訳の資金への影響を足すか。共通の axe 検査の画面一覧に入れるか | [cash-forecast](specs/cash-forecast.md) |
+| 経費精算 | 帳簿のみ保存・少額特例・経過措置の書類・仕入税額控除の時期の一次資料での確認（国税庁・e-Gov に接続できる環境で）。従業員と取引先の対応、経費区分と科目の対応、従業員からの仮払申請、法人カードの引落し、領収書の税額との 1 円差、証憑の読取規則を精算書の読取に合わせるか、取り消した相手科目付き入出金の訂正を元で拒否するか（kernel の before_amend が要る） | [expense-settlement](specs/expense-settlement.md) |
+| 固定資産 | **率表・備忘価額・償却方法の制限・円未満切捨てを一次資料で照合するために国税庁・e-Gov への接続を許すか、会社ごとの確認記録で運用するか**。500 件を超える償却、台帳と帳簿の照合レポート、少額資産・特別償却、締めガイドの項目、除却年の償却の任意化、資産の課税売上の表し方 | [fixed-assets](specs/fixed-assets.md) |
 | 型検査の範囲 | ルートの `pnpm typecheck` は module の試験ファイルを含まない。module の tsconfig で検査すると試験ファイルに型の誤りがある（2026-10-30 時点で sales 1・purchase 1・accounting 1・trade 2・banking 3。実行時の試験は成功）。gate に含めるか、誤りを直すか | 第6波の統合時の確認 |
 | gate:light | 目標 6 分を負荷平均が CPU 数以下のときの値と読むか、見直すか。full の DB も分割するか（現状は CI と同じ直列）。shard DB が主試験 DB とテンプレートを共有するか。8 CPU 以上での既定の分割数 | [light-tier-speed](specs/light-tier-speed.md) |
