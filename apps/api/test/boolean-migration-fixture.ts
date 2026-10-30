@@ -90,11 +90,11 @@ export function expectedBooleanHistory(before: Awaited<ReturnType<typeof boolean
  * the one under test may add whole tables (with their own constraints); constraints of existing tables still compare in
  * full. Added for docs/specs/fixed-assets.md (0018 adds tables), see docs/log/2026-10-30-fixed-assets.md.
  */
-export function onExistingRelations<T extends { constraints: readonly { relation: string }[] }>(
+export function onExistingRelations<T extends { constraints: readonly Record<string, unknown>[] }>(
   facts: T,
-  before: { constraints: readonly { relation: string }[] },
+  before: { constraints: readonly Record<string, unknown>[] },
 ): T {
-  const known = new Set(before.constraints.map((c) => c.relation));
+  const known = new Set(before.constraints.map((c) => String(c.relation)));
   // A plain array on both sides of the comparison (driver result arrays carry extra properties).
-  return { ...facts, constraints: [...facts.constraints].filter((c) => known.has(c.relation)) };
+  return { ...facts, constraints: [...facts.constraints].filter((c) => known.has(String(c.relation))) };
 }
