@@ -103,6 +103,7 @@ documents.push(
 );
 documents.push('docs/specs/release-finishing.md', 'docs/log/2026-09-14-release-finishing.md');
 documents.push('docs/specs/test-tiers.md', 'docs/log/2026-10-29-test-tiers.md');
+documents.push('docs/specs/db-test-startup.md', 'docs/log/2026-10-29-db-test-startup.md');
 let checked = 0;
 const failures = [];
 for (const document of documents) {

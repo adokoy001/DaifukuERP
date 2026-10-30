@@ -443,6 +443,60 @@ export function subprocessEntries(spec, text, scope, exists) {
   return [...entries].sort();
 }
 
+// ---- light: migration/setup suites (docs/specs/db-test-startup.md AC-8..AC-10) ------------------------------------
+// DB suites that build their schema by running the committed migrations (the apps/api migration, upgrade and
+// industry-template suites) check the migration files, the registry-to-migration sync, the legacy fixtures and the
+// setup/seed code next to them. Every module change selects them through the module graph (they import every module),
+// so light runs them only when the change set can alter what they check and otherwise defers them to full, saying so.
+// Escalated changes (kernel, apps/api/drizzle, apps/api/src/db, ...) still run every DB suite. full and `pnpm gate`
+// always run them. A suite is one of them when it, or a helper next to it that it imports (`./legacy-fixture.ts`),
+// calls runMigrations(.
+export function buildsSchemaFromMigrations(text, readSibling = () => '') {
+  const migrates = (source) => /\brunMigrations\s*\(/.test(source);
+  if (migrates(text)) return true;
+  for (const match of text.matchAll(/\bfrom\s+['"](\.\/[\w.-]+\.[cm]?[jt]sx?)['"]/g))
+    if (migrates(readSibling(match[1]))) return true;
+  return false;
+}
+
+// Source text that changes the registry DDL: entity and document declarations, packs (ext fields, equality indexes)
+// and kernel system tables.
+export function declaresSchema(text) {
+  return /\b(?:defineEntity|defineDocument|definePack|registerSystemTable)\s*\(/.test(text);
+}
+
+// Splits graph-selected migration/setup suites into kept and deferred ones. A suite is kept when a changed path
+// declares schema (`declaring`), is imported by a schema declaration of its own package (`reached`: enum values and
+// field lists kept in services files), or lies inside the suite's own workspace package (its fixtures, setup code and
+// the suite itself). Suites selected by another rule (reference, directory, setup, subprocess, always) are kept.
+export function deferSchemaSuites(selected, { changed, declaring = [], reached = [], schemaSuites, packages = [] }) {
+  const kept = [];
+  const deferred = [];
+  const reasons = [];
+  for (const entry of selected) {
+    if (entry.via !== 'graph' || !schemaSuites.has(entry.file)) {
+      kept.push(entry);
+      continue;
+    }
+    const scope = scopeOf(entry.file, packages);
+    const declared = changed.find((path) => declaring.includes(path));
+    const imported = changed.find((path) => reached.includes(path));
+    const local = scope ? changed.find((path) => path.startsWith(`${scope}/`)) : undefined;
+    const reason = declared
+      ? { path: declared, why: 'declares entities, pack ext fields or system tables' }
+      : imported
+        ? { path: imported, why: 'imported by a schema declaration of its package' }
+        : local
+          ? { path: local, why: `inside ${scope}, the package of the migration/setup suites` }
+          : null;
+    if (reason) {
+      kept.push(entry);
+      if (!reasons.some((known) => known.path === reason.path)) reasons.push(reason);
+    } else deferred.push({ file: entry.file, reason: 'no schema-relevant change; run by full and pnpm test:db' });
+  }
+  return { selected: kept, deferred, reasons };
+}
+
 // A vitest setupFile runs before the suites of its project but is not part of any suite's module graph. When a
 // changed source is in the setup file's import graph, the suites it names are selected (every suite of the project when
 // it names none). apps/api/test/payroll-provider-setup.ts imports @daifuku/l10n-jp for the two fiscal suites.
@@ -543,7 +597,13 @@ function dbStep(cls, escalation) {
   if (escalation.widenDb)
     return step('db', pnpm('test:db'), { note: 'escalated: every DB suite (see escalation reasons)' });
   return step('db', null, {
-    selection: { project: 'db', sources: cls.present, triggers: cls.all, extra: [...ALWAYS_DB_SUITES] },
+    selection: {
+      project: 'db',
+      sources: cls.present,
+      triggers: cls.all,
+      extra: [...ALWAYS_DB_SUITES],
+      deferSchemaSuites: true,
+    },
   });
 }
 
@@ -725,10 +785,23 @@ export function applySelection(item, selection, root = ROOT) {
   const files = selection.selected.map((entry) => entry.file);
   const via = {};
   for (const entry of selection.selected) via[entry.via] = (via[entry.via] ?? 0) + 1;
+  const deferred = selection.deferred ?? [];
   const selected = { files: files.length, total: selection.total, via };
-  if (!files.length) return { ...item, selected, skip: { result: 'no-target', reason: 'no related test file' } };
+  if (deferred.length) selected.deferred = deferred.length;
+  const deferNote =
+    `deferred ${deferred.length} migration/setup suite${deferred.length === 1 ? '' : 's'} to full ` +
+    '(no schema-relevant change; docs/specs/db-test-startup.md)';
+  const deferral = deferred.length
+    ? {
+        deferredFiles: deferred.map((entry) => entry.file),
+        note: item.note ? `${item.note}; ${deferNote}` : deferNote,
+      }
+    : {};
+  if (!files.length)
+    return { ...item, ...deferral, selected, skip: { result: 'no-target', reason: 'no related test file' } };
   return {
     ...item,
+    ...deferral,
     selected,
     selectedFiles: files,
     command: pnpm('exec', 'vitest', 'run', '--project', selection.project, ...files.map((file) => join(root, file))),
@@ -827,6 +900,12 @@ export function buildReport({
     hints.push('apps/web/e2e changed: run the changed specs with the browser procedure, or pnpm gate:full.');
   if (escalation.required && tier !== 'full')
     hints.push('Full regression required before claiming done: run pnpm gate:full.');
+  const deferred = steps.reduce((sum, item) => sum + (item.selected?.deferred ?? 0), 0);
+  if (deferred)
+    hints.push(
+      `light deferred ${deferred} migration/setup DB suite${deferred === 1 ? '' : 's'} (no schema-relevant change); ` +
+        'pnpm gate:full and pnpm test:db run them.',
+    );
   return {
     schema: 1,
     tier,
@@ -863,6 +942,7 @@ export function buildReport({
       result: item.result,
       seconds: item.seconds ?? 0,
       selected: item.selected ?? null,
+      deferred: item.deferredFiles ?? [],
       command: commandText(item.command),
       summary: commandSummary(item.command),
       note: item.note ?? null,
@@ -883,7 +963,8 @@ export function buildReport({
 function selectionText(selected) {
   if (!selected) return '';
   const unit = selected.files === 1 && selected.total === undefined ? 'file' : 'files';
-  return selected.total === undefined ? `${selected.files} ${unit}` : `${selected.files}/${selected.total} files`;
+  const text = selected.total === undefined ? `${selected.files} ${unit}` : `${selected.files}/${selected.total} files`;
+  return selected.deferred ? `${text} (+${selected.deferred} deferred)` : text;
 }
 
 // Table cells stay one line; the full text (guidance, commands) is printed below the table and kept in the JSON.
@@ -1440,6 +1521,10 @@ async function main(argv) {
       const planned = await planDryRun(steps, session);
       for (const item of planned.filter((entry) => entry.selectedFiles?.length))
         console.log(`\n${item.id} would run ${item.selectedFiles.length} files:\n  ${item.selectedFiles.join('\n  ')}`);
+      for (const item of planned.filter((entry) => entry.deferredFiles?.length))
+        console.log(
+          `\n${item.id} defers ${item.deferredFiles.length} files to full:\n  ${item.deferredFiles.join('\n  ')}`,
+        );
       finish(planned, session.interrupted ? 'interrupted' : 'dry-run');
       return session.interrupted ?? 0;
     }
@@ -1453,6 +1538,7 @@ async function main(argv) {
         const resolved = await resolveSelection(item, session);
         if (resolved !== item && resolved.command)
           console.log(`    selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}`);
+        if (resolved.deferredFiles?.length) console.log(`    deferred to full: ${resolved.deferredFiles.join(', ')}`);
         return resolved;
       },
       execute: async (item) => {

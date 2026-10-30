@@ -23,9 +23,9 @@
 
 ## 段階実行（quick / light / full）
 
-`scripts/gate.mjs` は基準点（`origin/main` との merge-base）からの変更集合を求め、quick は変更ファイルに限定した検査と vitest のモジュールグラフで選んだ unit 試験、light は全体の静的検査（API/Web の型を含む）と unit 全件に関連 DB suite と kernel の常時実行 suite を足し、full は `pnpm gate` の各工程に API/Web の型・build、中継 agent build、ブラウザ・認証試験を足します。関連 suite にはモジュールグラフに加え、vitest の setupFile が対象 suite のために読むモジュール（日本の給与 provider）と、試験が子プロセスで実行する入口の import グラフを含めます。kernel・migration・依存・設定・CI・ブラウザ設定・削除したソースを含む変更は昇格扱いで完了前の full を案内し、そのうち DB 試験に影響しうるものでは light が DB を全件にします。選択はファイル単位で、試験の skip や絞込みはしません。中断時は各工程の process group ごと停止します。`pnpm gate` 自体と CI の gate job は変えず、CI には DB を使わない `quick` job を先に返す job として足しています。各実行は `.runtime/gate/` に JSON の報告を残します。
+`scripts/gate.mjs` は基準点（`origin/main` との merge-base）からの変更集合を求め、quick は変更ファイルに限定した検査と vitest のモジュールグラフで選んだ unit 試験、light は全体の静的検査（API/Web の型を含む）と unit 全件に関連 DB suite と kernel の常時実行 suite を足し、full は `pnpm gate` の各工程に API/Web の型・build、中継 agent build、ブラウザ・認証試験を足します。関連 suite にはモジュールグラフに加え、vitest の setupFile が対象 suite のために読むモジュール（日本の給与 provider）と、試験が子プロセスで実行する入口の import グラフを含めます。kernel・migration・依存・設定・CI・ブラウザ設定・削除したソースを含む変更は昇格扱いで完了前の full を案内し、そのうち DB 試験に影響しうるものでは light が DB を全件にします。light は committed migration から schema を作る migration/setup suite を、schema 宣言・その package 内で宣言が読むファイル・`apps/api` の変更があるときだけ実行し、それ以外は full に回したと報告します（[DB suite 起動の短縮](../specs/db-test-startup.md)）。選択はファイル単位で、試験の skip や絞込みはしません。中断時は各工程の process group ごと停止します。`pnpm gate` 自体と CI の gate job は変えず、CI には DB を使わない `quick` job を先に返す job として足しています。各実行は `.runtime/gate/` に JSON の報告を残します。
 
-DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。
+DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。`freshDb()` は registry から作った schema を `<試験DB名>_tpl_<鍵>` のテンプレート DB に保存し、suite ごとに試験 DB を `CREATE DATABASE ... TEMPLATE` で作り直します（鍵は schema を作る全文のハッシュ）。作成・削除するのは試験 DB と自分の印を持つテンプレートだけで、DB 名に `test` が無い、owner に CREATEDB が無い、DB 単位の grant・設定があるなどの場合は従来どおり DB の中で作り直します（`TEST_DATABASE_TEMPLATE=off` でも同じ）。どの経路でも catalog（RLS・grant・policy を含む）が同じことを試験で確かめています。
 
 生成DB操作列、会社/拠点の比較、独立したシフト全探索は通常のunit/DBへ組み込みます。[検証設計](practical-verification.md)と[台帳](../verification/invariants.md)で前提と限界を確認し、変更時は `pnpm verify:assurance --changed main` から直接参照する項目を見直します。
 

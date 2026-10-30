@@ -21,10 +21,10 @@
 | 段階 | コマンド | 内容 | 目安 | 使う場面 |
 | --- | --- | --- | --- | --- |
 | quick | `pnpm gate:quick` | 変更ファイルの Prettier / ESLint、依存境界、typecheck（`apps/api`・`apps/web` の typecheck は、その app か app が依存する package を変えたとき）、関連する unit 試験、文書リンクと台帳 | 1〜2 分（sales の 1 ファイル変更で 71 秒） | 編集ごと、コミット前 |
-| light | `pnpm gate:light` | 全体の format・typecheck（API/Web を含む）・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件 | 文書だけの変更で約 2〜4 分、module の 1 ファイル変更で約 10〜14 分、kernel など DB 全件に広がる変更で約 17 分 | push 前、作業の区切り |
+| light | `pnpm gate:light` | 全体の format・typecheck（API/Web を含む）・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件 | 文書だけの変更で約 2〜4 分、module の 1 ファイル変更で約 7〜10 分（banking 6.8 分、sales 9.8 分）、kernel など DB 全件に広がる変更で約 16 分 | push 前、作業の区切り |
 | full | `pnpm gate:full` | `pnpm gate` の全工程、API/Web の typecheck と build、中継 agent build、通常ブラウザ試験、認証ブラウザ試験 | CI 並列で約 15 分、ローカル直列で 25〜40 分 | 「完了」の主張前、PR を ready にする前、main 取込後 |
 
-- 目安の時間は 4 CPU を他の作業と共有する一時 container での計測です（CI では未計測）。light は module を 1 ファイル変えるだけでも、全 module を読む `apps/api` の DB suite が約 30 件選ばれるため 10 分を超えます（[仕様](docs/specs/test-tiers.md) の未決事項）。
+- 目安の時間は 4 CPU を他の作業と共有する一時 container での計測です（CI では未計測）。light は module を 1 ファイル変えるだけでも、全 module を読む `apps/api` の DB suite が約 20 件選ばれるため 6 分を超えます（[仕様](docs/specs/db-test-startup.md) の未決事項）。committed migration から schema を作る migration/setup の 10 suite は、schema の宣言（`defineEntity(` など）や `apps/api` を変えていなければ実行せず full に回し、報告の `deferred` と hint に出します。
 - 基準点は `origin/main` との merge-base です。無ければ `origin/HEAD`、ローカルの `main`、upstream との merge-base、最後に `HEAD~1` を使い、そのときは `WARNING: the base fell back ...` と表示します。枝分かれ元が違う場合は `--base <ref>` か `GATE_BASE` で指定してください。未コミット・未追跡のファイルも対象です。
 - `kernel/`、migration、`package.json` / lockfile、tsconfig・lint・CI・ブラウザ試験の設定、削除したソースなどを含む変更は「フル回帰が必要」と表示されます。そのうち DB 試験に影響しうるもの（kernel、migration、依存、tsconfig、DB の setupFile など）では light が DB を全件に広げます。どちらの場合も完了前には `pnpm gate:full` が必要です。
 - DB を使う light / full は、下の DB テストと同じく破棄可能な専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に明示してください。ループバックの同じ DB（名前は `daifuku_test`、`daifuku_ci_test`、`daifuku_test_<suffix>`）と、別の owner / `daifuku_app` role が必要です。未設定や条件外のときは既定の `daifuku_test` を使わずに止まります（別名の破棄可能な DB を使う場合だけ `GATE_ALLOW_DB_URL=1`）。
@@ -38,7 +38,7 @@
 
 ## 型・単体・DB・Web の検証
 
-Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用します。依存は `pnpm install --frozen-lockfile` で導入します。[開発用の初期化](README.md) は専用の開発 DB で行ってください。以下の DB テストはテーブルを作り直すため、`TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に必ず破棄可能な専用テスト DB を設定します。
+Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用します。依存は `pnpm install --frozen-lockfile` で導入します。[開発用の初期化](README.md) は専用の開発 DB で行ってください。以下の DB テストはその DB を作り直すため、`TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に必ず破棄可能な専用テスト DB を設定します。DB テストは registry から作った schema を `<試験DB名>_tpl_<16桁>` という名前のテンプレート DB（同じサーバー、owner role の所有、接続不可）に保存し、suite ごとに試験 DB を `DROP DATABASE` / `CREATE DATABASE ... TEMPLATE` で作り直します（[DB suite 起動の短縮](docs/specs/db-test-startup.md)）。試験 DB の名前に `test` を含め、owner role に CREATEDB と試験 DB の所有権を与えてください（`scripts/db-setup.sql` と CI の設定はそうなっています）。条件を満たさない場合や `TEST_DATABASE_TEMPLATE=off` のときは、従来どおり DB の中で schema を作り直します。テンプレートは試験 DB ごとに最大 80 件（`TEST_DATABASE_TEMPLATE_LIMIT` で変更）を残し、最終利用が古いものから消します。全 DB suite の 1 回の実行で約 59 件・合計約 0.7 GB（1 件 8〜21 MB）を使います。不要になったら `psql -d postgres -Atc "select datname from pg_database where datname like 'daifuku_test\_tpl\_%'"` で一覧し、`dropdb` で消してください（試験 DB 名に合わせて読み替えます）。
 
 ```sh
 pnpm gate

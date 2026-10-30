@@ -22,27 +22,29 @@ export async function runMigrations(owner: Database, migrationsFolder: string): 
  * - least-privilege grants for the app role (audit_log: insert/select only; sequences: no delete)
  */
 export async function enforcePolicies(owner: Database): Promise<void> {
-  const tables = registry.tables();
-  await owner.drizzle.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO ${APP_ROLE}`));
-  for (const [name, table] of Object.entries(tables)) {
+  for (const statement of policyStatements()) await owner.drizzle.execute(sql.raw(statement));
+}
+
+/** The statements enforcePolicies executes for the current registry, in order (the test harness hashes them). */
+export function policyStatements(): string[] {
+  const statements = [`GRANT USAGE ON SCHEMA public TO ${APP_ROLE}`];
+  for (const [name, table] of Object.entries(registry.tables())) {
     const tableName = getTableName(table);
     if (NON_TENANT_TABLES.includes(name)) continue;
-    await owner.drizzle.execute(sql.raw(`ALTER TABLE "${tableName}" FORCE ROW LEVEL SECURITY`));
-    const grants = grantsFor(name);
-    await owner.drizzle.execute(sql.raw(`REVOKE ALL ON "${tableName}" FROM ${APP_ROLE}`));
-    await owner.drizzle.execute(sql.raw(`GRANT ${grants} ON "${tableName}" TO ${APP_ROLE}`));
+    statements.push(
+      `ALTER TABLE "${tableName}" FORCE ROW LEVEL SECURITY`,
+      `REVOKE ALL ON "${tableName}" FROM ${APP_ROLE}`,
+      `GRANT ${grantsFor(name)} ON "${tableName}" TO ${APP_ROLE}`,
+    );
   }
   // Append-only audit: even the owner cannot update/delete rows (defence in depth; 電帳法 訂正削除履歴).
-  await owner.drizzle.execute(
-    sql.raw(`CREATE OR REPLACE FUNCTION audit_log_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN RAISE EXCEPTION 'audit_log is append-only'; END $$`),
+  statements.push(
+    `CREATE OR REPLACE FUNCTION audit_log_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'audit_log is append-only'; END $$`,
+    `DROP TRIGGER IF EXISTS audit_log_immutable_trg ON audit_log`,
+    `CREATE TRIGGER audit_log_immutable_trg BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_immutable()`,
   );
-  await owner.drizzle.execute(sql.raw(`DROP TRIGGER IF EXISTS audit_log_immutable_trg ON audit_log`));
-  await owner.drizzle.execute(
-    sql.raw(
-      `CREATE TRIGGER audit_log_immutable_trg BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_immutable()`,
-    ),
-  );
+  return statements;
 }
 
 function grantsFor(name: string): string {
@@ -56,10 +58,13 @@ function grantsFor(name: string): string {
   }
 }
 
+/** The statements dropAll executes, in order (test databases only). */
+export const RESET_STATEMENTS: readonly string[] = Object.freeze([
+  'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;',
+  'DROP SCHEMA IF EXISTS drizzle CASCADE;',
+]);
+
 /** Drops every registered table (test databases only). */
 export async function dropAll(owner: Database): Promise<void> {
-  await owner.drizzle.execute(
-    sql.raw(`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`),
-  );
-  await owner.drizzle.execute(sql.raw(`DROP SCHEMA IF EXISTS drizzle CASCADE;`));
+  for (const statement of RESET_STATEMENTS) await owner.drizzle.execute(sql.raw(statement));
 }

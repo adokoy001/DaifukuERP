@@ -30,11 +30,14 @@ import {
   browserFixtureEnv,
   browserPrerequisites,
   buildReport,
+  buildsSchemaFromMigrations,
   classifyChanges,
   collectChangeSet,
   commandSummary,
   commandText,
   databaseUrl,
+  declaresSchema,
+  deferSchemaSuites,
   detectEscalation,
   formatTable,
   gitRunner,
@@ -539,6 +542,165 @@ describe('AC-3 light plan', () => {
     );
     expect(selected.selected).toEqual({ files: 2, total: 116, via: { always: 1, graph: 1 } });
     expect(commandSummary(selected.command)).toBe('pnpm exec vitest run --project db <2 files>');
+  });
+});
+
+describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites without a schema-relevant change', () => {
+  const schemaSuites = new Set([
+    'apps/api/test/migrations.db.test.ts',
+    'apps/api/test/upgrade.db.test.ts',
+    'apps/api/test/boolean-migration.db.test.ts',
+  ]);
+  const selected = [
+    { file: 'apps/api/test/api.db.test.ts', via: 'graph' },
+    { file: 'apps/api/test/boolean-migration.db.test.ts', via: 'graph' },
+    { file: 'apps/api/test/migrations.db.test.ts', via: 'graph' },
+    { file: 'apps/api/test/upgrade.db.test.ts', via: 'reference' },
+    { file: 'kernel/test/foundation.db.test.ts', via: 'always' },
+    { file: 'modules/sales/test/sales.db.test.ts', via: 'graph' },
+  ];
+  it('AC-8 recognises the suites that build their schema from the committed migrations from their source', () => {
+    const suites = readdirSync(join(ROOT, 'apps/api/test'))
+      .filter((name) => name.endsWith('.db.test.ts'))
+      .map((name) => `apps/api/test/${name}`);
+    const sibling = (name: string) => {
+      const path = join(ROOT, 'apps/api/test', name);
+      return existsSync(path) ? readFileSync(path, 'utf8') : '';
+    };
+    const detected = suites.filter((file) =>
+      buildsSchemaFromMigrations(readFileSync(join(ROOT, file), 'utf8'), sibling),
+    );
+    // test-tiers named these nine (four migrate through ./legacy-fixture.ts); industry-templates also migrates a
+    // populated legacy schema. Exactly these ten today; a new migration suite is picked up by the same rule.
+    expect(detected).toEqual(
+      expect.arrayContaining([
+        'apps/api/test/boolean-migration.db.test.ts',
+        'apps/api/test/commerce-finance-migration.db.test.ts',
+        'apps/api/test/edge-migration.db.test.ts',
+        'apps/api/test/enterprise-migration.db.test.ts',
+        'apps/api/test/ext-index-migration.db.test.ts',
+        'apps/api/test/operations-migration.db.test.ts',
+        'apps/api/test/shift-migration.db.test.ts',
+        'apps/api/test/migrations.db.test.ts',
+        'apps/api/test/upgrade.db.test.ts',
+        'apps/api/test/industry-templates.db.test.ts',
+      ]),
+    );
+    // None of them uses the registry-built test schema; every other apps/api DB suite does.
+    for (const file of suites) {
+      const text = readFileSync(join(ROOT, file), 'utf8');
+      expect(detected.includes(file) ? !/\bfreshDb\(/.test(text) : true, file).toBe(true);
+    }
+    expect(detected).toHaveLength(10);
+    expect(buildsSchemaFromMigrations('await freshDb();')).toBe(false);
+    expect(
+      buildsSchemaFromMigrations("import { seed } from './helper.ts';", () => 'await runMigrations(owner, dir);'),
+    ).toBe(true);
+    // Only helpers next to the suite count; a package import is not followed.
+    expect(buildsSchemaFromMigrations("import { x } from '@daifuku/kernel';", () => 'runMigrations(')).toBe(false);
+  });
+  it('AC-9 recognises schema declarations: entities, documents, packs and system tables', () => {
+    expect(declaresSchema(readFileSync(join(ROOT, 'modules/sales/src/entities/sales-invoice.ts'), 'utf8'))).toBe(true);
+    expect(declaresSchema(readFileSync(join(ROOT, 'packs/retail/src/pack.ts'), 'utf8'))).toBe(true);
+    expect(declaresSchema("registry.registerSystemTable('tenants', tenants);")).toBe(true);
+    expect(declaresSchema(readFileSync(join(ROOT, 'modules/sales/src/settings.ts'), 'utf8'))).toBe(false);
+    expect(declaresSchema('// defineEntity is mentioned without a call')).toBe(false);
+  });
+  it('AC-8 defers graph-selected migration/setup suites when nothing schema-relevant changed and keeps the rest', () => {
+    const result = deferSchemaSuites(selected, {
+      changed: ['modules/sales/src/settings.ts'],
+      schemaSuites,
+      packages: packages,
+    });
+    expect(result.selected.map((entry) => entry.file)).toEqual([
+      'apps/api/test/api.db.test.ts',
+      'apps/api/test/upgrade.db.test.ts', // selected by the reference rule, not only by the graph
+      'kernel/test/foundation.db.test.ts',
+      'modules/sales/test/sales.db.test.ts',
+    ]);
+    expect(result.deferred.map((entry) => entry.file)).toEqual([
+      'apps/api/test/boolean-migration.db.test.ts',
+      'apps/api/test/migrations.db.test.ts',
+    ]);
+    expect(result.reasons).toEqual([]);
+  });
+  it.each([
+    [
+      'declares schema',
+      {
+        changed: ['modules/sales/src/entities/sales-invoice.ts'],
+        declaring: ['modules/sales/src/entities/sales-invoice.ts'],
+      },
+      /declares entities/,
+    ],
+    [
+      'is imported by a declaration of its package',
+      { changed: ['modules/sales/src/services/statuses.ts'], reached: ['modules/sales/src/services/statuses.ts'] },
+      /imported by a schema declaration/,
+    ],
+    [
+      'lies inside the suites package (fixtures, setup code, the suite itself)',
+      { changed: ['apps/api/test/legacy-fixture.ts'] },
+      /inside apps\/api/,
+    ],
+  ])('AC-9 keeps them when a changed path %s', (_label, input, why) => {
+    const result = deferSchemaSuites(selected, { ...input, schemaSuites, packages: packages });
+    expect(result.deferred).toEqual([]);
+    expect(result.selected).toEqual(selected);
+    expect(result.reasons[0]?.why).toMatch(why);
+  });
+  it('AC-8 asks for deferral only in the light DB selection, never when light escalates to every DB suite', () => {
+    expect(find(plan('light', ['modules/sales/src/settings.ts']).steps, 'db').selection).toMatchObject({
+      deferSchemaSuites: true,
+    });
+    expect(
+      find(plan('quick', ['modules/sales/src/settings.ts']).steps, 'unit').selection?.deferSchemaSuites,
+    ).toBeUndefined();
+    expect(commandText(find(plan('light', ['apps/api/drizzle/migrations/0030_x.sql']).steps, 'db').command)).toBe(
+      'pnpm test:db',
+    );
+    expect(commandText(find(plan('full', ['modules/sales/src/settings.ts']).steps, 'db').command)).toBe('pnpm test:db');
+  });
+  it('AC-10 reports deferred suites in the step, the table, the hints and the JSON report', () => {
+    const { steps, changes, cls, escalation } = plan('light', ['modules/sales/src/settings.ts']);
+    const db = applySelection(
+      { ...find(steps, 'db'), note: 'resets the schema of daifuku_test_x on 127.0.0.1:5432' },
+      {
+        project: 'db',
+        total: 116,
+        selected: [{ file: 'modules/sales/test/sales.db.test.ts', via: 'graph' }],
+        deferred: [{ file: 'apps/api/test/migrations.db.test.ts', reason: 'no schema-relevant change' }],
+      },
+      '/repo',
+    );
+    expect(db.selected).toEqual({ files: 1, total: 116, via: { graph: 1 }, deferred: 1 });
+    expect(db.deferredFiles).toEqual(['apps/api/test/migrations.db.test.ts']);
+    expect(db.note).toMatch(
+      /^resets the schema of daifuku_test_x on 127\.0\.0\.1:5432; deferred 1 migration\/setup suite to full/,
+    );
+    expect(commandText(db.command)).toBe('pnpm exec vitest run --project db /repo/modules/sales/test/sales.db.test.ts');
+    const report = buildReport({
+      tier: 'light',
+      options: options({ tier: 'light' }),
+      base,
+      changes,
+      cls,
+      escalation,
+      steps: steps.map((item) =>
+        item.id === 'db' ? { ...db, result: 'passed', seconds: 1 } : { ...item, result: 'passed', seconds: 1 },
+      ),
+      startedAt: new Date(0),
+      finishedAt: new Date(0),
+      result: 'passed',
+    });
+    expect(report.steps.find((item) => item.id === 'db')).toMatchObject({
+      selected: { deferred: 1 },
+      deferred: ['apps/api/test/migrations.db.test.ts'],
+    });
+    expect(report.hints.join(' ')).toMatch(
+      /light deferred 1 migration\/setup DB suite .*pnpm gate:full and pnpm test:db run them/,
+    );
+    expect(formatTable(report)).toMatch(/^db\s+passed\s+1\.0\s+1\/116 files \(\+1 deferred\)/m);
   });
 });
 

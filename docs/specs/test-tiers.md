@@ -14,7 +14,7 @@
 | 階層 | コマンド | 内容 | 目標時間 | 実測（この環境） | 使う場面 |
 | --- | --- | --- | --- | --- | --- |
 | quick（超軽量） | `pnpm gate:quick` | 変更ファイルに限定した Prettier 検査と ESLint、依存境界（全体）、ルート typecheck、`apps/api`・`apps/web` の typecheck（その app か、app が依存する workspace package を変えたとき）、関連する unit 試験、docs:check と台帳検査 | 2 分以内 | sales の 1 ファイル変更で 71 秒（API/Web の typecheck 31 秒を含む。修正前は 40 秒） | 編集ループ、コミット前 |
-| light（軽量） | `pnpm gate:light` | 全体の format:check・typecheck・API/Web の typecheck・lint（依存境界含む）・unit 全件・test:deploy・docs:check・台帳検査、DB 試験は関連 suite と常時実行 suite の和集合 | 6 分以内（DB 全件昇格時は gate と同程度） | **目標未達**（未決事項参照）。文書だけの変更（DB は常時 4 suite）で約 2〜4 分。module の 1 ファイル変更で 10〜14 分（修正前の banking 37 suite で 10 分、修正後の sales 65 suite で 13.5 分）。kernel 変更（DB 全件に昇格）で約 17 分 | push 前、作業の区切り、PR 下書き |
+| light（軽量） | `pnpm gate:light` | 全体の format:check・typecheck・API/Web の typecheck・lint（依存境界含む）・unit 全件・test:deploy・docs:check・台帳検査、DB 試験は関連 suite と常時実行 suite の和集合 | 6 分以内（DB 全件昇格時は gate と同程度） | **目標未達**（未決事項参照）。文書だけの変更（DB は常時 4 suite）で約 2〜4 分。module の 1 ファイル変更で 7〜10 分（[db-test-startup](db-test-startup.md) 実施後: banking 28 suite で 6.8 分、sales 55 suite で 9.8 分。実施前は sales 65 suite で 13.2 分）。kernel 変更（DB 全件に昇格）で約 16 分（実施後 950 秒、DB 117 suite 748 秒。実施前は約 17 分） | push 前、作業の区切り、PR 下書き |
 | full（フル） | `pnpm gate:full` | 既存の `pnpm gate` 全工程、API/Web の typecheck と build、中継 agent の build、通常ブラウザ試験、認証ブラウザ試験 | 現状どおり（CI 並列で約 15 分、ローカル直列で 25〜40 分） | `--provision` で修正前 28.3 分、修正後 29.3 分（DB 15.2 分、ブラウザ 77 試験 10.2 分、認証 3 試験 40 秒を含む） | 「完了」の主張前、PR を ready にする前、main を取り込んだ後、昇格条件に該当する変更 |
 
 `pnpm gate` の内容と意味は変えない。`gate:full` は `package.json` の `gate` script を `&&` で分解した各工程をそのまま順に実行し（工程ごとの所要時間を記録するため）、CI 側の追加工程を足した上位集合である。`gate:full` の成功は `pnpm gate` の成功を含む。CI の gate job はそのまま `pnpm gate` を実行する。
@@ -42,6 +42,7 @@ unit（quick）と DB（light）の選択は vitest 自身のモジュールグ�
 - **setupFile 規則**: vitest project の `setupFiles` はどの試験のモジュールグラフにも入らない。`gate-select.mjs` は各 setupFile の import グラフ（静的・動的 import。vitest の related と同じく project の Vite server の `transformRequest` で辿る）を求め、変更ソースが含まれるときはその setupFile が名指しする試験（setupFile 内の `*.test.ts` 文字列。無ければ project の全試験）を選ぶ。`apps/api/test/payroll-provider-setup.ts` は `@daifuku/l10n-jp` を動的 import して fiscal 2 suite（`modules/workforce/test/fiscal.db.test.ts`、`fiscal-rule-integrity.db.test.ts`）に日本の給与 provider を登録するため、`l10n/jp/**` や l10n-jp が import する module の変更でこの 2 suite が選ばれる。対象一覧は setupFile 自身から読むので二重管理しない。
 - **子プロセス規則**: `node:child_process` を import する試験は、モジュールグラフに現れないコードを子プロセスで実行する（`apps/mcp/test/stdio.db.test.ts` → `fixtures/stdio-entry.ts` → `src/main.ts`、`apps/edge/test/bundle.test.ts` → `scripts/build.mjs` → esbuild の entry 文字列 `src/main.ts`、`apps/runtime/test/runtime.test.ts` → `fixtures/catalog.ts`）。(1) 試験と同じ範囲（workspace package、package 外なら `scripts/` などの最上位ディレクトリ）の変更で選ぶ。(2) 試験ソースに書かれた同じ範囲内のモジュールファイル（子プロセスの入口）の import グラフに変更ソースが含まれるときも選ぶ（`apps/mcp/src/main.ts` が読む module の変更で stdio suite を選ぶ）。グラフを辿れないファイルがあれば選ぶ側に倒す。
 - **常時実行 suite**（light の DB）: `kernel/test/foundation.db.test.ts`、`kernel/test/document.db.test.ts`、`kernel/test/access-boundary.db.test.ts`、`kernel/test/noninterference.db.test.ts`。`gate-select.mjs` は、このいずれかが db project の試験として存在しないと失敗する（改名で黙って減らさない）。
+- **migration/setup suite の後回し**（light の DB、[db-test-startup](db-test-startup.md) AC-8〜AC-10）: committed migration から schema を作る DB suite（試験ファイルか同じディレクトリの補助ファイルが `runMigrations(` を呼ぶもの。現在は `apps/api/test` の 10 件）がモジュールグラフだけで選ばれ、変更集合に schema に関係する変更（schema 宣言 `defineEntity(` などを含むファイル、同じ package の schema 宣言から import されるファイル、suite と同じ package `apps/api` 内の変更）が無いときは、実行せず full に回す。報告の `deferred` と hint に記す。full・`pnpm gate`・`pnpm test:db` は全件を実行する。
 - **拡大**（quick）: 削除されたソース（モジュールグラフで追えない）、`vitest.config.mts`、各 workspace の `package.json`、`pnpm-lock.yaml`、`.npmrc`、`tsconfig*.json` を含む変更では unit を全件にする（vitest 自身も `package.json` と setupFiles を `forceRerunTriggers` として全件にする）。`.prettierrc.json`・`.prettierignore`・ルート `package.json`・lockfile では `format:check` を全体に、`eslint.config.js`・ルート `package.json`・lockfile では `eslint .` を全体にする。ファイル数が 300 を超える工程も全体形にする。
 
 ### 昇格パターン
@@ -57,7 +58,7 @@ unit（quick）と DB（light）の選択は vitest 自身のモジュールグ�
 
 - AC-1 WHEN `pnpm gate:quick` が実行された THE SYSTEM SHALL 基準点からの変更集合を求め、変更された `ts/tsx/js/mjs/cjs/css` に限定した `prettier --check`、変更された lint 対象に限定した `eslint --no-warn-ignored`、`lint:boundaries`（`kernel/modules/l10n/packs/apps` 配下のモジュール、`.dependency-cruiser.cjs`、`package.json` を変えたとき。1 ファイル指定では被参照側の違反を見落とすため常に全体。4.4 秒）、ルートの `typecheck`（TypeScript に関係する `.ts` などのモジュールや `.json`、lockfile・`.npmrc`・workspace 定義を変えたとき）、`apps/api`・`apps/web` の `typecheck`（その app 自身か、app が `package.json` で依存する workspace package を推移的に含めて変えたとき、または tsconfig・`package.json`・lockfile・`.npmrc`・workspace 定義を変えたとき。app の tsconfig だけが `test/`・`e2e/` を含むため）、「試験の選択」で選んだ unit 試験、`docs:check` と `check-assurance.mjs --changed <base>`（各 1 秒未満のため常に）、`deploy/` と配布スクリプトを変えたときだけ `test:deploy` を実行する。
 - AC-2 WHEN quick の変更集合が空 THE SYSTEM SHALL 検査を実行せず「変更なし」と報告して成功終了する（基準点が `HEAD` / なしに落ちたときは AC-15 の `base-unknown`）。
-- AC-3 WHEN `pnpm gate:light` が実行された THE SYSTEM SHALL 全体の `format:check`・`docs:check`・台帳検査・`typecheck`・`pnpm --filter @daifuku/api typecheck`・`pnpm --filter @daifuku/web typecheck`（変更集合に関係なく常に。CI の gate job と同じ）・`lint`・`test`（unit 全件）・`test:deploy` を実行し、DB 試験は「試験の選択」で得た関連 suite（setupFile 規則・子プロセス規則を含む）と常時実行 suite の和集合を `vitest run --project db <files>` で実行する。
+- AC-3 WHEN `pnpm gate:light` が実行された THE SYSTEM SHALL 全体の `format:check`・`docs:check`・台帳検査・`typecheck`・`pnpm --filter @daifuku/api typecheck`・`pnpm --filter @daifuku/web typecheck`（変更集合に関係なく常に。CI の gate job と同じ）・`lint`・`test`（unit 全件）・`test:deploy` を実行し、DB 試験は「試験の選択」で得た関連 suite（setupFile 規則・子プロセス規則を含む）と常時実行 suite の和集合を `vitest run --project db <files>` で実行する。モジュールグラフだけで選ばれた migration/setup suite は、schema に関係する変更が無ければ full に回す（[db-test-startup](db-test-startup.md) AC-8〜AC-10）。
 - AC-4 WHILE 変更集合に昇格パターンが含まれる WHEN quick / light が実行された THE SYSTEM SHALL 報告に「includes changes that need full regression」と該当パス・規則・理由を記し、`pnpm gate:full` を案内する。そのパターンが「DB 拡大」の区分のとき、light は DB 試験を全件（`pnpm test:db`）に拡大する。quick は実行内容を変えない（拡大規則を除く）。
 - AC-5 WHEN `pnpm gate:full` が実行された THE SYSTEM SHALL `pnpm gate` の全工程を同じ順で、続けて `pnpm --filter @daifuku/api typecheck`、`pnpm build:api`、`pnpm --filter @daifuku/edge build`、`pnpm --filter @daifuku/web typecheck`、`pnpm --filter @daifuku/web build`、通常ブラウザ試験（`playwright test`）、認証ブラウザ試験（`pnpm test:identity:e2e`）を実行する。`--` 以降の引数は通常ブラウザ試験の Playwright にそのまま渡す。
 - AC-6 IF full でブラウザ試験の前提（`DATABASE_URL_OWNER`・`DATABASE_URL`・`E2E_PREPARE=1`・`E2E_API_URL`・`E2E_BASE_URL` と両サーバーの到達性、認証試験の `GATE_IDENTITY_DATABASE_URL_OWNER` / `GATE_IDENTITY_DATABASE_URL`）が無く `--provision` も無い THEN THE SYSTEM SHALL 何も実行せずに失敗終了し（`--keep-going` 時は他の工程を実行した上で失敗）、CONTRIBUTING の該当節を案内する。`--without-browser` を明示したときだけ両試験を未実行として継続し、報告に `partial: true` と未実行工程を記す。
@@ -120,7 +121,7 @@ unit（quick）と DB（light）の選択は vitest 自身のモジュールグ�
 
 ## スコープ外（明記）
 
-- DB suite 起動（`freshDb()` の schema 再作成）の短縮。計測後に別仕様（[完成度向上の実装計画](../completion-plan.md) の A3）で扱う
+- DB suite 起動（`freshDb()` の schema 再作成）の短縮。計測後に別仕様 [db-test-startup](db-test-startup.md)（[完成度向上の実装計画](../completion-plan.md) の A3）で実施した
 - mutation（Stryker）、TLA+/TLC、セットアップ受入、エッジサービス受入、ブラウザ保護受入の階層化。既存の別 CI のまま
 - テストの sharding や並列化の変更、Playwright の worker 数の変更
 - 既存テストの削除・skip・期待値の変更
@@ -147,8 +148,8 @@ unit（quick）と DB（light）の選択は vitest 自身のモジュールグ�
 ## 未決事項（利用者の判断待ち）
 
 - 解決済み: quick の typecheck は全体（`tsc7`、10.9 秒）で統一し、`apps/api`・`apps/web` の変更時だけ各 app の typecheck（tsconfig が test / e2e を含むため）を足す。
-- **light の目標 6 分はこの環境で未達**（修正前: banking の 1 ファイル変更で 599 秒、DB 37 suite が 467 秒。修正後: sales の 1 ファイル変更で 809 秒、DB 65 suite が 641 秒。修正で API / Web の typecheck 約 35 秒と、setupFile・子プロセス規則の suite が加わった）。`apps/api` の DB suite 約 30 件が module 変更のたびに選ばれる（runtime が全 module を読むため）ことが主な時間要因である。選択肢: (a) DB suite 起動短縮（A3）を先に行う、(b) `apps/api` の migration 系 suite 9 件（`*-migration.db.test.ts`、`migrations.db.test.ts`、`upgrade.db.test.ts`）を migration・schema 変更時（昇格パターン）だけに限定する、(c) 目標を「DB 選択 + 静的検査で 10〜15 分以内」に改める。(b) はモジュールグラフより狭める判断なので利用者の承認待ちとし、実装していない。それまで CONTRIBUTING の目安は実測値（文書だけ約 2〜4 分、module 変更で約 10〜14 分、昇格時約 17 分）を示す。CI 上の時間は未計測。
+- 一部解決（[db-test-startup](db-test-startup.md)、A3）: 選択肢 (a) DB suite 起動の短縮（schema テンプレート）と (b) migration/setup suite 10 件の後回し（schema に関係する変更が無いとき）を実施した。sales の 1 ファイル変更で 792.6 秒 → 588.5 秒、banking で 407.6 秒（実施後）。**light の目標 6 分は依然として未達**で、残りの選択肢（静的検査と DB の並行実行、`apps/api` の DB suite の選び方、目標の改定）は db-test-startup の未決事項に移した。CI 上の時間は未計測。
 - CI の `quick` job を必須チェックにするか（既存 gate job が必須であることは変えない）。
 - `--provision` で作った DB は残る。定期的な削除手順（`dropdb` の一覧化など）を運用文書に足すか。
 - 参照規則はファイル名の文字列一致であり、ファイル名を組み立てて読む試験は選べない。light が unit 全件を実行することで補う前提でよいか。子プロセス規則の入口も試験ソースに書かれた相対パスから求めるため、組み立てたパスの入口は「同じ package の変更」でしか選ばれない。
-- DB 試験の接続先の名前規則（`daifuku_test`、`daifuku_ci_test`、`daifuku_test_<suffix>`）を `pnpm gate` 自体や `kernel/src/testing.ts` にも入れるか（今回は tier runner だけ。`pnpm gate` は不変）。
+- DB 試験の接続先の名前規則（`daifuku_test`、`daifuku_ci_test`、`daifuku_test_<suffix>`）を `pnpm gate` 自体や `kernel/src/testing.ts` にも入れるか（今回は tier runner だけ。`pnpm gate` は不変）。[db-test-startup](db-test-startup.md) で `kernel/src/testing.ts` のテンプレート経路は DB 名に `test` を要求するようになった（満たさなければ従来の作り直し）。従来の作り直し経路に入れるかは残る。

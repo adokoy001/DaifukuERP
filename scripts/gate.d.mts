@@ -77,11 +77,14 @@ export interface Selection {
   sources: string[];
   triggers: string[];
   extra: string[];
+  /** light DB only: defer graph-selected migration/setup suites without a schema-relevant change. */
+  deferSchemaSuites?: boolean;
 }
 export interface Selected {
   files: number;
   total?: number;
   via?: Record<string, number>;
+  deferred?: number;
 }
 export interface Step {
   id: string;
@@ -94,6 +97,7 @@ export interface Step {
   note: string | null;
   selected?: Selected | undefined;
   selectedFiles?: string[] | undefined;
+  deferredFiles?: string[] | undefined;
 }
 export interface StepResult extends Step {
   result: string;
@@ -104,12 +108,19 @@ export interface SelectionResult {
   project: 'unit' | 'db';
   total: number;
   selected: { file: string; via: string }[];
+  deferred?: { file: string; reason: string }[];
+  schemaReasons?: SchemaReason[];
+}
+export interface SchemaReason {
+  path: string;
+  why: string;
 }
 export interface ReportStep {
   id: string;
   result: string;
   seconds: number;
   selected: Selected | null;
+  deferred: string[];
   command: string;
   summary: string;
   note: string | null;
@@ -207,6 +218,18 @@ export function subprocessEntries(
   exists: (path: string) => boolean,
 ): string[];
 export function setupFileTargets(text: string, specFiles: readonly string[]): string[];
+export function buildsSchemaFromMigrations(text: string, readSibling?: (relativePath: string) => string): boolean;
+export function declaresSchema(text: string): boolean;
+export function deferSchemaSuites(
+  selected: readonly { file: string; via: string }[],
+  input: {
+    changed: readonly string[];
+    declaring?: readonly string[];
+    reached?: readonly string[];
+    schemaSuites: ReadonlySet<string>;
+    packages?: readonly WorkspacePackage[];
+  },
+): { selected: { file: string; via: string }[]; deferred: { file: string; reason: string }[]; reasons: SchemaReason[] };
 export function parseGateScript(script: string): string[] | null;
 export function planSteps(input: {
   tier: Tier;
