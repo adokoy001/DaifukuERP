@@ -209,7 +209,7 @@ function SumsFooter({ columns, rows }: { columns: FieldMeta[]; rows: GridRow[] }
               : ''}
           </td>
         ))}
-        <td className="px-1 py-1 text-[10px] text-neutral-400">{t(S.referenceValue)}</td>
+        <td className="px-1 py-1 text-[10px] text-text-muted">{t(S.referenceValue)}</td>
       </tr>
     </tfoot>
   );
@@ -240,7 +240,7 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
         {readOnly ? (
           <span className="text-[11px] text-neutral-500">🔒 {readOnlyReason ?? t(S.readonly)}</span>
         ) : (
-          <span className="text-[11px] text-neutral-400">{t(S.enterAddsRow)}</span>
+          <span className="text-[11px] text-text-muted">{t(S.enterAddsRow)}</span>
         )}
         {!readOnly ? (
           <button type="button" className="btn ml-auto px-2 py-0.5" onClick={() => addRow()}>
@@ -249,7 +249,18 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
         ) : null}
       </header>
       {children}
-      <div className="overflow-x-auto">
+      <div
+        className="overflow-x-auto"
+        // e2e-a11y: without editable cells (no rows yet, or read-only) nothing inside can take focus, so the scrolling
+        // frame itself does; otherwise keyboard users cannot reach the columns beyond a narrow screen (WCAG 2.1.1).
+        {...(readOnly || rows.length === 0
+          ? {
+              tabIndex: 0,
+              role: 'region',
+              'aria-label': t({ ja: `${line.label.ja}の表`, en: `${line.label.en} table` }),
+            }
+          : {})}
+      >
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-left text-xs text-neutral-600">
             <tr>
@@ -287,7 +298,7 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
                 data-testid="line-row"
                 className="border-t border-neutral-100"
               >
-                <td className="px-2 py-1 font-mono text-xs text-neutral-400">{i + 1}</td>
+                <td className="px-2 py-1 font-mono text-xs text-text-muted">{i + 1}</td>
                 {columns.map((c) => (
                   <Cell
                     key={c.name}

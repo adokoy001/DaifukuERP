@@ -41,4 +41,16 @@
 - 試験ファイルが読むデータや実行するスクリプトは、試験ソースにファイル名を書く（例: `new URL('./golden/x.json', import.meta.url)`）。quick / light はファイル名の一致でそれらの試験を選ぶ。ファイル名を組み立てて読む場合は選ばれないため、light の unit 全件で補う。
 - 子プロセスで実行する入口（`fixtures/stdio-entry.ts` など）も試験ソースに相対パスで書く。`node:child_process` を import する試験は、同じ package の変更と、入口の import グラフに入る変更で選ばれる。
 - vitest の `setupFiles` が特定の suite のために読むモジュールは、setupFile の中に対象 suite のパスを文字列で列挙する（`apps/api/test/payroll-provider-setup.ts` の `fiscalSuites`）。light はその setupFile の import グラフが変わったとき、列挙された suite を選ぶ。
-- `@smoke`: 代表的なブラウザ試験 6〜8 件の試験名の末尾に ` @smoke` を付ける（本体は変えない）。`pnpm e2e:smoke` が `--grep @smoke` で実行する。タグの追加・削除は spec の変更として扱い、件数は `scripts/test/gate.test.ts` が検査する。
+- `@smoke`: 代表的なブラウザ試験 6〜8 件の試験名の末尾に ` @smoke` を付ける（本体は変えない）。`pnpm e2e:smoke` が `--grep @smoke` で実行する。タグの追加・削除は spec の変更として扱い、件数は `scripts/test/gate.test.ts` が検査する（試験名を直書きした `test('… @smoke'` だけを数える）。これとは別に、アクセシビリティ検査の日本語・1280px の 8 件にも付く（下記。件数は `apps/web/src/a11y-policy.test.ts` が検査）。
+
+## アクセシビリティ自動検査（axe）
+
+[spec](../specs/e2e-a11y.md)。`apps/web/e2e/a11y.spec.ts` が `@axe-core/playwright` で主要 8 画面（ログイン、ホーム、取引先一覧、売上請求書の新規、会社設定、`/me`、`/workforce`、`/analytics`）を日英 × 1280px / 390px の 32 件で検査する。通常のブラウザ試験（`chromium` project）に含まれ、日本語・1280px の 8 件は `@smoke`。
+
+- 対象は WCAG 2.1 A/AA の rule tag（`wcag2a`、`wcag2aa`、`wcag21a`、`wcag21aa`）。`serious` / `critical` は失敗、`moderate` / `minor` は出力だけ。best-practice の rule は対象外。
+- 失敗の報告には rule・影響度・target・説明・help URL が出る。各実行の axe の結果全体は `test-results/<試験>/axe.json` に残る。
+- **まず直す。** 直せないものだけを `apps/web/e2e/a11y-exceptions.json` に登録する。項目は `rule`、`screen`（`a11y-policy.ts` の画面 id）、`target`（報告の target をそのまま。完全一致）、`reason`、`followUp`（追跡先の spec・計画項目、または期限 `YYYY-MM-DD`）が必須で、`locales`（`ja` / `en`）・`widths`（`1280` / `390`）で条件を絞れる。理由の無い項目、未知の画面・条件・項目名、重複は Web unit と a11y spec の両方で失敗する。
+- **古い例外は残らない。** 例外は適用される実行ごとに照合し、その実行で 1 件も一致しなければその実行が失敗する。違反が一部の条件だけで出るなら、`locales` / `widths` で絞る。
+- 例外を足す・消すときは、spec の未決事項か作業記録に理由を書く。
+- 画面を追加して検査対象にするときは `a11y-policy.ts` の `A11Y_SCREENS` に足す（Web unit の画面一覧と件数も更新する）。検査は `h1` の表示、`meta-error`・`aria-busy="true"`・`loading-view` が無いこと、通信の落ち着きを待ってから行う。
+- 検査は初期表示だけ。ダイアログや開いたメニューなど操作後の状態は、必要になった画面の試験で `AxeBuilder` を同じ規則（`judge`）で呼ぶ。

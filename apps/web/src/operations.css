@@ -74,7 +74,7 @@
   align-items: center;
 }
 .muted {
-  color: #738098;
+  color: var(--text-muted);
   font-size: 11px;
 }
 .notice-strip {
@@ -952,7 +952,7 @@
 .control-back {
   display: inline-block;
   font-size: 11px;
-  color: #8869ad;
+  color: var(--accent);
   margin-bottom: 12px;
 }
 
