@@ -53,13 +53,19 @@ export interface FormDraftControl {
   clear: () => void;
 }
 
+/** The draft key of `entity` / `target` for the signed-in user, tenant and this tab's company (lib/form-draft.ts). */
+export function sessionDraftKey(entity: string, target: string): string | undefined {
+  const user = getUser();
+  const scope = { tenantId: user?.tenantId ?? '', userId: user?.id ?? '', companyId: getCompanyId() ?? '' };
+  return draftKey(scope, entity, target);
+}
+
 export function useFormDraft(options: FormDraftOptions): FormDraftControl {
   const { entity, target, recordVersion, enabled } = options;
-  const key = useMemo(() => {
-    const user = getUser();
-    const scope = { tenantId: user?.tenantId ?? '', userId: user?.id ?? '', companyId: getCompanyId() ?? '' };
-    return enabled ? draftKey(scope, entity.name, target) : undefined;
-  }, [entity.name, target, enabled]);
+  const key = useMemo(
+    () => (enabled ? sessionDraftKey(entity.name, target) : undefined),
+    [entity.name, target, enabled],
+  );
   const [offer, setOffer] = useState<FormDraft | null>(null);
   const [stale, setStale] = useState(false);
   const [kept, setKept] = useState(false);

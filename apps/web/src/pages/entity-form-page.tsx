@@ -28,8 +28,9 @@ import { RecordLinkActions, SeedNotice, useDraftSeed } from '../components/recor
 import { RelatedPanel } from '../components/related-panel.tsx';
 import type { DraftSeed } from '../lib/duplicate.ts';
 import { useRecordVisit } from '../api/navigation-assist.ts';
-import { draftKey, draftStorage, draftTarget, removeDraft } from '../lib/form-draft.ts';
-import { getCompanyId, getUser, isApiError } from '../api/client.ts';
+import { draftStorage, draftTarget, removeDraft } from '../lib/form-draft.ts';
+import { isApiError } from '../api/client.ts';
+import { sessionDraftKey } from '../components/form-draft.tsx';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -182,9 +183,7 @@ function RecordView({
  */
 function forgetDraftOnDenied(entity: string, id: string | undefined, error: unknown) {
   if (!id || !isApiError(error) || (error.status !== 403 && error.status !== 404)) return;
-  const user = getUser();
-  const scope = { tenantId: user?.tenantId ?? '', userId: user?.id ?? '', companyId: getCompanyId() ?? '' };
-  removeDraft(draftStorage(), draftKey(scope, entity, draftTarget(id, undefined)));
+  removeDraft(draftStorage(), sessionDraftKey(entity, draftTarget(id, undefined)));
 }
 
 export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {

@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 フォームのセクション・エラー要約・ショートカット・モバイル操作バー（D3）
 
 - セッション: 完成度向上計画 D3（workflow の作業項目、worktree `wip/form-ergonomics`、基点 `ff65a6c`）／ 担当: agent ／ 対象: [docs/specs/form-ergonomics.md](../specs/form-ergonomics.md)
-- 計測: tokens=null（未計測）, agent_minutes=約110（設計と読込 約20、実装と単体 約45、ブラウザ試験と修正 約20、文書 約25。gate の待ち時間を除く）, human_minutes=0, rework_lines=約30（後述の StrictMode の退避削除の修正、狭い画面の案内文）, gate_failures=0
+- 計測: tokens=null（未計測）, agent_minutes=約120（設計と読込 約25、実装と単体 約45、ブラウザ試験と修正 約20、文書 約30。gate とブラウザ試験の待ち時間 約40 分を除く）, human_minutes=0, rework_lines=約15（StrictMode で退避が消える問題の修正、狭い画面の案内文、退避キーの共通化）, gate_failures=0
 
 ## 決めたこと（と理由）
 
@@ -23,16 +23,26 @@
 - modules: 取引先・売上請求書・仕入請求書・入出金・契約の `views.form`
 - web 新規: `lib/form-errors.ts`、`lib/form-shortcuts.ts`、`lib/form-draft.ts`、`lib/record-nav.ts`、`components/form-sections.tsx`、`components/form-error-summary.tsx`、`components/form-draft.tsx`、`components/form-shortcuts-help.tsx`、`components/record-nav.tsx`
 - web 変更: `components/record-form.tsx`（節・タブ・要約・焦点・ショートカット・退避・バー）、`components/line-grid.tsx`（Enter / Alt+矢印、セルの `aria-describedby`・`required`）、`components/fields/*`（補助文・必須・`aria-describedby`、参照欄の Enter と Alt+矢印）、`components/doc-actions.tsx`（`ref` の `request`、ボタンのクラス）、`pages/entity-form-page.tsx`（前後移動・確定の受け渡し・403/404 の退避削除）、`pages/entity-list-page.tsx`（router state）、`api/client.ts`（`sessionOwner` を共有）、`components/record-links.tsx`（同）、`api/navigation-assist.ts`（ログアウトで退避を消す）、`lib/form.ts`（`formSections` / `sectionLayout` / `needsInput`）、`strings.ts`、`styles.css`、`api/types.ts`
-- テスト: `kernel/test/form-groups.test.ts`（5 件）、`apps/web/src/lib/form-ergonomics.test.ts`（27 件）、`apps/web/src/components/form-ergonomics-ui.test.ts`（6 件）、`apps/web/e2e/form-ergonomics.spec.ts`（9 件）、`ui/token-usage.test.ts` の対象追加
+- テスト: `kernel/test/form-groups.test.ts`（5 件）、`apps/web/src/lib/form-ergonomics.test.ts`（22 件）、`apps/web/src/components/form-ergonomics-ui.test.ts`（6 件）、`apps/web/e2e/form-ergonomics.spec.ts`（9 件、axe の検査を含む）、`ui/token-usage.test.ts` の対象追加。既存のテストは削除・弱体化していない
 - 文書: spec（implemented、改訂の記録）、ADR-0002 追補、`docs/conventions/ui.md`（表の行と節）、`docs/manual/02-basics.md`（フォーム・キーボード操作・スマートフォン・一時保存・前後移動・明細）
 
 ## 検証（何を・どう確認したか。コードレビューか実測かを明記）
 
-- （下の「計測の結果」に追記する）
+- [実測] 単体: `kernel/test/form-groups.test.ts` 5 件（ラベル付き・従来の形・`'auto'` の `/meta` の形、マスクされた field を除くこと、未知・重複・空ラベル・空グループの拒否、`restricted`）、`apps/web/src/lib/form-ergonomics.test.ts` 22 件、`apps/web/src/components/form-ergonomics-ui.test.ts` 6 件、既存の `form.test.ts` と `token-usage.test.ts`（新しい部品 5 ファイルを対象に追加）すべて成功。
+- [実測] kernel と module を変えた直後に unit 全件（155 ファイル 1,552 件、70 秒）成功。`views.form` の定義時検査を足しても既存の entity 定義はすべて読み込めた（下の DB 全件でも確認）。
+- [実測] `pnpm gate:quick`（基点 `origin/main` の merge-base `431dda5`。前の回の統合で `package.json` などが変わっているため全 unit・全 lint に拡大）: 2 回とも成功（2 回目 200 秒）。
+- [実測] `pnpm gate:light`（`TEST_DATABASE_URL_*` = 専用 DB `daifuku_test_w5`、kernel 変更のため DB 全 suite、コミット `2cd1df3`）: 成功、合計 1,143 秒（約 19 分、負荷平均 4〜7 の共有コンテナ）。format 38 秒・docs・assurance・typecheck（全体 19 秒・api 32 秒・web 37 秒）・lint 23 秒（警告 5 件はすべて既存の関数行数。`entity-list-page.tsx` の `ListView` は基点で既に 300 行超で、今回 10 行増えた）・unit 157 ファイル 1,590 件（81 秒）・DB 131 ファイル 822 件（892 秒）・deploy 17 件（21 秒）。
+- [実測] ブラウザ試験の全件（slot 2、新しい fixture DB、industry → chromium）: 168 件すべて成功（17.4 分）。新規の `form-ergonomics.spec.ts` 8 件（この時点）と、変更した画面を使う既存の spec（`a11y.spec.ts` の売上請求書新規 1280/390px × 日英、`phase1`・`phase15`・`payment`・`document-links`・`quality-ref-search`・`quality-read-recovery`・`navigation-assist`・`ui-kit`・`trade` ほか）を含む。
+- [実測] 修正後の `form-ergonomics.spec.ts` 9 件（axe の検査を追加）: 9/9 成功（55 秒）。内容: 売上請求書の新規で見出し付きの節（`group` の名前が legend）と入力できない節の非表示、得意先の `aria-required`、補助文の `aria-describedby`、必須を空にした保存で要約（alert、件数、得意先・明細 1 行目の品名・摘要へのリンク）と得意先への焦点、明細セルへのリンクでセルに焦点（URL は変わらない）、直すと要約から消える、`Ctrl+S` で保存しブラウザの既定動作が止まっている（`defaultPrevented`）、見出しに焦点があっても同じ、保存済みの下書きで `Ctrl+Enter` が確定の確認を開き Escape で元の欄へ焦点が戻る、未保存なら `Ctrl+Enter` で保存、「?」のショートカット一覧、明細の Enter（品名 → 数量 → 単価 → 税区分 → 行追加して次の行の品目 → 何も入れていない品目で Enter は選ばずに品名へ）、`Alt+↑/↓` で行の移動と焦点の維持・端で止まる、390px の編集画面でタブ（請求・金額・入金・備考・仕訳）とパネル、バーが画面下端にあり保存と確定を持つ・画面の確定ボタンは 1 つ・横スクロールなし・バーの確定で確認が開き焦点がバーへ戻る・入力欄を `scrollIntoView({block:'end'})` してもバーに隠れない・未保存で確定が無効・1280px に戻すと見出しの確定、390px の取引先新規で別のタブの名称へ要約と保存失敗から移動し、タブに件数・他のタブの入力は残る、再読込で退避の提案（変更分だけ保存・コードは保存しない）・決めずに再読込しても残る・復元・`Ctrl+S` で保存すると消える・別経路で版が上がると提案せず消して知らせる・新規の離脱で確認文が「この画面に戻ると復元できます」・戻って破棄、一覧（検索と並べ替え付き）から開いて位置 `1 / 3 件`・次へ 2 回・端で無効・未保存の変更で破棄確認を取り消すと残り受け入れると移動・一覧へ戻るリンクが検索を保つ・直接開いた記録には出ない、axe（WCAG 2.1 A/AA の serious/critical なし）を 1280px の要約表示中と 390px のタブ表示中に。
+- [実測] 退避キーの共通化の後: `form-ergonomics`・`quality-read-recovery`（403/404 で退避を消す経路を含む画面）・`document-links`・`phase1` の 23 件すべて成功（1.6 分）。
+- [目視] 390px の売上請求書の画面写真と、要約表示中の 1280px の画面写真で、バー・タブ・凡例の位置を確認した（作業用。リポジトリには入れていない）。
+- [レビュー] `Ctrl+S` / `Ctrl+Enter` の判定、明細のキー、退避の保存・復元・境界は純粋関数の単体と上のブラウザ試験で確かめた。macOS の `⌘` の経路は単体の判定だけ（ブラウザ試験は Linux の Chromium）。
+- [未検証] `pnpm gate:full`（統合担当が実行。認証試験はこのブランチでは未実行）。Safari・Firefox、実機のスマートフォン（ソフトウェアキーボード表示中の sticky バーの位置）、スクリーンリーダーでの実際の読み上げ。
 
 ## 見つけた問題と修正（発見経路つき）
 
-- （追記する）
+- React StrictMode（開発時）の「マウント直後のアンマウント」で、退避の後始末（ページを離れるときの書込み）が未変更の状態を見て、保存されていた退避を消していた。提案は state に残るので画面上は気付きにくく、決めずにもう一度再読込すると消えていた — 発見: レビュー。修正: ページを隠す・離れるときは退避を足すだけで消さない。回帰の検査（決めずに待っても退避が残り、再読込でも提案される）を AC-8 のブラウザ試験に足し、修正を外すと失敗する（Expected length 1 / Received 0）ことを実測で確かめた。
+- 390px で明細の見出しの「Enter: 次の欄へ…」が折り返して見出しを押しつぶしていた — 発見: ブラウザ試験の画面写真の目視。修正: キーボードの案内文（明細・バー）を 768px 未満で出さない。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
