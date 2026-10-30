@@ -1,7 +1,16 @@
 // Company setting `print_layout.date_style` and the era override (docs/specs/print-templates.md AC-8, D-2, D-4).
 // print-layout is a library without defineModule: the modules that print call ensurePrintLayoutSettings() from their
 // hooks (idempotent, like kernel's ensureCompanyProfileSetting), so the setting exists whenever one of them is loaded.
-import { getSetting, label, registry, type Context, type Label, type Locale, type SettingDef } from '@daifuku/kernel';
+import {
+  ensureCompanyProfileSetting,
+  getSetting,
+  label,
+  registry,
+  type Context,
+  type Label,
+  type Locale,
+  type SettingDef,
+} from '@daifuku/kernel';
 import { z } from 'zod';
 import { DATE_STYLES, formatDocumentDate, type DateStyle, type EraDateFn } from './format.ts';
 
@@ -28,8 +37,13 @@ export const PRINT_DATE_STYLE_SETTING: SettingDef<DateStyle> = {
   },
 };
 
-/** Declares `print_layout.date_style` once (idempotent; safe after registry.reset). Called from module hooks. */
+/**
+ * Declares `print_layout.date_style` once (idempotent; safe after registry.reset). Called from module hooks. The kernel's
+ * `company.profile` is declared first (also idempotent) so it stays the first setting of the company tab in
+ * GET /meta/settings, which lists settings in registration order.
+ */
 export function ensurePrintLayoutSettings(): void {
+  ensureCompanyProfileSetting();
   if (!registry.hasSetting(PRINT_DATE_STYLE_KEY)) registry.registerSetting(PRINT_DATE_STYLE_SETTING);
 }
 
