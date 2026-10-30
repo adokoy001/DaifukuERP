@@ -27,6 +27,7 @@ import { EntityListPage } from './pages/entity-list-page.tsx';
 import { HomePage } from './pages/home-page.tsx';
 import { LoginPage } from './pages/login-page.tsx';
 import { ReportPage } from './pages/report-page.tsx';
+import { parseDeliveriesSearch } from './lib/event-deliveries.ts';
 import { parseSettingsSearch, SettingsPage } from './pages/settings-page.tsx';
 import { parseSetupSearch } from './lib/setup-wizard.ts';
 import { TemplatesPage } from './pages/templates-page.tsx';
@@ -321,6 +322,13 @@ const auditRoute = createRoute({
   validateSearch: knownSearch(['from', 'to', 'user', 'entity', 'op', 'record', 'scope', 'cursor']),
   component: lazyRouteComponent(() => import('./pages/audit-page.tsx'), 'AuditPage'),
 });
+// event-delivery AC-25/AC-27: company administrators manage webhook secrets and failed deliveries.
+const eventDeliveriesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/event-deliveries',
+  validateSearch: parseDeliveriesSearch,
+  component: lazyRouteComponent(() => import('./pages/event-deliveries-page.tsx'), 'EventDeliveriesPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
@@ -475,6 +483,7 @@ const routeTree = rootRoute.addChildren([
     setupRoute,
     permissionsRoute,
     auditRoute,
+    eventDeliveriesRoute,
     employeeRoute,
     workforceRoute,
     inboxRoute,

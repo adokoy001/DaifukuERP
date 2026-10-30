@@ -80,6 +80,9 @@ const CONVERTED = [
   'pages/permissions-page.tsx',
   'pages/audit-page.tsx',
   'components/permission-notes.tsx',
+  // event-delivery (docs/specs/event-delivery.md)
+  'pages/event-deliveries-page.tsx',
+  'components/inbox-notification.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

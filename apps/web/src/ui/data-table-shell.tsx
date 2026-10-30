@@ -39,6 +39,11 @@ export interface DataTableShellProps {
   label?: string;
   /** Bound the height to the viewport so the sticky header stays visible (list screens). */
   fill?: boolean;
+  /**
+   * Make the frame itself a Tab stop (role="region", named by `label`) so a narrow screen can scroll it by keyboard.
+   * Set it while the rows hold no focusable control; rows with links or buttons are their own Tab stops.
+   */
+  frameFocusable?: boolean;
   className?: string;
   testId?: string;
 }
@@ -55,6 +60,7 @@ export function DataTableShell({
   empty,
   label,
   fill = false,
+  frameFocusable = false,
   className,
   testId,
 }: DataTableShellProps) {
@@ -75,6 +81,7 @@ export function DataTableShell({
         className={cx('ui-table-frame', fill && 'is-fill', busy && !skeleton && 'is-refreshing', className)}
         aria-busy={busy || skeleton}
         data-testid={testId}
+        {...(frameFocusable ? { tabIndex: 0, role: 'region', 'aria-label': label } : {})}
       >
         <table className="ui-table" aria-label={label}>
           <thead>{head}</thead>

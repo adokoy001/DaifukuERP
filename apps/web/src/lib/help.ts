@@ -37,6 +37,7 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/setup': topic('03-setup.md', 'セットアップウィザード'),
   '/admin/permissions': topic('08-admin.md', '権限マトリクス'),
   '/admin/audit': topic('08-admin.md', '監査ログの検索'),
+  '/admin/event-deliveries': topic('08-admin.md', 'イベント配送と Webhook'),
   '/operations': topic('appendix-e-operations-control.md'),
   '/operations/devices': DEVICES,
   '/me': WORKFORCE,

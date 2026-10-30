@@ -121,7 +121,8 @@ export interface DedicatedNavigation {
   kind?: NavigationKind;
   /** The same entry action used by the existing sidebar, not a substitute for server authorization. */
   action?: string;
-  /** `admin`: the /meta roles include admin (setup-wizard AC-28, access-insight AC-21); the API still decides. */
+  /** `admin`: the /meta roles include admin (setup-wizard AC-28, access-insight AC-21, event-delivery AC-25); the API
+   * still decides (company-wide access). */
   condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox' | 'admin';
 }
 export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
@@ -376,6 +377,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '会計期間・税率・発行者・在庫・運用の設定漏れを点検し、直す画面へ移動します。',
       en: 'Check fiscal periods, tax rates, invoice issuer, inventory and operations, and open the screen that fixes each.',
+    },
+  },
+  {
+    href: '/admin/event-deliveries',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: 'イベント配送', en: 'Event deliveries' },
+    description: {
+      ja: 'Webhook の署名鍵を発行し、配送に失敗したイベントを確認して再送します。',
+      en: 'Issue webhook signing secrets, review failed event deliveries and resend them.',
     },
   },
   {

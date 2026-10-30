@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useInbox } from '../api/inbox.ts';
 import { InboxDropped, InboxFailure, InboxItemLink, countLabel } from '../components/inbox-card.tsx';
+import { InboxNotificationToggle } from '../components/inbox-notification.tsx';
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
 import type { InboxGroup } from '../lib/inbox.ts';
@@ -97,6 +98,8 @@ export function InboxPage() {
       <p className="sr-only" aria-live="polite" data-testid="inbox-live">
         {busy ? t(S.loading) : announcement}
       </p>
+      {/* event-delivery AC-26: the caller's own inbox mail switch. */}
+      {providers.length ? <InboxNotificationToggle /> : null}
       {!providers.length ? (
         <EmptyState
           titleAs="h2"
