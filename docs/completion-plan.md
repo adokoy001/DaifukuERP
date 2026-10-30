@@ -1,6 +1,6 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-29。対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（波0〜3 の大半を実装）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
 
 ## 0. この文書の使い方
 
@@ -42,21 +42,22 @@
 | ID | 名称 | 波 | サイズ | 依存 | spec slug | 主な変更先 |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | 3 段階の回帰テスト（quick / light / full）**済** | 0 | M | なし | [test-tiers](specs/test-tiers.md) | `scripts/gate.mjs`、`package.json`、`ci.yml`、CONTRIBUTING |
-| A2 | E2E の smoke タグとアクセシビリティ自動検査 | 0 | S | A1 | e2e-smoke-a11y | `apps/web/e2e` |
-| A3 | DB suite 起動の短縮と light の DB 選択の絞り込み | 0（A1 の計測で前倒し） | M | A1 の計測 | db-test-startup | `kernel/src/testing.ts` |
+| A2 | E2E の smoke タグとアクセシビリティ自動検査 **済** | 0 | S | A1 | [e2e-a11y](specs/e2e-a11y.md) | `apps/web/e2e` |
+| A3 | DB suite 起動の短縮と light の DB 選択の絞り込み **済** | 0（A1 の計測で前倒し） | M | A1 の計測 | db-test-startup | `kernel/src/testing.ts` |
+| A4 | gate:light の短縮（静的検査と DB の並行、DB の分割） | 0（A3 の結果で追加） | M | A3 | light-tier-speed | `scripts/gate.mjs`、`scripts/gate-select.mjs` |
 | D1 | UI キットとデザイントークン、状態表示の統一 **済** | 0 | M | なし | ui-kit | `apps/web/src/ui/`、`styles.css`、汎用画面 |
-| B1 | 設定定義の拡張と設定画面の再構成 | 1 | M | D1（最小） | settings-console | `kernel/src/registry.ts`、`apps/api/src/routes/settings.ts`、`settings-page.tsx` |
+| B1 | 設定定義の拡張と設定画面の再構成 **済** | 1 | M | D1（最小） | settings-console | `kernel/src/registry.ts`、`apps/api/src/routes/settings.ts`、`settings-page.tsx` |
 | B2 | 会社の追加・編集と会社プロフィール | 1 | M | B1 | company-admin | kernel 会社作成、`/admin/companies` |
 | B3 | 導入チェック（ヘルスチェック） | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
 | B4 | セットアップウィザード | 1 | M | B1、B2、B3 | setup-wizard | `/setup`、ホームのチェックリスト |
-| B5 | マスタの CSV 取込 | 2 | L | D1 | csv-import | kernel import port、`/api/:entity/import`、`/e/:entity/import` |
+| B5 | マスタの CSV 取込 **済** | 2 | L | D1 | csv-import | kernel import port、`/api/:entity/import`、`/e/:entity/import` |
 | B6 | 期首残高の取込 | 2 | M | B5 | opening-balances | accounting / sales / purchase / inventory の action |
 | B7 | pack 雛形生成 | 4 | S | なし | pack-scaffold | `scripts/pack-new.mjs` |
-| C1 | 一覧の絞り込み・列・保存ビュー・CSV・一括操作 | 2 | L | D1 | list-workbench | `entity-list-page.tsx`、`data-table.tsx`、REST export |
-| C2 | 伝票の複製・関連伝票・クイック操作 | 3 | M | D1 | document-links | kernel related route、`entity-form-page.tsx` |
-| C3 | やること受信箱 | 3 | M | D1 | inbox | `*.todo` action 規約、`/inbox`、ホーム |
-| C4 | 月次締めガイド | 3 | M | C3 の規約 | close-guide | `accounting.close_readiness`、`/finance/close` |
-| D2 | コマンドパレット・最近の記録・お気に入り・ヘルプ導線 | 3 | M | D1 | navigation-assist | `lib/navigation.ts`、sidebar、ScreenTrail |
+| C1 | 一覧の絞り込み・列・保存ビュー・CSV・一括操作 **済** | 2 | L | D1 | list-workbench | `entity-list-page.tsx`、`data-table.tsx`、REST export |
+| C2 | 伝票の複製・関連伝票・クイック操作 **済** | 3 | M | D1 | document-links | kernel related route、`entity-form-page.tsx` |
+| C3 | やること受信箱 **済** | 3 | M | D1 | inbox | `*.todo` action 規約、`/inbox`、ホーム |
+| C4 | 月次締めガイド **済** | 3 | M | C3 の規約 | close-guide | `accounting.close_readiness`、`/finance/close` |
+| D2 | コマンドパレット・最近の記録・お気に入り・ヘルプ導線 **済** | 3 | M | D1 | navigation-assist | `lib/navigation.ts`、sidebar、ScreenTrail |
 | D3 | フォームのセクション・エラー要約・ショートカット・モバイル操作バー | 3 | M | D1 | form-ergonomics | DSL `views.form`、`record-form.tsx`、`line-grid.tsx` |
 | C5 | 帳票の共通化と拡充 | 4 | L | B2 | print-templates | `render_*_html` 規約、各 module |
 | C6 | 役割別ホーム | 4 | S | C3 | role-home | `home-page.tsx` |
@@ -99,6 +100,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### A2. E2E の smoke タグとアクセシビリティ自動検査
 
+実装済み（2026-10-30 統合）。主要 8 画面 × 日英 × 1280/390px の axe 検査（33 件）、導入時の serious 違反 13 件を修正し例外 0 件。`@smoke` は 15 件。 詳細と設計からの変更は [spec](specs/e2e-a11y.md) と [記録](log/2026-10-29-e2e-a11y.md) を正とする。
+
 - `@smoke` を 6〜8 件に付け、`pnpm e2e:smoke` で実行する（A1 の AC-11）。
 - `@axe-core/playwright`（devDependency 追加、lockfile 更新）で、ログイン、ホーム、取引先一覧、売上請求書フォーム、設定、`/me`、`/workforce`、`/analytics` を日英 × デスクトップ/390px で検査する。`serious` / `critical` の違反で失敗。既知の例外は `apps/web/e2e/a11y-exceptions.json` に理由付きで登録し、例外の追加は spec の未決事項に書く。
 - 受入基準の骨子: WHEN a11y spec が実行された THE SYSTEM SHALL 8 画面 × 2 幅 × 2 言語で axe を実行し、例外ファイルにない serious 以上の違反があれば失敗する。
@@ -106,9 +109,15 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### A3. DB suite 起動の短縮（計測後に判断）
 
+実装済み（2026-10-30 統合）。計測で schema 再作成は DB 全体の 27%（50% 未満）だったが、除去できる最大の費用として schema ハッシュのテンプレート DB 複製を実装し、light では migration 系 10 suite を後回しにする。light はなお banking 6.8 分・sales 9.8 分で目標 6 分に届かず、A4 で続ける。 詳細と設計からの変更は [spec](specs/db-test-startup.md) と [記録](log/2026-10-29-db-test-startup.md) を正とする。
+
 - 先に `freshDb()` の `dropAll` + `createSchemaFromScratch` の時間を 10 suite で計測し、suite 全体に占める割合を出す。
 - 50% を超えるなら、schema のハッシュをキーにしたテンプレート DB（`CREATE DATABASE ... TEMPLATE`）を owner 接続で作り、suite ごとに複製する方式を spec にする。ハッシュが変わらない限り再作成しない。RLS・role・拡張の有無が同じであることを `checkColumns` 相当で確認する。
 - 対象外: テストの並列化（`fileParallelism: false` は維持）。
+
+### A4. gate:light の短縮
+
+A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 分、kernel 変更で約 15 分。DB が大半）。選択する suite の集合は変えずに、(1) 静的検査・単体と DB の並行実行、(2) DB suite を複数の試験 DB に分けて並行実行（各 DB 内は `fileParallelism: false` のまま）、(3) import の依存から影響が無いと証明できる suite だけの絞り込み、を計測して選ぶ。中断時の子プロセス停止、`.runtime/gate` の報告、full の対象範囲は変えない。spec は `docs/specs/light-tier-speed.md`（実装時に作成）。
 
 ### D1. UI キットとデザイントークン、状態表示の統一
 
@@ -130,6 +139,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 - 対象外: ダークモード、専用画面の全面移行、アイコンセットの変更。
 
 ### B1. 設定定義の拡張と設定画面の再構成
+
+実装済み（2026-10-30 統合）。`SettingDef` の `category` / `order` / `fields`、既定に戻す、変更履歴、勘定科目・倉庫のコード選択（[ADR-0027](adr/0027-setting-presentation.md)）。 詳細と設計からの変更は [spec](specs/settings-console.md) と [記録](log/2026-10-29-settings-console.md) を正とする。
 
 設計:
 
@@ -177,6 +188,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### B5. マスタの CSV 取込
 
+実装済み（2026-10-30 統合）。kernel の import port と派生 action `<entity>.import`、`POST /api/:entity/import`、`/e/:entity/import`（[ADR-0028](adr/0028-import-port.md)）。伝票は対象外。 詳細と設計からの変更は [spec](specs/csv-import.md) と [記録](log/2026-10-29-csv-import.md) を正とする。
+
 設計:
 
 - kernel に `import.ts`（port）: `importRecords(ctx, entity, rows, { mode: 'dry-run' | 'execute', onExisting: 'skip' | 'update', keyField? })`。列は DSL の field から導出し、型変換（日付、Decimal 文字列、真偽の `true/false/はい/いいえ`、enum の値またはラベル）、`ref` は参照先の `code`（または `displayField`）で解決、`unique` の text を自然キーとする。dry-run は `withSavepoint` の中で実際に `Repository` を通して検証し、最後にロールバックする（hook と権限を含めて本番と同じ検査になる）。結果は行ごとの `{ line, status: 'created' | 'updated' | 'skipped' | 'error', message? }`。
@@ -206,6 +219,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### C1. 一覧の絞り込み・列・保存ビュー・CSV・一括操作
 
+実装済み（2026-10-30 統合）。CSV は `GET /api/:entity/export.csv` ではなく、派生 action `<entity>.export_rows`（export 権限、5,000 行、監査 1 行）を既存の `POST /actions/:name/export` で呼ぶ形にした。 詳細と設計からの変更は [spec](specs/list-workbench.md) と [記録](log/2026-10-29-list-workbench.md) を正とする。
+
 設計:
 
 - 絞り込み: entity meta から自動生成する。document の `docstatus`、日付 field の範囲、`ref` のピッカー、`enum` の複数選択、money の範囲、`bool`。状態は URL の `where`（`lib/query.ts` は既に `where` を持つ）に JSON で保持し、REST の `where` にそのまま渡す。使える演算子は kernel の `Domain` に合わせる。
@@ -219,6 +234,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### C2. 伝票の複製・関連伝票・クイック操作
 
+実装済み（2026-10-30 統合）。複製、`<entity>.related`（`GET /api/:entity/:id/related`）、伝票のクイック操作。 詳細と設計からの変更は [spec](specs/document-links.md) と [記録](log/2026-10-29-document-links.md) を正とする。
+
 - 複製: 画面側で record と lines を取得し、system 列・`serverOwned`・`immutable` で `unique` の field（`code` など）・`number`・`docstatus` を除いて `/e/:entity/new` に初期値として渡す（router state）。作成権限で動く。
 - 関連伝票: kernel に `GET /api/:entity/:id/related`。registry の `ref` から逆参照（この記録を参照する document）と順参照（この記録が参照する記録）を集め、entity ごとに読取権限と row rule を通し、各 50 件まで。`journalEntryId`、`amendedFrom`、訂正先も含める。フォーム画面に「関連」パネル。
 - クイック操作: `apps/web/src/lib/quick-actions.ts` に宣言（`sales_invoice` → 入金を記録、`purchase_invoice` → 支払を記録、`trade_quotation` → 受注へ、など）。遷移先の新規フォームに取引先・区分・消込行を初期値で渡す。
@@ -226,6 +243,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 - 検証: kernel の DB テスト（related の権限と件数）、ブラウザ試験（複製と入金のクイック操作）。
 
 ### C3. やること受信箱
+
+実装済み（2026-10-30 統合）。kernel の `todoResult` 契約と provider 6 件（workforce・payment・banking・edge・tax_filing・restaurant_chain）。sales の項目は payment.todo に統合した。 詳細と設計からの変更は [spec](specs/inbox.md) と [記録](log/2026-10-29-inbox.md) を正とする。
 
 - 規約: `<module>.todo` という名前の action（`resultKind` は通常の JSON、`mutates: false`）が `{ items: [{ key, label: Label, count, href, severity: 'info' | 'warn' }] }` を返す。各 provider は自分の `Repository` 読取で件数を数えるため、権限と会社・拠点の境界は既存のまま。
 - Web: `/meta` の action のうち `.todo` で終わり呼べるものを `Promise.allSettled` で呼び、ホームのカードと `/inbox` にまとめる。失敗した provider は「取得できませんでした」と出し、他を隠さない。
@@ -235,12 +254,16 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### C4. 月次締めガイド
 
+実装済み（2026-10-30 統合）。`accounting.close_readiness` と `/finance/close`。下書きの href は C1 の `?status=draft&from&to` で絞り込んだ一覧を開く。 詳細と設計からの変更は [spec](specs/close-guide.md) と [記録](log/2026-10-29-close-guide.md) を正とする。
+
 - `accounting.close_readiness { periodId }` が点検項目を返す: 期間内の下書き伝票（entity ごとの件数と絞り込み済み一覧への href）、未消込の入出金、照合待ち明細（banking 適用時）、在庫期間の未締め、前期間の未締め、未転記の原資料。各項目に `blocking` の有無。
 - Web `/finance/close`: 期間の選択、点検項目、試算表・消費税集計表・年齢表・在庫評価への導線、すべての `blocking` が 0 のときだけ有効になる「期間を締める」ボタン（既存 `accounting.close_period`）。再開と訂正日の案内も同じ画面に置く。
 - 受入基準の骨子: WHILE blocking の項目が残る WHEN 締めを押そうとした THE SYSTEM SHALL 実行せず残件を示す。WHEN 全項目が 0 THE SYSTEM SHALL 既存の締め action を実行し、結果を表示する。
 - 検証: DB テスト（点検項目の計数）、ブラウザ試験（下書き 1 件を残した状態からの締め拒否と、確定後の締め）。マニュアル 06 を更新。
 
 ### D2. コマンドパレット・最近の記録・お気に入り・ヘルプ導線
+
+実装済み（2026-10-30 統合）。`Ctrl/⌘+K` のパレット、最近開いた記録（30 件）、お気に入り（20 画面）、画面ごとのマニュアル導線。 詳細と設計からの変更は [spec](specs/navigation-assist.md) と [記録](log/2026-10-29-navigation-assist.md) を正とする。
 
 - `Ctrl/⌘+K` で `searchNavigation` を使うパレットを開く（既存の正規化検索を再利用）。候補は画面と、最近開いた記録（entity・id・表示名を `localStorage` に利用者・tenant・会社ごとに 30 件）。
 - サイドバーに「最近」と「お気に入り」。お気に入りは画面単位。
