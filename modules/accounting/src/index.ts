@@ -145,6 +145,103 @@ export type JournalLineRow = Infer<typeof JournalLine>;
 export type JournalLineInsert = InsertInput<typeof JournalLine>;
 
 export { reverseSourceEntry } from './actions/reverse-source.ts';
+// Opening balances (docs/specs/opening-balances.md, ADR-0030): shared by the sales/purchase/inventory imports.
+export {
+  importOpeningBalances,
+  importOpeningBalancesAction,
+  importOpeningBalancesInput,
+  openingBalanceStatus,
+  openingBalanceStatusAction,
+  openingBalanceStatusOutput,
+  reverseOpeningBalancesAction,
+  OPENING_JOURNAL_MAX_LINES,
+  OPENING_JOURNAL_MAX_ROWS,
+  OPENING_SOURCE,
+  type ImportOpeningBalancesInput,
+  type OpeningBalanceStatus,
+} from './actions/opening-balances.ts';
+export {
+  assertNotOpeningAmend,
+  assertOpeningCurrency,
+  assertOpeningInvoice,
+  assertOpeningOps,
+  attempt as attemptOpeningUnit,
+  clearingAccountState,
+  clearingBalanceAt,
+  clearingUsedNotice,
+  foreignClearingPostings,
+  lookupByCode,
+  openingCell,
+  openingImportResult,
+  openingMode,
+  openingYearJson,
+  OPENING_INPUT_BYTES,
+  OPENING_ROLES,
+  postOpeningFromSource,
+  resolveOpeningClearingAccount,
+  reverseOpeningSourceEntry,
+  rowFailureMessages,
+  rowResult,
+  runOpeningImport,
+  type ClearingAccountState,
+  type Lookup,
+  type OpeningDocument,
+  type OpeningImportResult,
+  type OpeningInvoiceLine,
+} from './opening.ts';
+export {
+  importOpeningInvoices,
+  openingInvoiceNote,
+  openingInvoicesInput,
+  OPENING_INVOICE_MAX_ROWS,
+  type OpeningInvoiceRow,
+  type OpeningInvoiceSpec,
+  type OpeningInvoicesInput,
+} from './opening-invoices.ts';
+export {
+  assertOpeningYear,
+  earliestFiscalYear,
+  openingDateAllowed,
+  openingYearError,
+  openingYearProblem,
+  OPENING_REOPEN_HINT,
+  type OpeningYear,
+  type OpeningYearReason,
+} from './opening-year.ts';
+export {
+  accountRowIssue,
+  classifyJournalAmounts,
+  clearingMemo,
+  fieldMessage as openingFieldMessage,
+  isBlank as isBlankCell,
+  isMessage as isOpeningMessage,
+  isWholeYen,
+  journalIssues,
+  journalTotals,
+  openingDateOf,
+  readCode as readOpeningCode,
+  readDate as readOpeningDate,
+  readDecimal as readOpeningDecimal,
+  readOpeningAmount,
+  readOpeningQuantity,
+  readOpeningUnitCost,
+  summarize as summarizeOpeningRows,
+  OPENING_SCALE,
+  type JournalAmount,
+  type OpeningMessage,
+  type OpeningRowResult,
+  type OpeningRowStatus,
+  type OpeningSummary,
+} from './services/opening.ts';
+export {
+  ACCOUNTING_SETTING_DEFS,
+  OPENING_BALANCES_DEFAULT,
+  OPENING_BALANCES_KEY,
+  openingBalancesSchema,
+  openingBalancesSetting,
+  registerAccountingSettings,
+  type OpeningBalancesSetting,
+} from './settings.ts';
 export { assertJpySettlement } from './money-contract.ts';
 export { postingDimensions } from './dimensions.ts';
 export { fiscalPeriodHealthCheck, FISCAL_PERIOD_HORIZON_DAYS } from './health.ts';

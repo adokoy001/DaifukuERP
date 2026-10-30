@@ -37,6 +37,18 @@ export const SalesInvoice = defineDocument({
       hidden: true,
     }),
     controlAccountId: f.ref('account', { label: label('統制勘定', 'Control account at posting'), serverOwned: true }),
+    // docs/specs/opening-balances.md D-7: set only by sales.import_opening_receivables (module write `sales.opening`).
+    openingBalance: f.bool({
+      label: label('期首残高', 'Opening balance'),
+      description: label(
+        '期首残高の取込で作った請求書（発行しない社内の記録。不課税の明細 1 行）',
+        'Created by the opening balance import (an internal record, never issued; one out-of-scope line)',
+      ),
+      serverOwned: true,
+      immutable: true,
+      required: true,
+      default: false,
+    }),
     settlementHistory: f.bool({
       label: label('消込履歴あり', 'Settlement history available'),
       serverOwned: true,
@@ -138,7 +150,7 @@ export const SalesInvoice = defineDocument({
       { label: label('請求', 'Invoice'), fields: ['partnerId', 'date', 'dueDate', 'priceIncludesTax', 'currency'] },
       { label: label('金額', 'Amounts'), fields: ['subtotal', 'taxTotal', 'total', 'taxSummary'] },
       { label: label('入金', 'Receipt'), fields: ['paidAmount', 'balance', 'status'] },
-      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'journalEntryId', 'controlAccountId'] },
+      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'journalEntryId', 'controlAccountId', 'openingBalance'] },
     ],
   },
 });

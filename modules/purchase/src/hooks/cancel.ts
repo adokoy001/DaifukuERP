@@ -2,7 +2,7 @@
 // (un-apply them first); otherwise the posted entry is reversed (accounting.reverse_entry, dated like the original) and
 // the status becomes 'cancelled'. The kernel then writes docstatus=2 together with the status in one UPDATE.
 import { Decimal, StateError, registry, type Context, type HookArgs, type LocalDate } from '@daifuku/kernel';
-import { reverseSourceEntry } from '@daifuku/mod-accounting';
+import { reverseOpeningSourceEntry, reverseSourceEntry } from '@daifuku/mod-accounting';
 import { PurchaseInvoice } from '../entities/purchase-invoice.ts';
 import { assertCancellationDate } from '../settlements.ts';
 
@@ -25,7 +25,10 @@ async function onBeforeCancel(ctx: Context, { row, correctionDate }: HookArgs): 
   );
   if (typeof row.journalEntryId !== 'string')
     throw new StateError('Source posting link is missing', 'Repair the source linkage before cancelling.');
-  await reverseSourceEntry(ctx, {
+  // docs/specs/opening-balances.md AC-19: an opening invoice is reversed on the opening path (dated the opening date
+  // unless a correction date is given; a correction date follows the ordinary period rule).
+  const reverse = row.openingBalance === true ? reverseOpeningSourceEntry : reverseSourceEntry;
+  await reverse(ctx, {
     id: row.journalEntryId,
     sourceEntity: PurchaseInvoice.name,
     sourceId: row.id as string,

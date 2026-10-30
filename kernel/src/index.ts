@@ -169,6 +169,8 @@ export {
   type ImportResult,
   type ImportRowResult,
 } from './import.ts';
+// Cell conversions of the import port, reused by module-owned imports (docs/specs/opening-balances.md D-12, ADR-0030).
+export { decimalCell, dateCell, isContextToken } from './import-values.ts';
 export { EXPORT_ROWS_LIMIT } from './actions/export-rows.ts';
 export { registerPackActions } from './actions/pack.ts';
 export {

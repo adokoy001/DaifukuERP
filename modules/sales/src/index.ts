@@ -55,6 +55,7 @@ export {
 } from './services/recalculate.ts';
 export {
   journalLinesFor,
+  openingJournalLines,
   imbalance,
   ratePercent,
   type PostingAccounts,
@@ -94,5 +95,10 @@ export type SalesInvoiceLineInsert = InsertInput<typeof SalesInvoiceLine>;
 
 export { SalesSettlement } from './entities/settlement.ts';
 export { invoiceBalancesAsOf } from './settlements.ts';
+export {
+  importOpeningReceivables,
+  importOpeningReceivablesAction,
+  OPENING_LINE_DESCRIPTION,
+} from './actions/import-opening-receivables.ts';
 export { postingDimensions } from '@daifuku/mod-accounting';
 export { issuerHealthCheck } from './health.ts';

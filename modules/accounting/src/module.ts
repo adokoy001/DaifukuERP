@@ -7,6 +7,11 @@ import { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts
 import { closeReadinessAction } from './actions/close-readiness.ts';
 import { generalLedgerAction } from './actions/general-ledger.ts';
 import { openFiscalYearAction } from './actions/open-fiscal-year.ts';
+import {
+  importOpeningBalancesAction,
+  openingBalanceStatusAction,
+  reverseOpeningBalancesAction,
+} from './actions/opening-balances.ts';
 import { postFromSourceAction } from './actions/post-from-source.ts';
 import { reverseEntryAction } from './actions/reverse-entry.ts';
 import { taxPeriodSummaryAction } from './actions/tax-period-summary.ts';
@@ -21,6 +26,7 @@ import { registerFreezeLinesHook } from './hooks/freeze-lines.ts';
 import { registerNoCancelHook } from './hooks/no-cancel.ts';
 import { registerValidateEntryHook } from './hooks/validate-entry.ts';
 import { seedFiscalYear } from './seeds/fiscal-year.ts';
+import { registerAccountingSettings } from './settings.ts';
 
 export const AccountingModule = defineModule({
   name: 'accounting',
@@ -37,6 +43,9 @@ export const AccountingModule = defineModule({
     closePeriodAction,
     reopenPeriodAction,
     closeReadinessAction,
+    importOpeningBalancesAction,
+    reverseOpeningBalancesAction,
+    openingBalanceStatusAction,
   ],
   hooks: () => {
     registerValidateEntryHook();
@@ -44,6 +53,7 @@ export const AccountingModule = defineModule({
     registerFreezeLinesHook();
     registerFiscalDateHooks();
     registry.registerHealthCheck(fiscalPeriodHealthCheck);
+    registerAccountingSettings();
   },
   seed: seedFiscalYear,
   menus: [

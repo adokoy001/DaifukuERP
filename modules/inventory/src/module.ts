@@ -10,6 +10,7 @@ import { ProductModule } from '@daifuku/mod-product';
 import { PurchaseModule } from '@daifuku/mod-purchase';
 import { SalesModule } from '@daifuku/mod-sales';
 import { countVarianceAction } from './actions/count-variance.ts';
+import { importOpeningStockAction } from './actions/import-opening-stock.ts';
 import { ledgerAction } from './actions/ledger.ts';
 import { stockOnHandAction } from './actions/stock-on-hand.ts';
 import { valuationAction } from './actions/valuation.ts';
@@ -45,7 +46,7 @@ export const InventoryModule = defineModule({
     StockCount,
     StockCountLine,
   ],
-  actions: [stockOnHandAction, ledgerAction, valuationAction, countVarianceAction],
+  actions: [stockOnHandAction, ledgerAction, valuationAction, countVarianceAction, importOpeningStockAction],
   hooks: () => {
     registerPeriodCloseHooks();
     registerGuardHooks();

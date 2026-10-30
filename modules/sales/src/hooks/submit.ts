@@ -16,12 +16,21 @@ import {
   type HookArgs,
   type LocalDate,
 } from '@daifuku/kernel';
-import { Account, JournalEntry, postFromSource, assertJpySettlement, postingDimensions } from '@daifuku/mod-accounting';
+import {
+  Account,
+  JournalEntry,
+  assertJpySettlement,
+  assertNotOpeningAmend,
+  assertOpeningInvoice,
+  postFromSource,
+  postOpeningFromSource,
+  postingDimensions,
+} from '@daifuku/mod-accounting';
 import { Partner } from '@daifuku/mod-partner';
 import { buildLiveInvoiceRenderData } from '../actions/render-invoice-html.ts';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
 import { recalculateInvoice } from '../recalculate.ts';
-import { journalLinesFor, type PostingAccounts } from '../services/posting.ts';
+import { journalLinesFor, openingJournalLines, type PostingAccounts } from '../services/posting.ts';
 import { SALES_ACCOUNTS_DEFAULT, SALES_ACCOUNTS_KEY, salesAccountsSchema, type SalesAccounts } from '../settings.ts';
 
 const snapshotWrite = defineWriteCapability({
@@ -64,6 +73,8 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
       [{ path: 'partnerId', message: 'required' }],
       'Set partnerId, then submit.',
     );
+  await assertNotOpeningAmend(ctx, SalesInvoice, row);
+  const opening = row.openingBalance === true;
   const { totals, lines } = await recalculateInvoice(ctx, {
     id,
     date: row.date as LocalDate,
@@ -83,25 +94,38 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
     );
   }
   await assertJpySettlement(ctx, totals.total);
+  // docs/specs/opening-balances.md AC-17: an opening invoice posts Dr 売掛金 / Cr 期首残高仮勘定 on the opening date.
+  const clearing = opening
+    ? await assertOpeningInvoice(ctx, {
+        entity: SalesInvoice.name,
+        id,
+        date: row.date as LocalDate,
+        lines: lines.map((l) => ({ productId: l.productId, taxCategory: l.taxCategory })),
+        lineAccount: false,
+      })
+    : null;
   const accounts = await resolvePostingAccounts(ctx);
   const partner = await repo(ctx, Partner).get(partnerId);
-  const journalLines = journalLinesFor(
-    {
-      partnerId,
-      priceIncludesTax: row.priceIncludesTax === true,
-      lines: lines.map((l) => ({
-        seq: l.seq,
-        description: l.description,
-        amount: l.amount,
-        taxCategory: l.taxCategory,
-        ext: postingDimensions('sales_invoice_line', 'journal_line', l.ext),
-      })),
-      taxSummary: totals.taxSummary,
-      total: totals.total,
-    },
-    accounts,
-  );
-  const entry = await postFromSource(ctx, {
+  const journalLines = clearing
+    ? openingJournalLines({ partnerId, total: totals.total, clearingAccountId: clearing.id }, accounts)
+    : journalLinesFor(
+        {
+          partnerId,
+          priceIncludesTax: row.priceIncludesTax === true,
+          lines: lines.map((l) => ({
+            seq: l.seq,
+            description: l.description,
+            amount: l.amount,
+            taxCategory: l.taxCategory,
+            ext: postingDimensions('sales_invoice_line', 'journal_line', l.ext),
+          })),
+          taxSummary: totals.taxSummary,
+          total: totals.total,
+        },
+        accounts,
+      );
+  const post = clearing ? postOpeningFromSource : postFromSource;
+  const entry = await post(ctx, {
     sourceEntity: SalesInvoice.name,
     sourceId: id,
     date: row.date as LocalDate,
@@ -128,10 +152,13 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
 
 async function afterSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   const invoice = await repo(ctx, SalesInvoice).get(row.id as string);
-  const issuedSnapshot = await buildLiveInvoiceRenderData(ctx, invoice);
-  await withWriteCapability(ctx, snapshotWrite, (internal) =>
-    repo(internal, SalesInvoice).update(invoice.id, { issuedSnapshot }),
-  );
+  // AC-20 (opening-balances): an opening invoice is never issued, so it gets no issued snapshot.
+  if (!invoice.openingBalance) {
+    const issuedSnapshot = await buildLiveInvoiceRenderData(ctx, invoice);
+    await withWriteCapability(ctx, snapshotWrite, (internal) =>
+      repo(internal, SalesInvoice).update(invoice.id, { issuedSnapshot }),
+    );
+  }
   if (typeof row.journalEntryId !== 'string' || typeof row.number !== 'string' || typeof row.partnerId !== 'string')
     return;
   const partner = await repo(ctx, Partner).get(row.partnerId);

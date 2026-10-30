@@ -61,6 +61,14 @@ export async function loadIssuer(ctx: Context): Promise<SalesIssuer> {
 
 export async function buildInvoiceRenderData(ctx: Context, id: string): Promise<InvoiceRenderData> {
   const inv = await repo(ctx, SalesInvoice).get(id);
+  // docs/specs/opening-balances.md AC-20: an opening invoice is an internal record dated the opening date, not the
+  // original transaction date (記載事項②), so it is never rendered as a qualified invoice.
+  if (inv.openingBalance)
+    throw new StateError(
+      `sales_invoice ${inv.number ?? inv.id} is an opening balance record and is not issued`,
+      'Print or reissue the original invoice from the previous system; the opening invoice only tracks the open balance.',
+      { reason: 'opening_balance', id: inv.id, number: inv.number },
+    );
   if (inv.docstatus !== DOCSTATUS.draft) {
     if (!inv.issuedSnapshot)
       throw new StateError(

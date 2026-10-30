@@ -4,6 +4,7 @@
 // filter posted lines without a join — done after the header is submitted so hooks/freeze-lines.ts can prove the stamp
 // is the parent's truth and nothing else may write those columns.
 import {
+  hasWriteCapability,
   registry,
   repo,
   NotFound,
@@ -14,7 +15,8 @@ import {
   type Infer,
   type LocalDate,
 } from '@daifuku/kernel';
-import { withStamp } from '../domain-write.ts';
+import { OPENING_OPERATION, withStamp } from '../domain-write.ts';
+import { openingDateAllowed } from '../opening-year.ts';
 import { Account } from '../entities/account.ts';
 import { FiscalPeriod } from '../entities/fiscal-period.ts';
 import { FiscalYear } from '../entities/fiscal-year.ts';
@@ -87,6 +89,19 @@ export async function assertOpenPeriod(ctx: Context, date: LocalDate): Promise<I
   return period;
 }
 
+/**
+ * docs/specs/opening-balances.md AC-3 (D-17): on the opening-balance path only (the module-private `accounting.opening`
+ * capability), the opening date of the company's first fiscal year — which no period contains — is accepted while that
+ * year and its first period are open. Every other date and every other caller get the ordinary rule (assertOpenPeriod).
+ */
+async function assertPostingDate(ctx: Context, date: LocalDate): Promise<void> {
+  if (hasWriteCapability(ctx, JournalEntry.name, OPENING_OPERATION)) {
+    await withLock(ctx, 'accounting-periods', async () => undefined);
+    if (await openingDateAllowed(ctx, date)) return;
+  }
+  await assertOpenPeriod(ctx, date);
+}
+
 export function registerValidateEntryHook(): void {
   registry.registerHook(JournalEntry.name, 'before_submit', async (ctx, { row }) => {
     const entryId = row.id as string;
@@ -111,7 +126,7 @@ export function registerValidateEntryHook(): void {
         'Fix the lines (each line debit XOR credit > 0, totals equal, partner where required) and submit again.',
       );
     }
-    await assertOpenPeriod(ctx, date);
+    await assertPostingDate(ctx, date);
     row.totalDebit = result.totalDebit;
     row.totalCredit = result.totalCredit;
   });

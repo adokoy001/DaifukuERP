@@ -3,7 +3,14 @@
 // bypass, ADR-0007). The kernel writes the row (with docstatus/number) after this hook, so journalEntryId / status /
 // balance land in the same UPDATE. A failing post (closed period, missing account…) leaves the bill a draft.
 import { Decimal, ValidationError, registry, type Context, type HookArgs, type LocalDate } from '@daifuku/kernel';
-import { postFromSource, assertJpySettlement, postingDimensions } from '@daifuku/mod-accounting';
+import {
+  assertJpySettlement,
+  assertNotOpeningAmend,
+  assertOpeningInvoice,
+  postFromSource,
+  postOpeningFromSource,
+  postingDimensions,
+} from '@daifuku/mod-accounting';
 import { computeDueDate } from '@daifuku/mod-partner';
 import { PurchaseInvoice } from '../entities/purchase-invoice.ts';
 import { buildJournalLines } from '../services/posting.ts';
@@ -25,6 +32,7 @@ export async function postInvoice(
   computed: InvoiceComputation,
   lines: readonly InvoiceLineRow[],
   date: LocalDate,
+  opening = false,
 ): Promise<string> {
   await assertJpySettlement(ctx, computed.calc.totals.total);
   const accounts = await resolvePostingAccounts(ctx);
@@ -44,7 +52,9 @@ export async function postInvoice(
     totals: computed.calc.totals,
     accounts,
   });
-  const entry = await postFromSource(ctx, {
+  // docs/specs/opening-balances.md AC-17: an opening bill (line account = clearing) posts on the opening path.
+  const post = opening ? postOpeningFromSource : postFromSource;
+  const entry = await post(ctx, {
     sourceEntity: PurchaseInvoice.name,
     sourceId: row.id as string,
     date,
@@ -61,6 +71,7 @@ export async function postInvoice(
 async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
   const id = row.id as string;
   const date = row.date as LocalDate;
+  await assertNotOpeningAmend(ctx, PurchaseInvoice, row);
   const lines = await loadInvoiceLines(ctx, id);
   if (lines.length === 0)
     throw new ValidationError(
@@ -78,7 +89,16 @@ async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
     const p = computed.partner;
     row.dueDate = computeDueDate(date, p.closingDay, p.paymentMonthOffset, p.paymentDay);
   }
-  row.journalEntryId = await postInvoice(ctx, row, computed, lines, date);
+  const opening = row.openingBalance === true;
+  if (opening)
+    await assertOpeningInvoice(ctx, {
+      entity: PurchaseInvoice.name,
+      id,
+      date,
+      lines: lines.map((l) => ({ productId: l.productId, taxCategory: l.taxCategory, accountId: l.accountId })),
+      lineAccount: true,
+    });
+  row.journalEntryId = await postInvoice(ctx, row, computed, lines, date, opening);
   row.status = 'open';
   row.settlementHistory = true;
   row.paidAmount = Decimal.zero();

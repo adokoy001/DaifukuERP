@@ -9,6 +9,7 @@ import { ProductModule } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { AccountingModule } from '@daifuku/mod-accounting';
 import { arAgingAction } from './actions/ar-aging.ts';
+import { importOpeningReceivablesAction } from './actions/import-opening-receivables.ts';
 import { recordPaymentAction } from './actions/record-payment.ts';
 import { renderInvoiceHtmlAction } from './actions/render-invoice-html.ts';
 import { SalesInvoice } from './entities/sales-invoice.ts';
@@ -24,7 +25,7 @@ export const SalesModule = defineModule({
   label: label('販売', 'Sales'),
   depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name],
   entities: [SalesSettlement, SalesInvoice, SalesInvoiceLine],
-  actions: [renderInvoiceHtmlAction, arAgingAction, recordPaymentAction],
+  actions: [renderInvoiceHtmlAction, arAgingAction, recordPaymentAction, importOpeningReceivablesAction],
   hooks: () => {
     registerSettlementHooks();
     registerRecalcHooks();

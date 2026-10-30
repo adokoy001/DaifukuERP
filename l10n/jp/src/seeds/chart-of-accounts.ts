@@ -64,6 +64,9 @@ export const JP_CHART_OF_ACCOUNTS: readonly SeedAccount[] = [
   equity('3000', '元入金', '元入金'),
   equity('3100', '事業主貸', '事業主勘定'),
   equity('3200', '事業主借', '事業主勘定'),
+  // docs/specs/opening-balances.md AC-28: the default of accounting.opening_balances; nets to 0 once the opening journal,
+  // receivables and payables imports agree (a balance left here is the difference between them).
+  equity('3900', '期首残高仮勘定', '期首残高仮勘定'),
   revenue('4000', '売上高', '売上', { taxCategoryDefault: 'standard' }),
   revenue('4100', '雑収入', '営業外収益'),
   expense('5000', '仕入高', '仕入', 'standard'),
