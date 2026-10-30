@@ -725,8 +725,21 @@ describe('links (AC-11/AC-12/AC-19)', () => {
 
   it('AC-12: the admin card lists catalog screens only; setup check and wizard appear once their entries exist', () => {
     const admin = catalogOf(meta(['admin']), true);
-    expect(adminLinks(admin).map((link) => link.href)).toEqual(['/settings', '/admin/users', '/templates']);
-    expect(adminLinks(catalogOf(meta(['settings']))).map((link) => link.href)).toEqual(['/settings', '/templates']);
+    // B3 (setup-health) is merged: its catalog entry brings the setup check link with no change here.
+    expect(adminLinks(admin).map((link) => link.href)).toEqual([
+      '/settings',
+      '/admin/users',
+      '/templates',
+      '/admin/health',
+    ]);
+    expect(adminLinks(catalogOf(meta(['settings']))).map((link) => link.href)).toEqual([
+      '/settings',
+      '/templates',
+      '/admin/health',
+    ]);
+    // Catalog entries only: without the setup check entry the link is gone.
+    const withoutHealth = { ...admin, entries: admin.entries.filter((e) => e.href !== '/admin/health') };
+    expect(adminLinks(withoutHealth).map((link) => link.href)).toEqual(['/settings', '/admin/users', '/templates']);
     const entry = (href: string) => ({
       id: href,
       href,
@@ -736,7 +749,7 @@ describe('links (AC-11/AC-12/AC-19)', () => {
       featured: true,
       aliases: [],
     });
-    const later = { ...admin, entries: [...admin.entries, entry('/admin/health'), entry('/setup')] };
+    const later = { ...withoutHealth, entries: [...withoutHealth.entries, entry('/admin/health'), entry('/setup')] };
     expect(adminLinks(later).map((link) => link.href)).toEqual([
       '/settings',
       '/admin/users',

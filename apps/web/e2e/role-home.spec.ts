@@ -116,7 +116,7 @@ function networkLog(page: Page) {
 
 /**
  * AC-7: the page called only what the user's /meta (and analytics catalog) allows, nothing was refused, and the
- * unmerged setup-health endpoint was never called.
+ * setup-health endpoint was never called (the home only links to /admin/health).
  */
 async function expectAllowedReads(request: APIRequestContext, own: Session, log: ReturnType<typeof networkLog>) {
   const meta = await api<{ actions: { name: string }[]; entities: { name: string; ops: string[] }[] }>(
@@ -594,7 +594,13 @@ test('role-home AC-12: an admin gets the setup card above the general home and n
   await login(page, ADMIN, ADMIN_PASSWORD);
   const admin = page.getByTestId('home-admin');
   await expect(admin.getByRole('heading', { name: '導入・管理', level: 2 })).toBeVisible();
-  await expect(admin.getByTestId('home-admin-link')).toHaveText(['会社設定', '利用者と権限', '業界テンプレート']);
+  // B3 (setup-health) is merged: its catalog entry adds the setup check link; the home still only links to it.
+  await expect(admin.getByTestId('home-admin-link')).toHaveText([
+    '会社設定',
+    '利用者と権限',
+    '業界テンプレート',
+    '導入チェックを開く',
+  ]);
   await expect(tablist(page)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '業務分野から始める' })).toBeVisible();
   await settled(page);
