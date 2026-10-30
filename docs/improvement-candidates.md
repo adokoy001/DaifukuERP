@@ -26,7 +26,7 @@
 | 会計年度の作成は `accounting.open_fiscal_year` を汎用アクション画面から呼ぶ。勤怠の初期制度は専用ボタン、業界テンプレートは別画面 | [open-fiscal-year](../modules/accounting/src/actions/open-fiscal-year.ts)、[WorkforceInitialize](../apps/web/src/components/workforce-initialize.tsx)、[テンプレート画面](../apps/web/src/pages/templates-page.tsx) |
 | マスタ・期首残高の CSV 取込がない（CSV 取込は銀行明細のみ） | [banking imports](../modules/banking/src/imports.ts) |
 
-### 1-1. 初回セットアップウィザード（画面）
+### 1-1. 初回セットアップウィザード（画面）（済: 2026-10-30、[setup-wizard](specs/setup-wizard.md)）
 
 管理者が初めてログインしたとき、または「設定・管理」から任意に開ける段階式の画面を追加する。各ステップは既存の action と設定 API を呼ぶだけにし、新しい権限経路を作らない。
 
@@ -72,7 +72,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 汎用一覧は全文検索・列ヘッダ並べ替え・ページ送りのみ。状態・期間・取引先・金額の絞り込み、列選択、保存ビュー、CSV、一括操作がない | [汎用一覧](../apps/web/src/pages/entity-list-page.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
 | 伝票操作は確定・取消・改訂・削除のみ。複製、前後レコード移動、共通ショートカットがない | [伝票操作](../apps/web/src/components/doc-actions.tsx)、[フォーム](../apps/web/src/components/record-form.tsx) |
 | 承認待ちは `/workforce` の「確認待ち」タブと店舗日次報告に分かれ、横断の受信箱・通知がない | [workforce-page](../apps/web/src/pages/workforce-page.tsx)、[operations-page](../apps/web/src/pages/operations-page.tsx) |
-| 汎用の印刷は `sales.render_invoice_html` の適格請求書だけ。見積書・納品書・注文書・領収書・支払明細・合計請求書の帳票がない | [print-button](../apps/web/src/components/print-button.tsx) |
+| （済: 2026-10-30、[print-templates](specs/print-templates.md)）汎用の印刷は `sales.render_invoice_html` の適格請求書だけ。見積書・納品書・注文書・領収書・支払明細・合計請求書の帳票がない | [print-button](../apps/web/src/components/print-button.tsx) |
 | ホームは module 別の伝票件数と導線。役割別の「今日やること」はない | [ホーム](../apps/web/src/pages/home-page.tsx) |
 | PWA manifest・オフライン打刻・ダークモードはない | `apps/web/public` に manifest なし |
 
@@ -104,7 +104,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 [06 月次](manual/06-monthly.md) の手順（未確定の下書き確認 → 消込 → 試算表 → 消費税集計表 → 年齢表 → 在庫評価 → 期間締め）をチェックリスト画面にする。各ステップに未処理件数（下書きの伝票、未消込の入金、未転記の原資料、未提出の店舗）と、該当一覧へのリンクを出し、すべて 0 になってから `accounting.close_period` を押せるようにする。再開期間の理由と許可された訂正日の案内も同じ画面に置く。
 
-### 2-6. 帳票の拡充とテンプレート
+### 2-6. 帳票の拡充とテンプレート（共通化と 7 種の追加は済: 2026-10-30、[print-templates](specs/print-templates.md)。会社ロゴ・振込先・適格返還請求書・前回繰越は未実施）
 
 見積書・注文書・納品書・領収書・支払通知書・給与明細（印刷用）・適格返還請求書・合計請求書（取引先の締め日で期間内の請求をまとめる）。`render_*_html` の規約を module 共通にし、会社ロゴ・文言・振込先を company 設定から差し込む。和暦表示は表示層で切り替える（[日本の制度事実](domain/japan-tax.md)）。
 
@@ -231,5 +231,8 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 定期仕訳 | 1 回ごとの再生成・飛ばし、締めガイドの未生成の期日、複数行の按分、洗替（翌月の戻し）を足すか（いずれも現状は無し）。期日での自動生成を F1 の worker から `generateRecurring` を呼ぶ形にするか。消費税法基本通達 11-3-1 などの本文は未確認 | [recurring-journals](specs/recurring-journals.md) |
 | 証憑の検索 | **証憑の行・履歴・ダウンロードをリンク先の記録の読取規則に従わせるか**（現状は従わない。閉じるには kernel の行規則の拡張と ADR が要る。F3 と関係）。ダウンロードを監査するか（推奨は F3 で扱う）。一括 50 件・100 MB の上限がスマートフォンで妥当か（実機は未計測）。既存の添付の出力から `storageKey` を隠すか、取引先の自由記述欄を足すか、導入チェックに 3 項目の欠けた証憑の件数を出すか | [evidence-search](specs/evidence-search.md) |
 | 役割別ホーム | chain_staff に店舗の表示を、管理者だけの利用者に経理の表示を出すか。人事・給与・営業の表示を足すか（いずれも現状は無し）。大きな会社でのホームの読取量（キャッシュや要約の読取。ADR 要） | [role-home](specs/role-home.md) |
+| セットアップウィザード | ホームのカードを「表示しない」操作を置くか（現状は理由付きのスキップ）。勤怠・給与の段階を使う会社だけに出すか。`packs.applied` にも `managedBy` を付けるか。設定の PUT に版の検査を足すか。seed が作る暦年の会計年度を決算月に合わせて置き換える手段（短い初年度など）。確認だけの段階を確認するまで未完了にするか。期首残高の取込（B6）への導線と「通常の入出庫より先に期首在庫を取り込む」案内を足すか（現状はスコープ外）。店舗・拠点に限った admin では `/meta/setup-status` が 403 でカードが出ない（spec の想定）。`/setup` を共通の axe 検査の画面一覧に入れるか | [setup-wizard](specs/setup-wizard.md) |
+| 帳票 | 領収書の記載事項と印紙税の注意（国税庁の一次資料を確認してから）。給与明細の法定の文言。売上請求書も `print_layout.date_style` に従うか。合計請求書の前回請求額・入金額・繰越（期首残高を含む）。API の言語が画面の言語ではなくブラウザの Accept-Language に従う点（全体の課題） | [print-templates](specs/print-templates.md) |
 | pack 雛形 | ルートに `pnpm pack:new` を足すか。ext の対象を取引先以外にも広げるか。第三者が雛形から完走した記録（未実施） | [pack-scaffold](specs/pack-scaffold.md) |
+| 型検査の範囲 | ルートの `pnpm typecheck` は module の試験ファイルを含まない。module の tsconfig で検査すると試験ファイルに型の誤りがある（2026-10-30 時点で sales 1・purchase 1・accounting 1・trade 2・banking 3。実行時の試験は成功）。gate に含めるか、誤りを直すか | 第6波の統合時の確認 |
 | gate:light | 目標 6 分を負荷平均が CPU 数以下のときの値と読むか、見直すか。full の DB も分割するか（現状は CI と同じ直列）。shard DB が主試験 DB とテンプレートを共有するか。8 CPU 以上での既定の分割数 | [light-tier-speed](specs/light-tier-speed.md) |

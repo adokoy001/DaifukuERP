@@ -1,6 +1,6 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-30（第5波まで統合: 波0〜3 の大半、B2・B3・D3・A4、B6・B7・C6・E2・E4 を実装。E4 は行の読取規則が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（第6波まで統合: 波0〜3 の大半、B2・B3・D3・A4、B6・B7・C6・E2・E4、B4・C5 を実装。E4 は行の読取規則が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
 
 ## 0. この文書の使い方
 
@@ -13,9 +13,9 @@
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件 | STATUS、`vitest.config.mts` の unit project |
-| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件 | `apps/web/e2e`、`playwright.config.ts` |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件、第6波の統合後 2,045 件 | STATUS、`vitest.config.mts` の unit project |
+| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル、第6波の統合後 1,075 件・152 ファイル | STATUS、`kernel/src/testing.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件、第6波の統合後 203 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -49,7 +49,7 @@
 | B1 | 設定定義の拡張と設定画面の再構成 **済** | 1 | M | D1（最小） | settings-console | `kernel/src/registry.ts`、`apps/api/src/routes/settings.ts`、`settings-page.tsx` |
 | B2 | 会社の追加・編集と会社プロフィール **済** | 1 | M | B1 | company-admin | kernel 会社作成、`/admin/companies` |
 | B3 | 導入チェック（ヘルスチェック）**済** | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
-| B4 | セットアップウィザード | 1 | M | B1、B2、B3 | setup-wizard | `/setup`、ホームのチェックリスト |
+| B4 | セットアップウィザード **済** | 1 | M | B1、B2、B3 | setup-wizard | `/setup`、ホームのチェックリスト |
 | B5 | マスタの CSV 取込 **済** | 2 | L | D1 | csv-import | kernel import port、`/api/:entity/import`、`/e/:entity/import` |
 | B6 | 期首残高の取込 **済** | 2 | M | B5 | opening-balances | accounting / sales / purchase / inventory の action |
 | B7 | pack 雛形生成 **済** | 4 | S | なし | pack-scaffold | `scripts/pack-new.mjs` |
@@ -59,7 +59,7 @@
 | C4 | 月次締めガイド **済** | 3 | M | C3 の規約 | close-guide | `accounting.close_readiness`、`/finance/close` |
 | D2 | コマンドパレット・最近の記録・お気に入り・ヘルプ導線 **済** | 3 | M | D1 | navigation-assist | `lib/navigation.ts`、sidebar、ScreenTrail |
 | D3 | フォームのセクション・エラー要約・ショートカット・モバイル操作バー **済** | 3 | M | D1 | form-ergonomics | DSL `views.form`、`record-form.tsx`、`line-grid.tsx` |
-| C5 | 帳票の共通化と拡充 | 4 | L | B2 | print-templates | `render_*_html` 規約、各 module |
+| C5 | 帳票の共通化と拡充 **済** | 4 | L | B2 | print-templates | `render_*_html` 規約、各 module |
 | C6 | 役割別ホーム **済** | 4 | S | C3 | role-home | `home-page.tsx` |
 | E4 | 証憑の横断検索（電帳法の検索要件）**実装済み（AC-6 は判断待ち）** | 4 | M | C1 | evidence-search | `/finance/evidence` |
 | E2 | 定期仕訳 **済** | 4 | M | なし | recurring-journals | accounting |
@@ -192,6 +192,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 受入基準の骨子: WHEN 管理者が初回にログインした THE SYSTEM SHALL ホームに未完了のセットアップを表示する。WHEN ステップを完了した THE SYSTEM SHALL 実データの条件で完了を判定し、ブラウザを閉じても再開できる。IF ステップをスキップした THEN THE SYSTEM SHALL 理由を記録し、チェックリストに未完了として残す。THE SYSTEM SHALL 既存 API の権限検査をそのまま通す。
 - 検証: ブラウザ試験（新会社で 9 ステップを通し、売上請求書の確定まで）、390px、権限なし利用者の拒否。マニュアル 03 を書き換える。
 
+実装済み（2026-10-30 統合）。kernel の設定 `setup.progress`（段階ごとの完了・スキップと理由。表示属性 `managedBy` で設定画面からは読取専用にし、書込みは `writeRoles` で admin に限る）、`GET /meta/setup-status`（apps/api。B3 の項目 id と 4 つの条件から実データで判定し、会社の admin だけ）、`/setup` の 9 段階とホームの「セットアップを続ける」カード（役割別ホームのビュー切替の上）。各段階は既存の設定 API・action・`/admin/users` を呼び、新しい書込み経路は作らない（[ADR-0027](adr/0027-setting-presentation.md) の 8 節。新しい ADR は使っていない）。カードは必須の段階が未完了か、検査に fail があるときに出る。スキップは理由付きで残り件数に数えないが、検査が fail なら警告を続ける。会計年度は作るだけで、既存の年度は変えない。詳細と設計からの変更は [spec](specs/setup-wizard.md) と [記録](log/2026-10-30-setup-wizard.md) を正とする。
+
 ### B5. マスタの CSV 取込
 
 実装済み（2026-10-30 統合）。kernel の import port と派生 action `<entity>.import`、`POST /api/:entity/import`、`/e/:entity/import`（[ADR-0028](adr/0028-import-port.md)）。伝票は対象外。 詳細と設計からの変更は [spec](specs/csv-import.md) と [記録](log/2026-10-29-csv-import.md) を正とする。
@@ -301,6 +303,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 発行者情報は `sales.issuer` → `company.profile` の順で解決。ロゴは対象外（添付基盤での対応は別項目）。
 - 受入基準の骨子: WHEN 確定済みの対象 document を開いた THE SYSTEM SHALL 印刷ボタンを表示し、権限のある利用者だけが HTML を取得できる。THE SYSTEM SHALL 金額の端数処理と税率別内訳を保存済みの値から表示し、再計算しない。
 - 検証: golden（HTML の固定部分）、ブラウザ試験（印刷タブの表示）。
+
+実装済み（2026-10-30 統合）。action 定義に `print: { entity, label, idInput?, when?, fields? }` の宣言を足し（[ADR-0009](adr/0009-actions-rest-mcp.md) の追補）、画面は `/meta` の宣言からボタンを出す（接尾辞による発見は廃止）。共通のレイアウト部品は新しいライブラリ `@daifuku/mod-print-layout`（kernel と zod だけに依存、設定 `print_layout.date_style` で和暦・西暦）。帳票は請求書（期首請求書は除く）、合計請求書（取引先の締め日で区切った期間の確定済み請求書。期首請求書は載せない）、見積書、注文書、納品書、領収書と支払通知書（どちらも payment。計画の purchase_settlement ではない）、給与明細。金額と税率別の内訳は保存値を使い再計算しない。領収書の記載事項と印紙税の注意は国税庁の一次資料を確認できなかったため印字していない。詳細と設計からの変更は [spec](specs/print-templates.md) と [記録](log/2026-10-30-print-templates.md) を正とする。
 
 ### C6. 役割別ホーム
 
