@@ -128,7 +128,9 @@ export function BulkBar({ ops, selected, busy, onChoose, onClear }: BarProps) {
             disabled={busy || plan.targets.length === 0}
             onClick={() => onChoose(op)}
           >
-            {`${t(OP_LABEL[op])}（${plan.targets.length}）`}
+            {locale === 'ja'
+              ? `${t(OP_LABEL[op])}（${plan.targets.length}）`
+              : `${t(OP_LABEL[op])} (${plan.targets.length})`}
           </Button>
         ))}
         <Button size="sm" variant="ghost" disabled={busy} onClick={onClear}>

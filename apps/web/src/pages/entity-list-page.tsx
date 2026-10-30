@@ -88,6 +88,11 @@ const W = {
   },
 } satisfies Record<string, Label>;
 
+/** "絞り込み（2）" / "Filters (2)". */
+function withCount(text: string, count: number, locale: 'ja' | 'en'): string {
+  return locale === 'ja' ? `${text}（${count}）` : `${text} (${count})`;
+}
+
 /** localStorage, when this browser lets the page use it (private modes and blocked site data throw). */
 function browserStorage(): ListStorage | undefined {
   try {
@@ -414,12 +419,12 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
             onClick={() => setFiltersOpen((open) => !open)}
             data-testid="filters-toggle"
           >
-            {filterCount ? `${t(W.filters)}（${filterCount}）` : t(W.filters)}
+            {filterCount ? withCount(t(W.filters), filterCount, locale) : t(W.filters)}
           </Button>
         ) : null}
         <Button onClick={() => setDialog('columns')}>{t(W.columns)}</Button>
         <Button onClick={() => setDialog('views')}>
-          {prefs.views.length ? `${t(W.views)}（${prefs.views.length}）` : t(W.views)}
+          {prefs.views.length ? withCount(t(W.views), prefs.views.length, locale) : t(W.views)}
         </Button>
       </Toolbar>
       {readFailed ? <p className="ui-notice ui-notice-warning text-xs">{t(W.storageFailed)}</p> : null}
