@@ -57,3 +57,8 @@ export function useCompanyName(): string | null {
 export function useCurrencyScale(): number {
   return useContext(CompanyContext).currencyScale;
 }
+
+/** ISO 4217 code of the company currency, or null while unknown (role-home cards write amounts with it). */
+export function useCompanyCurrency(): string | null {
+  return useContext(CompanyContext).currency;
+}

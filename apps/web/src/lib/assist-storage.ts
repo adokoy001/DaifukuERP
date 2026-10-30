@@ -16,7 +16,8 @@ export interface AssistKeyedStorage extends AssistStorage {
   readonly length: number;
   key(index: number): string | null;
 }
-export type AssistKind = 'recent' | 'favorites';
+/** `home`: the chosen role-home view (docs/specs/role-home.md AC-4), one view id per user + tenant + company. */
+export type AssistKind = 'recent' | 'favorites' | 'home';
 
 /** Upper bound on what is parsed; both lists are small (30 records, 20 screens), anything larger is not ours. */
 const MAX_RAW = 64_000;

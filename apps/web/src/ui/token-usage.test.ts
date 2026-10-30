@@ -56,6 +56,14 @@ const CONVERTED = [
   'pages/evidence-page.tsx',
   'components/evidence-download.tsx',
   'components/evidence-history-dialog.tsx',
+  // role-home (docs/specs/role-home.md)
+  'components/role-home.tsx',
+  'components/role-home-card.tsx',
+  'components/role-home-accounting.tsx',
+  'components/role-home-store.tsx',
+  'components/role-home-employee.tsx',
+  'components/role-home-admin.tsx',
+  'role-home.css',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

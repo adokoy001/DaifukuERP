@@ -108,10 +108,21 @@ export function InboxFailure({
   );
 }
 
+/** What the home card needs of one `useInbox()` read; the home passes its single read (role-home AC-14). */
+export type InboxCardState = Pick<ReturnType<typeof useInbox>, 'providers' | 'groups' | 'summary'>;
+
 /** Home card: the total, the most urgent items, and a pointer to /inbox when a provider failed. */
 export function InboxCard() {
+  return <InboxCardView inbox={useInbox()} />;
+}
+
+/**
+ * The home card drawn from a read made elsewhere. The role-based home calls `useInbox()` once and shares the result
+ * with this card, the store view's missing-report card and its Refresh button, so no second observer reads again.
+ */
+export function InboxCardView({ inbox }: { inbox: InboxCardState }) {
   const { t, locale } = useLocale();
-  const { providers, groups, summary } = useInbox();
+  const { providers, groups, summary } = inbox;
   if (!providers.length) return null;
   const labels = new Map(groups.map((group) => [group.provider.action, group.provider.label]));
   const loadingOnly = summary.loading && !summary.top.length;

@@ -52,7 +52,9 @@ module menuを任意のURL転送機構にしない。登録済みのアプリ内
 
 [menu-search.ts](../../apps/web/src/lib/menu-search.ts) はURLの `q`（最大120文字）、既知の `kind`、`page`（2〜10000の整数、1は省略）だけを受け入れる。画面は検索・種別変更で先頭へ戻し、結果減少時のページを末尾へ収める。入力変更は履歴を置換、ページ・分野変更は履歴を追加するため、画面を開いた後にブラウザの戻る操作で絞込状態へ戻れる。個人設定を保存する機能ではない。
 
-ホームでは分野カードを先に示す。「伝票の状況を確認」のdetailsが開いている間だけ、選択moduleの伝票を既存 `useDocstatusCounts` へ渡す。初期moduleはsales、存在しなければ最初の伝票module、それもなければ先頭module。状態ごとの `limit=1` 取得はこのmoduleに限定する。関連マスターは先頭8件、帳票は先頭5件を近道として示し、分野・分析へのリンクから残りへ到達できる。初回に全module・全伝票の状態件数を取得する構成へ戻さない。
+ホームは役割別のビューで始まる（2026-10-30、[role-home](../specs/role-home.md)）。ビューは `lib/role-home.ts` の `availableHomeLayouts` が `/meta`・画面カタログ・`tenantAdmin` から決め、従業員ビューは `/me`、導入管理ビューは `/settings`・`/admin/users`・`/templates`（と後続の `/admin/health`・`/setup`）が画面カタログにあることを条件・リンク先にする。カードのリンクもカタログにある画面だけを出す（`hasScreen`）。以下の分野カードと伝票件数の規則は、全体ビューと導入管理ビューの中の規則である。
+
+ホームの全体ビューでは分野カードを先に示す。「伝票の状況を確認」のdetailsが開いている間だけ、選択moduleの伝票を既存 `useDocstatusCounts` へ渡す。初期moduleはsales、存在しなければ最初の伝票module、それもなければ先頭module。状態ごとの `limit=1` 取得はこのmoduleに限定する。関連マスターは先頭8件、帳票は先頭5件を近道として示し、分野・分析へのリンクから残りへ到達できる。初回に全module・全伝票の状態件数を取得する構成へ戻さない。
 
 ## 現在位置と入力保護
 
@@ -98,6 +100,7 @@ flowchart LR
 | 分野・画面カード | [workspace-cards.tsx](../../apps/web/src/components/workspace-cards.tsx) |
 | 検索・種類・分野・24件ページング | [workspaces-page.tsx](../../apps/web/src/pages/workspaces-page.tsx) |
 | ホーム・選択moduleの件数 | [home-page.tsx](../../apps/web/src/pages/home-page.tsx)、[dashboard.ts](../../apps/web/src/api/dashboard.ts) |
+| 役割別ホームのビューと読取 | [role-home.ts](../../apps/web/src/lib/role-home.ts)、[api/role-home.ts](../../apps/web/src/api/role-home.ts)、[role-home.tsx](../../apps/web/src/components/role-home.tsx) |
 | 共通メニュー・drawer | [sidebar.tsx](../../apps/web/src/components/sidebar.tsx)、[router.tsx](../../apps/web/src/router.tsx) |
 | 現在位置・title・お気に入りボタン・説明リンク | [screen-trail.tsx](../../apps/web/src/components/screen-trail.tsx) |
 | コマンドパレット・上部ボタン・`Ctrl+K` | [command-palette.tsx](../../apps/web/src/components/command-palette.tsx)、[router.tsx](../../apps/web/src/router.tsx) |
