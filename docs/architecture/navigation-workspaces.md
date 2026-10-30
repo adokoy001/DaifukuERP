@@ -40,6 +40,8 @@ flowchart TD
 
 module menuを任意のURL転送機構にしない。登録済みのアプリ内routeと、metadataに存在するentity・action・reportだけをリンクへ変換する。外部URL、query/hashを混ぜたroute、encoded pathやdot segmentを使う曖昧なrouteは採用しない。既存URLは改名しない。
 
+やること受信箱（`/inbox`、[spec](../specs/inbox.md)）は、`<module>.todo` の提供元が1つ以上実行できる場合だけ専用画面としてカタログへ入る（条件 `inbox`、分野はその他）。提供元が返す項目の `href` は、外部URL・`//`・hashを拒否し、pathnameが `findNavigationEntry` でこのカタログに解決するものだけをリンクにする。queryは移動先の画面の検索条件（例 `/workforce?period=`）として渡す。module menuの転送規則は変えない。
+
 入口の非表示は認可ではない。既存のAPI認可、会社/拠点/本人境界、項目権限、直接開いたページの権限エラーを保持する。会社切替時のquery keyと既存のmetadata再取得・エラー処理を継承し、古い会社のカタログを新しい会社用として固定保存しない。
 
 ## 検索と表示

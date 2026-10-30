@@ -36,8 +36,14 @@ function add(entries: Map<string, NavigationEntry>, entry: NavigationEntry): voi
   // Dedicated screens and the first ordered menu keep their canonical names; later labels remain searchable.
   entries.set(entry.href, { ...previous, aliases: uniqueLabels([...previous.aliases, entry.label, ...entry.aliases]) });
 }
+const TODO_ACTION = /^[a-z][a-z0-9_]*\.todo$/;
+/** Inbox provider (docs/conventions/ui.md): a read-only, non-generic `<module>.todo` action the caller may run. */
+export function isTodoProvider(action: ActionMeta): boolean {
+  return TODO_ACTION.test(action.name) && !action.mutates && !action.generic;
+}
 function allowedDedicated(definition: DedicatedNavigation, meta: AppMeta, tenantAdmin: boolean): boolean {
   if (definition.action && !meta.actions.some((action) => action.name === definition.action)) return false;
+  if (definition.condition === 'inbox') return meta.actions.some(isTodoProvider);
   if (definition.condition === 'reports')
     return meta.actions.some((action) => ACTION_NAME.test(action.name) && isReportAction(action));
   if (definition.condition === 'settings') return canEditSettings(meta.roles);

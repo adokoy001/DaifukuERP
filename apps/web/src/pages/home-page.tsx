@@ -6,6 +6,7 @@ import { reportActions } from '../api/reports.ts';
 import type { EntityMeta } from '../api/types.ts';
 import { CountValue, DashboardSummary, QuickStart, type CountLookup } from '../components/dashboard-summary.tsx';
 import { Icon, moduleIcon } from '../components/icon.tsx';
+import { InboxCard } from '../components/inbox-card.tsx';
 import { WorkspaceCards } from '../components/workspace-cards.tsx';
 import { useLocale } from '../i18n.tsx';
 import { DOCSTATUSES, groupByModule, type ModuleGroup } from '../lib/dashboard.ts';
@@ -185,6 +186,7 @@ export function HomePage() {
       {meta.isPending ? <LoadingView /> : null}
       {meta.data && !unavailable ? (
         <>
+          <InboxCard />
           <section aria-label={t({ ja: '業務分野から始める', en: 'Start with a business area' })}>
             <div className="home-intro">
               <h2>{t({ ja: '業務分野から始める', en: 'Start with a business area' })}</h2>

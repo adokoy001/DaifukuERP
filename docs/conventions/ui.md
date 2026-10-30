@@ -22,6 +22,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 印刷ビュー | `<entity.module>.render_invoice_html` アクションで、`inputSchema.properties.id` がある | 確定済み document のヘッダに「請求書を表示」 | `lib/print.ts` |
 | 消込（入出金の配分） | 下記「消込」 | 明細グリッドの上に 配分合計／未配分 と「未消込の請求書から選ぶ」 | `lib/allocation.ts`, `components/allocation-picker.tsx`（web-phase15 AC-1/AC-2） |
 | 金額の桁 | `FieldMeta.money` / `scale`、`/auth/me` の `company.currency` | 下記「小数の表示」 | `lib/format.ts`, `lib/currency.ts`, `api/company.tsx`（web-phase15 AC-4/AC-8） |
+| 受信箱の提供元 | 名前が `<module>.todo` で `mutates: false`、generic でないアクション。入力 `{}`、出力 `TodoResult` | ホームの「やること」カードと `/inbox`。下記「やること受信箱」 | `api/inbox.ts`, `lib/inbox.ts`, `components/inbox-card.tsx`, `pages/inbox-page.tsx`（inbox） |
 
 ## 汎用一覧の絞り込み・列・保存ビュー・CSV・一括操作
 
@@ -53,6 +54,26 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 サイドバーに全entity・全report・全moduleメニューを展開しない。`/workspaces` の画面検索と種類・ページングで探し、`/workspaces/<workspace>` では目的別の専用画面とマスター・記録を選ぶ。table帳票は分析・レポートへ集約する。既存のURLとAPI認可を保持し、module menuの外部・曖昧・未対応URLを転送しない。
 
 画面検索はNFKC、大小文字、カタカナ/ひらがなを正規化し、複数語をANDで照合する。記録データの横断検索ではない。ホームの伝票件数は詳細を開いて選択したmoduleだけ取得する。パンくずとメニューは既存routerを使って未保存保護を通す。drawerのEscapeとフォーカス復帰を共通shellで扱う。詳細は [ナビゲーションの構造](../architecture/navigation-workspaces.md)、操作は [付録N](../manual/appendix-n-navigation.md) を参照。
+
+## やること受信箱（`<module>.todo`）
+
+2026-10-29 に追加した（[spec](../specs/inbox.md)）。module（pack を含む）は、利用者が処理すべき仕事の件数を `<module>.todo` という名前のアクションで返す。画面はそれを集めて表示するだけで、件数の計算・権限の判断をしない。
+
+| 決まり | 内容 |
+|---|---|
+| 名前と形 | `defineAction({ name: '<module>.todo', input: todoInput, output: todoResult, mutates: false, tx: 'none' })`。`todoInput` / `todoResult` / `todoItems` は `@daifuku/kernel`（`kernel/src/todo-result.ts`）。出力は `{ items: [{ key, label: { ja, en }, count, href, severity: 'info' \| 'warn' }] }` |
+| 数え方 | 提供元 module の `Repository.count` / `list` など既存の読取経路を、呼び出した利用者の `Context` のまま使う。会社・拠点・店舗・本人の境界とロールはそのまま効く。`systemContext()` や集計用の別経路を作らない。状態を変えない（`edge.board` のような読取時の状態更新を持ち込まない） |
+| 誰に出すか | 実行できるロールは、その仕事を処理するロールに絞る（閲覧専用のロールは含めない）。項目ごとに処理アクションの `canRunAction` や `can(ctx, entity, op)` で絞り、自分の申請など本人が承認できない記録は数えない |
+| 件数 0 | `todoItems()` が 0 件の項目を落とす。すべて 0 なら `{ items: [] }` |
+| href | アプリ内のパス（`/` で始まり、`//`・`\`・空白・スキームなし）。問い合わせ文字列は可（例 `/workforce?period=2026-09`）。画面は `findNavigationEntry` で利用者の画面カタログにあるパスだけを表示し、外部 URL・未知のパス・カタログにない画面の項目は表示しない |
+| key | 提供元の中で一意の snake_case。画面は `<action>:<key>` を識別子に使う |
+| 実行できる場合だけ | 画面は `/meta` に現れた（= 呼び出し側が実行できる、pack は適用済み）提供元だけを呼ぶ。1 つもなければホームのカードと画面検索の入口（`/inbox`、分野は「その他」）を出さない |
+
+画面の動き:
+
+- ホームと `/inbox` は、表示したときに全提供元を `Promise.allSettled` で並行して呼ぶ（`api/inbox.ts loadInbox`）。定期取得・フォーカス時・再接続時の再取得はしない。`/inbox` の「最新の状態に更新」で全体を、失敗した提供元の「再試行」でその提供元だけを呼び直す。更新中も前回の件数を残す。
+- 失敗した提供元だけを「取得できませんでした」とし（コードは補助行）、他の提供元の表示を妨げない。ホームのカードは失敗した業務名と `/inbox` への案内を出す。
+- ホームのカードは合計件数と、警告（`warn`）を先に件数の多い順で最大 5 件を出す。`/inbox` は提供元ごとのカードに全項目を出す。ホームで取得するのは受信箱の件数だけで、伝票件数（「伝票の状況を確認」）は従来どおり開いたときだけ取得する。
 
 ## 2026-09-12 UI更新の規約
 

@@ -44,6 +44,20 @@ export function dateTimeInput(timestamp: string): string {
   if (!Number.isFinite(date.getTime())) return '';
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 19);
 }
+export const WORKFORCE_TABS = ['overview', 'attendance', 'expenses', 'people', 'payroll'] as const;
+export type WorkforceTabId = (typeof WORKFORCE_TABS)[number];
+export interface WorkforceSearch {
+  period?: string;
+  tab?: WorkforceTabId;
+}
+/** `/workforce?period=YYYY-MM&tab=…` (inbox links open the month of the oldest pending record); bad values are dropped. */
+export function parseWorkforceSearch(raw: Record<string, unknown>): WorkforceSearch {
+  const out: WorkforceSearch = {};
+  if (typeof raw.period === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(raw.period)) out.period = raw.period;
+  if (typeof raw.tab === 'string' && (WORKFORCE_TABS as readonly string[]).includes(raw.tab))
+    out.tab = raw.tab as WorkforceTabId;
+  return out;
+}
 export const leavePortions: Record<string, Label> = {
   full: { ja: '1日', en: 'Full day' },
   morning: { ja: '午前半日', en: 'Morning' },

@@ -121,9 +121,19 @@ export interface DedicatedNavigation {
   kind?: NavigationKind;
   /** The same entry action used by the existing sidebar, not a substitute for server authorization. */
   action?: string;
-  condition?: 'reports' | 'settings' | 'tenant-admin';
+  condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox';
 }
 export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
+  {
+    href: '/inbox',
+    workspace: 'other',
+    condition: 'inbox',
+    label: { ja: 'やること（受信箱）', en: 'To-do inbox' },
+    description: {
+      ja: '承認・確認・照合を待つ仕事を業務ごとに集め、担当画面へ移動します。',
+      en: 'Collect work awaiting your approval, review or matching, and open the screen for each item.',
+    },
+  },
   {
     href: '/me',
     workspace: 'workforce',

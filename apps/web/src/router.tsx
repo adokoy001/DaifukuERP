@@ -36,6 +36,7 @@ import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
+import { parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
 
@@ -236,7 +237,13 @@ const employeeRoute = createRoute({
 const workforceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/workforce',
+  validateSearch: parseWorkforceSearch,
   component: lazyRouteComponent(() => import('./pages/workforce-page.tsx'), 'WorkforcePage'),
+});
+const inboxRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/inbox',
+  component: lazyRouteComponent(() => import('./pages/inbox-page.tsx'), 'InboxPage'),
 });
 
 const shiftRoute = createRoute({
@@ -352,6 +359,7 @@ const routeTree = rootRoute.addChildren([
     accessRoute,
     employeeRoute,
     workforceRoute,
+    inboxRoute,
     shiftRoute,
     fiscalRoute,
     workSystemRoute,
