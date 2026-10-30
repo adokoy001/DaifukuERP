@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-29 月次締めガイド（C4）
 
 - セッション: 完成度向上計画 C4（workflow の作業項目、worktree `wip/close-guide`、統合 head `ebc7574` から）／ 担当: agent ／ 対象: [docs/specs/close-guide.md](../specs/close-guide.md)
-- 計測: tokens=null（未計測）, agent_minutes=約90, human_minutes=0, rework_lines=約45（ブラウザ試験 1 回目の失敗で直したリンクの名前、英語ラベルの言い回し、期間選択の幅、再点検ボタン、pack 適用の DB 試験の追加）, gate_failures=1（gate:light の DB 1 suite が共有 PostgreSQL の lock 表不足で失敗。環境要因、単独再実行で成功）
+- 計測: tokens=null（未計測）, agent_minutes=約90, human_minutes=0, rework_lines=約45（ブラウザ試験 1 回目の失敗で直したリンクの名前、英語ラベルの言い回し、期間選択の幅、再点検ボタン、pack 適用の DB 試験の追加）, gate_failures=2（gate:light 2 回とも DB の 1 suite が共有 PostgreSQL の lock 表不足で失敗。環境要因、単独再実行で成功）
 
 ## 決めたこと（と理由）
 
@@ -34,6 +34,7 @@
 - [実測] ブラウザ試験 `e2e/close-guide.spec.ts`（slot 4、新しい fixture DB、`--project=chromium --no-deps`）1 件成功（9.6 秒）: 画面検索から開く、既定の期間（API で求めた期待値と一致）、期間選択と URL、仕訳の下書き 1 件で締めボタン無効・理由の表示とボタンの説明、一覧リンク、試算表・売掛金年齢表のリンクの期間、試算表を開くと開始日・終了日が入っている、API で確定後の「再点検」で有効、後から作った下書きで締めない（期間は未締めのまま）、kit の Dialog で締める（最初の焦点は「戻る」、`accounting.close_period` の応答成功、締め済み表示、見出しへの焦点、API で `isClosed` true）、訂正日の案内、再開（API で false）、390px で横はみ出しなし・確認ダイアログが画面内、英語表示。1 回目はリンクの名前の期待値の誤り（sr-only の補足で名前に空白が入った）で失敗し、`aria-label` に変えて成功。
 - [実測] ブラウザ試験の関連 spec（slot 4、新しい fixture DB、`--project=industry --project=chromium`）: `industry-templates`（3）、`analytics`（10、試算表の期間初期値を含む）、`close-guide`、`navigation`（5）、`phase1`（1、レポート画面）、`phase15`（2、レポートの合計）、`ui-kit`（10）の 32 件すべて成功（4.2 分）。触った画面（レポート画面・画面検索・会計・資金の分野）を含む。別に `foundation-ui`（1）も成功。
 - [実測] `pnpm gate:light --base ebc7574`（1 回目、load average 約 10 の共有コンテナ、1,175 秒）: format・docs・assurance・typecheck・API/Web typecheck・lint・unit 全件は成功、DB は 79 suite 中 78 成功・1 失敗。失敗は `apps/mcp/test/stdio.db.test.ts` の schema 作成時の `DROP SCHEMA public CASCADE` が `out of shared memory`（`max_locks_per_transaction` = 64、PostgreSQL の lock 表はサーバー全体で共有）で、同じ PostgreSQL で他の作業の DB suite が同時に動いていたことによる環境要因と判断した（この変更は entity・table を足していない）。同じ suite を単独で再実行して 4/4 成功（22 秒）、DB の後で実行されなかった `pnpm test:deploy` を単独で実行して 16/16 成功（20 秒）。
+- [実測] `pnpm gate:light --base ebc7574`（2 回目、2 つ目のコミットの後、877 秒）: format・docs・assurance・typecheck・lint・unit 全件（133 ファイル）成功、DB は 79 suite 中 78 成功（`close-readiness.db.test.ts` を含む、472 件中 471 件）・1 失敗。失敗は `apps/api/test/boolean-migration.db.test.ts` の schema 作成で、1 回目と同じ `out of shared memory`（`DROP SCHEMA public CASCADE`）。単独で再実行して 9/9 成功（44 秒）、`pnpm test:deploy` を単独で実行して 16/16 成功。2 回とも失敗した suite は別で、どちらも試験本体に入る前の schema 削除で落ちている。
 - [実測] `pnpm gate:quick`（統合 head の差分を含む既定の基準 `431dda5` で実行）: format・docs・assurance・eslint・boundaries・typecheck・API/Web typecheck・unit 全件・deploy すべて成功（3 分 5 秒）。
 - [実測] `node scripts/check-assurance.mjs --changed ebc7574`: 再確認が必要な前提なし。`node scripts/check-doc-links.mjs`: 118 文書・1,111 リンク成功。
 - [レビュー] modules から drizzle / postgres / fastify / node:fs を import していない（`pnpm lint:boundaries` 成功）。金額の比較は文字列の `'0'` を DB の numeric と比べるだけで JS の number にしていない。UI 文言はすべて `{ ja, en }`。
