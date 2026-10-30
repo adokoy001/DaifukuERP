@@ -100,3 +100,8 @@
 
 - 移行の番号（0018）は F2 と衝突する。統合時に journal と snapshot を作り直す（`pnpm db:generate`）。
 - ADR-0027 の追記は §9 とした（B4 の §8 の次）。統合時に番号を確認する。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 移行は統合で `0022_event_delivery.sql` になった（SQL は分岐の最終版と同一）。ナビゲーションの条件 `company-admin` は、同じ意味の `admin`（B4・F3）に統一した。
+- 統合の独立レビューの指摘で、`/admin/event-deliveries` のマニュアルの節が見出しの文字列（`イベント配送と Webhook`）のままで GitHub のアンカー（`イベント配送と-webhook`）になっておらず、`help.test.ts` の ROUTES にも無かったので直した（ROUTES に足すと旧値で失敗することを確認）。

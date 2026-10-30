@@ -29,6 +29,7 @@ const ROUTES = [
   '/setup',
   '/admin/permissions',
   '/admin/audit',
+  '/admin/event-deliveries',
   '/operations',
   '/operations/devices',
   '/me',

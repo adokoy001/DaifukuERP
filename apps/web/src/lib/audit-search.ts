@@ -258,6 +258,8 @@ const ACTOR_TYPES: Record<string, Label> = {
   agent: { ja: 'AI 代理', en: 'AI agent' },
   system: { ja: 'システム', en: 'System' },
   relay: { ja: '店舗端末', en: 'Site device' },
+  // machine-credentials: an API key acts as `machine` with the credential id (round-7 integration).
+  machine: { ja: 'API キー', en: 'API key' },
 };
 /** AC-20: the person; an AI agent as "name (AI agent: id)"; system / relay / unknown kinds as kind and id. */
 export function actorText(item: AuditItem): Label {

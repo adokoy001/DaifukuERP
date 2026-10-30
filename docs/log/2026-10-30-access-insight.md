@@ -77,3 +77,4 @@
 
 - 第7波の統合で、API キー（F2）・Webhook の署名鍵とイベント配送（F1）の監査が加わり、AC-17 の走査試験が予定どおり失敗した。`AUDIT_SUBJECTS` に `machine_credential`・`webhook_secret`・`event_delivery`（いずれも会社範囲）を、`AUDIT_OP_LABELS` に `issue`・`revoke`・`use_denied`・`retry` を足した。
 - F2 は監査の対象名を定数 `ENTITY = 'machine_credential'` で渡すため、文字列リテラルだけを見る走査では漏れ、閉じた許可リストにより API キーの監査が検索に出ないところだった。走査試験を、同じファイルの文字列定数（`const X = '...'`）も解決するよう強め、`machine_credential` が見つかることも検査に足した（`AUDIT_SUBJECTS` から外すと失敗することを確認）。
+- 統合の独立レビューの指摘で、監査の検索で API キーの操作者（`actorType: 'machine'`）が「machine: <id>」と英語のまま出ていたので、画面の表示に「API キー」/「API key」を足した（単体試験の期待値は、仕様が未対応として残していた表示を固定していたため直した。知らない種類はそのまま出す検査を足した）。移行は統合で `0021_audit_search_indexes.sql` になった（`docs/operations/setup.md` と ADR-0007 の名前を直した）。

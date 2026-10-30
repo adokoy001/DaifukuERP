@@ -121,7 +121,7 @@ pnpm run setup upgrade \
 
 ### 監査の検索用索引
 
-[`0018_audit_search_indexes.sql`](../../apps/api/drizzle/migrations/0018_audit_search_indexes.sql) は監査表 `audit_log` に検索用の索引を 3 本足します（会社と日時、実行者と日時、代理元と日時。仕様は [access-insight](../specs/access-insight.md)）。列やデータは変えません。`CREATE INDEX` は 1 トランザクションで実行され、作成中は監査表への書込み（業務の更新）が待たされます。80 万行・表本体約 450 MB の検証用 DB で 3 本の作成と統計更新は約 3 秒、索引は合計約 130 MB 増えました（[作業記録](../log/2026-10-30-access-insight.md)）。監査表が大きい環境では、ほかの更新と同じく利用者を止めた保守時間に適用し、索引の分の空き容量を用意してください。
+[`0021_audit_search_indexes.sql`](../../apps/api/drizzle/migrations/0021_audit_search_indexes.sql) は監査表 `audit_log` に検索用の索引を 3 本足します（会社と日時、実行者と日時、代理元と日時。仕様は [access-insight](../specs/access-insight.md)）。列やデータは変えません。`CREATE INDEX` は 1 トランザクションで実行され、作成中は監査表への書込み（業務の更新）が待たされます。80 万行・表本体約 450 MB の検証用 DB で 3 本の作成と統計更新は約 3 秒、索引は合計約 130 MB 増えました（[作業記録](../log/2026-10-30-access-insight.md)）。監査表が大きい環境では、ほかの更新と同じく利用者を止めた保守時間に適用し、索引の分の空き容量を用意してください。
 
 ## 4. 復元した DB で回復を確認する
 

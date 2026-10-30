@@ -209,7 +209,12 @@ describe('audit result rows (access-insight AC-20)', () => {
     ).toEqual({ ja: '管理 太郎（AI 代理: claude）', en: '管理 太郎 (AI agent: claude)' });
     expect(actorText(item({ actorType: 'system', actorId: 'system', actorName: null })).ja).toBe('システム: system');
     expect(actorText(item({ actorType: 'relay', actorId: 'gw-1', actorName: null })).en).toBe('Site device: gw-1');
-    expect(actorText(item({ actorType: 'machine', actorId: 'key-1', actorName: null })).ja).toBe('machine: key-1');
+    // An API key (machine-credentials) is labelled; a kind this screen does not know still shows as stored.
+    expect(actorText(item({ actorType: 'machine', actorId: 'key-1', actorName: null }))).toEqual({
+      ja: 'API キー: key-1',
+      en: 'API key: key-1',
+    });
+    expect(actorText(item({ actorType: 'robot', actorId: 'r-1', actorName: null })).ja).toBe('robot: r-1');
   });
 
   it('AC-20: CSV export summary with rows, total, the cut, columns and criteria', () => {
