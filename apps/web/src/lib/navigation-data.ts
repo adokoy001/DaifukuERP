@@ -121,7 +121,7 @@ export interface DedicatedNavigation {
   kind?: NavigationKind;
   /** The same entry action used by the existing sidebar, not a substitute for server authorization. */
   action?: string;
-  /** `admin`: the /meta roles include admin (setup-wizard AC-28); the API still decides (company-wide access). */
+  /** `admin`: the /meta roles include admin (setup-wizard AC-28, access-insight AC-21); the API still decides. */
   condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox' | 'admin';
 }
 export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
@@ -387,6 +387,28 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '利用者と会社・拠点への所属、権限を管理します。',
       en: 'Manage users, company and site memberships, and access.',
+    },
+  },
+  {
+    href: '/admin/permissions',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: '権限マトリクス', en: 'Permission matrix' },
+    description: {
+      ja: 'ロールごとに、どのデータで何ができるかを一覧します。',
+      en: 'See what each role may do with each kind of data.',
+    },
+  },
+  {
+    href: '/admin/audit',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: '監査ログの検索', en: 'Audit search' },
+    description: {
+      ja: 'だれが・いつ・何を変更・CSV 出力したかを期間・利用者・対象・操作で探します。',
+      en: 'Find who changed or exported what, and when, by period, user, subject and operation.',
     },
   },
   {

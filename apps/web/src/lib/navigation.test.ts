@@ -107,6 +107,21 @@ describe('authorized navigation catalog', () => {
     expect(hrefs(meta([], [], [], ['settings']))).not.toContain('/admin/tokens');
     expect(hrefs(meta(), true)).toContain('/admin/tokens');
   });
+  it('access-insight AC-21: the permission matrix and audit search are listed for the admin role only', () => {
+    for (const href of ['/admin/permissions', '/admin/audit']) {
+      expect(findNavigationEntry(buildNavigation(meta([], [], [], ['admin']), false), href)).toMatchObject({
+        workspace: 'admin',
+        kind: 'setting',
+      });
+      expect(hrefs(meta([], [], [], ['settings']))).not.toContain(href);
+      expect(hrefs(meta([], [], [], ['sales', 'viewer']))).not.toContain(href);
+      // The tenant flag alone does not list it; tenant administrators get `admin` in every selected company.
+      expect(hrefs(meta(), true)).not.toContain(href);
+    }
+    expect(
+      searchNavigation(buildNavigation(meta([], [], [], ['admin']), false), '監査', 'ja').map((e) => e.href),
+    ).toContain('/admin/audit');
+  });
   it('includes every readable non-line entity and excludes declared child entities and unreadable records', () => {
     const data = meta([
       entity('invoice', 'sales', { kind: 'document', lines: [{ entity: 'details', parentField: 'invoiceId' }] }),

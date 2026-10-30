@@ -76,6 +76,10 @@ const CONVERTED = [
   'components/setup-people-steps.tsx',
   // print-templates (docs/specs/print-templates.md)
   'components/print-button.tsx',
+  // access-insight (docs/specs/access-insight.md)
+  'pages/permissions-page.tsx',
+  'pages/audit-page.tsx',
+  'components/permission-notes.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

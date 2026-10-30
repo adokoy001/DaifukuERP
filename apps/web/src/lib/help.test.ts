@@ -27,6 +27,8 @@ const ROUTES = [
   '/admin/tokens',
   '/admin/health',
   '/setup',
+  '/admin/permissions',
+  '/admin/audit',
   '/operations',
   '/operations/devices',
   '/me',

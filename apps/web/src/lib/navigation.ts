@@ -48,6 +48,7 @@ function allowedDedicated(definition: DedicatedNavigation, meta: AppMeta, tenant
     return meta.actions.some((action) => ACTION_NAME.test(action.name) && isReportAction(action));
   if (definition.condition === 'settings') return canEditSettings(meta.roles);
   if (definition.condition === 'tenant-admin') return tenantAdmin;
+  // setup-wizard AC-28 / access-insight AC-21: the API also refuses store- or site-limited admins; the screen explains.
   if (definition.condition === 'admin') return meta.roles.includes('admin');
   return true;
 }

@@ -304,6 +304,24 @@ const setupRoute = createRoute({
   validateSearch: parseSetupSearch,
   component: lazyRouteComponent(() => import('./pages/setup-page.tsx'), 'SetupPage'),
 });
+// access-insight AC-6/AC-19: the permission matrix and the audit search for admins (validateSearch keeps raw strings;
+// the pages parse them and say which URL conditions they could not read).
+const stringSearch = (keys: readonly string[]) => (raw: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(raw).filter(([key, value]) => keys.includes(key) && typeof value === 'string'),
+  ) as Record<string, string>;
+const permissionsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/permissions',
+  validateSearch: stringSearch(['tab', 'module', 'role', 'q', 'packs']),
+  component: lazyRouteComponent(() => import('./pages/permissions-page.tsx'), 'PermissionsPage'),
+});
+const auditRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/audit',
+  validateSearch: stringSearch(['from', 'to', 'user', 'entity', 'op', 'record', 'scope', 'cursor']),
+  component: lazyRouteComponent(() => import('./pages/audit-page.tsx'), 'AuditPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
@@ -456,6 +474,8 @@ const routeTree = rootRoute.addChildren([
     tokensRoute,
     healthRoute,
     setupRoute,
+    permissionsRoute,
+    auditRoute,
     employeeRoute,
     workforceRoute,
     inboxRoute,

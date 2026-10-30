@@ -35,6 +35,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/admin/health': topic('08-admin.md', '導入チェック'),
   // docs/specs/setup-wizard.md AC-28: the wizard is the main path of the setup chapter.
   '/setup': topic('03-setup.md', 'セットアップウィザード'),
+  '/admin/permissions': topic('08-admin.md', '権限マトリクス'),
+  '/admin/audit': topic('08-admin.md', '監査ログの検索'),
   '/operations': topic('appendix-e-operations-control.md'),
   '/operations/devices': DEVICES,
   '/me': WORKFORCE,
