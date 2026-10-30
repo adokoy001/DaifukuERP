@@ -1,6 +1,22 @@
-# 現在地（2026-10-29 完成度向上の第1波）
+# 現在地（2026-10-30 完成度向上の第2・第3波）
 
 公開先は [adokoy001/DaifukuERP](https://github.com/adokoy001/DaifukuERP)、ライセンスはMIT。会計・商取引・在庫・契約、会社/店舗運営とBIに加え、従業員基盤と15業界のテンプレートを実装しました。ソース公開と業務アプリのインターネット配信は別に扱います。
+
+## 完成度向上の第2・第3波（設定・取込・一覧・受信箱・締め・ナビゲーション）
+
+[実装計画](completion-plan.md)の9項目を実装し、1本に統合した。各項目は実装→3観点のレビュー（仕様・安全・UX）→修正→独立した検証を経ている。範囲と未検証の点は各specと記録が正本である。
+
+- [設定画面](specs/settings-console.md)（[ADR-0027](adr/0027-setting-presentation.md)）: 設定定義に分類・並び・細目の日英ラベルと入力部品を足し、分類タブ、既定に戻す、変更履歴、勘定科目・倉庫のコード選択を付けた。
+- [マスタのCSV取込](specs/csv-import.md)（[ADR-0028](adr/0028-import-port.md)）: kernelの取込portと派生action `<entity>.import`、事前確認→実行、行ごとの結果とエラーCSV。UTF-8とShift_JISを判別する。伝票は対象外。
+- [一覧の作業台](specs/list-workbench.md): 絞り込み（URLに保存）、列の選択、保存ビュー、金額列のページ合計、派生action `<entity>.export_rows` によるCSV出力（export権限・5,000行・監査1行）、一括の確定・取消・削除。
+- [複製・関連記録・クイック操作](specs/document-links.md): `<entity>.related` と関連パネル、伝票の複製、請求書から入金・支払の記録へ。
+- [受信箱](specs/inbox.md): `<module>.todo` の共通契約と6つのprovider、ホームのカードと `/inbox`。
+- [月次締めガイド](specs/close-guide.md): `accounting.close_readiness` と `/finance/close`。下書きの件数から絞り込み済みの一覧へ移り、阻止項目が0のときだけ締められる。
+- [画面と記録をすばやく開く](specs/navigation-assist.md): `Ctrl/⌘+K` のパレット、最近開いた記録、お気に入り、画面ごとのマニュアル導線。
+- [アクセシビリティの自動検査](specs/e2e-a11y.md): 主要8画面×日英×1280/390pxのaxe検査。導入時のserious違反13件を直し、例外は0件。
+- [DB試験の起動短縮](specs/db-test-startup.md): schemaハッシュごとのテンプレートDBを複製して試験DBを作り直す。試験DBに再作成で失う物（追加schema・既定権限など）があるときは使わない。
+
+統合時に、検証で見つかった小さな穴を2件直した（最後の値が空の列ずれをCSV取込で検出、テンプレートからの復元経路の試験追加）。統合後に `gate:full --provision` を実行し、単体1,547件・DB 822件（131ファイル）・配備17件・ブラウザ160件・認証3件がすべて成功した（39.4分。DB 15.5分、ブラウザ18.7分。この一時container（4 CPU、他のエージェントと並行）での値）。GitHub Actionsでの結果は未確認。判断を待つ点は [候補一覧の8章](improvement-candidates.md#8-実装で残った判断待ち2026-10-30) にまとめた。gate:light は module 変更で 6.8〜9.8分で目標6分に届かず、計画のA4で続ける。
 
 ## 完成度向上の第1波（回帰テストの3段階とUIキット）
 
