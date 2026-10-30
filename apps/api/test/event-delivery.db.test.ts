@@ -330,7 +330,8 @@ describe('worker ticks (AC-2, AC-3, AC-5, AC-8..AC-11, AC-20)', () => {
     await db.owner.sql`delete from event_deliveries`;
     received.length = 0;
     await emit('test.ping', { nokey: true });
-    const result = await tick(minutes(new Date(), 1), { identity: undefined });
+    const later = minutes(new Date(), 1);
+    const result = await runEventTick({ owner: db.owner, app: db.app, config, log: quiet, now: () => later });
     expect(result.sends).toMatchObject({ sent: 0, skipped: 1 });
     expect(tickExitCode(result)).toBe(2);
     expect(received).toHaveLength(0);
@@ -533,12 +534,13 @@ describe('self-service and admin access (AC-18, AC-19, AC-22, AC-23)', () => {
 
   it('AC-22 settings role, store-scoped admin, no role and agents get 403 on every admin route', async () => {
     const tokens = [];
-    for (const [email, roles, scope] of [
-      ['settings@event.test', ['settings'], {}],
-      ['store-admin@event.test', ['admin'], { accessScope: 'stores' as const, storeIds: [newId()] }],
-      ['nobody@event.test', [], {}],
-    ] as const) {
-      await person(email, [...roles], scope);
+    const people: { email: string; roles: string[]; scope: Parameters<typeof person>[2] }[] = [
+      { email: 'settings@event.test', roles: ['settings'], scope: {} },
+      { email: 'store-admin@event.test', roles: ['admin'], scope: { accessScope: 'stores', storeIds: [newId()] } },
+      { email: 'nobody@event.test', roles: [], scope: {} },
+    ];
+    for (const { email, roles, scope } of people) {
+      await person(email, roles, scope);
       tokens.push({ token: await login(api, email, 'test-password'), headers: {} as Record<string, string> });
     }
     tokens.push({ token: adminToken, headers: { 'x-agent-id': 'agent-under-test' } });

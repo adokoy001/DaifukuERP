@@ -1,6 +1,6 @@
 # Spec: event-delivery（業務イベントの配送 worker）
 
-- 状態: draft
+- 状態: implemented（2026-10-30、[作業記録](../log/2026-10-30-event-delivery.md)）
 - モジュール: `kernel`（outbox の再試行と停止、外部購読への振り分け、配送行・署名鍵・受信箱の監視の表、設定 `integration.webhooks`、導入チェック `system.outbox`）、`apps/api`（配送 worker、Webhook の送信 adapter、管理 API、本人の通知設定 API）、`apps/runtime`（設定の登録）、`apps/web`（`/admin/event-deliveries`、`/inbox` の通知切替） ／ 依存: [inbox](inbox.md)（C3 の `<module>.todo`）、[settings-console](settings-console.md)（B1 の表示属性）、[setup-health](setup-health.md)（B3 の `system.outbox`）、[ui-kit](ui-kit.md)（D1）、[enterprise-identity](enterprise-identity.md)（メール transport と暗号鍵）
 - ADR: ADR-0037（`docs/adr/0037-business-event-delivery.md` を実装時に新規作成。F1 に予約された番号。配送行の二段構成、署名形式、再試行と停止、署名鍵の保存、worker の system context と owner 接続の例外）。[ADR-0027](../adr/0027-setting-presentation.md) に追記（kernel 設定 `integration.webhooks` と「設定値に秘密を入れない」規約。節番号は B4 の §8 の次で、統合時に調整）。[ADR-0001](../adr/0001-modular-monolith.md) の outbox と [ADR-0022](../adr/0022-identity-challenges-and-delivery.md) のメール配送の考え方を引き継ぐ
 - 作成: 2026-10-30 ／ 作成者: agent（spec 担当、ブランチ `wip/event-delivery`）。設計の元は [完成度向上の実装計画](../completion-plan.md) §5 F1

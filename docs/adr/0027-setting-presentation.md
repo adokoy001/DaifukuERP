@@ -107,6 +107,16 @@ B4 のセットアップウィザード（`/setup`）のため、kernel に設�
 - **ウィザードは新しい書込経路を作らない**: 各段階の保存は既存の `PUT /meta/settings/:key`、`POST /actions/accounting.open_fiscal_year`、`POST /actions/pack.apply`、`POST /admin/users`・`PUT /admin/users/:id/companies/:companyId`、`POST /auth/invitations`、`POST /actions/workforce.initialize_policy` と、記録の `PUT /meta/settings/setup.progress` だけで行い、それぞれの権限検査（設定は admin か settings、記録の `setup.progress` は admin だけ、年度は `fiscal_year` の create、テンプレートは admin、利用者はテナント管理者、勤怠は `workforce_hr` / `workforce_payroll` か admin）をそのまま通す。段階を足すときも同じ規則に従い、ウィザード専用の書込みの API を作らない。
 - **会社の所属人数** `activeCompanyMemberCount(ctx)`（`kernel/src/company-access.ts`、`companyMemberIdentities` の隣）: `user_company_memberships` と `users` を、`tenant_id = ctx.tenantId AND company_id = ctx.companyId AND users.active` を条件に明示して数える（この表の RLS はテナントの境界だけで、会社の境界は条件で守る）。admin ロールかつ会社全体の所属でなければ `PermissionDenied`、会社の無い Context は `NotFound`。件数だけを返し、氏名やメールを返さない。
 
+### 9. kernel の設定 `integration.webhooks` と「設定値に秘密を入れない」規約（2026-10-30 追記、[event-delivery](../specs/event-delivery.md)。節番号は B4 の §8 の次で、統合時に調整）
+
+業務イベントの外部配送（[ADR-0037](0037-business-event-delivery.md)）の送信先を会社ごとに持つため、kernel が設定 `integration.webhooks` を登録する（`kernel/src/integration-settings.ts`、`ensureIntegrationSettings()` を apps/runtime の `loadRuntime` が呼ぶ。`company.profile` と同じ扱い）。
+
+- schema: `.strict()` の object `{ endpoints: Endpoint[]（最大 10）, inboxEmail: boolean }`、`Endpoint = { id, label, url, topics, enabled }`（`.strict()`）。`url` は利用者情報・fragment の無い https の DNS 名か、開発用の loopback（ADR-0037 §6）。`topics` は `<entity>.<event>` か `<prefix>.*` で、`inbox.` で始まる topic は拒否する（受信箱の件数は本人宛てのメールだけ）。送信先 id の重複は `superRefine` で拒否する。
+- 表示属性: `category: 'integration'`、`order: 0`、`default: { endpoints: [], inboxEmail: false }`。`fields` は最上位の `endpoints` と `inboxEmail` だけ（入れ子の属性にはラベルを付けられないので、`endpoints` の説明に 1 件の JSON の形と例を書く。配列は B1 の JSON 入力）。
+- **規約: 設定値に秘密を入れない。** 会社設定は `setSetting` の監査に変更前後の値が残り、`GET /meta/settings` と `GET /meta/settings/:key/audit` が settings ロールにも返し、pack の適用など多くの経路が会社行の設定を丸ごと読む。秘密（Webhook の署名鍵など）は設定の外の書込み専用の表に暗号文で置き、設定の schema は `.strict()` にして秘密の key を受け付けない（`secret` を含む値は 400）。
+- **URL も秘密として扱わない。** 送信先の URL は settings ロールの利用者に見え、監査に残る。受信側は URL の中の token（path や query）ではなく `Daifuku-Signature` の署名で送信元を確かめる（`endpoints` の説明とマニュアルに書いた）。query を拒否する案は、query を必要とする受信側があり、path の token は拒めないので採らない。
+- 送信先の URL を変えると、その送信先の署名鍵は無効になり、管理者が再発行するまで送らない（settings ロールは送信先を編集できるが、署名付きの宛先を差し替えられない。ADR-0037 §5）。
+
 ## 却下した案
 
 - **zod の `.meta()` / `.describe()` に表示情報を載せる**: JSON Schema の `title` / `description` は単一文字列で、`{ ja, en }` の規約（[コード規約](../conventions/code-style.md)）と合わない。独自 key を JSON Schema に混ぜると、API の schema を検証器に渡す利用者が困る。

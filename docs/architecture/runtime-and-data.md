@@ -61,7 +61,7 @@ stateDiagram-v2
 
 ## 監査・イベント・添付
 
-Repositoryの変更は [audit](../../kernel/src/audit.ts) に記録されます。外部配信予定はtransactional outboxを通し、未実装の外部workerを「配信済み」と扱いません。ストレージは [storage port](../../kernel/src/storage.ts) を使い、moduleからファイルシステムへ直接アクセスしません。
+Repositoryの変更は [audit](../../kernel/src/audit.ts) に記録されます。外部配信はtransactional outboxを通します。配送 worker（`EVENT_WORKER_ENABLED`、[ADR-0037](../adr/0037-business-event-delivery.md)）が outbox を内部購読者へ配り、Webhook とメールの配送行（`event_deliveries`）に振り分け、lease を取ってからトランザクションの外で送ります。少なくとも 1 回の配送で、受信側は配送 ID で重複を除きます。ストレージは [storage port](../../kernel/src/storage.ts) を使い、moduleからファイルシステムへ直接アクセスしません。
 
 監査や添付の参照も元行の権限を確認する必要があります。給与などの新しい機微データを追加するときは、通常一覧だけでなくexport、audit、関連ref、MCP、エラーログも確認します。
 

@@ -16,7 +16,7 @@
 - AC-3 THE SYSTEM SHALL 税の点検 `tax.standard_rate` として、標準税率の区分について今日に有効な税率が存在するか（無ければ `fail`）を返す。
 - AC-4 THE SYSTEM SHALL 会社情報の点検として、`company.profile` の正式名称があるか・保存値が定義に合うか（`company.profile`。無い・合わないは `warn`）と、請求書の発行者（`sales.issuer`。`sales.issuer` が有効ならそれ、無ければ `company.profile`）が会社名以外の名称に解決できるか、登録番号を印字できるか（免税事業者を除く）、保存値が定義に合うか（できない・合わないは `warn`）を返す。
 - AC-5 THE SYSTEM SHALL 在庫の点検 `inventory.stock_settings` として、売上・仕入請求書からの自動入出庫が有効で、既定倉庫コードに一致する倉庫も既定に指定した倉庫も無い場合を `fail`、コードに一致する倉庫が無く既定に指定した倉庫で代わる場合と、有効な物品の品目が 1 件も無いのに自動入出庫が有効な場合を `warn`（在庫を使わない業種向けの案内）として返す。自動入出庫が両方無効なら `ok`。
-- AC-6 THE SYSTEM SHALL 運用の点検として、メール配送（`system.mail`）と OIDC（`system.oidc`）の設定有無（真偽のみ）、未適用の更新の件数（`system.migrations`。リリースの移行一覧と適用記録の件数の比較のみ）、添付の保存先へ書き込めるか（`system.storage`）、未配送の業務イベント（outbox）の件数と配送失敗の有無（`system.outbox`）を返す。接続先・秘密値・ファイルパス・例外の文は返さない。
+- AC-6 THE SYSTEM SHALL 運用の点検として、メール配送（`system.mail`）と OIDC（`system.oidc`）の設定有無（真偽のみ）、未適用の更新の件数（`system.migrations`。リリースの移行一覧と適用記録の件数の比較のみ）、添付の保存先へ書き込めるか（`system.storage`）、未配送の業務イベント（outbox）と送信待ちの配送行の件数、配送に失敗して止まったもの（停止した outbox 行と `dead` の配送行。[event-delivery](event-delivery.md) AC-24 で規則を変更）の有無（`system.outbox`）を返す。接続先・秘密値・ファイルパス・例外の文は返さない。
 - AC-7 THE SYSTEM SHALL 各点検を kernel の登録 port（`registry.registerHealthCheck`）に module が登録する provider として実装し、各 provider を呼出し元の権限のまま savepoint の中で実行する。ある provider が例外を投げた、または不正な結果を返した場合はその項目を `warn`（「点検できませんでした」、権限不足なら「点検する権限がありません」）として他の項目を返す。
 - AC-8 THE SYSTEM SHALL 各項目の `href` をアプリ内の経路（先頭が `/` 1 つの相対パス。`//`・`..`・スキームを含まない）に限り、それ以外は項目から外す。使う経路は会社設定のタブ、会計年度の作成、会計期間の一覧、月次締め、税率の一覧、倉庫の一覧。
 - AC-9 WHEN 管理者が `/admin/health` を開いた THE SYSTEM SHALL 項目を `fail`・`warn`・`ok` の順に並べ、状態を色と文字（要対応・注意・OK）の両方で示し、各項目から直す画面へ移動できる。「再点検」で取得し直し、結果の要約を読み上げ領域に出す。
@@ -35,7 +35,7 @@
 | `system.oidc`              | api        | 設定済み／未設定（どちらも ok。任意機能）      | —                                                              | —                          | —                                                                      |
 | `system.migrations`        | api        | 全件適用済み                                   | 適用記録の表が無い（setup で作っていない DB）                  | 未適用・版に無い記録がある | —                                                                      |
 | `system.storage`           | api        | 書き込める／未作成（最初の添付で作る）         | 保存先が未設定                                                 | 書き込めない               | —                                                                      |
-| `system.outbox`            | kernel     | 失敗なし（未配送の件数を表示）                 | 配送に失敗した行がある                                         | —                          | —                                                                      |
+| `system.outbox`            | kernel     | 停止した行なし（未配送と送信待ちの件数を表示。再試行中だけなら ok） | 停止した outbox 行か `dead` の配送行がある（admin には `/admin/event-deliveries?status=dead`） | —                          | —                                                                      |
 
 並びは `order` の昇順（表の順）。同じ `order` なら kernel・module・API の順。module が足す点検は `<module>.<name>` の id で登録する。
 
@@ -75,7 +75,7 @@
 - **移行の件数**: readiness と同じ方法（`meta/_journal.json` と各 SQL の sha256、`drizzle.__drizzle_migrations` を owner 接続で読む）。返すのは件数だけ。適用記録の表が無い DB（試験用に直接作った DB）は `warn`。owner 接続は要求の処理の中で使う例外になるため、点検には owner の `Database` を渡さず、固定の読取だけを行う関数（`apps/api/src/deployment/readiness.ts` の `appliedMigrationsReader`）を渡す（ADR-0027 §7 に例外として記録。2026-10-30 レビュー指摘で変更）。
 - **再点検の失敗**: 再点検の取得に失敗しても TanStack Query は前回の結果を残すので、画面は前回の結果を表示したまま「再点検できませんでした。前回の結果を表示しています。」を読み上げ領域と項目の上の通知（技術情報は閉じた `<details>`）に出す。「再点検」ボタンは取得中も `aria-disabled` で、押したボタンからフォーカスを失わせない（2026-10-30 レビュー指摘で変更）。
 - **保存先**: 書込み可なら `ok`、まだ無い（親に書ける）なら `ok`（最初の添付で作られる）、ファイル・書込み不可なら `fail`、API に保存先が渡されていなければ `warn`。readiness の「本人だけが読める権限」の検査は readiness 側に残し、ここでは書込み可否だけを見る。
-- **outbox**: 配送の worker（F1）がまだ無いので、未配送の件数だけでは `warn` にしない。`last_error` のある未配送行があれば `warn`。
+- **outbox**: 未配送の件数だけでは `warn` にしない。F1（[event-delivery](event-delivery.md) AC-24）で配送 worker と再試行が入ったため、規則を「`last_error` のある未配送行で `warn`」から「停止した outbox 行（`dead_at`）か `dead` の配送行で `warn`、再試行を待つ行だけなら `ok`」に変えた。会社の管理者には失敗タブへの `href` を付ける。
 - **OIDC**: 任意機能なので、未設定でも `ok`（「パスワードでログイン」と表示）。
 - **バックアップの最終時刻**: 計画には「setup の状態ファイルがあれば」とあったが、状態ファイルは setup の実行者が 0700 で持つ運用ディレクトリにあり（`apps/api/src/setup/files.ts`）、場所は setup の引数で API は知らない。読むには API に新しい環境変数とファイル読取が要り、「ファイルパスを返さない」の規約とも緊張するため、初版は読まない（spec のスコープ外のまま）。画面に案内とマニュアルへのリンクを出す。
 - **axe**: 共有の `a11y.spec.ts` の画面一覧（単体試験が 8 画面・32 件に固定）は変えず、`setup-health.spec.ts` の中で同じ判定を `/admin/health` に適用した。

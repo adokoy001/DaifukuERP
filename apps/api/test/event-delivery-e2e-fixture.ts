@@ -32,18 +32,23 @@ function fail(): never {
 const FIXTURE_KEY = Buffer.alloc(32, 11).toString('base64');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-async function main() {
-  const [tenantId, userId, companyId, runId, password] = process.argv.slice(2);
+function args(): { tenantId: string; userId: string; companyId: string; runId: string; password: string } {
+  const [tenantId = '', userId = '', companyId = '', runId = '', password = ''] = process.argv.slice(2);
   if (
     process.env.NODE_ENV === 'production' ||
     process.env.E2E_PREPARE !== '1' ||
-    !UUID.test(tenantId ?? '') ||
-    !UUID.test(userId ?? '') ||
-    !UUID.test(companyId ?? '') ||
-    !/^[a-f0-9]{12}$/.test(runId ?? '') ||
+    !UUID.test(tenantId) ||
+    !UUID.test(userId) ||
+    !UUID.test(companyId) ||
+    !/^[a-f0-9]{12}$/.test(runId) ||
     !password
   )
     fail();
+  return { tenantId, userId, companyId, runId, password };
+}
+
+async function main() {
+  const { tenantId, userId, companyId, runId, password } = args();
   const ownerUrl = new URL(process.env.DATABASE_URL_OWNER ?? 'invalid');
   const appUrl = new URL(process.env.DATABASE_URL ?? 'invalid');
   for (const url of [ownerUrl, appUrl])
