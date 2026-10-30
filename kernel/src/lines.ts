@@ -1,5 +1,6 @@
-// Document lines (伝票明細): child entities declared in `defineDocument({ lines })`. Lines are ordinary
-// entities with a ref back to the parent; this module adds replace-all save semantics and parent-state rules.
+// Lines (明細): child entities declared in `defineDocument({ lines })` or `defineEntity({ lines })` (ADR-0031). Lines are
+// ordinary entities with a ref back to the parent; this module adds replace-all save semantics and, for documents only,
+// the draft-only rule (ADR-0006). An entity's lines stay editable whenever the caller may update the parent.
 import type { Context } from './context.ts';
 import type { EntityDef } from './dsl/entity.ts';
 import { DOCSTATUS } from './dsl/types.ts';
@@ -23,11 +24,11 @@ export interface LineSpec {
 const SYSTEM_KEYS = ['tenantId', 'companyId', 'version', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'] as const;
 
 export function lineSpecs(doc: EntityDef): LineSpec[] {
-  return (doc.doc?.lines ?? []).map((l) => {
+  return (doc.config.lines ?? []).map((l) => {
     const entity = registry.entity(l.entity);
     const fd = entity.config.fields[l.parentField];
     if (!fd || fd.kind !== 'ref' || fd.ref !== doc.name) {
-      throw new Error(`document ${doc.name}: line entity ${l.entity}.${l.parentField} must be a ref to ${doc.name}`);
+      throw new Error(`${doc.kind} ${doc.name}: line entity ${l.entity}.${l.parentField} must be a ref to ${doc.name}`);
     }
     return { entity, parentField: l.parentField };
   });
@@ -37,7 +38,7 @@ function orderFor(line: EntityDef): { field: string; dir: 'asc' }[] {
   return 'seq' in line.config.fields ? [{ field: 'seq', dir: 'asc' }] : [{ field: 'createdAt', dir: 'asc' }];
 }
 
-/** All line sets of a document, ordered by `seq` when the line entity has one. */
+/** All line sets of a document or entity, ordered by `seq` when the line entity has one. */
 export async function getLines(ctx: Context, doc: EntityDef, id: string): Promise<LinesResult> {
   await repo(ctx, doc).rawGet(id, 'read');
   const out: LinesResult = {};
@@ -116,8 +117,9 @@ async function fireLinesSaved(ctx: Context, doc: EntityDef, id: string): Promise
 
 /**
  * Replace-all save: rows with an `id` are updated, rows without are created, existing rows not present are deleted.
- * Refuses when the parent is not a draft (ADR-0006). `seq` is assigned from array order when the entity has it.
- * Fires the document's `after_lines_saved` hooks once at the end (ADR-0014).
+ * Refuses when a document parent is not a draft (ADR-0006); an entity parent has no docstatus and only needs update
+ * (ADR-0031). `seq` is assigned from array order when the entity has it. Fires the parent's `after_lines_saved` hooks
+ * once at the end (ADR-0014).
  */
 export async function saveLines(ctx: Context, doc: EntityDef, id: string, lines: LinesInput): Promise<LinesResult> {
   if (!lines || typeof lines !== 'object' || Array.isArray(lines))
@@ -150,7 +152,7 @@ export async function saveLines(ctx: Context, doc: EntityDef, id: string, lines:
   }
   const r = repo(ctx, doc);
   const parent = await r.rawGet(id, 'update', true);
-  if (parent.docstatus !== DOCSTATUS.draft) {
+  if (doc.kind === 'document' && parent.docstatus !== DOCSTATUS.draft) {
     throw new StateError(
       `${doc.name} ${id} is not a draft; lines are frozen`,
       'Cancel and amend the document to change its lines.',

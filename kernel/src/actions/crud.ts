@@ -11,6 +11,8 @@ import { registry } from '../registry.ts';
 import { listQuerySchema, type ListQuery } from '../repository/query.ts';
 import { repo } from '../repository/repository.ts';
 import { snapshot } from '../repository/rows.ts';
+import { markReplacing } from '../repository/integrity.ts';
+import type { Context } from '../context.ts';
 import { ValidationError } from '../errors.ts';
 import { createInputSchema, followExtFields, hasLines, recordJsonSchema, updateInputSchema } from './crud-schemas.ts';
 import { publicOutput } from '../public-output.ts';
@@ -103,6 +105,20 @@ function registerReadActions(entity: EntityDef): void {
   );
 }
 
+/**
+ * ADR-0031: while the header of an update that also carries `lines` is written, the aggregate is marked as replacing, so
+ * a parent `before_update` hook sees `isSavingLines(...) === true`, checks only header rules and leaves the line rules
+ * to `after_lines_saved` (which sees the new lines). Without lines the flag stays false and the hook checks saved lines.
+ */
+async function asReplacing<T>(ctx: Context, entity: string, id: string, work: () => Promise<T>): Promise<T> {
+  markReplacing(ctx, entity, id, true);
+  try {
+    return await work();
+  } finally {
+    markReplacing(ctx, entity, id, false);
+  }
+}
+
 /** Generic update input as it arrives (lenient): id is checked here, the patch by the Repository. */
 function splitUpdate(
   name: string,
@@ -186,9 +202,12 @@ function registerWriteActions(entity: EntityDef): void {
           const before = await r.lock(id);
           if (expectedVersion !== undefined && before.version !== expectedVersion) await r.touch(id, expectedVersion);
         }
+        const updateHead = () => r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {});
         const updated =
           Object.keys(head).length > 0 || !lineRows
-            ? await r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {})
+            ? lineRows
+              ? await asReplacing(ctx, name, id, updateHead)
+              : await updateHead()
             : await r.get(id);
         if (lineRows) await saveLines(ctx, entity, id, lineRows);
         return withLines(ctx, entity, lineRows ? await r.get(id) : updated);

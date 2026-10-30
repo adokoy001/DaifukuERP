@@ -123,11 +123,11 @@ function listable(ctx: Context, entity: EntityDef): boolean {
 
 type LineParents = Map<string, { parent: EntityDef; parentField: string }>;
 
-/** line entity name -> its document and parent field. */
+/** line entity name -> its parent (document or entity, ADR-0031) and parent field. */
 function lineParents(): LineParents {
   const out = new Map<string, { parent: EntityDef; parentField: string }>();
   for (const doc of registry.allEntities())
-    for (const l of doc.doc?.lines ?? [])
+    for (const l of doc.config.lines ?? [])
       if (registry.hasEntity(l.entity)) out.set(l.entity, { parent: doc, parentField: l.parentField });
   return out;
 }
@@ -264,7 +264,7 @@ async function outgoing(
   const targets: Targets = new Map();
   const ownLines = new Map<string, string[]>();
   collectTargets(entity, publicOutput(entity, record), new Set(), '', targets);
-  for (const l of entity.doc?.lines ?? []) {
+  for (const l of entity.config.lines ?? []) {
     const line = registry.entity(l.entity);
     if (!listable(ctx, line) || !readable(ctx, line, [l.parentField])) continue;
     const res = await repo(ctx, line).list({ where: { [l.parentField]: record.id as string }, limit: LINE_SCAN });

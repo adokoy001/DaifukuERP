@@ -108,6 +108,11 @@ export interface EntityConfig<F extends FieldMap = FieldMap> {
    * (append-only ledgers, derived tables, rows that need server-owned input such as uploaded files).
    */
   import?: false;
+  /**
+   * Child line entities (each must have a ref field back to this entity, given as `parentField`). Documents freeze
+   * their lines after submit (ADR-0006); an entity's lines stay editable with update on the parent (ADR-0031).
+   */
+  lines?: readonly { entity: string; parentField: string }[];
 }
 
 export type StoreAccessPolicy =
@@ -125,8 +130,6 @@ export interface DocumentConfig<F extends FieldMap = FieldMap> extends EntityCon
   naming: Naming;
   /** Fields that may still be updated after submit (ADR-0006). */
   allowOnSubmit?: readonly string[];
-  /** Child line entities (each must have a ref field back to this document, given as `parentField`). */
-  lines?: readonly { entity: string; parentField: string }[];
   /** Named transitions in addition to the built-in submit/cancel/amend. */
   transitions?: Record<string, Transition>;
 }

@@ -63,7 +63,7 @@ export interface EntityMeta {
   ops: Op[];
   allowOnSubmit?: string[];
   transitions?: string[];
-  /** Line entities (伝票明細) of a document, rendered as editable grids by the generic UI. */
+  /** Line entities (明細) of a document or entity (ADR-0031), rendered as editable grids by the generic UI. */
   lines?: { entity: string; parentField: string }[];
 }
 
@@ -206,8 +206,9 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
         visible.includes(field) || (field.startsWith('ext.') && meta.extFields.some((ext) => ext.name === field)),
     );
     meta.transitions = Object.keys(entity.doc.transitions ?? {});
-    meta.lines = (entity.doc.lines ?? []).map((l) => ({ entity: l.entity, parentField: l.parentField }));
   }
+  const lines = entity.config.lines ?? [];
+  if (lines.length > 0 || entity.doc) meta.lines = lines.map((l) => ({ entity: l.entity, parentField: l.parentField }));
   return meta;
 }
 

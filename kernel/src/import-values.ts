@@ -30,9 +30,9 @@ const IMPORTABLE_KINDS: ReadonlySet<FieldKind> = new Set([
 ]);
 const SYSTEM_COLUMNS: ReadonlySet<string> = new Set([...SYSTEM_FIELDS, ...DOCUMENT_FIELDS]);
 
-/** Line entities of any document: imported only with their document, which is out of scope (AC-1). */
+/** Line entities of any document or entity (ADR-0031): imported only with their parent, which is out of scope (AC-1). */
 function lineEntityNames(): Set<string> {
-  return new Set(registry.allEntities().flatMap((e) => (e.doc?.lines ?? []).map((l) => l.entity)));
+  return new Set(registry.allEntities().flatMap((e) => (e.config.lines ?? []).map((l) => l.entity)));
 }
 
 function importableField(fd: AnyField): boolean {
