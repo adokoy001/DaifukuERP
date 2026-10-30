@@ -36,7 +36,8 @@
 - [実測] 変更した画面を含む既存のブラウザ試験: `navigation.spec.ts`（industry 依存込みで 3 + 5 件成功、1.5 分）、`ui-kit.spec.ts`・`smoke.spec.ts`・`company-context.spec.ts`・`foundation-ui.spec.ts` は `--no-deps` で成功（同じ実行の `navigation` AC-3/10 は飲食テンプレートの導入が前提のため `--no-deps` では失敗し、industry 込みの再実行で成功）。
 - [目視] 1280×720 と 390px の画面写真（パレット、現在位置のボタンとリンク、サイドバーの最近）を作業用に撮って確認した（リポジトリには入れていない）。720px の高さではサイドバーの「最近」「お気に入り」が下端にあり、スクロールしないと見えない。
 - [実測] `pnpm gate:light`（`TEST_DATABASE_URL_*` = 専用 DB `daifuku_test_w33`、基点 `431dda5` からの変更に CI 定義・`package.json` などが含まれるため DB は全 suite に拡大）: format 25 秒・docs・assurance・typecheck（全体・api・web）・lint（警告 4 件は既存ファイルの関数行数）・unit 133 ファイル 1,283 件（90 秒）・DB 116 ファイル 701 件（935 秒）・deploy 16 件（29 秒）すべて成功。合計約 19.5 分（負荷平均 6〜8 の共有コンテナ）。
-- [未検証] `pnpm gate:full`（統合担当が実行）。ブラウザ試験の全件はこのブランチ単独では未実行（上記の関係する spec だけ）。
+- [実測] ブラウザ試験の全件（slot 24、新しい fixture DB、industry → chromium、コミット `07bbbcf` の内容）: 93 件すべて成功（既存 87 件 + 新規 6 件、13.3 分）。
+- [未検証] `pnpm gate:full`（統合担当が実行。認証試験 3 件はこのブランチでは未実行）。
 - [未検証] 実機のスクリーンリーダーでの読み上げ（combobox と `aria-activedescendant`、候補数の live region）、macOS の `⌘+K`（Linux の Chromium で `Control+K` のみ実行）、Safari / Firefox。
 - [未検証] 別タブでの更新の反映（`storage` イベント）。コードレビューのみ。
 
