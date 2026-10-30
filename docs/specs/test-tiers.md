@@ -148,7 +148,7 @@ unit（quick）と DB（light）の選択は vitest 自身のモジュールグ�
 ## 未決事項（利用者の判断待ち）
 
 - 解決済み: quick の typecheck は全体（`tsc7`、10.9 秒）で統一し、`apps/api`・`apps/web` の変更時だけ各 app の typecheck（tsconfig が test / e2e を含むため）を足す。
-- 一部解決（[db-test-startup](db-test-startup.md)、A3）: 選択肢 (a) DB suite 起動の短縮（schema テンプレート）と (b) migration/setup suite 10 件の後回し（schema に関係する変更が無いとき）を実施した。sales の 1 ファイル変更で 792.6 秒 → 588.5 秒、banking で 407.6 秒（実施後）。**light の目標 6 分は依然として未達**で、残りの選択肢（静的検査と DB の並行実行、`apps/api` の DB suite の選び方、目標の改定）は db-test-startup の未決事項に移した。CI 上の時間は未計測。
+- 一部解決（[db-test-startup](db-test-startup.md)、A3）: 選択肢 (a) DB suite 起動の短縮（schema テンプレート）と (b) migration/setup suite 10 件の後回し（schema に関係する変更が無いとき）を実施した。(b) は利用者の承認ではなく、統括セッションのワークフローの作業項目文（2026-10-29、A3 を「DB test harness + light selection」と記す）に従って実施したもので、[完成度向上の実装計画](../completion-plan.md) の A3 には無い。後回しの幅を受け入れるかは db-test-startup の未決事項に残し、`GATE_DEFER_SCHEMA_SUITES=0` で無効にできる。sales の 1 ファイル変更で 792.6 秒 → 588.5 秒、banking で 407.6 秒（実施後）。**light の目標 6 分は依然として未達**で、残りの選択肢（静的検査と DB の並行実行、`apps/api` の DB suite の選び方、目標の改定）は db-test-startup の未決事項に移した。CI 上の時間は未計測。
 - CI の `quick` job を必須チェックにするか（既存 gate job が必須であることは変えない）。
 - `--provision` で作った DB は残る。定期的な削除手順（`dropdb` の一覧化など）を運用文書に足すか。
 - 参照規則はファイル名の文字列一致であり、ファイル名を組み立てて読む試験は選べない。light が unit 全件を実行することで補う前提でよいか。子プロセス規則の入口も試験ソースに書かれた相対パスから求めるため、組み立てたパスの入口は「同じ package の変更」でしか選ばれない。

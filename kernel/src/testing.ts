@@ -47,6 +47,8 @@ export interface TestDb {
 }
 
 let lastPreparation: TemplateOutcome | null = null;
+// Once per reason and process: vitest runs each DB suite in its own process, so a reason that holds for the whole run
+// is printed once per suite.
 const notices = new Set<string>();
 
 /** How the latest freshDb() in this process prepared the schema: cloned, built a template, or rebuilt in place. */
@@ -66,7 +68,7 @@ async function preparedOwner(): Promise<Database> {
     notices.add(lastPreparation.reason);
     process.stderr.write(
       `[kernel/testing] schema templates not used: ${lastPreparation.reason}; rebuilding the schema in place ` +
-        '(docs/specs/db-test-startup.md).\n',
+        '(docs/specs/db-test-startup.md; TEST_DATABASE_TEMPLATE=off skips templates and this notice).\n',
     );
   }
   const owner = connect(OWNER_URL, { max: 2 });

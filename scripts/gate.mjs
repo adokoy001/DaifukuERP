@@ -95,7 +95,8 @@ const APP_PACKAGES = Object.freeze({ api: '@daifuku/api', web: '@daifuku/web' })
 // Mirror the database-name rules of apps/api/src/db/e2e-fixture.ts and apps/api/test/identity-e2e-database.ts.
 export const E2E_DATABASE_NAME = /^(daifuku_ci_e2e|daifuku_e2e_test(?:_[a-z0-9]+)?)$/;
 export const IDENTITY_DATABASE_NAME = /^daifuku_(?:ci_enterprise_e2e|e2e_test_enterprise(?:_[a-z0-9]+)?)$/;
-// DB suites drop and recreate the schema of TEST_DATABASE_URL*: only a disposable test database is accepted
+// DB suites drop and recreate the database of TEST_DATABASE_URL* (or its schema when schema templates are not used)
+// and keep <db>_tpl_* template databases next to it: only a disposable test database is accepted
 // (daifuku_test, daifuku_ci_test, daifuku_test_<suffix>) unless GATE_ALLOW_DB_URL=1.
 export const TEST_DATABASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?$/;
 // Changed paths printed under the stdout header; a dry-run prints up to MAX_REPORTED_FILES.
@@ -109,7 +110,9 @@ const PLAYWRIGHT = ['--filter', '@daifuku/web', 'exec', 'playwright', 'test'];
 
 export const GUIDANCE = Object.freeze({
   testDb:
-    'DB suites drop and recreate the schema of the database they use. Export TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
+    'DB suites drop and recreate the test database they use (or rebuild its schema in place with TEST_DATABASE_TEMPLATE=off) ' +
+    'and keep up to 80 <db>_tpl_* schema template databases on the same server (pnpm test:db:templates lists or drops ' +
+    'them). Export TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
     'for a dedicated disposable test database (CONTRIBUTING.md, section "型・単体・DB・Web の検証"). The tier runner never ' +
     'falls back to the default daifuku_test database. Both URLs must be loopback postgres URLs for the same database ' +
     'named daifuku_test, daifuku_ci_test or daifuku_test_<suffix>, with separate owner and daifuku_app roles; set ' +
@@ -459,22 +462,24 @@ export function buildsSchemaFromMigrations(text, readSibling = () => '') {
   return false;
 }
 
-// Source text that changes the registry DDL: entity and document declarations, packs (ext fields, equality indexes)
-// and kernel system tables.
+// Source text that changes the registry DDL: entity and document declarations, packs and direct ext registrations
+// (ext fields, equality indexes) and kernel system tables.
 export function declaresSchema(text) {
-  return /\b(?:defineEntity|defineDocument|definePack|registerSystemTable)\s*\(/.test(text);
+  return /\b(?:defineEntity|defineDocument|definePack|registerExt|registerSystemTable)\s*\(/.test(text);
 }
 
 // Splits graph-selected migration/setup suites into kept and deferred ones. A suite is kept when a changed path
 // declares schema (`declaring`), is imported by a schema declaration of its own package (`reached`: enum values and
 // field lists kept in services files), or lies inside the suite's own workspace package (its fixtures, setup code and
-// the suite itself). Suites selected by another rule (reference, directory, setup, subprocess, always) are kept.
+// the suite itself). Suites selected by another rule as well (reference, directory, setup, subprocess, always; listed in
+// `reasons` when a file has more than one) are kept.
 export function deferSchemaSuites(selected, { changed, declaring = [], reached = [], schemaSuites, packages = [] }) {
   const kept = [];
   const deferred = [];
   const reasons = [];
   for (const entry of selected) {
-    if (entry.via !== 'graph' || !schemaSuites.has(entry.file)) {
+    const onlyGraph = (entry.reasons ?? [entry.via]).every((reason) => reason === 'graph');
+    if (!onlyGraph || !schemaSuites.has(entry.file)) {
       kept.push(entry);
       continue;
     }
@@ -593,7 +598,9 @@ function planQuick({ cls, base }) {
   return steps;
 }
 
-function dbStep(cls, escalation) {
+// `deferSchemaSuites` is off with GATE_DEFER_SCHEMA_SUITES=0 (docs/specs/db-test-startup.md, open question on the
+// deferral).
+function dbStep(cls, escalation, deferSchemaSuites = true) {
   if (escalation.widenDb)
     return step('db', pnpm('test:db'), { note: 'escalated: every DB suite (see escalation reasons)' });
   return step('db', null, {
@@ -602,7 +609,7 @@ function dbStep(cls, escalation) {
       sources: cls.present,
       triggers: cls.all,
       extra: [...ALWAYS_DB_SUITES],
-      deferSchemaSuites: true,
+      ...(deferSchemaSuites ? { deferSchemaSuites: true } : {}),
     },
   });
 }
@@ -629,7 +636,7 @@ function planLight({ cls, base, escalation, options }) {
     ...appTypechecks(cls, true),
     step('lint', pnpm('lint')),
     step('unit', pnpm('test')),
-    dbStep(cls, escalation),
+    dbStep(cls, escalation, options.deferSchemaSuites !== false),
     step('deploy', pnpm('test:deploy')),
   ];
   if (options.withSmoke) steps.push(...smokeSteps(options));
@@ -693,7 +700,7 @@ export function provisionTargets(env) {
   return { owner, app };
 }
 
-// Problems with TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL for the DB suites, which reset that database's schema.
+// Problems with TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL for the DB suites, which recreate that database.
 export function testDatabaseProblems(env) {
   if (!env.TEST_DATABASE_URL_OWNER || !env.TEST_DATABASE_URL)
     return ['TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL must both be set'];
@@ -758,8 +765,8 @@ export function applyPreflight(steps, { env, options, reach = {} }) {
     if (item.id === 'db') {
       const problems = testDatabaseProblems(env);
       if (problems.length) return block(item, GUIDANCE.testDb, problems, 'Problems');
-      const resets = `resets the schema of ${testDatabaseLabel(env)}`;
-      return { ...item, note: item.note ? `${item.note}; ${resets}` : resets };
+      const recreates = `recreates ${testDatabaseLabel(env)}`;
+      return { ...item, note: item.note ? `${item.note}; ${recreates}` : recreates };
     }
     if (item.special === 'browser:prepare' && !provision) return block(item, GUIDANCE.provision);
     if (item.special === 'browser' && !options.provision) {
@@ -788,15 +795,21 @@ export function applySelection(item, selection, root = ROOT) {
   const deferred = selection.deferred ?? [];
   const selected = { files: files.length, total: selection.total, via };
   if (deferred.length) selected.deferred = deferred.length;
-  const deferNote =
-    `deferred ${deferred.length} migration/setup suite${deferred.length === 1 ? '' : 's'} to full ` +
-    '(no schema-relevant change; docs/specs/db-test-startup.md)';
-  const deferral = deferred.length
-    ? {
-        deferredFiles: deferred.map((entry) => entry.file),
-        note: item.note ? `${item.note}; ${deferNote}` : deferNote,
-      }
-    : {};
+  const notes = item.note ? [item.note] : [];
+  if (deferred.length)
+    notes.push(
+      `deferred ${deferred.length} migration/setup suite${deferred.length === 1 ? '' : 's'} to full ` +
+        '(no schema-relevant change; docs/specs/db-test-startup.md)',
+    );
+  const kept = selection.schemaReasons ?? [];
+  if (kept.length)
+    notes.push(
+      `ran the migration/setup suites because ${kept.map((reason) => `${reason.path} ${reason.why}`).join('; ')}`,
+    );
+  const deferral = {
+    ...(deferred.length ? { deferredFiles: deferred.map((entry) => entry.file) } : {}),
+    ...(notes.length > (item.note ? 1 : 0) ? { note: notes.join('; ') } : {}),
+  };
   if (!files.length)
     return { ...item, ...deferral, selected, skip: { result: 'no-target', reason: 'no related test file' } };
   return {
@@ -1450,7 +1463,14 @@ async function main(argv) {
   const gateScripts = parseGateScript(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.gate);
   const runDir = join(ROOT, '.runtime/gate', reportFileName(options.tier, startedAt).replace(/\.json$/, ''));
   const session = { ...createSession(runDir), provision: options.provision };
-  let steps = planSteps({ tier: options.tier, cls, base, escalation, options, gateScripts });
+  let steps = planSteps({
+    tier: options.tier,
+    cls,
+    base,
+    escalation,
+    options: { ...options, deferSchemaSuites: process.env.GATE_DEFER_SCHEMA_SUITES !== '0' },
+    gateScripts,
+  });
   const needsReach = steps.some((item) => ['browser', 'smoke'].includes(item.special)) && !options.provision;
   const reach = needsReach
     ? {

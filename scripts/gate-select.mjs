@@ -104,10 +104,14 @@ try {
   const missing = [...extra].filter((file) => !all.includes(file));
   if (missing.length)
     throw new Error(`gate-select: always-run suites are not ${input.project} tests: ${missing.join(', ')}`);
+  // Every rule that selected a file: the first is reported as `via`; light defers a migration/setup suite only when the
+  // module graph is its sole reason.
   const via = new Map();
   const add = (file, reason) => {
-    if (!via.has(file)) via.set(file, reason);
+    if (!via.has(file)) via.set(file, new Set());
+    via.get(file).add(reason);
   };
+  const onlyGraph = (file) => via.has(file) && [...via.get(file)].every((reason) => reason === 'graph');
   if (sources.length)
     for (const spec of await vitest.getRelevantTestSpecifications()) {
       const file = toRelative(spec.moduleId);
@@ -116,6 +120,13 @@ try {
   const triggers = input.triggers ?? [];
   for (const file of selectByTestDirectory(triggers, all)) add(file, 'directory');
   const read = (file) => readFileSync(toAbsolute(file), 'utf8');
+  const sibling = (file) => (name) => {
+    const path = posix.join(posix.dirname(file), name);
+    return existsSync(toAbsolute(path)) ? read(path) : '';
+  };
+  const schemaSuites = input.deferSchemaSuites
+    ? new Set(all.filter((file) => buildsSchemaFromMigrations(read(file), sibling(file))))
+    : new Set();
   for (const file of selectByReference(referenceTriggers(triggers), all, read)) add(file, 'reference');
   const project = vitest.projects.find((candidate) => candidate.name === input.project);
   const packages = loadWorkspacePackages(ROOT);
@@ -129,7 +140,9 @@ try {
       for (const file of setupFileTargets(read(toRelative(setupFile)), all)) add(file, 'setup');
   const spawning = all.filter((file) => spawnsProcesses(read(file)));
   for (const file of selectBySubprocessScope(triggers, spawning, packages)) add(file, 'subprocess');
-  for (const file of spawning.filter((candidate) => !via.has(candidate))) {
+  for (const file of spawning.filter(
+    (candidate) => !via.has(candidate) || (schemaSuites.has(candidate) && onlyGraph(candidate)),
+  )) {
     const entries = subprocessEntries(file, read(file), scopeOf(file, packages), (path) =>
       existsSync(toAbsolute(path)),
     );
@@ -137,16 +150,11 @@ try {
   }
   let selected = [...via.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([file, reason]) => ({ file, via: reason }));
+    .map(([file, reasons]) => ({ file, via: [...reasons][0], ...(reasons.size > 1 ? { reasons: [...reasons] } : {}) }));
   let deferred = [];
   let schemaReasons = [];
   if (input.deferSchemaSuites) {
-    const sibling = (file) => (name) => {
-      const path = posix.join(posix.dirname(file), name);
-      return existsSync(toAbsolute(path)) ? read(path) : '';
-    };
-    const schemaSuites = new Set(all.filter((file) => buildsSchemaFromMigrations(read(file), sibling(file))));
-    if (selected.some((entry) => entry.via === 'graph' && schemaSuites.has(entry.file))) {
+    if (selected.some((entry) => onlyGraph(entry.file) && schemaSuites.has(entry.file))) {
       const changed = (input.sources ?? []).filter((path) => existsSync(toAbsolute(path)));
       const modules = changed.filter((path) => MODULE_EXTENSIONS.has(extname(path)));
       const declaring = modules.filter((path) => declaresSchema(read(path)));

@@ -24,14 +24,15 @@ const KEY = 'ab'.repeat(32);
 const OTHER_KEY = 'cd'.repeat(32);
 
 describe('db-test-startup AC-4 template target (which database the harness may recreate)', () => {
-  it('AC-4 accepts one plain lower-case database containing "test" for both roles and derives the maintenance URL', () => {
+  it('AC-4 accepts one plain lower-case database with a "test" segment for both roles and derives the maintenance URL', () => {
     expect(templateTarget(owner('daifuku_test_w1'), app('daifuku_test_w1'), {})).toEqual({
       ok: true,
       database: 'daifuku_test_w1',
       maintenanceUrl: owner('postgres'),
       limit: DEFAULT_TEMPLATE_LIMIT,
     });
-    expect(templateTarget(owner('daifuku_ci_test'), app('daifuku_ci_test'), {})).toMatchObject({ ok: true });
+    for (const name of ['daifuku_ci_test', 'daifuku_test', 'test', 'test_daifuku', 'daifuku_e2e_test_x'])
+      expect(templateTarget(owner(name), app(name), {}), name).toMatchObject({ ok: true });
     expect(
       templateTarget(owner('daifuku_test'), app('daifuku_test'), {
         TEST_DATABASE_TEMPLATE_LIMIT: '3',
@@ -49,6 +50,11 @@ describe('db-test-startup AC-4 template target (which database the harness may r
     ],
     ['a name without "test"', owner('daifuku_dev'), app('daifuku_dev'), /does not look disposable/],
     ['a production-like name', owner('erp'), app('erp'), /does not look disposable/],
+    // "test" inside another word is not a test segment: these may be anything.
+    ['"test" inside a word (latest)', owner('daifuku_latest'), app('daifuku_latest'), /lacks a "test" segment/],
+    ['"test" inside a word (contest)', owner('contest_prod'), app('contest_prod'), /lacks a "test" segment/],
+    ['"test" inside a word (attestation)', owner('attestation'), app('attestation'), /lacks a "test" segment/],
+    ['"tests" as a segment', owner('daifuku_tests'), app('daifuku_tests'), /lacks a "test" segment/],
     ['a quoted or upper-case name', owner('Daifuku_Test'), app('Daifuku_Test'), /plain lower-case identifier/],
     ['a name with a hyphen', owner('daifuku-test'), app('daifuku-test'), /plain lower-case identifier/],
     [
@@ -91,6 +97,10 @@ describe('db-test-startup AC-4 template target (which database the harness may r
       expect(templateTarget(owner('daifuku_test'), app('daifuku_test'), { TEST_DATABASE_TEMPLATE: value }).ok).toBe(
         true,
       );
+    // The cleanup command (pnpm test:db:templates) ignores the mode but keeps every other rule.
+    const off = { TEST_DATABASE_TEMPLATE: 'off' };
+    expect(templateTarget(owner('daifuku_test'), app('daifuku_test'), off, { ignoreMode: true }).ok).toBe(true);
+    expect(templateTarget(owner('daifuku_dev'), app('daifuku_dev'), off, { ignoreMode: true }).ok).toBe(false);
   });
 });
 
@@ -101,6 +111,7 @@ describe('db-test-startup AC-4 database-level preconditions', () => {
     owned: true,
     defaultAcl: true,
     settings: 0,
+    commented: false,
     template: false,
     allowConnections: true,
     connectionLimit: -1,
@@ -114,6 +125,7 @@ describe('db-test-startup AC-4 database-level preconditions', () => {
     expect(targetProblem({ ...ready, owned: false })).toMatch(/does not own/);
     expect(targetProblem({ ...ready, defaultAcl: false })).toMatch(/database-level grants/);
     expect(targetProblem({ ...ready, settings: 1 })).toMatch(/ALTER DATABASE\/ROLE settings/);
+    expect(targetProblem({ ...ready, commented: true })).toMatch(/comment that recreation would drop/);
     expect(targetProblem({ ...ready, template: true })).toMatch(/template or closed/);
     expect(targetProblem({ ...ready, allowConnections: false })).toMatch(/template or closed/);
     expect(targetProblem({ ...ready, connectionLimit: 5 })).toMatch(/connection limit/);

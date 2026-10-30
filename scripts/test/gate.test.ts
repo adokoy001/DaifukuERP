@@ -603,6 +603,8 @@ describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites
     expect(declaresSchema(readFileSync(join(ROOT, 'modules/sales/src/entities/sales-invoice.ts'), 'utf8'))).toBe(true);
     expect(declaresSchema(readFileSync(join(ROOT, 'packs/retail/src/pack.ts'), 'utf8'))).toBe(true);
     expect(declaresSchema("registry.registerSystemTable('tenants', tenants);")).toBe(true);
+    // registry.registerExt is the documented API for ext fields outside packs (equality indexes change the DDL).
+    expect(declaresSchema("registry.registerExt('partner', { code: f.text() }, { source: 'l10n:jp' });")).toBe(true);
     expect(declaresSchema(readFileSync(join(ROOT, 'modules/sales/src/settings.ts'), 'utf8'))).toBe(false);
     expect(declaresSchema('// defineEntity is mentioned without a call')).toBe(false);
   });
@@ -623,6 +625,15 @@ describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites
       'apps/api/test/migrations.db.test.ts',
     ]);
     expect(result.reasons).toEqual([]);
+  });
+  it('AC-8 keeps a migration/setup suite that another rule selected besides the module graph', () => {
+    const both = [
+      { file: 'apps/api/test/migrations.db.test.ts', via: 'graph', reasons: ['graph', 'subprocess'] },
+      { file: 'apps/api/test/boolean-migration.db.test.ts', via: 'graph', reasons: ['graph'] },
+    ];
+    const result = deferSchemaSuites(both, { changed: ['modules/sales/src/settings.ts'], schemaSuites, packages });
+    expect(result.selected.map((entry) => entry.file)).toEqual(['apps/api/test/migrations.db.test.ts']);
+    expect(result.deferred.map((entry) => entry.file)).toEqual(['apps/api/test/boolean-migration.db.test.ts']);
   });
   it.each([
     [
@@ -660,11 +671,16 @@ describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites
       'pnpm test:db',
     );
     expect(commandText(find(plan('full', ['modules/sales/src/settings.ts']).steps, 'db').command)).toBe('pnpm test:db');
+    // GATE_DEFER_SCHEMA_SUITES=0 (passed in as options.deferSchemaSuites = false) keeps the plain module-graph selection.
+    expect(
+      find(plan('light', ['modules/sales/src/settings.ts'], { opts: { deferSchemaSuites: false } }).steps, 'db')
+        .selection?.deferSchemaSuites,
+    ).toBeUndefined();
   });
   it('AC-10 reports deferred suites in the step, the table, the hints and the JSON report', () => {
     const { steps, changes, cls, escalation } = plan('light', ['modules/sales/src/settings.ts']);
     const db = applySelection(
-      { ...find(steps, 'db'), note: 'resets the schema of daifuku_test_x on 127.0.0.1:5432' },
+      { ...find(steps, 'db'), note: 'recreates daifuku_test_x on 127.0.0.1:5432' },
       {
         project: 'db',
         total: 116,
@@ -676,7 +692,7 @@ describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites
     expect(db.selected).toEqual({ files: 1, total: 116, via: { graph: 1 }, deferred: 1 });
     expect(db.deferredFiles).toEqual(['apps/api/test/migrations.db.test.ts']);
     expect(db.note).toMatch(
-      /^resets the schema of daifuku_test_x on 127\.0\.0\.1:5432; deferred 1 migration\/setup suite to full/,
+      /^recreates daifuku_test_x on 127\.0\.0\.1:5432; deferred 1 migration\/setup suite to full/,
     );
     expect(commandText(db.command)).toBe('pnpm exec vitest run --project db /repo/modules/sales/test/sales.db.test.ts');
     const report = buildReport({
@@ -701,6 +717,29 @@ describe('db-test-startup AC-8 AC-9 AC-10 light defers migration/setup DB suites
       /light deferred 1 migration\/setup DB suite .*pnpm gate:full and pnpm test:db run them/,
     );
     expect(formatTable(report)).toMatch(/^db\s+passed\s+1\.0\s+1\/116 files \(\+1 deferred\)/m);
+  });
+  it('AC-10 says why the migration/setup suites ran when a schema-relevant change kept them', () => {
+    const db = applySelection(
+      { ...find(plan('light', ['modules/sales/src/entities/sales-invoice.ts']).steps, 'db'), note: null },
+      {
+        project: 'db',
+        total: 116,
+        selected: [{ file: 'apps/api/test/migrations.db.test.ts', via: 'graph' }],
+        deferred: [],
+        schemaReasons: [
+          {
+            path: 'modules/sales/src/entities/sales-invoice.ts',
+            why: 'declares entities, pack ext fields or system tables',
+          },
+        ],
+      },
+      '/repo',
+    );
+    expect(db.deferredFiles).toBeUndefined();
+    expect(db.note).toBe(
+      'ran the migration/setup suites because modules/sales/src/entities/sales-invoice.ts declares entities, pack ext ' +
+        'fields or system tables',
+    );
   });
 });
 
@@ -1004,7 +1043,9 @@ describe('AC-18 explicit DB-test variables', () => {
       options: options({ tier: 'light' }),
     });
     expect(find(allowed, 'db').blocked).toBeNull();
-    expect(find(allowed, 'db').note).toBe('resets the schema of daifuku_test_x on 127.0.0.1:5432');
+    expect(find(allowed, 'db').note).toBe('recreates daifuku_test_x on 127.0.0.1:5432');
+    // The guidance says what the DB suites do to the server: recreate the test database and keep template databases.
+    expect(GUIDANCE.testDb).toMatch(/drop and recreate the test database .*<db>_tpl_\* schema template databases/);
   });
   it('AC-18 accepts only a loopback disposable test database with separate owner and daifuku_app roles', () => {
     const env = {
@@ -1598,11 +1639,20 @@ describe('selection rules beyond the module graph', () => {
       expect(result.status, result.stderr).toBe(0);
       const selection = JSON.parse(readFileSync(output, 'utf8')) as {
         total: number;
-        selected: { file: string; via: string }[];
+        selected: { file: string; via: string; reasons?: string[] }[];
       };
       expect(selection.total).toBeGreaterThan(100);
-      expect(selection.selected).toContainEqual({ file: 'scripts/test/gate.test.ts', via: 'graph' });
-      expect(selection.selected).toContainEqual({ file: 'modules/sales/test/recalculate.test.ts', via: 'directory' });
+      // `via` is the first rule; `reasons` lists every rule when more than one selected the file (db-test-startup AC-8).
+      expect(selection.selected).toContainEqual({
+        file: 'scripts/test/gate.test.ts',
+        via: 'graph',
+        reasons: ['graph', 'reference'],
+      });
+      expect(selection.selected).toContainEqual({
+        file: 'modules/sales/test/recalculate.test.ts',
+        via: 'directory',
+        reasons: ['directory', 'reference'],
+      });
       expect(selection.selected.some((entry) => entry.file.endsWith('.db.test.ts'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });

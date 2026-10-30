@@ -21,9 +21,11 @@
 
 ## DB 試験の schema テンプレート
 
-- `freshDb()` は schema を作る全文（`dropAll`・registry の DDL・RLS/grant）のハッシュを鍵に、`<試験DB名>_tpl_<16桁>` のテンプレート DB を作り、以後の suite では試験 DB を `CREATE DATABASE ... TEMPLATE` で作り直す（[db-test-startup](../specs/db-test-startup.md)）。entity・DSL・RLS の文が変われば鍵が変わり、新しいテンプレートを作る。古いものは試験 DB ごとに 80 件（`TEST_DATABASE_TEMPLATE_LIMIT`）を超えた分から消える（全 suite で約 59 件、合計約 0.7 GB）。
-- 使う条件: 試験 DB 名が `test` を含む小文字の識別子、owner role が CREATEDB を持ち試験 DB を所有する、DB 単位の grant・設定・接続上限が無い。満たさなければ従来どおり DB の中で schema を作り直し、理由を標準エラーに 1 回出す。`TEST_DATABASE_TEMPLATE=off` で常に従来の作り直しになる。
-- 試験は schema の作り方に依存しない。テンプレートの DB に接続しない（`ALLOW_CONNECTIONS false`）。DB 試験から試験 DB 以外の DB を作る・消す処理を足さない。
+- `freshDb()` は schema を作る全文（`dropAll`・registry の DDL・RLS/grant）のハッシュを鍵に、`<試験DB名>_tpl_<16桁>` のテンプレート DB を作り、以後の suite では試験 DB を `CREATE DATABASE ... TEMPLATE` で作り直す（[db-test-startup](../specs/db-test-startup.md)）。entity・DSL・RLS の文が変われば鍵が変わり、新しいテンプレートを作る。古いものは試験 DB ごとに 80 件（`TEST_DATABASE_TEMPLATE_LIMIT`）を超えた分から消える（全 suite の 1 回で約 59 件・約 0.7 GB、上限まで溜まると 1 件 8〜21 MB で最大約 1.7 GB）。`pnpm test:db:templates` で一覧、`pnpm test:db:templates -- --drop` で試験 DB の自分のテンプレートだけを消す。
+- 使う条件: 2 つの URL が query なしで同じサーバー・同じ DB を指す、試験 DB 名が `test` を `_` 区切りの 1 語として含む小文字の識別子（`daifuku_test_w3`・`daifuku_ci_test`。`daifuku_latest` は不可）、保守用 DB（`postgres`、`TEST_DATABASE_MAINTENANCE_DB`）に接続できる、owner role が CREATEDB を持ち試験 DB を所有する、DB 単位の grant・設定・コメント・接続上限が無い、試験 DB が public / drizzle 以外の schema・plpgsql 以外の拡張・既定権限（`ALTER DEFAULT PRIVILEGES`）・event trigger・publication・large object などを持たない（作り直しでは残り、DB の再作成では消えるため）。満たさなければ従来どおり DB の中で schema を作り直し、理由を標準エラーに出す（suite ごとに 1 回。`TEST_DATABASE_TEMPLATE=off` で常に従来の作り直しになり、通知も出ない）。
+- 試験 DB に psql や GUI などこの harness 以外のクライアントがつないでいると、テンプレートを使わずにすぐ従来の作り直しに戻る（postgres.js の接続は前の suite のものとみなして最大 15 秒待つ）。失敗した試験を調べるときは調べ終えたら切断する。
+- 試験は schema の作り方に依存しない。テンプレートの DB に接続しない（`ALLOW_CONNECTIONS false`）。DB 試験から試験 DB 以外の DB を作る・消す処理を足さない（例外: harness 自身の試験 `kernel/test/test-template.db.test.ts` は、テンプレート経路を確かめるために試験 DB と `<試験DB名>_tpl_` で始まる名前の DB だけを作って消す）。
+- テンプレートの作り方（`applySchemaBuild`、作る場所、印の形式）を変えたときは `kernel/src/test-database.ts` の `TEMPLATE_FORMAT` を上げる。鍵は schema を作る文からしか作らないため、作り方だけを変えても古いテンプレートがそのまま複製される（`pnpm test:db:templates -- --drop` で消してもよい）。
 - migration の適用を検証する試験（`runMigrations` を呼ぶ suite）は `dropAll` から自分で schema を作る。テンプレートは使わない。
 
 ## 実行の段階（quick / light / full）
@@ -35,7 +37,7 @@
 | full | `pnpm gate:full` | `pnpm gate` 全工程 + API/Web の型と build + ブラウザ・認証試験 | 「完了」の前、昇格パターンに触れた変更 |
 
 - 選択は「どのファイルを実行するか」だけで、選んだファイル内の試験は全件実行する。試験名フィルタ・skip・only は使わない。詳細と昇格パターンは [3 段階の回帰テスト](../specs/test-tiers.md)。
-- light は migration/setup suite（試験か同じディレクトリの補助ファイルが `runMigrations(` を呼ぶ DB suite）を、schema 宣言（`defineEntity(` など）、その package 内で宣言から import されるファイル、suite と同じ package の変更があるときだけ実行し、それ以外は full に回して報告に `deferred` と書く。新しい migration 系 suite もこの書き方に従えば同じ扱いになる。enum の値などを宣言の外に置くときは、同じ package から import する（別 package の定数は辿らない）。
+- light は migration/setup suite（試験か同じディレクトリの補助ファイルが `runMigrations(` を呼ぶ DB suite）を、schema 宣言（`defineEntity(`・`registerExt(` など）、その package 内で宣言から import されるファイル、suite と同じ package の変更があるときだけ実行し、それ以外は full に回して報告に `deferred` と書く（`GATE_DEFER_SCHEMA_SUITES=0` で常に実行）。新しい migration 系 suite もこの書き方に従えば同じ扱いになる。enum の値などを宣言の外に置くときは、同じ package から import する（別 package の定数は辿らない）。
 - 試験ファイルが読むデータや実行するスクリプトは、試験ソースにファイル名を書く（例: `new URL('./golden/x.json', import.meta.url)`）。quick / light はファイル名の一致でそれらの試験を選ぶ。ファイル名を組み立てて読む場合は選ばれないため、light の unit 全件で補う。
 - 子プロセスで実行する入口（`fixtures/stdio-entry.ts` など）も試験ソースに相対パスで書く。`node:child_process` を import する試験は、同じ package の変更と、入口の import グラフに入る変更で選ばれる。
 - vitest の `setupFiles` が特定の suite のために読むモジュールは、setupFile の中に対象 suite のパスを文字列で列挙する（`apps/api/test/payroll-provider-setup.ts` の `fiscalSuites`）。light はその setupFile の import グラフが変わったとき、列挙された suite を選ぶ。

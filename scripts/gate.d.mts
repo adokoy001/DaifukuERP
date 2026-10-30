@@ -67,6 +67,8 @@ export interface Options {
   withoutBrowser: boolean;
   provision: boolean;
   playwrightArgs: string[];
+  /** light: defer migration/setup DB suites without a schema-relevant change (false with GATE_DEFER_SCHEMA_SUITES=0). */
+  deferSchemaSuites?: boolean;
 }
 export interface Command {
   program: 'pnpm' | 'node';
@@ -107,7 +109,8 @@ export interface StepResult extends Step {
 export interface SelectionResult {
   project: 'unit' | 'db';
   total: number;
-  selected: { file: string; via: string }[];
+  /** `reasons`: every rule that selected the file, when more than one did (`via` is the first). */
+  selected: { file: string; via: string; reasons?: string[] }[];
   deferred?: { file: string; reason: string }[];
   schemaReasons?: SchemaReason[];
 }
@@ -221,7 +224,7 @@ export function setupFileTargets(text: string, specFiles: readonly string[]): st
 export function buildsSchemaFromMigrations(text: string, readSibling?: (relativePath: string) => string): boolean;
 export function declaresSchema(text: string): boolean;
 export function deferSchemaSuites(
-  selected: readonly { file: string; via: string }[],
+  selected: readonly { file: string; via: string; reasons?: readonly string[] }[],
   input: {
     changed: readonly string[];
     declaring?: readonly string[];
@@ -229,7 +232,11 @@ export function deferSchemaSuites(
     schemaSuites: ReadonlySet<string>;
     packages?: readonly WorkspacePackage[];
   },
-): { selected: { file: string; via: string }[]; deferred: { file: string; reason: string }[]; reasons: SchemaReason[] };
+): {
+  selected: { file: string; via: string; reasons?: readonly string[] }[];
+  deferred: { file: string; reason: string }[];
+  reasons: SchemaReason[];
+};
 export function parseGateScript(script: string): string[] | null;
 export function planSteps(input: {
   tier: Tier;

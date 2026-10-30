@@ -3,8 +3,9 @@
 // database keyed by a hash of every statement that builds it, and each freshDb() recreates the dedicated test
 // database from that template with CREATE DATABASE ... TEMPLATE. The first suite with a new key builds in place (the
 // previous behaviour) and copies the result. Safety: only the database named by TEST_DATABASE_URL_OWNER /
-// TEST_DATABASE_URL (both the same, name containing "test") and templates named <db>_tpl_<16 hex> carrying this
-// harness's marker for that database are ever created, dropped or changed; anything else rebuilds in place.
+// TEST_DATABASE_URL (both the same, name with a "test" segment) and templates named <db>_tpl_<16 hex> carrying this
+// harness's marker for that database are ever created, dropped or changed, and only while the test database holds
+// nothing a recreation would lose that the in-place rebuild keeps; anything else rebuilds in place.
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { connect, type Database } from './db/client.ts';
@@ -19,7 +20,10 @@ export const DEFAULT_TEMPLATE_LIMIT = 80;
 const MAX_IDENTIFIER = 63;
 const KEY_LENGTH = 16;
 const TEMPLATE_INFIX = '_tpl_';
-const SESSION_WAIT_MS = 15_000;
+/** How long a suite waits for sessions of this harness left on the test database before rebuilding in place. */
+export const SESSION_WAIT_MS = 15_000;
+/** application_name of postgres.js connections: what the test harness, its servers and child processes use. */
+export const HARNESS_APPLICATION = 'postgres.js';
 const OBJECT_IN_USE = '55006';
 
 export interface SchemaBuild {
@@ -106,14 +110,16 @@ export type TemplateTarget =
 
 /**
  * Decides from the two URLs and the environment whether templates may be used: both roles on one server and one
- * database, no URL query, and a plain lower-case name containing "test" short enough for its template names.
+ * database, no URL query, and a plain lower-case name with a "test" segment short enough for its template names.
+ * `ignoreMode` skips TEST_DATABASE_TEMPLATE (the template cleanup command works while templates are off).
  */
 export function templateTarget(
   ownerUrl: string,
   appUrl: string,
   env: Record<string, string | undefined>,
+  { ignoreMode = false }: { ignoreMode?: boolean } = {},
 ): TemplateTarget {
-  const mode = (env.TEST_DATABASE_TEMPLATE ?? '').trim().toLowerCase();
+  const mode = ignoreMode ? '' : (env.TEST_DATABASE_TEMPLATE ?? '').trim().toLowerCase();
   if (['0', 'off', 'false', 'no'].includes(mode))
     return { ok: false, disabled: true, reason: 'disabled by TEST_DATABASE_TEMPLATE' };
   if (mode && !['1', 'on', 'true', 'yes', 'auto'].includes(mode))
@@ -135,8 +141,11 @@ export function templateTarget(
     return { ok: false, reason: 'owner and app URLs name different databases' };
   if (!/^[a-z_][a-z0-9_]*$/.test(database))
     return { ok: false, reason: `the test database name "${database}" is not a plain lower-case identifier` };
-  if (!database.includes('test'))
-    return { ok: false, reason: `the database "${database}" does not look disposable (its name lacks "test")` };
+  if (!DISPOSABLE_NAME.test(database))
+    return {
+      ok: false,
+      reason: `the database "${database}" does not look disposable (its name lacks a "test" segment)`,
+    };
   if (database.length + TEMPLATE_INFIX.length + KEY_LENGTH > MAX_IDENTIFIER)
     return { ok: false, reason: `the database name "${database}" is too long for template names` };
   const limit = Number(env.TEST_DATABASE_TEMPLATE_LIMIT ?? DEFAULT_TEMPLATE_LIMIT);
@@ -149,12 +158,17 @@ export function templateTarget(
   return { ok: true, database, maintenanceUrl: maintenance.href, limit };
 }
 
+/** A database name with `test` as a whole underscore-separated segment: daifuku_test, daifuku_test_w3, daifuku_ci_test. */
+export const DISPOSABLE_NAME = /(?:^|_)test(?:_|$)/;
+
 export interface TargetState {
   createdb: boolean;
   exists: boolean;
   owned: boolean;
   defaultAcl: boolean;
   settings: number;
+  /** COMMENT ON DATABASE (a shared object that a recreated database does not carry). */
+  commented: boolean;
   template: boolean;
   allowConnections: boolean;
   connectionLimit: number;
@@ -171,6 +185,7 @@ export function targetProblem(state: TargetState): string | null {
   if (!state.owned) return 'the owner role does not own the test database';
   if (!state.defaultAcl) return 'the test database has database-level grants that recreation would drop';
   if (state.settings) return 'the test database has ALTER DATABASE/ROLE settings that recreation would drop';
+  if (state.commented) return 'the test database has a comment that recreation would drop';
   if (state.template || !state.allowConnections) return 'the test database is marked as a template or closed';
   if (state.connectionLimit !== -1) return 'the test database has a connection limit that recreation would drop';
   if (!state.defaultTablespace) return 'the test database is not in the default tablespace';
@@ -185,16 +200,28 @@ export type TemplateOutcome =
   | { used: 'built'; template: string | null; key: string; base: 'template1' | 'in-place'; note?: string }
   | { used: 'legacy'; reason: string };
 
+export interface PrepareOptions {
+  now?: () => Date;
+  /** How long to wait for sessions of this harness on the test database or a new template (default 15 s). */
+  sessionWaitMs?: number;
+  /** The statements to build (default: schemaBuild() of the current registry). */
+  build?: SchemaBuild;
+}
+
 /**
  * Prepares the test database for one suite. Returns an owner connection to it with the schema built and no tenant
  * data, and what happened; `owner: null` (outcome `legacy`) means the caller rebuilds in place, the previous behaviour.
+ * Before anything is dropped, the test database must hold nothing that the in-place rebuild keeps and a recreation
+ * would lose, and no client other than this harness may be connected to it.
  */
 export async function prepareFromTemplate(
   target: Extract<TemplateTarget, { ok: true }>,
   ownerUrl: string,
-  now: () => Date = () => new Date(),
+  options: PrepareOptions = {},
 ): Promise<{ owner: Database | null; outcome: TemplateOutcome }> {
-  const build = await schemaBuild();
+  const now = options.now ?? (() => new Date());
+  const waitMs = options.sessionWaitMs ?? SESSION_WAIT_MS;
+  const build = options.build ?? (await schemaBuild());
   const key = templateKey(build);
   const template = templateName(target.database, key);
   const maintenance = connect(target.maintenanceUrl, { max: 1 });
@@ -212,6 +239,7 @@ export async function prepareFromTemplate(
       throw error;
     }
   };
+  const busy = (database: string) => waitForNoSessions(maintenance, database, waitMs);
   try {
     try {
       await maintenance.sql`select 1`;
@@ -221,12 +249,20 @@ export async function prepareFromTemplate(
     const state = await readTargetState(maintenance, target.database);
     const problem = targetProblem(state);
     if (problem) return legacy(problem);
+    if (state.exists) {
+      // Checked on every path: a clone, a template built from template1 and a restore all start from DROP DATABASE.
+      const extras = await extraObjects(ownerUrl);
+      if (extras.length)
+        return legacy(
+          `the test database holds objects outside the rebuilt schemas that recreation would drop (${extras.join(', ')})`,
+        );
+      const blocked = await busy(target.database);
+      if (blocked) return legacy(blocked);
+    }
     const templates = await listTemplates(maintenance, target.database);
     const current = templates.find((row) => row.name === template);
     const own = current && isOwnTemplate(target.database, current.name, current.comment);
     if (own && parseTemplateComment(current.comment)?.key === key) {
-      if (!(await waitForNoSessions(maintenance, target.database)))
-        return legacy(`other sessions still use ${target.database}`);
       if (state.exists && !(await unlessInUse(`DROP DATABASE ${quote(target.database)}`)))
         return legacy(`another session connected to ${target.database}`);
       await exec(`CREATE DATABASE ${quote(target.database)} TEMPLATE ${quote(template)}`);
@@ -236,36 +272,43 @@ export async function prepareFromTemplate(
     if (current) {
       // The name embeds this schema's hash, so only this harness makes it. Without any comment its creation was
       // interrupted between CREATE DATABASE and COMMENT; an own template whose full key differs shares only the 16-digit
-      // prefix. Both are dropped and rebuilt. A database with another comment is left alone.
+      // prefix. Both are dropped and rebuilt (unless someone is connected). A database with another comment is left alone.
       if (!own && current.comment !== null)
         return legacy(`database ${template} exists but is not a template of this harness`);
-      await exec(`DROP DATABASE ${quote(template)}`);
+      if (!(await unlessInUse(`DROP DATABASE ${quote(template)}`))) return legacy(`${template} is in use`);
     }
     const finish = async () => {
       await mark();
       await exec(`ALTER DATABASE ${quote(template)} ALLOW_CONNECTIONS false`);
       const rows = await listTemplates(maintenance, target.database);
+      // A template in use (another run on the same test database) is kept until a later age-out.
       for (const name of templatesToDrop(target.database, rows, target.limit, template))
-        await exec(`DROP DATABASE IF EXISTS ${quote(name)}`);
+        await unlessInUse(`DROP DATABASE IF EXISTS ${quote(name)}`);
     };
     // Build in a fresh copy of template1 (how the test database itself was created) so that the template carries no
     // catalog bloat from earlier rebuilds, then recreate the test database from it like a clone.
     if (
       state.exists &&
       state.sameLocaleAsTemplate1 &&
-      !(await holdsExtraObjects(ownerUrl)) &&
       (await unlessInUse(`CREATE DATABASE ${quote(template)} TEMPLATE template1`))
     ) {
       const builder = connect(databaseUrl(ownerUrl, template), { max: 1 });
       try {
         await applySchemaBuild(builder, build);
-      } finally {
+      } catch (error) {
+        // An unmarked half-built template would never age out: drop it, keep the build error.
         await builder.close();
+        await busy(template).catch(() => null);
+        await unlessInUse(`DROP DATABASE IF EXISTS ${quote(template)}`).catch(() => false);
+        throw error;
       }
-      if (!(await waitForNoSessions(maintenance, template))) return legacy(`other sessions use ${template}`);
+      await builder.close();
+      // Marked and closed first, so that even a template still in use below is a valid one for the next suite.
       await finish();
-      if (!(await waitForNoSessions(maintenance, target.database)))
-        return legacy(`other sessions still use ${target.database}`);
+      const templateBlocked = await busy(template);
+      if (templateBlocked) return legacy(templateBlocked);
+      const blocked = await busy(target.database);
+      if (blocked) return legacy(blocked);
       if (!(await unlessInUse(`DROP DATABASE ${quote(target.database)}`)))
         return legacy(`another session connected to ${target.database}`);
       await exec(`CREATE DATABASE ${quote(target.database)} TEMPLATE ${quote(template)}`);
@@ -277,35 +320,21 @@ export async function prepareFromTemplate(
       if (!any) return legacy(`the test database ${target.database} does not exist`);
       await exec(`CREATE DATABASE ${quote(target.database)} TEMPLATE ${quote(any.name)}`);
     }
-    // Another locale than template1, or objects outside the rebuilt schemas: build in place and copy the database.
+    // Another locale than template1 (or template1 in use), or a database just restored: build in place and copy it.
     const owner = connect(ownerUrl, { max: 2 });
     try {
       await applySchemaBuild(owner, build);
     } finally {
       await owner.close();
     }
-    if (!(await waitForNoSessions(maintenance, target.database)))
-      return {
-        owner: connect(ownerUrl, { max: 2 }),
-        outcome: {
-          used: 'built',
-          template: null,
-          key,
-          base: 'in-place',
-          note: `other sessions still use ${target.database}`,
-        },
-      };
+    const inPlace = (note: string) => ({
+      owner: connect(ownerUrl, { max: 2 }),
+      outcome: { used: 'built' as const, template: null, key, base: 'in-place' as const, note },
+    });
+    const blocked = await busy(target.database);
+    if (blocked) return inPlace(blocked);
     if (!(await unlessInUse(`CREATE DATABASE ${quote(template)} TEMPLATE ${quote(target.database)}`)))
-      return {
-        owner: connect(ownerUrl, { max: 2 }),
-        outcome: {
-          used: 'built',
-          template: null,
-          key,
-          base: 'in-place',
-          note: `another session joined ${target.database}`,
-        },
-      };
+      return inPlace(`another session joined ${target.database}`);
     await finish();
     return { owner: connect(ownerUrl, { max: 2 }), outcome: { used: 'built', template, key, base: 'in-place' } };
   } catch (error) {
@@ -329,6 +358,7 @@ export async function readTargetState(maintenance: Database, database: string): 
       owned: boolean | null;
       default_acl: boolean | null;
       settings: number;
+      commented: boolean | null;
       template: boolean | null;
       allow_connections: boolean | null;
       connection_limit: number | null;
@@ -338,6 +368,7 @@ export async function readTargetState(maintenance: Database, database: string): 
   >`select r.rolcreatedb as createdb, d.oid is not null as present, d.datdba = r.oid as owned,
       d.datacl is null as default_acl, d.datistemplate as template, d.datallowconn as allow_connections,
       (select count(*)::int from pg_db_role_setting s where s.setdatabase = d.oid) as settings,
+      shobj_description(d.oid, 'pg_database') is not null as commented,
       d.datconnlimit as connection_limit, d.dattablespace = t.dattablespace as default_tablespace,
       (select bool_and((to_jsonb(d) -> k) is not distinct from (to_jsonb(t) -> k))
         from unnest(${LOCALE_COLUMNS}::text[]) as k) as same_locale
@@ -350,6 +381,7 @@ export async function readTargetState(maintenance: Database, database: string): 
     owned: Boolean(row?.owned),
     defaultAcl: Boolean(row?.default_acl),
     settings: row?.settings ?? 0,
+    commented: Boolean(row?.commented),
     template: Boolean(row?.template),
     allowConnections: Boolean(row?.allow_connections),
     connectionLimit: row?.connection_limit ?? -1,
@@ -370,21 +402,34 @@ const LOCALE_COLUMNS = [
   'daticurules',
 ];
 
-// Schemas besides public/drizzle or extensions besides plpgsql in the test database (the in-place rebuild keeps them).
-async function holdsExtraObjects(ownerUrl: string): Promise<boolean> {
+// Database-local objects that survive RESET_STATEMENTS (DROP SCHEMA public / drizzle), so the in-place rebuild keeps
+// them and DROP DATABASE would lose them: other schemas, extensions besides plpgsql, default privileges, event triggers,
+// publications, large objects, foreign-data wrappers and servers, procedural languages and user-defined casts.
+export async function extraObjects(ownerUrl: string): Promise<string[]> {
   const probe = connect(ownerUrl, { max: 1 });
   try {
-    const [row] = await probe.sql<{ schemas: number; extensions: number }[]>`
+    const [row] = await probe.sql<Record<string, number>[]>`
       select (select count(*)::int from pg_namespace
           where nspname not in ('public', 'drizzle', 'information_schema') and nspname not like 'pg\\_%') as schemas,
-        (select count(*)::int from pg_extension where extname <> 'plpgsql') as extensions`;
-    return Boolean(row?.schemas || row?.extensions);
+        (select count(*)::int from pg_extension where extname <> 'plpgsql') as extensions,
+        (select count(*)::int from pg_default_acl) as default_privileges,
+        (select count(*)::int from pg_event_trigger) as event_triggers,
+        (select count(*)::int from pg_publication) as publications,
+        (select count(*)::int from pg_largeobject_metadata) as large_objects,
+        (select count(*)::int from pg_foreign_data_wrapper) as foreign_data_wrappers,
+        (select count(*)::int from pg_foreign_server) as foreign_servers,
+        (select count(*)::int from pg_language where lanname not in ('internal', 'c', 'sql', 'plpgsql')) as languages,
+        (select count(*)::int from pg_cast where oid >= 16384) as casts`;
+    return Object.entries(row ?? {})
+      .filter(([, count]) => count > 0)
+      .map(([kind, count]) => `${kind.replace(/_/g, ' ')}: ${count}`);
   } finally {
     await probe.close();
   }
 }
 
-function databaseUrl(url: string, database: string): string {
+/** `url` with its database replaced. */
+export function databaseUrl(url: string, database: string): string {
   const next = new URL(url);
   next.pathname = `/${database}`;
   return next.href;
@@ -400,13 +445,70 @@ export async function listTemplates(
     from pg_database d where starts_with(d.datname, ${`${database}${TEMPLATE_INFIX}`}) order by 1`;
 }
 
-async function waitForNoSessions(maintenance: Database, database: string): Promise<boolean> {
-  const deadline = Date.now() + SESSION_WAIT_MS;
+export interface OwnTemplate {
+  name: string;
+  usedAt: Date;
+  bytes: number;
+  /** Set by the cleanup: dropped, or kept because a session was connected to it. */
+  dropped?: boolean;
+}
+
+/**
+ * The own templates of the test database, least recently used first (`pnpm test:db:templates`). With `drop`, each is
+ * dropped unless a session is connected to it. Foreign and unmarked databases are never listed, as in the age-out.
+ */
+export async function ownTemplates(
+  target: Extract<TemplateTarget, { ok: true }>,
+  { drop = false }: { drop?: boolean } = {},
+): Promise<OwnTemplate[]> {
+  const maintenance = connect(target.maintenanceUrl, { max: 1 });
+  try {
+    const rows = await maintenance.sql<{ name: string; comment: string | null; bytes: string }[]>`
+      select d.datname as name, shobj_description(d.oid, 'pg_database') as comment,
+        pg_database_size(d.oid)::text as bytes
+      from pg_database d where starts_with(d.datname, ${`${target.database}${TEMPLATE_INFIX}`}) order by 1`;
+    const own = rows
+      .filter((row) => isOwnTemplate(target.database, row.name, row.comment))
+      .map((row) => ({
+        name: row.name,
+        usedAt: parseTemplateComment(row.comment)?.usedAt ?? new Date(0),
+        bytes: Number(row.bytes),
+      }))
+      .sort((a, b) => a.usedAt.getTime() - b.usedAt.getTime() || a.name.localeCompare(b.name));
+    if (!drop) return own;
+    const result: OwnTemplate[] = [];
+    for (const template of own) {
+      try {
+        await maintenance.sql.unsafe(`DROP DATABASE IF EXISTS ${quote(template.name)}`);
+        result.push({ ...template, dropped: true });
+      } catch (error) {
+        if (errorCode(error) !== OBJECT_IN_USE) throw error;
+        result.push({ ...template, dropped: false });
+      }
+    }
+    return result;
+  } finally {
+    await maintenance.close();
+  }
+}
+
+// Null once no client session is connected to `database`, else why not. Sessions of this harness (postgres.js: the
+// previous suite's pools, its servers and child processes) are waited for up to `waitMs`; any other client (psql, a GUI)
+// makes it give up at once, because it would make every suite wait. Autovacuum workers have no role and are not
+// counted: DROP DATABASE and CREATE DATABASE stop them.
+async function waitForNoSessions(maintenance: Database, database: string, waitMs: number): Promise<string | null> {
+  const deadline = Date.now() + waitMs;
   for (;;) {
-    const [row] = await maintenance.sql<{ n: number }[]>`
-      select count(*)::int as n from pg_stat_activity where datname = ${database} and pid <> pg_backend_pid()`;
-    if (!row?.n) return true;
-    if (Date.now() > deadline) return false;
+    const rows = await maintenance.sql<{ application: string }[]>`
+      select coalesce(application_name, '') as application from pg_stat_activity
+      where datname = ${database} and usesysid is not null and pid <> pg_backend_pid()`;
+    if (!rows.length) return null;
+    const foreign = [...new Set(rows.map((row) => row.application).filter((name) => name !== HARNESS_APPLICATION))];
+    if (foreign.length)
+      return `another client is connected to ${database} (application_name ${foreign
+        .map((name) => JSON.stringify(name))
+        .join(', ')})`;
+    if (Date.now() > deadline) return `sessions of this harness still use ${database} after ${waitMs} ms`;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
