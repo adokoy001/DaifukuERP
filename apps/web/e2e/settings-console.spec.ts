@@ -3,7 +3,7 @@
 // Dialog, the change history, and 390px. Writes go to the isolated E2E database; every changed setting is put back.
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { api, type Headers } from './operations-helpers.ts';
-import { assertNoOverflow, qualitySession, signInQuality } from './quality-helpers.ts';
+import { assertNoOverflow, failedRead, qualitySession, signInQuality } from './quality-helpers.ts';
 
 interface SettingOut {
   key: string;
@@ -44,12 +44,18 @@ test('settings-console AC-8/AC-14: category tabs keep ?tab= and follow the Arrow
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: '設定', exact: true, level: 1 })).toBeVisible();
   const names = await tablist(page).getByRole('tab').allTextContents();
-  // Only categories that have settings, in the kernel order (company / workforce / integration have none here).
-  expect(names.slice(0, 6)).toEqual(['会計', '消費税', '販売', '購買', '在庫', '契約']);
-  expect(names).toContain('システム');
+  // Only categories that have settings, in the kernel order (workforce / integration have none here); later items
+  // may add the company tab in front, so the first tab is read from the page.
+  const known = ['会社', '会計', '消費税', '販売', '購買', '在庫', '契約', '人事・労務', '業界', '連携', 'システム'];
+  expect(names).toEqual(known.filter((n) => names.includes(n)));
+  expect(names).toEqual(expect.arrayContaining(['会計', '消費税', '販売', '購買', '在庫', '契約', '業界', 'システム']));
   expect(names).not.toContain('人事・労務');
-  // No ?tab=: the first tab is selected and its panel holds that category's cards.
-  await expect(tab(page, '会計')).toHaveAttribute('aria-selected', 'true');
+  const first = names[0] ?? '';
+  const last = names[names.length - 1] ?? '';
+  expect(last).toBe('システム');
+  // No ?tab=: the first tab is selected.
+  await expect(tab(page, first)).toHaveAttribute('aria-selected', 'true');
+  await tab(page, '会計').click();
   await expect(page.getByRole('tabpanel', { name: '会計' })).toContainText('入出金の勘定科目');
   await expect(page.getByRole('tabpanel', { name: '会計' }).getByRole('combobox').first()).toBeEnabled();
   await page.screenshot({ path: test.info().outputPath('settings-accounting-desktop.png') });
@@ -65,7 +71,7 @@ test('settings-console AC-8/AC-14: category tabs keep ?tab= and follow the Arrow
 
   // Roving tabindex: only the selected tab is in the Tab order; arrows move and select (automatic activation).
   await expect(tab(page, '販売')).toHaveAttribute('tabindex', '0');
-  await expect(tab(page, '会計')).toHaveAttribute('tabindex', '-1');
+  await expect(tab(page, first)).toHaveAttribute('tabindex', '-1');
   await tab(page, '販売').focus();
   await page.keyboard.press('ArrowRight');
   await expect(tab(page, '購買')).toBeFocused();
@@ -76,26 +82,26 @@ test('settings-console AC-8/AC-14: category tabs keep ?tab= and follow the Arrow
   await expect(tab(page, '販売')).toBeFocused();
   await expect(page).toHaveURL(/[?&]tab=sales\b/);
   await page.keyboard.press('End');
-  await expect(tab(page, 'システム')).toBeFocused();
-  await expect(tab(page, 'システム')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab(page, last)).toBeFocused();
+  await expect(tab(page, last)).toHaveAttribute('aria-selected', 'true');
   await expect(page).toHaveURL(/[?&]tab=system\b/);
   await page.keyboard.press('ArrowRight'); // wraps to the first
-  await expect(tab(page, '会計')).toBeFocused();
+  await expect(tab(page, first)).toBeFocused();
   await page.keyboard.press('ArrowLeft'); // wraps to the last
-  await expect(tab(page, 'システム')).toBeFocused();
+  await expect(tab(page, last)).toBeFocused();
   await page.keyboard.press('Home');
-  await expect(tab(page, '会計')).toBeFocused();
-  await expect(page).toHaveURL(/[?&]tab=accounting\b/);
+  await expect(tab(page, first)).toBeFocused();
+  await expect(tab(page, first)).toHaveAttribute('aria-selected', 'true');
   // Tab leaves the tab list for the panel (a single tab stop).
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('tabpanel', { name: '会計' })).toBeFocused();
+  await expect(page.getByRole('tabpanel', { name: first })).toBeFocused();
 
   // The URL selects the tab on load; an unknown value falls back to the first tab.
   await page.goto('/settings?tab=inventory');
   await expect(tab(page, '在庫')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel', { name: '在庫' })).toContainText('既定の倉庫コード');
   await page.goto('/settings?tab=nope');
-  await expect(tab(page, '会計')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab(page, first)).toHaveAttribute('aria-selected', 'true');
 });
 
 test('settings-console AC-9/AC-10/AC-11/AC-12: pick a sales posting account, see history, reset to the default', async ({
@@ -210,6 +216,16 @@ test('settings-console AC-9/AC-10: checkboxes, warehouse picker, enum labels and
   await expect(issuer.getByRole('textbox', { name: '住所', exact: true })).toHaveJSProperty('tagName', 'TEXTAREA');
   await expect(issuer.getByRole('textbox', { name: '登録番号', exact: true })).toBeVisible();
   await expect(issuer.getByText('T と数字 13 桁', { exact: false })).toBeVisible();
+
+  // A user who may not read accounts (e.g. only the settings role) types the code instead of picking it.
+  await page.route('**/api/account?*', (route) => route.fulfill(failedRead(403)));
+  await page.reload();
+  const typed = card(page, 'sales.accounts').getByRole('textbox', { name: '売上高', exact: true });
+  await expect(typed).toBeEditable();
+  await expect(
+    card(page, 'sales.accounts').getByText('一覧を読み込めないため', { exact: false }).first(),
+  ).toBeVisible();
+  await page.unroute('**/api/account?*');
 
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'en'));
   await page.reload();
