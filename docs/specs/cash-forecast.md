@@ -1,6 +1,6 @@
 # Spec: cash-forecast（資金繰り表と入出金予定）
 
-- 状態: draft
+- 状態: implemented（2026-10-30。検証の記録は [作業記録](../log/2026-10-30-cash-forecast.md)）
 - モジュール: `modules/banking`（`banking.cash_forecast`、`banking.cash_schedule`、集計の純粋関数、ブラウザ用の入出力 schema は `contract.ts`）、`modules/contract`（契約請求予定の入金見込みを返す関数）、`modules/workforce`（給与の支払予定を返す関数）、`apps/web`（`/finance/cash-forecast`） ／ 依存: 既存の sales・purchase・payment・accounting・partner・tax、banking の依存に contract と workforce を追加、[ui-kit](ui-kit.md)（D1）
 - ADR: 不要（kernel・DSL・port の変更なし、新しい書込経路なし）。この項目に予約された ADR-0036 は使わない。module 間の依存の追加は [商流・銀行・申告準備の構造](../architecture/commerce-finance.md) の責任分担に記録する
 - 作成: 2026-10-30 ／ 作成者: agent（spec writer、`wip/cash-forecast`）。設計の元は [完成度向上の実装計画](../completion-plan.md) §5 E3、完了の定義は同 §7。2026-10-30 に spec critic の指摘を反映（決定事項 14〜27）
