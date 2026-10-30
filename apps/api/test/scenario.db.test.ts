@@ -192,6 +192,7 @@ describe('台本: 個人事業（デザイン事務所）の 2026年10月 (docs/
       'trade',
       'banking',
       'tax_filing',
+      'fixed_assets',
       'l10n_jp',
     ]);
     // 会計年度 2026-01-01〜12-31 through the action, before the seeds: the accounting seed only opens a year when none exists

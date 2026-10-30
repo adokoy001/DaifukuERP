@@ -84,3 +84,17 @@ export function expectedBooleanHistory(before: Awaited<ReturnType<typeof boolean
     credentials: before.credentials.map((row) => ({ ...row, active: row.active === 1 })),
   };
 }
+
+/**
+ * The facts after later migrations, limited to the constraints of relations that existed before them. Migrations after
+ * the one under test may add whole tables (with their own constraints); constraints of existing tables still compare in
+ * full. Added for docs/specs/fixed-assets.md (0018 adds tables), see docs/log/2026-10-30-fixed-assets.md.
+ */
+export function onExistingRelations<T extends { constraints: readonly { relation: string }[] }>(
+  facts: T,
+  before: { constraints: readonly { relation: string }[] },
+): T {
+  const known = new Set(before.constraints.map((c) => c.relation));
+  // A plain array on both sides of the comparison (driver result arrays carry extra properties).
+  return { ...facts, constraints: [...facts.constraints].filter((c) => known.has(c.relation)) };
+}
