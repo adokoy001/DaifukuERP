@@ -80,6 +80,19 @@ describe('printActionsFor (print-templates AC-3: declared in /meta, no web table
     expect(printActionsFor(doc('payment'), { docstatus: 1 }, all)).toEqual([]);
   });
 
+  it('AC-3 opening-balances AC-20: the invoice declaration `when: { openingBalance: false }` hides an opening invoice', () => {
+    // the declaration as sales.render_invoice_html emits it in /meta (round 6 integration)
+    const declared = action('sales.render_invoice_html', {
+      inputSchema: idSchema,
+      print: { ...invoicePrint, when: { openingBalance: false } },
+    });
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1, openingBalance: false }, [declared])).toEqual([
+      declared,
+    ]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1, openingBalance: true }, [declared])).toEqual([]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 2, openingBalance: false }, [declared])).toEqual([]);
+  });
+
   it('AC-3 plain entities (partner) need no docstatus; `when` compares booleans', () => {
     const partner = { name: 'partner', kind: 'entity' as const };
     expect(printActionsFor(partner, { isCustomer: true }, all)).toEqual([statement]);

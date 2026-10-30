@@ -64,3 +64,9 @@
 
 - 統合担当: `docs/STATUS.md`・`PLAN.md`・`docs/completion-plan.md`（C5 を完了へ）・`AI_INDEX.md`（帳票の読む順に spec と `modules/print-layout`）の更新、`pnpm gate:full`。ADR は新規なし（ADR-0009 に追記。ADR-0033 は未使用）。
 - 督促状（計画 E3 の `sales.render_reminder_html`）は同じ規約で `print: { entity: 'sales_invoice', ... }` を宣言すれば記録画面に出る。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 期首請求書（B6、`sales_invoice.openingBalance = true`）の扱い（発見経路: 第6波の統合で `print-button.tsx` の衝突を C5 側で解いたとき、第5波の特例 `isOpeningDocument` が消えたことのレビュー）: 宣言による印刷ボタンが確定済みの期首請求書にも出ていた（サーバは 409 で拒否）ため、`sales.render_invoice_html` の宣言に `when: { openingBalance: false }` を付けた。合計請求書は期首残高日付の期首請求書をその締め期間の請求として並べ、前のシステムで請求済みの額を二重に請求する形になっていたため、抽出条件に `openingBalance: false` を足した。前回繰越の欄は従来どおり未実施（未決事項 4）。支払通知書・領収書は 1 件の入出金の消込明細だけを並べ、期間で請求書を集めないので変えていない（spec D-16）。試験: `modules/sales/test/opening-receivables.db.test.ts` に AC-20 の 2 件（/meta の `when` と期首請求書の値、同じ締め期間の期首請求書と通常の請求書で合計請求書に通常の請求書だけが載ること）、`apps/api/test/print-meta.db.test.ts` の請求書の宣言に `when`、`apps/web/src/lib/print.test.ts` に実際の宣言の形での判定。
+- [実測] DB（`daifuku_test_i6a`）: `opening-receivables.db.test.ts`・`statement.db.test.ts`・`apps/api/test/print-meta.db.test.ts` の 3 ファイル 34 件成功。単体: `apps/web/src/lib/print.test.ts`・`apps/api/test/print-bindings.test.ts`（`when` のキーが entity の項目であること）14 件成功。`pnpm typecheck` 通過、変更ファイルの eslint・prettier 通過。試験が変更を捉えることの確認: 合計請求書の `openingBalance: false` を一時的に消すと合計請求書の試験が期首請求書の番号を含んで失敗し、請求書の宣言の `when` を一時的に消すと /meta の 2 件（opening-receivables と print-meta）が失敗することを見てから元に戻した。
+- [未検証] ブラウザ試験 `opening-balances.spec.ts` の「期首売上請求書の画面に印刷ボタンが無い」（この修正の前はボタンが出るので失敗すると見込まれるが、実行して確かめてはいない）と `pnpm gate:full` は統合担当が実行する（この修正では未実行）。

@@ -81,10 +81,12 @@ describe('print declarations in /meta per role (AC-2, AC-20)', () => {
       'trade.render_order_html',
       'trade.render_quotation_html',
     ]);
+    // opening-balances AC-20: an opening invoice is never issued, so the declaration excludes it.
     expect(actions.get('sales.render_invoice_html')?.print).toEqual({
       entity: 'sales_invoice',
       label: { ja: '請求書を表示', en: 'View invoice' },
       idInput: 'id',
+      when: { openingBalance: false },
     });
     const statement = actions.get('sales.render_statement_html');
     expect(statement?.print).toMatchObject({ entity: 'partner', idInput: 'partnerId', when: { isCustomer: true } });

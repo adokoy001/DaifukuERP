@@ -1,7 +1,8 @@
 // sales.render_statement_html (docs/specs/print-templates.md AC-15, AC-22, D-8, D-12): a 合計請求書 of one customer's
 // submitted sales invoices whose invoice date falls in the closing period ending at `closingDate` (the partner's
-// closingDay; 31 = month end). Everything is read through the caller's Context (row rules, company boundary); amounts
-// are the invoices' stored values added up, never recalculated (AC-7).
+// closingDay; 31 = month end), opening invoices excluded (docs/specs/opening-balances.md AC-20). Everything is read
+// through the caller's Context (row rules, company boundary); amounts are the invoices' stored values added up, never
+// recalculated (AC-7).
 import {
   defineAction,
   DOCSTATUS,
@@ -162,6 +163,9 @@ export async function buildStatementRenderData(
     where: {
       partnerId: partner.id,
       docstatus: DOCSTATUS.submitted,
+      // docs/specs/opening-balances.md AC-20 / D-5: an opening invoice is an internal record of a balance the previous
+      // system already billed, dated the opening date; listing it would bill that amount again.
+      openingBalance: false,
       date: { $gte: period.start, $lte: period.end },
     },
     orderBy: [
@@ -210,8 +214,8 @@ export async function buildStatementRenderData(
 export const renderStatementHtmlAction = defineAction({
   name: 'sales.render_statement_html',
   description: label(
-    '得意先の締め日で区切った期間の確定済み売上請求書をまとめた合計請求書の HTML を描画します（各請求書の保存値の合計。closingDate 省略時は直近の締め日）。レイアウトは差し替え点 sales.statement_html で置き換えられます。',
-    "Render a statement (合計請求書) of a customer's submitted sales invoices in one closing period (sums of the stored invoice values; closingDate defaults to the latest closing date). The layout is replaceable at override point sales.statement_html.",
+    '得意先の締め日で区切った期間の確定済み売上請求書をまとめた合計請求書の HTML を描画します（各請求書の保存値の合計。期首残高の請求書は含めません。closingDate 省略時は直近の締め日）。レイアウトは差し替え点 sales.statement_html で置き換えられます。',
+    "Render a statement (合計請求書) of a customer's submitted sales invoices in one closing period (sums of the stored invoice values; opening balance invoices are not listed; closingDate defaults to the latest closing date). The layout is replaceable at override point sales.statement_html.",
   ),
   input: z.object({ partnerId: z.uuid(), closingDate: z.iso.date().optional() }),
   output: z.object({ html: z.string() }),

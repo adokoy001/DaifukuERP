@@ -147,8 +147,9 @@ export const renderInvoiceHtmlAction = defineAction({
   permission: { entity: SalesInvoice.name, op: 'read' },
   tx: 'none',
   mutates: false,
-  // print-templates AC-3: the record page of a submitted sales invoice offers this as 「請求書を表示」.
-  print: { entity: SalesInvoice.name, label: label('請求書を表示', 'View invoice') },
+  // print-templates AC-3: the record page of a submitted sales invoice offers this as 「請求書を表示」 — except on an
+  // opening invoice (docs/specs/opening-balances.md AC-20: never issued; the handler refuses it as well).
+  print: { entity: SalesInvoice.name, label: label('請求書を表示', 'View invoice'), when: { openingBalance: false } },
   handler: async (ctx, { id }) => {
     const data = await buildInvoiceRenderData(ctx, id);
     const render = registry.override<InvoiceHtmlRenderer>(INVOICE_HTML_OVERRIDE, defaultInvoiceHtml);

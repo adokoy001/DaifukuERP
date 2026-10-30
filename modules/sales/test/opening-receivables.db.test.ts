@@ -1,6 +1,8 @@
 // Postgres tests for docs/specs/opening-balances.md — opening receivables (AC-6, AC-7, AC-15..AC-22, AC-26, AC-27,
-// D-8, D-14, D-16, D-18). Test DB: TEST_DATABASE_URL*.
+// D-8, D-14, D-16, D-18), and how opening invoices stay off the print declarations and statements of
+// docs/specs/print-templates.md (AC-3, AC-15). Test DB: TEST_DATABASE_URL*.
 import {
+  appMeta,
   companies,
   defineWriteCapability,
   newId,
@@ -25,7 +27,8 @@ import {
   openingImportResult,
   type OpeningImportResult,
 } from '@daifuku/mod-accounting';
-import { Partner } from '@daifuku/mod-partner';
+import { closingDateOf, Partner } from '@daifuku/mod-partner';
+import { formatMoney } from '@daifuku/mod-print-layout';
 import { Product, seedUoms } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -256,6 +259,63 @@ describe('opening receivables: invoices, posting, aging', () => {
     const id = (await openingInvoices()).items[0]?.id as string;
     const err = await caught(run({}, (ctx) => runAction(ctx, 'sales.render_invoice_html', { id })));
     expect(err).toMatchObject({ code: 'INVALID_STATE', details: { reason: 'opening_balance' } });
+  });
+
+  it('AC-20 (print-templates AC-3): /meta declares the invoice print only for openingBalance = false, so an opening invoice gets no button', async () => {
+    const print = await run(
+      asRole(['sales']),
+      async (ctx) => appMeta(ctx).actions.find((a) => a.name === 'sales.render_invoice_html')?.print,
+    );
+    expect(print?.when).toEqual({ openingBalance: false });
+    // the record values the web compares `when` with (lib/print.ts printActionsFor): the opening invoice never matches
+    const opening = (await openingInvoices()).items[0];
+    expect(opening?.openingBalance).toBe(true);
+    const values = new Map(Object.entries(opening ?? {}));
+    expect(Object.entries(print?.when ?? {}).every(([field, value]) => values.get(field) === value)).toBe(false);
+  });
+
+  it('AC-20 (print-templates AC-15): the statement of the closing period holding the opening date lists the normal invoice, not the opening invoice', async () => {
+    await run({}, (ctx) =>
+      setSetting(ctx, SALES_ACCOUNTS_KEY, salesAccountsSchema, {
+        receivable: '1300',
+        revenue: '4000',
+        taxPayable: '2200',
+      }),
+    );
+    // closing day 20: the period (2026-03-20, 2026-04-20] holds both the opening date 2026-03-31 and April sales
+    const partnerId = (
+      await run({}, (ctx) =>
+        repo(ctx, Partner).create({ code: 'C020', name: '二十日締め', isCustomer: true, closingDay: 20 }),
+      )
+    ).id;
+    expect(closingDateOf('2026-03-31', 20)).toBe('2026-04-20');
+    expect((await importAr([{ partnerCode: 'C020', amount: '70000', reference: 'OLD-20' }])).committed).toBe(true);
+    const opening = (await openingInvoices(partnerId)).items[0];
+    expect(opening).toMatchObject({ date: '2026-03-31', docstatus: 1, openingBalance: true });
+    const normal = await run({}, async (ctx) => {
+      const created = (await runAction(ctx, 'sales_invoice.create', {
+        partnerId,
+        date: '2026-04-05',
+        lines: { sales_invoice_line: [{ description: '通常の売上', unitPrice: '1000', taxCategory: 'standard' }] },
+      })) as { id: string };
+      await runAction(ctx, 'sales_invoice.submit', { id: created.id });
+      return repo(ctx, SalesInvoice).get(created.id);
+    });
+    expect(normal).toMatchObject({ docstatus: 1, openingBalance: false });
+    const html = await run(
+      asRole(['sales']),
+      async (ctx) =>
+        (
+          (await runAction(ctx, 'sales.render_statement_html', { partnerId, closingDate: '2026-04-20' })) as {
+            html: string;
+          }
+        ).html,
+    );
+    expect(html).toContain(`>${String(normal.number)}<`);
+    expect(html).not.toContain(`>${String(opening?.number)}<`);
+    expect(html).toContain(
+      `当期ご請求額合計（税込）</span> <strong style="margin-left:16px;">${formatMoney(normal.total.toString())}円`,
+    );
   });
 
   it('AC-22: opening invoices take payments and appear in AR aging by due date', async () => {
