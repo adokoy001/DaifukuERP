@@ -54,6 +54,9 @@ async function switchTo(page: Page, company: { code: string; name: string }) {
     .getByRole('button', { name: `${company.name} に切り替える` })
     .click();
   await expect(page.locator('.company-name')).toContainText(company.name);
+  // The switch lands on home, which reads the setup status: let those reads finish so a route installed next cannot
+  // meet (or miss) a request of this page.
+  await page.waitForLoadState('networkidle');
 }
 
 /** A user with one company-wide membership (roles as given) in `companyId`. */
@@ -91,13 +94,15 @@ async function dialogsDuring(page: Page, action: () => Promise<void>, accept = t
   return messages;
 }
 
-/** Opens home and waits until GET /meta/setup-status has answered (so "no card" cannot pass before the card could show). */
+/**
+ * Opens home and waits until its own GET /meta/setup-status has answered (so "no card" cannot pass before the card
+ * could show). The wait starts once the new document has committed: the previous page is unloaded by then, so a read
+ * it still had in flight cannot be taken for home's, and home's script (which sends the read) has not run yet.
+ */
 async function openHomeAfterStatus(page: Page, expected: number) {
-  const read = page.waitForResponse((r) => r.url().endsWith('/meta/setup-status'));
-  await page.goto('/');
-  const response = await read;
+  await page.goto('/', { waitUntil: 'commit' });
+  const response = await page.waitForResponse((r) => r.url().endsWith('/meta/setup-status'));
   expect(response.status()).toBe(expected);
-  await response.finished();
   await expect(page.getByRole('heading', { name: '今日の仕事を、ここから。', level: 1 })).toBeVisible();
   await page.waitForLoadState('networkidle');
 }
