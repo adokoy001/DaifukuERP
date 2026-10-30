@@ -1,6 +1,6 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-30（波0〜3 の大半を実装）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（波0〜3 の大半と B2・B3・D3・A4 を実装）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
 
 ## 0. この文書の使い方
 
@@ -13,9 +13,9 @@
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件 | STATUS、`vitest.config.mts` の unit project |
-| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製） | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件 | `apps/web/e2e`、`playwright.config.ts` |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件 | STATUS、`vitest.config.mts` の unit project |
+| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル | STATUS、`kernel/src/testing.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -44,11 +44,11 @@
 | A1 | 3 段階の回帰テスト（quick / light / full）**済** | 0 | M | なし | [test-tiers](specs/test-tiers.md) | `scripts/gate.mjs`、`package.json`、`ci.yml`、CONTRIBUTING |
 | A2 | E2E の smoke タグとアクセシビリティ自動検査 **済** | 0 | S | A1 | [e2e-a11y](specs/e2e-a11y.md) | `apps/web/e2e` |
 | A3 | DB suite 起動の短縮と light の DB 選択の絞り込み **済** | 0（A1 の計測で前倒し） | M | A1 の計測 | db-test-startup | `kernel/src/testing.ts` |
-| A4 | gate:light の短縮（静的検査と DB の並行、DB の分割） | 0（A3 の結果で追加） | M | A3 | light-tier-speed | `scripts/gate.mjs`、`scripts/gate-select.mjs` |
+| A4 | gate:light の短縮（静的検査と DB の並行、DB の分割）**済** | 0（A3 の結果で追加） | M | A3 | light-tier-speed | `scripts/gate.mjs`、`scripts/gate-select.mjs` |
 | D1 | UI キットとデザイントークン、状態表示の統一 **済** | 0 | M | なし | ui-kit | `apps/web/src/ui/`、`styles.css`、汎用画面 |
 | B1 | 設定定義の拡張と設定画面の再構成 **済** | 1 | M | D1（最小） | settings-console | `kernel/src/registry.ts`、`apps/api/src/routes/settings.ts`、`settings-page.tsx` |
-| B2 | 会社の追加・編集と会社プロフィール | 1 | M | B1 | company-admin | kernel 会社作成、`/admin/companies` |
-| B3 | 導入チェック（ヘルスチェック） | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
+| B2 | 会社の追加・編集と会社プロフィール **済** | 1 | M | B1 | company-admin | kernel 会社作成、`/admin/companies` |
+| B3 | 導入チェック（ヘルスチェック）**済** | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
 | B4 | セットアップウィザード | 1 | M | B1、B2、B3 | setup-wizard | `/setup`、ホームのチェックリスト |
 | B5 | マスタの CSV 取込 **済** | 2 | L | D1 | csv-import | kernel import port、`/api/:entity/import`、`/e/:entity/import` |
 | B6 | 期首残高の取込 | 2 | M | B5 | opening-balances | accounting / sales / purchase / inventory の action |
@@ -58,7 +58,7 @@
 | C3 | やること受信箱 **済** | 3 | M | D1 | inbox | `*.todo` action 規約、`/inbox`、ホーム |
 | C4 | 月次締めガイド **済** | 3 | M | C3 の規約 | close-guide | `accounting.close_readiness`、`/finance/close` |
 | D2 | コマンドパレット・最近の記録・お気に入り・ヘルプ導線 **済** | 3 | M | D1 | navigation-assist | `lib/navigation.ts`、sidebar、ScreenTrail |
-| D3 | フォームのセクション・エラー要約・ショートカット・モバイル操作バー | 3 | M | D1 | form-ergonomics | DSL `views.form`、`record-form.tsx`、`line-grid.tsx` |
+| D3 | フォームのセクション・エラー要約・ショートカット・モバイル操作バー **済** | 3 | M | D1 | form-ergonomics | DSL `views.form`、`record-form.tsx`、`line-grid.tsx` |
 | C5 | 帳票の共通化と拡充 | 4 | L | B2 | print-templates | `render_*_html` 規約、各 module |
 | C6 | 役割別ホーム | 4 | S | C3 | role-home | `home-page.tsx` |
 | E4 | 証憑の横断検索（電帳法の検索要件） | 4 | M | C1 | evidence-search | `/finance/evidence` |
@@ -117,6 +117,8 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 ### A4. gate:light の短縮
 
+実装済み（2026-10-30 統合）。light は静的検査の lane と DB の lane を並行に走らせ、DB suite を `<試験DB>` と `<試験DB>_shard_2` に分ける（`--serial` か `GATE_DB_SHARDS=1` で従来の順序）。同じ時間帯の実測で banking 761→328 秒、sales 813→462 秒、kernel 1,260→655 秒。sales は負荷平均 9〜11 で目標 6 分に届かない。選択する suite の集合と full は変えていない。詳細と設計からの変更は [spec](specs/light-tier-speed.md) と [記録](log/2026-10-30-light-tier-speed.md) を正とする。
+
 A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 分、kernel 変更で約 15 分。DB が大半）。選択する suite の集合は変えずに、(1) 静的検査・単体と DB の並行実行、(2) DB suite を複数の試験 DB に分けて並行実行（各 DB 内は `fileParallelism: false` のまま）、(3) import の依存から影響が無いと証明できる suite だけの絞り込み、を計測して選ぶ。中断時の子プロセス停止、`.runtime/gate` の報告、full の対象範囲は変えない。spec は `docs/specs/light-tier-speed.md`（実装時に作成）。
 
 ### D1. UI キットとデザイントークン、状態表示の統一
@@ -155,6 +157,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 
 ### B2. 会社の追加・編集と会社プロフィール
 
+実装済み（2026-10-30 統合）。kernel の `createCompany`（app role の RLS で挿入でき owner 接続は使わない。会社行・作成者の admin 所属・監査・全 module の seed を 1 トランザクションで行う）、設定 `company.profile`、`sales.issuer` 未設定時の発行者の組み立て、`/admin/companies`（[ADR-0029](adr/0029-company-creation.md)）。作成後は自動で切り替えず切替ボタンを出す。通貨は当面 JPY のみ。詳細と設計からの変更は [spec](specs/company-admin.md) と [記録](log/2026-10-30-company-admin.md) を正とする。
+
 設計:
 
 - kernel に `createCompany(ctx, { code, name, country, currency })` を追加する。テナント管理者のみ。同じトランザクションで、会社行の挿入、作成者の `admin` 所属、全 module の `seed` を `systemParams(tenantId, companyId)` で実行（seed は冪等で、setup と `db:reset` が同じ経路を使う）、監査を行う。`companies` への挿入が app role の RLS で許可されるかを先に確認し、許可されないなら kernel の owner 接続を使う経路を setup と共有する（実装時に確認し、結果を spec に書く）。
@@ -166,6 +170,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 対象外: 会社の削除・無効化、テナントの作成、会社間のデータ移動。
 
 ### B3. 導入チェック（ヘルスチェック）
+
+実装済み（2026-10-30 統合）。kernel の `registry.registerHealthCheck` port（呼出し元の Context で savepoint 内に実行）、`GET /meta/health`、`/admin/health`（[ADR-0027](adr/0027-setting-presentation.md) の 7 節）。項目 id（`accounting.fiscal_period`、`tax.standard_rate`、`company.profile`、`sales.issuer`、`inventory.stock_settings`、`system.*`）は B4 の完了判定で使うため固定する。バックアップ最終時刻は対象外にした。詳細と設計からの変更は [spec](specs/setup-health.md) と [記録](log/2026-10-30-setup-health.md) を正とする。
 
 設計:
 
@@ -272,6 +278,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 検証: unit（保存境界）、ブラウザ試験（パレットで画面を開く、390px）。
 
 ### D3. フォームのセクション・エラー要約・ショートカット・モバイル操作バー
+
+実装済み（2026-10-30 統合）。`views.form` のラベル付きグループ（[ADR-0002](adr/0002-declarative-entity-dsl.md) の追補。取引先・売上/仕入請求書・支払・契約に適用）、エラー要約と焦点移動、`Ctrl/⌘+S`・`Ctrl/⌘+Enter`、明細グリッドのキー操作、390px の下部操作バー、`sessionStorage` への入力退避（制限項目は保存しない）、一覧からの前後移動。狭い画面はタブにし、行削除のショートカットは置かない。詳細と設計からの変更は [spec](specs/form-ergonomics.md) と [記録](log/2026-10-30-form-ergonomics.md) を正とする。
 
 - DSL: `views.form` の各グループに `{ label: Label, fields: string[] }` を許し、`/meta` が出す。既存の `string[][]` は互換で残す。
 - 画面: グループを `FormSection` で描画し、グループが 4 以上で幅が狭いときはタブ。保存失敗時はフォーム上部に `role="alert"` の要約（項目名のリンク付き）を出し、最初の不正項目へ焦点を移す。必須マークと `description` を補助文として表示。
