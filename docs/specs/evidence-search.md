@@ -1,6 +1,6 @@
 # Spec: evidence-search（証憑の横断検索。電子帳簿保存法の検索要件）
 
-- 状態: draft
+- 状態: implemented（2026-10-30。AC-6 の証憑の行の可視性は利用者の確認待ち＝未決事項 1。確認までは既知の差として扱う）
 - モジュール: `modules/attachments`（読取 action `attachment.evidence_search` / `attachment.history` を追加）、`apps/web`（`/finance/evidence`） ／ 依存: [attachments](attachments.md)（既存の entity・ダウンロード経路・差替）、partner、[ui-kit](ui-kit.md)（D1）、[list-workbench](list-workbench.md)（C1。URL への条件の保持・選択の決まり・CSV 出力）
 - ADR: 不要（module の読取 action と Web 画面だけ。kernel・DSL・kernel port・migration・依存パッケージを変更しない）。従う判断は ADR-0007（権限）、ADR-0013（storage port）、ADR-0018（会社・拠点の境界、CSV の export 再検証）
 - 作成: 2026-10-30 ／ 作成者: agent（spec 担当、ブランチ `wip/evidence-search`）。設計の元は [完成度向上の実装計画](../completion-plan.md) E4
@@ -158,3 +158,11 @@
 5. B3 の導入チェックに「検索の 3 項目が未入力の証憑の件数」を足すか（**B3 統合後に足す候補**。この画面の「未入力のみ」で同じ対象を開ける）。
 6. 既存の attachment の JSON（upload の応答、REST、`attachment.search`）に `storageKey` が含まれる。`outputHidden` にするか（**E4 の範囲外。改善候補として別に扱う**。既存の試験が出力を前提にしているため、変えるなら試験の意図を確かめて直す）。
 7. 取引先を自由記述でも持つか（**E4 では持たない**）。partner に登録しない相手（タクシー、コンビニなど）の領収書を取引先で検索できるようにするには、attachment に自由記述の取引先の欄を足す entity の変更と migration が要る。それまでは取引先を partner に登録して入力する（「データ・業務ルール」）。
+
+## 実装での変更と補足（2026-10-30、実装担当）
+
+- 画面側の DTO の型（`EvidenceItem`、`HistoryItem`、`LinkedSummary`）は `apps/web/src/api/types.ts` ではなく `apps/web/src/lib/evidence-search.ts` に置いた（純粋関数と同じ場所で使い、他の画面は使わないため）。module 側は `Attachment.schemas.json.omit({ storageKey: true })` の推論が開いた記録型になるので、足した項目（`linked` など）を TypeScript の型で明示した（schema はそのまま entity から導く）。
+- URL の金額: TanStack Router の既定の直列化は、数値に見える文字列を JSON の文字列として引用符付きで書く（`?amountFrom=%2210000%22`）。読み戻すと同じ文字列になり、JS の数値にはならない。手で `?amountFrom=1000` と書いた URL は数値として渡るので、`parseEvidenceSearch` が安全な整数か小数 6 桁以内のときだけ文字列に戻し、それ以外は不正な値として無視・表示する。
+- `api/client.ts` の `download` に任意の `AbortSignal` を足した（「中止」のため）。1 件のダウンロードの既存の呼び出しは変えていない。
+- round 4 の B3（導入チェック）との接続点は、`modules/attachments/src/services/search.ts` の `INCOMPLETE_DOMAIN` に HOOK のコメントで残した（未決事項 5）。
+- 検証の結果と所要時間は [作業記録](../log/2026-10-30-evidence-search.md) を正とする。

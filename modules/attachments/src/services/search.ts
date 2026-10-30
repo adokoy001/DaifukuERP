@@ -21,7 +21,12 @@ export interface SearchCriteria {
   incomplete?: boolean | undefined;
 }
 
-/** Rows that cannot be found by one of the three 電帳法 search keys because it is empty. */
+/**
+ * Rows that cannot be found by one of the three 電帳法 search keys because it is empty.
+ * HOOK (round 4 B3 setup health, not merged here): `/meta/health` can count these with
+ * `repo(ctx, Attachment).count(INCOMPLETE_DOMAIN)` and link to `/finance/evidence?incomplete=1`
+ * (docs/specs/evidence-search.md open question 5).
+ */
 export const INCOMPLETE_DOMAIN: Domain = { $or: [{ txnDate: null }, { amount: null }, { partnerId: null }] };
 
 function range(field: string, from: string | undefined, to: string | undefined): Domain[] {

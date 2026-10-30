@@ -23,6 +23,7 @@ import {
   checkDraft,
   criteriaFromSearch,
   criteriaKey,
+  EMPTY_CRITERIA,
   EVIDENCE_PAGE_SIZE,
   EVIDENCE_SEARCH_ACTION,
   FIELD_LABELS,
@@ -447,6 +448,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
   };
   const clear = () => {
     setErrors({});
+    setDraftState(EMPTY_CRITERIA); // also when the URL already has no criteria (only the draft was edited)
     void navigate({ to: '/finance/evidence', search: {} });
   };
   const goPage = (next: number) =>
