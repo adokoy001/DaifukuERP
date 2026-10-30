@@ -43,6 +43,24 @@ export { generalLedgerAction, GENERAL_LEDGER_COLUMNS } from './actions/general-l
 export { taxPeriodSummaryAction, TAX_PERIOD_SUMMARY_COLUMNS } from './actions/tax-period-summary.ts';
 export { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts';
 export {
+  closeReadiness,
+  closeReadinessAction,
+  closeReadinessItem,
+  closeReadinessOutput,
+  type CloseReadiness,
+  type CloseReadinessItem,
+} from './actions/close-readiness.ts';
+export {
+  CLOSE_DATE_FIELDS,
+  blockingCount,
+  closeDateField,
+  closeReady,
+  defaultClosePeriod,
+  isBlockingDraft,
+  previousPeriod,
+  type ClosePeriodLike,
+} from './services/close.ts';
+export {
   lineInput,
   entryWithLinesJson,
   createAndSubmitEntry,

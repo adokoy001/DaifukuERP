@@ -199,6 +199,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/finance/close',
+    workspace: 'finance',
+    module: 'accounting',
+    action: 'accounting.close_readiness',
+    label: { ja: '月次締め', en: 'Month-end close' },
+    description: {
+      ja: '期間内の下書き・未照合を件数で確かめ、関連レポートを見てから会計期間を締めます。',
+      en: 'Check drafts and unmatched items in a period, review the reports, then close it.',
+    },
+  },
+  {
     href: '/finance/filing',
     workspace: 'finance',
     module: 'tax_filing',

@@ -3,6 +3,7 @@
 import { defineModule, label } from '@daifuku/kernel';
 import { PartnerModule } from '@daifuku/mod-partner';
 import { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts';
+import { closeReadinessAction } from './actions/close-readiness.ts';
 import { generalLedgerAction } from './actions/general-ledger.ts';
 import { openFiscalYearAction } from './actions/open-fiscal-year.ts';
 import { postFromSourceAction } from './actions/post-from-source.ts';
@@ -34,6 +35,7 @@ export const AccountingModule = defineModule({
     taxPeriodSummaryAction,
     closePeriodAction,
     reopenPeriodAction,
+    closeReadinessAction,
   ],
   hooks: () => {
     registerValidateEntryHook();

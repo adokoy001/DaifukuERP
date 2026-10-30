@@ -126,6 +126,22 @@ export function reportInitialValues(fields: readonly SchemaField[], now = new Da
   return defaults;
 }
 
+/**
+ * Period dates handed over in the URL (`/r/<action>?from=…&to=…`, close-guide AC-8): only date fields of the period
+ * kind, only real YYYY-MM-DD values, so a link can preset the period but never invent identifiers or other inputs.
+ */
+export function reportSearchValues(
+  fields: readonly SchemaField[],
+  search: Record<string, unknown>,
+): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of fields) {
+    const value = search[field.name];
+    if (periodField(field) === 'date' && validDate(value)) values[field.name] = value;
+  }
+  return values;
+}
+
 export function reportDateErrors(
   input: Record<string, unknown>,
   fields: readonly SchemaField[],

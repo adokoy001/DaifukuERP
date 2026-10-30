@@ -1,6 +1,6 @@
 // /r/:action — table report: conditions, run, result browsing and export. ui-kit: PageHeader, kit buttons, Badge and
 // EmptyState; the dedicated operations.css classes keep the current look.
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useParams, useRouterState } from '@tanstack/react-router';
 import { useMemo, useState, type FormEvent } from 'react';
 import { isApiError } from '../api/client.ts';
 import { useMeta } from '../api/queries.ts';
@@ -21,6 +21,7 @@ import {
   reportPeriodLabel,
   reportPeriodOptions,
   reportPeriodValues,
+  reportSearchValues,
   reportTitle,
 } from '../lib/report.ts';
 import { refResolverFrom, schemaFields } from '../lib/schema.ts';
@@ -67,7 +68,13 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
     () => reportInputFields(schemaFields(action.inputSchema, refResolverFrom(meta.entities, action.module))),
     [action.inputSchema, action.module, meta.entities],
   );
-  const initialValues = useMemo(() => reportInitialValues(fields), [fields]);
+  // close-guide AC-8: links may preset the period (`?from=&to=` or `?asOf=`); the page still waits for 実行.
+  const search = useRouterState({ select: (state) => state.location.search as Record<string, unknown> });
+  const [linked] = useState(() => search);
+  const initialValues = useMemo(
+    () => ({ ...reportInitialValues(fields), ...reportSearchValues(fields, linked) }),
+    [fields, linked],
+  );
   const periodOptions = useMemo(() => reportPeriodOptions(fields), [fields]);
   const form = useSchemaForm(fields, {
     current: initialValues,

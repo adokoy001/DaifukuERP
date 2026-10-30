@@ -35,6 +35,7 @@ import { canRetainData } from './lib/read-recovery.ts';
 import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
 import { parseDirectorySearch } from './lib/menu-search.ts';
+import { parseCloseSearch } from './lib/close-guide.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
 
@@ -288,6 +289,12 @@ const bankingRoute = createRoute({
   path: '/finance/banking',
   component: lazyRouteComponent(() => import('./pages/banking-page.tsx'), 'BankingPage'),
 });
+const closeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/close',
+  validateSearch: parseCloseSearch,
+  component: lazyRouteComponent(() => import('./pages/close-page.tsx'), 'ClosePage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -353,6 +360,7 @@ const routeTree = rootRoute.addChildren([
     commerceFranchiseRoute,
     tradeRoute,
     bankingRoute,
+    closeRoute,
     taxFilingRoute,
   ]),
 ]);
