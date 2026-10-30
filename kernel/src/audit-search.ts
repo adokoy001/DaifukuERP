@@ -52,6 +52,10 @@ export const AUDIT_SUBJECTS: readonly AuditSubjectDef[] = [
   { name: 'relay', label: label('店舗端末の接続', 'Site device connection'), scope: 'company' },
   { name: 'access_user', label: label('利用者', 'User'), scope: 'tenant' },
   { name: 'identity', label: label('本人確認・ログイン', 'Identity and sign-in'), scope: 'tenant' },
+  // Round-7 integration: API keys (machine-credentials), webhook signing secrets and event deliveries (event-delivery).
+  { name: 'machine_credential', label: label('API キー', 'API key'), scope: 'company' },
+  { name: 'webhook_secret', label: label('Webhook の署名鍵', 'Webhook signing secret'), scope: 'company' },
+  { name: 'event_delivery', label: label('イベント配送', 'Event delivery'), scope: 'company' },
 ];
 
 /** Labels of the operations kernel and modules write (the generic OPS first). Other names are shown as stored. */
@@ -81,6 +85,10 @@ export const AUDIT_OP_LABELS: Readonly<Record<string, Label>> = {
   paired: label('端末の接続', 'Device paired'),
   rotated: label('端末の鍵の更新', 'Device key rotated'),
   revoked: label('端末の接続の取消', 'Device connection revoked'),
+  issue: label('発行', 'Issued'),
+  revoke: label('失効', 'Revoked'),
+  use_denied: label('利用の拒否', 'Use denied'),
+  retry: label('再送', 'Retry'),
 };
 
 const localDate = z.string().superRefine((value, issue) => {

@@ -72,3 +72,8 @@
 ## 次のセッションへ
 
 - 統合時: F2・F1 の監査の対象・操作を `AUDIT_SUBJECTS`・`AUDIT_OP_LABELS` に足す（走査の試験が失敗して知らせる）。fail closed にしたので、足さない対象の行は検索に出ない。migration の番号が衝突したら後の branch で `pnpm db:generate audit_search_indexes` を作り直す。`a11y.spec.ts` の画面一覧に 2 画面を足すか（この spec の中で axe を実行済み）。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 第7波の統合で、API キー（F2）・Webhook の署名鍵とイベント配送（F1）の監査が加わり、AC-17 の走査試験が予定どおり失敗した。`AUDIT_SUBJECTS` に `machine_credential`・`webhook_secret`・`event_delivery`（いずれも会社範囲）を、`AUDIT_OP_LABELS` に `issue`・`revoke`・`use_denied`・`retry` を足した。
+- F2 は監査の対象名を定数 `ENTITY = 'machine_credential'` で渡すため、文字列リテラルだけを見る走査では漏れ、閉じた許可リストにより API キーの監査が検索に出ないところだった。走査試験を、同じファイルの文字列定数（`const X = '...'`）も解決するよう強め、`machine_credential` が見つかることも検査に足した（`AUDIT_SUBJECTS` から外すと失敗することを確認）。

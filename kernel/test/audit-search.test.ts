@@ -281,6 +281,13 @@ function callArgs(text: string, fn: string): string[][] {
   return out;
 }
 const literal = (arg: string | undefined) => /^'([a-z][a-z0-9_]*)'$/.exec(arg ?? '')?.[1];
+/** Module-level string constants of a file (`const ENTITY = 'machine_credential';`), so a subject passed by name counts. */
+const stringConstants = (text: string) =>
+  new Map(
+    [...text.matchAll(/^(?:export )?const ([A-Za-z_][A-Za-z0-9_]*) = '([a-z][a-z0-9_]*)';$/gm)].map(
+      (m) => [m[1] as string, m[2] as string] as const,
+    ),
+  );
 /** Operation literals of an argument: the whole argument or the branches of a conditional (`x ? 'a' : 'b'`). */
 const opLiterals = (arg: string | undefined) =>
   [...(arg ?? '').matchAll(/(?:^|\?|:)\s*'([a-z][a-z0-9_]*)'/g)].map((m) => m[1] as string);
@@ -297,13 +304,15 @@ describe('audit subjects and operations (access-insight AC-17)', () => {
   const ops: { op: string; where: string }[] = [];
   for (const { path, text } of texts) {
     const where = path.slice(root.length);
+    const constants = stringConstants(text);
+    const subjectOf = (arg: string | undefined) => literal(arg) ?? constants.get(arg ?? '');
     for (const args of callArgs(text, 'writeAccessAudit')) {
-      const subject = literal(args[2]);
+      const subject = subjectOf(args[2]);
       if (subject) subjects.push({ subject, scope: args[1] === 'null' ? 'tenant' : 'company', where });
       for (const op of opLiterals(args[4])) ops.push({ op, where });
     }
     for (const args of callArgs(text, 'writeAudit')) {
-      const subject = literal(args[1]);
+      const subject = subjectOf(args[1]);
       if (subject && !entityNames.has(subject)) subjects.push({ subject, scope: 'company', where });
       for (const op of opLiterals(args[3])) ops.push({ op, where });
     }
@@ -314,8 +323,9 @@ describe('audit subjects and operations (access-insight AC-17)', () => {
     expect(ops.map((o) => o.op)).toEqual(
       expect.arrayContaining(['supersede', 'pairing_issued', 'password_change', 'mfa_recovery_regenerated', 'export']),
     );
+    // machine_credential is passed through a module constant (ENTITY), which the scan resolves.
     expect(subjects.map((s) => s.subject)).toEqual(
-      expect.arrayContaining(['company_settings', 'relay', 'access_user']),
+      expect.arrayContaining(['company_settings', 'relay', 'access_user', 'machine_credential']),
     );
   });
 
