@@ -16,6 +16,7 @@ import { planDaysAction, recordDayStatusAction } from './actions/planning.ts';
 import { operationsSnapshotAction, operationsSourcesAction } from './actions/operations.ts';
 import { settlementEvidenceAction } from './actions/settlement-evidence.ts';
 import { dailySummaryAction } from './actions/daily-summary.ts';
+import { todoAction } from './actions/todo.ts';
 import { RestaurantStore } from './entities/store.ts';
 import { RestaurantRecipe } from './entities/recipe.ts';
 import { RecipeIngredient } from './entities/recipe-ingredient.ts';
@@ -64,6 +65,7 @@ export const RestaurantChainPack = definePack({
     finalizeClosingAction,
     planDaysAction,
     recordDayStatusAction,
+    todoAction,
   ],
   hooks: () => {
     for (const name of ['product', 'uom', 'tax_rate']) registerStoreAccess(name, { kind: 'sharedRead' });

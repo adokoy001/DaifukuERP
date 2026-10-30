@@ -46,6 +46,7 @@ import { saveShiftProfileAction, saveShiftAvailabilityAction } from './actions/s
 import { shiftBoardAction, myShiftsAction } from './actions/shift-portals.ts';
 import { saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction } from './actions/shift-plans.ts';
 import { registerMasterGuards } from './master-guards.ts';
+import { todoAction } from './actions/todo.ts';
 
 export const WorkforceModule = defineModule({
   name: 'workforce',
@@ -101,6 +102,7 @@ export const WorkforceModule = defineModule({
     myPortalAction,
     managementPortalAction,
     initializePolicyAction,
+    todoAction,
   ],
   hooks: () => {
     registerWorkflowGuards();

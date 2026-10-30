@@ -1,4 +1,4 @@
-import { defineAction, label } from '@daifuku/kernel';
+import { defineAction, label, todoInput, todoResult } from '@daifuku/kernel';
 import { z } from 'zod';
 import * as wire from './contract.ts';
 import { bankBoard } from './board.ts';
@@ -7,6 +7,7 @@ import { saveAccount, savePayee } from './masters.ts';
 import { candidates } from './matching.ts';
 import { reconcile, undoReconciliation } from './reconcile.ts';
 import { prepareTransfer, transferDetail, exportTransfer, cancelTransfer } from './transfers.ts';
+import { bankTodo } from './todo.ts';
 const permission = { roles: ['accounting'] };
 export const board = defineAction({
   name: 'banking.board',
@@ -116,4 +117,14 @@ export const cancel = defineAction({
   output: wire.bankTransferView,
   permission,
   handler: cancelTransfer,
+});
+export const todo = defineAction({
+  name: 'banking.todo',
+  description: label('受信箱: 照合待ちの銀行明細の件数', 'Inbox: bank statement lines awaiting reconciliation'),
+  input: todoInput,
+  output: todoResult,
+  permission,
+  tx: 'none',
+  mutates: false,
+  handler: bankTodo,
 });

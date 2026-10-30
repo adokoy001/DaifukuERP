@@ -6,6 +6,7 @@ import { PartnerModule } from '@daifuku/mod-partner';
 import { PurchaseModule } from '@daifuku/mod-purchase';
 import { SalesModule } from '@daifuku/mod-sales';
 import { outstandingAction } from './actions/outstanding.ts';
+import { todoAction } from './actions/todo.ts';
 import { PaymentAllocation } from './entities/payment-allocation.ts';
 import { Payment } from './entities/payment.ts';
 import { registerCancelHook } from './hooks/cancel.ts';
@@ -19,7 +20,7 @@ export const PaymentModule = defineModule({
   label: label('入出金', 'Payments'),
   depends: [PartnerModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name],
   entities: [Payment, PaymentAllocation],
-  actions: [outstandingAction],
+  actions: [outstandingAction, todoAction],
   hooks: () => {
     registerValidateHooks();
     registerLineHooks();

@@ -216,6 +216,18 @@ export {
   type ColumnKind,
 } from './table-result.ts';
 export {
+  todoInput,
+  todoItem,
+  todoItems,
+  todoResult,
+  TODO_HREF,
+  TODO_SEVERITIES,
+  type TodoCandidate,
+  type TodoItem,
+  type TodoResult,
+  type TodoSeverity,
+} from './todo-result.ts';
+export {
   defineWriteCapability,
   withWriteCapability,
   hasWriteCapability,
