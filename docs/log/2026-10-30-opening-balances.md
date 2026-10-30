@@ -88,3 +88,10 @@
 ## 次のセッションへ
 
 - 統合担当: ADR 番号 0030、migration 0018、`apps/web/src/router.tsx`・`navigation-data.ts`・`help.ts`・`token-usage.test.ts` の追加の取り込み。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 第4波のフォームのラベル付きの節（form-ergonomics）と重なったため、`openingBalance` を売上請求書は「備考・仕訳」、仕入請求書は「備考」の節に入れた。
+- 定期仕訳（E2）も同じ番号 0018 の migration を作っていたため、こちらを 0018 のまま残し、定期仕訳を 0019 に作り直した（SQL は同一）。会計の設定は定期仕訳の自動確定と同じ `settings.ts` にまとめた。
+- 検証で残った指摘に従い、`inventory.import_opening_stock` の説明（MCP・API に出る）に品目・倉庫を読める役割も要ることを足した。
+- `doc-actions.tsx` は第4波の `useImperativeHandle` を早期の return より前に置いた（hook の呼び出し順を変えない）。

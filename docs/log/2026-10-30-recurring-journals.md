@@ -95,3 +95,9 @@ spec・安全性・UX の 3 観点のレビュー指摘 21 件（重複 2 件を
 - [実測] `node scripts/gate.mjs --tier light --base b63a833`（修正前の最後の commit と比べる。`daifuku_test_e2rj`、共有コンテナで負荷 5〜16、1,560 秒）: format・docs・assurance・typecheck（root / API / Web）・lint（警告 5 件はすべて既存の別画面の関数長）・unit 157 files / 1,584 tests は成功。DB は 90/134 files 中 1 件（`apps/api/test/boolean-migration.db.test.ts` の 1 試験）が `out of shared memory`（共有サーバーの lock 表不足）で失敗し、deploy は未実行になった。その suite を単独で再実行して 9 件成功、`pnpm test:deploy` を単独で実行して 17 件成功。
 - [実測] 関係するブラウザ試験（slot 32、chromium、`--no-deps`）: `recurring-journals`・`smoke`（監査ログの表）・`a11y`・`ui-kit`・`foundation-ui`・`close-guide` の 53 件成功（3.6 分）。
 - [未検証] `pnpm gate:full` とブラウザの全件（統合担当）。予定の「止まる」「定期仕訳の内容に誤り」の行のヒントと技術情報のブラウザでの表示（Web unit で文言の選択だけを確認）。監査ログの枠が Tab で止まることの実際のキーボード操作（axe の結果で確認）。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 期首残高（B6）と migration の番号が重なったため、`0018_recurring_journals.sql` を消して `pnpm db:schema && pnpm db:generate` で `0019_recurring_journals.sql` に作り直した。生成した SQL は元のものと 1 文字も違わないことを diff で確かめた。spec の決定 14 (4) と本記録の移行名を直した。
+- 会計の設定は期首残高の `accounting.opening_balances` と同じ `settings.ts` の `ACCOUNTING_SETTING_DEFS` にまとめ、index の重複した export を除いた。
+- 第4波のフォームのラベル付きの節が入ったため、`recurring_journal` の `views.form` を「基本・周期・按分・生成の状況」の 4 節にした（作業記録の D3 の hook）。

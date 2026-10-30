@@ -57,11 +57,11 @@
 
 `setup inspect` 相当の点検を管理者画面に出す。例: 今日を含む会計期間が開いているか、税率の有効期間が今日を覆うか、発行者情報が未設定か、SMTP/OIDC の設定状態、未適用の移行、バックアップの最終日時、添付保存先の空き。警告は原因と直す画面へのリンクを持つ。
 
-### 1-5. マスタ・期首残高の CSV 取込（マスタは済: 2026-10-30、[csv-import](specs/csv-import.md)。期首残高は未実施）
+### 1-5. マスタ・期首残高の CSV 取込（済: 2026-10-30、マスタは [csv-import](specs/csv-import.md)、期首残高は [opening-balances](specs/opening-balances.md)）
 
 取引先・品目・勘定科目・倉庫・従業員と、期首残高（開始仕訳、売掛・買掛の未消込残高、在庫の初期数量）を CSV で取り込む。列定義と検証は DSL（必須・型・pattern・ref）から導出し、「事前確認（dry run）→ 行ごとの結果 → 実行」の 3 段にする。取込は `Repository` を通し、金額は `Decimal` のまま扱い、既存行の上書き可否を明示する。銀行明細取込の事前確認 UI が流用できる。他システムからの移行で最初に必要になる機能であり、15 業界のサンプルより先に実データで試せるようになる。
 
-### 1-6. pack の雛形生成と導入手順の自己完結
+### 1-6. pack の雛形生成と導入手順の自己完結（雛形は済: 2026-10-30、[pack-scaffold](specs/pack-scaffold.md)。第三者完走の記録は未実施）
 
 STATUS が述べるとおり、第三者が手順だけで新規 pack を完走した実績はまだない。`pnpm pack:new <name>` で `packs/example` を基に package.json・tsconfig・entity・action・seed・test の雛形を生成し、[拡張手順](architecture/extension-guide.md) の引継ぎ記録の条件を満たしやすくする。
 
@@ -96,7 +96,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 各 module が「自分宛ての未処理」を返す action（例: `*.todo`）を公開し、ホームと専用画面で集約する。対象は、承認待ちの勤怠訂正・有給・経費、店舗日次報告の差戻し/承認、シフト希望の未提出、期限超過の請求、未消込入金、照合待ちの銀行明細、結果不明の機器ジョブ、確定待ちの給与。件数と「開く」だけで始め、通知は後段（4-5）に回す。権限は既存の read 権限で評価し、受信箱が新しい閲覧経路にならないようにする。
 
-### 2-4. 役割別ホーム
+### 2-4. 役割別ホーム（済: 2026-10-30、[role-home](specs/role-home.md)）
 
 経理（売掛・買掛・資金残高・今月の締め状況）、店長（今日の売上・勤怠・シフト・未提出）、従業員（`/me` への導線）で初期表示を変える。既存の [analytics データセット](../apps/api/src/analytics/catalog.ts) と operations snapshot を再利用し、新しい集計は作らない。
 
@@ -157,11 +157,11 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 領域 | 現状 | 候補 | 使える足場 |
 | --- | --- | --- | --- |
 | 固定資産 | 資産台帳・減価償却なし | 資産台帳、定額/定率、月割、除却・売却、償却仕訳の自動生成、償却資産申告の準備資料 | 期間付き制度データの扱い（ADR-0011/0024）、`post_from_source` |
-| 定期仕訳 | 契約請求の予定はあるが、仕訳側の定期仕訳・按分なし | 家賃・減価償却・前払費用の按分を期日に下書き生成し、確認して確定 | `contract.schedule` の考え方 |
+| 定期仕訳（済: 2026-10-30、[recurring-journals](specs/recurring-journals.md)） | 契約請求の予定はあるが、仕訳側の定期仕訳・按分なし | 家賃・減価償却・前払費用の按分を期日に下書き生成し、確認して確定 | `contract.schedule` の考え方 |
 | 予算・部門 | 予算なし。部門などの分析軸は pack の ext キーに依存 | 部門・プロジェクトの共通軸、科目×期間×部門の予算、予実レポート | [postingDimensions](../modules/accounting/src/dimensions.ts) |
 | 資金繰り・支払予定 | 年齢表と未消込残高はある | 入金予定・支払予定（契約請求、給与、振込バッチ、支払サイト）を統合した資金繰り表、督促状 | `sales.ar_aging` / `purchase.ap_aging`、銀行振込予約 |
 | 経費精算の一般化 | 従業員経費と領収書はある | 法人カード・仮払・立替の精算、支払と仕訳までの一貫処理 | workforce expense、payment |
-| 証憑（電帳法）の横断検索 | `attachment` に取引日・金額・取引先の列と索引がある | 取引日範囲×金額範囲×取引先の複合検索、差替履歴の表示、一括ダウンロード、伝票との相互リンク | [attachment](../modules/attachments/src/entities/attachment.ts)、範囲検索（quality-foundation） |
+| 証憑（電帳法）の横断検索（実装済み、行の読取規則は判断待ち: [evidence-search](specs/evidence-search.md)） | `attachment` に取引日・金額・取引先の列と索引がある | 取引日範囲×金額範囲×取引先の複合検索、差替履歴の表示、一括ダウンロード、伝票との相互リンク | [attachment](../modules/attachments/src/entities/attachment.ts)、範囲検索（quality-foundation） |
 | インボイス制度 | 経過措置の控除率は実装済み（`transitional-credit.ts`）。登録番号の実在照合なし | 公表サイト Web-API/全件データとの照合（任意・オフライン可）、適格返還請求書 | [日本の制度事実](domain/japan-tax.md) |
 | デジタルインボイス | JP PINT/Peppol なし | 認定プロバイダー向け JP PINT 出力（アクセスポイント運用は対象外） | 調査ノート B5 |
 | 在庫 | 移動平均、固定単位、ロットなし | ロット/期限、単位換算、FIFO 評価の選択 | [在庫 domain](domain/inventory.md) |
@@ -227,4 +227,9 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 会社管理 | 作成時に業界テンプレートを選ばせるか（現状は作成後にテンプレート画面、B4 で案内）。新会社にもサンプルの取引先・品目を入れるか（現状は setup の最初の会社と同じ）。作成後に自動で切り替えるか（現状は切替ボタン） | [company-admin](specs/company-admin.md) |
 | 導入チェック | 会計期間の先読み 30 日を会社設定にするか。バックアップ最終時刻を確認するか（setup が時刻だけのファイルを書く案）。settings ロールだけの利用者に会計期間・在庫の項目をどう見せるか（現状は「権限なし」の注意）。`system.migrations` が要求経路で owner 接続を使う例外を app role への SELECT 付与で置き換えるか | [setup-health](specs/setup-health.md) |
 | フォーム | 狭い画面のタブ（計画時の spec は目次）と `Ctrl+Enter` の新しい意味でよいか。行削除のショートカットを置くなら衝突しないキーを決める | [form-ergonomics](specs/form-ergonomics.md) |
+| 期首残高 | 経理だけの利用者に売掛金・買掛金・在庫の取込を許すか（現状は不可。管理者が行うか一時的に役割を足す）。売掛・買掛の 1 ファイル 200 行でよいか（請求書 1 件約 0.15 秒の転記を速くすれば上げられる）。締めガイドに期首残高仮勘定の残高の検査を、申告の科目対応に 3900 を足すか。導入チェックに仮勘定の残高を警告として出すか（`accounting.opening_balance_status` で読める）。小売パックの最初の月次締めで期首の在庫額を前回の締めとみなすか | [opening-balances](specs/opening-balances.md) |
+| 定期仕訳 | 1 回ごとの再生成・飛ばし、締めガイドの未生成の期日、複数行の按分、洗替（翌月の戻し）を足すか（いずれも現状は無し）。期日での自動生成を F1 の worker から `generateRecurring` を呼ぶ形にするか。消費税法基本通達 11-3-1 などの本文は未確認 | [recurring-journals](specs/recurring-journals.md) |
+| 証憑の検索 | **証憑の行・履歴・ダウンロードをリンク先の記録の読取規則に従わせるか**（現状は従わない。閉じるには kernel の行規則の拡張と ADR が要る。F3 と関係）。ダウンロードを監査するか（推奨は F3 で扱う）。一括 50 件・100 MB の上限がスマートフォンで妥当か（実機は未計測）。既存の添付の出力から `storageKey` を隠すか、取引先の自由記述欄を足すか、導入チェックに 3 項目の欠けた証憑の件数を出すか | [evidence-search](specs/evidence-search.md) |
+| 役割別ホーム | chain_staff に店舗の表示を、管理者だけの利用者に経理の表示を出すか。人事・給与・営業の表示を足すか（いずれも現状は無し）。大きな会社でのホームの読取量（キャッシュや要約の読取。ADR 要） | [role-home](specs/role-home.md) |
+| pack 雛形 | ルートに `pnpm pack:new` を足すか。ext の対象を取引先以外にも広げるか。第三者が雛形から完走した記録（未実施） | [pack-scaffold](specs/pack-scaffold.md) |
 | gate:light | 目標 6 分を負荷平均が CPU 数以下のときの値と読むか、見直すか。full の DB も分割するか（現状は CI と同じ直列）。shard DB が主試験 DB とテンプレートを共有するか。8 CPU 以上での既定の分割数 | [light-tier-speed](specs/light-tier-speed.md) |

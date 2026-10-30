@@ -1,6 +1,6 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-30（波0〜3 の大半と B2・B3・D3・A4 を実装）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（第5波まで統合: 波0〜3 の大半、B2・B3・D3・A4、B6・B7・C6・E2・E4 を実装。E4 は行の読取規則が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
 
 ## 0. この文書の使い方
 
@@ -13,9 +13,9 @@
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件 | STATUS、`vitest.config.mts` の unit project |
-| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件 | `apps/web/e2e`、`playwright.config.ts` |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件 | STATUS、`vitest.config.mts` の unit project |
+| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル | STATUS、`kernel/src/testing.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -51,8 +51,8 @@
 | B3 | 導入チェック（ヘルスチェック）**済** | 1 | S | B1 | setup-health | `/meta/health`、`/admin/health` |
 | B4 | セットアップウィザード | 1 | M | B1、B2、B3 | setup-wizard | `/setup`、ホームのチェックリスト |
 | B5 | マスタの CSV 取込 **済** | 2 | L | D1 | csv-import | kernel import port、`/api/:entity/import`、`/e/:entity/import` |
-| B6 | 期首残高の取込 | 2 | M | B5 | opening-balances | accounting / sales / purchase / inventory の action |
-| B7 | pack 雛形生成 | 4 | S | なし | pack-scaffold | `scripts/pack-new.mjs` |
+| B6 | 期首残高の取込 **済** | 2 | M | B5 | opening-balances | accounting / sales / purchase / inventory の action |
+| B7 | pack 雛形生成 **済** | 4 | S | なし | pack-scaffold | `scripts/pack-new.mjs` |
 | C1 | 一覧の絞り込み・列・保存ビュー・CSV・一括操作 **済** | 2 | L | D1 | list-workbench | `entity-list-page.tsx`、`data-table.tsx`、REST export |
 | C2 | 伝票の複製・関連伝票・クイック操作 **済** | 3 | M | D1 | document-links | kernel related route、`entity-form-page.tsx` |
 | C3 | やること受信箱 **済** | 3 | M | D1 | inbox | `*.todo` action 規約、`/inbox`、ホーム |
@@ -60,13 +60,13 @@
 | D2 | コマンドパレット・最近の記録・お気に入り・ヘルプ導線 **済** | 3 | M | D1 | navigation-assist | `lib/navigation.ts`、sidebar、ScreenTrail |
 | D3 | フォームのセクション・エラー要約・ショートカット・モバイル操作バー **済** | 3 | M | D1 | form-ergonomics | DSL `views.form`、`record-form.tsx`、`line-grid.tsx` |
 | C5 | 帳票の共通化と拡充 | 4 | L | B2 | print-templates | `render_*_html` 規約、各 module |
-| C6 | 役割別ホーム | 4 | S | C3 | role-home | `home-page.tsx` |
-| E4 | 証憑の横断検索（電帳法の検索要件） | 4 | M | C1 | evidence-search | `/finance/evidence` |
-| E2 | 定期仕訳 | 4 | M | なし | recurring-journals | accounting |
+| C6 | 役割別ホーム **済** | 4 | S | C3 | role-home | `home-page.tsx` |
+| E4 | 証憑の横断検索（電帳法の検索要件）**実装済み（AC-6 は判断待ち）** | 4 | M | C1 | evidence-search | `/finance/evidence` |
+| E2 | 定期仕訳 **済** | 4 | M | なし | recurring-journals | accounting |
 | E1 | 固定資産台帳と減価償却 | 5 | L | E2 | fixed-assets | 新 module `fixed-assets`、l10n/jp |
 | E3 | 資金繰り表と支払予定 | 5 | M | なし | cash-forecast | 新 action と画面 |
 | E5 | 経費精算の一般化 | 5 | M | なし | expense-settlement | workforce / payment / accounting |
-| E6 | 給与 2027 年版の制度データ | 5 | M | 一次資料 | payroll-2027 | l10n/jp |
+| E6 | 給与 2027 年版の制度データ **保留（公表待ち）** | 5 | M | 一次資料 | payroll-2027 | l10n/jp |
 | F1 | 業務イベントの配送 worker | 5 | M | C3 | event-delivery | kernel outbox、`apps/api` worker |
 | F2 | 機械用資格情報（API キー） | 5 | M | なし | machine-credentials | kernel identity、`/admin/tokens` |
 | F3 | 権限マトリクスと監査の横断検索 | 5 | M | D1 | access-insight | `/admin/permissions`、`/admin/audit` |
@@ -217,11 +217,15 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 受入基準の骨子: IF 貸借が一致しない THEN THE SYSTEM SHALL 取り込まない。WHEN 取り込んだ THE SYSTEM SHALL 試算表の期首残高と年齢表の残高が CSV と一致する。
 - 検証: golden（CSV → 試算表 / 年齢表）、ブラウザ試験 1 件。
 
+実装済み（2026-10-30 統合）。開始仕訳は期首日の前日（期首残高日）付で年度ごとに 1 本、`sourceEntity='fiscal_year'` で年度に紐づける。この日はどの会計期間にも入らないため、accounting の内部の書込み権 `accounting.opening` を通した取込だけが転記できる。売掛・買掛は取引先ごとに不課税 1 行の期首請求書（`openingBalance`。適格請求書としての表示は拒否）、在庫は期首残高日付の入庫で作る。取引先なしの売掛・買掛の行と期首請求書の相手科目は期首残高仮勘定（設定 `accounting.opening_balances`、l10n/jp の科目表に 3900 を追加）を通し、全部が一致すると残高が 0 になる。取り込めるのは会社の最初の会計年度だけ。1 ファイルの上限は計測から売掛・買掛 200 行、在庫 2,000 行に下げた（[ADR-0030](adr/0030-opening-balances.md)）。詳細と設計からの変更は [spec](specs/opening-balances.md) と [記録](log/2026-10-30-opening-balances.md) を正とする。
+
 ### B7. pack 雛形生成
 
 - `scripts/pack-new.mjs <name>` が `packs/example` を元に `package.json`、`tsconfig.json`、`src/{index,pack,entities,actions,seed,sample}.ts`、`test/pack.db.test.ts`、`docs/specs/pack-<name>.md` の雛形を作り、`apps/runtime/src/packs.ts` への登録手順を表示する。
 - 受入基準の骨子: WHEN 雛形を生成して `pnpm gate:light` を実行した THE SYSTEM SHALL 追加なしで成功する。
 - 検証: 生成 → 依存境界 lint → DB テスト → 画面での適用。第三者完走の記録条件（[拡張手順](architecture/extension-guide.md)）を満たすかを log に書く。
+
+実装済み（2026-10-30 統合）。`node scripts/pack-new.mjs <name> [--register] [--dry-run]` が `scripts/pack-template/` から pack と spec の雛形を作る。名前の検査と衝突の拒否、書き込む前の全計算、失敗・中断時の巻戻しを持ち、`--register` で runtime の登録 4 か所を書き換える。生成した pack の DB 試験を子の vitest で走らせる DB 試験も足した。第三者完走の記録条件は、エージェントの実行なので満たしていない（拡張手順に記載）。詳細と設計からの変更は [spec](specs/pack-scaffold.md) と [記録](log/2026-10-30-pack-scaffold.md) を正とする。
 
 ### C1. 一覧の絞り込み・列・保存ビュー・CSV・一括操作
 
@@ -303,16 +307,22 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - `meta.roles` と所属から初期表示を選ぶ: 経理（売掛・買掛・資金・今月の締め状況・受信箱）、店長（今日の売上・勤怠・シフト・未提出）、従業員（`/me` へ）。既存の analytics データセット、operations snapshot、C3 の受信箱を使い、新しい集計は作らない。
 - 受入基準の骨子: WHEN 利用者がホームを開いた THE SYSTEM SHALL 役割に応じた初期表示を出し、権限の無い集計を要求しない。
 
+実装済み（2026-10-30 統合）。`/meta` の役割・画面カタログ・テナント管理者の別から経理・店舗・従業員・管理・全体の表示を選ぶ。複数の表示に当てはまる利用者は切り替えられ、選択は利用者・会社ごとに端末へ保存する。既存の action・REST・analytics データセットだけを呼び、権限の無い読取を送らないことをブラウザ試験のネットワーク記録で確かめた。管理の表示には導入チェック（B3）へのリンクが出る。変更は apps/web と docs だけ。詳細と設計からの変更は [spec](specs/role-home.md) と [記録](log/2026-10-30-role-home.md) を正とする。
+
 ### E4. 証憑の横断検索（電子帳簿保存法の検索要件）
 
 - `/finance/evidence`: `attachment` を取引年月日の範囲、取引金額の範囲、取引先の組み合わせで検索（既存の列と索引、複合範囲検索を使う）。結果からリンク先の伝票と差替履歴（`supersededById`）へ移動。選択した証憑の一括ダウンロード（zip はブラウザ側で生成、上限あり）。
 - 出典: [日本の制度事実](domain/japan-tax.md) の電子帳簿保存法の項（取引年月日・取引金額・取引先、範囲と 2 項目以上の組み合わせ）。
 - 受入基準の骨子: WHEN 日付範囲と金額範囲と取引先を指定した THE SYSTEM SHALL 3 条件の AND で検索する。THE SYSTEM SHALL 差し替えられた証憑を削除せず、履歴として表示する。
 
+実装済み（2026-10-30 統合。ただし AC-6 は判断待ち）。`attachment.evidence_search`（取引年月日・取引金額の範囲と取引先の AND に、種別・差替の扱い・3 項目の欠けた証憑の条件）、`attachment.history`（差替の系譜）、`/finance/evidence` を足した。一括ダウンロードはブラウザで zip を作り（50 件かつ 100 MB まで）、ファイルは既存の認可付きダウンロードを通す。証憑の行・履歴・ダウンロードはリンク先の記録の読取規則を継がない（例: 営業が仕入請求書に付いた証憑のファイル名・金額・取引先を見られる）。この差は [権限](architecture/permissions.md) に既知の穴として記録した。閉じるには polymorphic リンクの行規則を kernel に足す spec と ADR が要り、利用者の判断を待つ（[候補一覧の8章](improvement-candidates.md#8-実装で残った判断待ち2026-10-30)）。詳細と設計からの変更は [spec](specs/evidence-search.md) と [記録](log/2026-10-30-evidence-search.md) を正とする。
+
 ### E2. 定期仕訳
 
 - entity `recurring_journal`（名称、周期、開始/終了、明細テンプレート、次回日付）と action `accounting.generate_recurring { asOf }` が期日到来分の仕訳を下書きで作る（確定は人が行う。設定で自動確定を選べるが既定は off）。前払費用の按分は期間と金額から明細を生成する。
 - 受入基準の骨子: WHEN 生成を 2 回実行した THE SYSTEM SHALL 同じ期日の仕訳を重複して作らない。
+
+実装済み（2026-10-30 統合）。kernel の `defineEntity` が明細（`lines`）を持てるようにした（[ADR-0031](adr/0031-entity-lines.md)。伝票の明細の処理を使い、凍結は伝票だけ）。accounting に `recurring_journal`（定額・按分、月次・四半期・年次、日 31 は月末）、`accounting.generate_recurring { asOf }`、予定 `accounting.recurring_schedule`、`accounting.todo`、`/finance/recurring` を足した。生成は（定期仕訳, 回の日付）の一意索引とロックで、2 本の同時実行でも重複しない。締めた期間の回は理由付きで止める。按分は最小単位へ切り捨て、端数を最終回に寄せる。自動確定の設定 `accounting.recurring_auto_submit` は既定 off。期日での自動生成は F1（worker）を待つ。詳細と設計からの変更は [spec](specs/recurring-journals.md) と [記録](log/2026-10-30-recurring-journals.md) を正とする。
 
 ### E1. 固定資産台帳と減価償却
 
@@ -333,6 +343,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 ### E6. 給与 2027 年版の制度データ
 
 - [給与制度版](specs/payroll-rule-versions.md) の仕組みに沿って、2027 年の月額表・保険料率・年調のデータを一次資料から投入する。公表前の値は入れない。出典と確認日を `docs/domain/japan-payroll-automation.md` に追記。
+
+保留（2026-10-30）。協会けんぽの 2027 年度の保険料率は例年 2〜3 月に決まるため、この時点では公表されていない。2027 年分の源泉徴収税額表も、この環境から国税庁の一次資料（www.nta.go.jp）に接続できず確認できていない。公表前の値は入れない方針どおり着手せず、一次資料を読める環境で公表後に spec を書く。
 
 ### F1. 業務イベントの配送 worker
 
@@ -356,6 +368,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 | ADR-0027 設定定義の表示属性と会社プロフィール | `SettingDef` の `category` / `order` / `fields`、kernel 登録の `company.profile` と `setup.progress`、`DELETE /meta/settings/:key` | B1、B2、B4 |
 | ADR-0028 取込 port | dry-run を savepoint で実行し、`Repository` を通す。権限・上限・document は下書きのみ | B5、B6 |
 | ADR-0029 会社作成と初期データ | テナント管理者の会社作成で module seed を system context で実行する境界 | B2 |
+| ADR-0030 期首残高 | 期首残高日付・期首残高仮勘定・開始仕訳と module ごとの期首伝票への分割 | B6 |
+| ADR-0031 entity の明細 | `defineEntity` の `lines`（伝票以外の明細。凍結は伝票だけ） | E2 |
 | ADR-0002 追補 `views.form` のラベル付きグループ | DSL の後方互換な拡張 | D3 |
 | 規約追加（ui.md） | `*.todo` provider、`render_<document>_html`、一覧 export の監査、UI キットの使用 | C3、C5、C1、D1 |
 | 規約追加（testing.md、verification-and-release.md） | 3 段階の使い分け、`@smoke`、axe の例外ファイル | A1、A2 |

@@ -99,3 +99,10 @@
 
 - B3（導入チェック）の統合後、`INCOMPLETE_DOMAIN` の件数を `/meta/health` に足し、`/finance/evidence?incomplete=1` へ案内する（HOOK のコメントの位置）。
 - 改善候補一覧に、可視性の既知の差・`storageKey` の `outputHidden` 化（未決事項 6）・取引先の自由記述欄を登録する（統合担当）。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 検証の指摘（nit）に従い、空の `?page=` を `criteriaFromSearch` でも未指定として扱い、「頁」を無視した値として出さないようにした。単体試験を足し、修正を戻すと失敗することを確かめた。
+- 残っていた指摘に従い、`styles.css` の `.action-dialog p` の文字色を `#6d7890`（約 4.43:1）から `var(--text-muted)`（4.5:1）にした。ダイアログ内の通知の色を上書きする点（unlayered の規則）は直していない。
+- 統合後のレビューで、`services/linked.ts` の `lineParents()` が `doc.doc?.lines`（伝票の明細だけ）を見ていて、E2 で入った entity の明細（`recurring_journal_line`）へのリンクを親の定期仕訳に結びつけず、関連記録の読み手（`kernel/src/related.ts`）と食い違っていた。ADR-0031 のとおり `config.lines` を読むよう直し、entity の明細を持つ試験用 entity で `lineParents()`・`linkKindOf()`・`describeRow()` を確かめる単体試験を足した（修正を戻すと失敗）。
+- 同じレビューで、レビュー対応のコミットを cherry-pick したときに `docs/metrics/features.jsonl` の置き換え前の行（agentMinutes 85）が残っていたので消した。
