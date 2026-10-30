@@ -2,8 +2,8 @@
 // issue Dialog that confirms the administrator's current password (step-up) and shows the secret exactly once, revoke
 // in a kit Dialog and the per-key history. The secret lives only in the issue Dialog's mutation result: closing the
 // Dialog unmounts it and resets the mutation, and nothing writes it to the URL, storage, toasts, the console or the list.
-// Text inside the dialogs uses <div>: the legacy `.action-dialog p` rule (styles.css) mutes every paragraph to a grey
-// that fails WCAG contrast at 12px, and it outranks the kit's notice and field-error colours.
+// Text inside the dialogs uses <div>: the unlayered `.action-dialog p` rule (styles.css) outranks the kit's notice and
+// field-error colours and sizes, which would turn a warning or an error into small grey text.
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getUser, isApiError } from '../api/client.ts';
@@ -398,7 +398,6 @@ function IssueDialog({
             id={fieldId('roles')}
             tabIndex={-1}
             aria-describedby={help('roles')}
-            aria-invalid={errors.roles ? true : undefined}
           >
             <legend className="text-sm font-semibold text-text-secondary">
               {t({ ja: 'ロール（鍵が持つ業務権限）', en: 'Roles (what the key may do)' })}

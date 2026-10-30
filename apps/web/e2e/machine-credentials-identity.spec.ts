@@ -70,6 +70,11 @@ test.describe.serial('API keys with account verification', () => {
     await expect(dialog.getByText('ロールを 1 つ以上選んでください。')).toBeVisible();
     const name = dialog.getByLabel('名前（用途がわかる名前）');
     await expect(name).toBeFocused();
+    // AC-32: the issue form with its field errors has no serious axe issue.
+    const formAxe = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
+    const formRun: A11yRun = { screen: 'tokens-issue', locale: 'ja', width: 1280 };
+    const formJudgement = judge(formAxe.violations, exceptions, formRun, formAxe.incomplete);
+    expect(formJudgement.failures, formatJudgement(formRun, formJudgement)).toEqual([]);
     await name.fill('EC 連携 e2e');
     await dialog.getByLabel('会社管理者', { exact: true }).check();
     await expect(page.getByTestId('token-admin-warning')).toContainText('会社のすべての業務を操作できる鍵');
