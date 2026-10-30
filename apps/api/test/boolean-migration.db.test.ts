@@ -85,11 +85,21 @@ it('0017 changes exactly five boolean columns and the relay predicate; all-pack 
   expect((await pendingMigration()).statements).toEqual([]);
 });
 
+/**
+ * Facts after the upgrade, with constraints limited to relations that existed before it. Later migrations may add whole
+ * tables (e.g. 0018, docs/specs/recurring-journals.md); their constraints are new, not changes to existing ones.
+ */
+async function upgradedFacts(before: Awaited<ReturnType<typeof booleanHistoryFacts>>) {
+  const existing = new Set(before.constraints.map((row) => String(row.relation)));
+  const after = await booleanHistoryFacts(owner);
+  return { ...after, constraints: after.constraints.filter((row) => existing.has(String(row.relation))) };
+}
+
 it('preserves both truth values, credentials, MFA, sessions and all unrelated data across tenants; rerun is harmless', async () => {
   const before = await booleanHistoryFacts(owner);
   const expected = expectedBooleanHistory(before);
   await runMigrations(owner, MIGRATIONS_DIR);
-  expect(await booleanHistoryFacts(owner)).toEqual(expected);
+  expect(await upgradedFacts(before)).toEqual(expected);
   await assertCurrentColumns();
   for (const fixture of fixtures) {
     const activeUser = fixture.users[0];
@@ -117,7 +127,7 @@ it('preserves both truth values, credentials, MFA, sessions and all unrelated da
     });
   }
   await runMigrations(owner, MIGRATIONS_DIR);
-  expect(await booleanHistoryFacts(owner)).toEqual(expected);
+  expect(await upgradedFacts(before)).toEqual(expected);
   expect((await owner.sql`select count(*)::int n from drizzle.__drizzle_migrations`)[0]?.n).toBe(
     readJournal().entries.length,
   );

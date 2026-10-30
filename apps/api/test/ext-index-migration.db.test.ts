@@ -65,10 +65,20 @@ it('0016 changes only the generated JAN column and its index in the complete 001
   expect((await pendingMigration()).statements).toEqual([]);
 });
 
+/**
+ * The constraints of relations that existed before the upgrade. Later migrations may add whole tables (e.g. 0018,
+ * docs/specs/recurring-journals.md); their constraints are new, not changes, so only pre-existing relations are compared.
+ */
+async function upgradedFacts(before: Awaited<ReturnType<typeof facts>>) {
+  const existing = new Set(before.constraints.map((row) => String(row.relation)));
+  const after = await facts();
+  return { ...after, constraints: after.constraints.filter((row) => existing.has(String(row.relation))) };
+}
+
 it('upgrades populated 0015 without changing old values, versions, settings or FK constraints; rerun is harmless', async () => {
   const before = await facts();
   await runMigrations(owner, MIGRATIONS_DIR);
-  expect(await facts()).toEqual(before);
+  expect(await upgradedFacts(before)).toEqual(before);
   const generated = await owner.sql`
     select attgenerated from pg_attribute where attrelid='product'::regclass and attname=${column}
   `;
@@ -80,5 +90,5 @@ it('upgrades populated 0015 without changing old values, versions, settings or F
     (await owner.sql`select relrowsecurity,relforcerowsecurity from pg_class where oid='product'::regclass`)[0],
   ).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
   await runMigrations(owner, MIGRATIONS_DIR);
-  expect(await facts()).toEqual(before);
+  expect(await upgradedFacts(before)).toEqual(before);
 });
