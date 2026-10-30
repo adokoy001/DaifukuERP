@@ -32,11 +32,10 @@ import {
   previousPeriod,
   type ClosePeriodLike,
 } from '../services/close.ts';
-import { listAll } from './helpers.ts';
 
 const CLOSE_ROLES = ['accounting', 'admin'] as const;
-/** Fiscal periods read to pick the default and the previous period (12 a year: about 40 years). */
-const MAX_PERIODS = 500;
+/** `details.reason` of the StateError raised when the company has no fiscal period yet (the page explains it). */
+export const NO_FISCAL_PERIOD = 'no_fiscal_period';
 /** Page size for the bank statement ids whose active reconciliations are counted. */
 const STATEMENT_PAGE = 500;
 
@@ -193,20 +192,41 @@ async function unreconciledStatements(ctx: Context, period: ClosePeriodLike): Pr
   };
 }
 
-/** AC-5: the preceding period, counted 1 while it is still open. Omitted when there is no earlier period. */
-function previousPeriodItem(
-  periods: readonly ClosePeriodLike[],
-  period: ClosePeriodLike,
-): CloseReadinessItem | undefined {
-  const previous = previousPeriod(periods, period);
+/** The first fiscal period matching `where` in start-date order (`desc`: the last one), if any. */
+async function firstPeriod(ctx: Context, where: Domain, dir: 'asc' | 'desc') {
+  const page = await repo(ctx, FiscalPeriod).list({ where, orderBy: [{ field: 'startDate', dir }], limit: 1 });
+  return page.items[0];
+}
+
+const present = <T>(value: T | undefined): value is T => value !== undefined;
+
+/**
+ * AC-8 default without reading every period: each rule of defaultClosePeriod answered by one targeted query, so
+ * picking among these candidates gives the same period as picking among all of them, however many there are.
+ */
+async function defaultPeriod(ctx: Context, today: LocalDate) {
+  const candidates = [
+    await firstPeriod(ctx, { isClosed: false, endDate: { $lt: today } }, 'asc'),
+    await firstPeriod(ctx, { startDate: { $lte: today }, endDate: { $gte: today } }, 'asc'),
+    await firstPeriod(ctx, { endDate: { $lt: today } }, 'desc'),
+    await firstPeriod(ctx, {}, 'asc'),
+  ].filter(present);
+  return defaultClosePeriod(candidates, today);
+}
+
+/**
+ * AC-5: the preceding period (the last to start among those ending before this one starts, across fiscal years),
+ * counted 1 while it is still open. The label is neutral because the count reads as a state (open 1 / closed 0).
+ * Omitted when there is no earlier period.
+ */
+async function previousPeriodItem(ctx: Context, period: ClosePeriodLike): Promise<CloseReadinessItem | undefined> {
+  const before = await firstPeriod(ctx, { endDate: { $lt: period.startDate } }, 'desc');
+  const previous = previousPeriod([before].filter(present), period);
   if (!previous) return undefined;
   return {
     id: 'previous_period_open',
     kind: 'previous_period',
-    label: label(
-      `前の会計期間（${previous.code}）が締まっていない`,
-      `Previous period (${previous.code}) is still open`,
-    ),
+    label: label(`前の会計期間（${previous.code}）の締め`, `Close of the previous period (${previous.code})`),
     count: previous.isClosed ? 0 : 1,
     blocking: false,
     href: `/finance/close?periodId=${previous.id}`,
@@ -243,17 +263,16 @@ function reportLinks(ctx: Context, period: ClosePeriodLike): CloseReadiness['rep
 
 export async function closeReadiness(ctx: Context, periodId: string | undefined): Promise<CloseReadiness> {
   const today = todayLocal(ctx.now());
-  const periods = (await listAll(ctx, FiscalPeriod, { orderBy: [{ field: 'startDate', dir: 'asc' }] }, MAX_PERIODS))
-    .items;
-  const period = periodId ? await repo(ctx, FiscalPeriod).get(periodId) : defaultClosePeriod(periods, today);
+  const period = periodId ? await repo(ctx, FiscalPeriod).get(periodId) : await defaultPeriod(ctx, today);
   if (!period)
     throw new StateError(
       'no fiscal period exists yet',
       'Open a fiscal year with accounting.open_fiscal_year; its monthly periods appear here.',
+      { reason: NO_FISCAL_PERIOD },
     );
   const year = await repo(ctx, FiscalYear).get(period.fiscalYearId);
   const extra = [
-    previousPeriodItem(periods, period),
+    await previousPeriodItem(ctx, period),
     await unallocatedPayments(ctx, period),
     await unreconciledStatements(ctx, period),
   ].filter((item): item is CloseReadinessItem => item !== undefined);

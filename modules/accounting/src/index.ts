@@ -47,6 +47,7 @@ export {
   closeReadinessAction,
   closeReadinessItem,
   closeReadinessOutput,
+  NO_FISCAL_PERIOD,
   type CloseReadiness,
   type CloseReadinessItem,
 } from './actions/close-readiness.ts';

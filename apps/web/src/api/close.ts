@@ -1,6 +1,6 @@
 // Reads for the month-end close guide (docs/specs/close-guide.md). Keys live under ['finance', identity] so that
 // useFinanceCommand (close / reopen) invalidates them, and a company or user switch never reuses another's result.
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './client.ts';
 import { financeIdentity } from './finance.ts';
 import type { ListResponse } from './types.ts';
@@ -20,13 +20,27 @@ export function fetchCloseReadiness(periodId: string | undefined, signal?: Abort
   });
 }
 
+/**
+ * The page pins the server's default period in the URL once it is known (AC-8), which changes the query key. The
+ * answer just received for that period is reused as the pinned key's initial data instead of counting twice; the
+ * short staleTime only covers that hand-over (re-check, close/reopen invalidation and window focus always refetch).
+ */
+const PIN_HANDOVER_MS = 2_000;
+
 export function useCloseReadiness(periodId: string | undefined, enabled: boolean) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: closeReadinessKey(periodId),
     queryFn: ({ signal }) => fetchCloseReadiness(periodId, signal),
+    initialData: () => {
+      if (!periodId) return undefined;
+      const defaulted = queryClient.getQueryData<CloseReadiness>(closeReadinessKey(undefined));
+      return defaulted?.period.id === periodId ? defaulted : undefined;
+    },
+    initialDataUpdatedAt: () => queryClient.getQueryState(closeReadinessKey(undefined))?.dataUpdatedAt,
     enabled,
     retry: false,
-    staleTime: 0,
+    staleTime: PIN_HANDOVER_MS,
     gcTime: 0,
     refetchOnWindowFocus: 'always',
     networkMode: 'always',

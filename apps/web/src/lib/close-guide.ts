@@ -53,12 +53,6 @@ export function parseCloseSearch(raw: Record<string, unknown>): CloseSearch {
   return typeof raw.periodId === 'string' && UUID.test(raw.periodId) ? { periodId: raw.periodId } : {};
 }
 
-/** AC-8: a report link carrying the period's dates (the report page reads them as initial values). */
-export function reportHref(report: CloseReport): string {
-  const query = new URLSearchParams(report.input).toString();
-  return `/r/${report.action}${query ? `?${query}` : ''}`;
-}
-
 /** A server href (`/path?a=b`) as router `to` + `search`, so the router builds the link and keeps client navigation. */
 export function splitHref(href: string): { to: string; search: Record<string, string> } {
   const at = href.indexOf('?');
@@ -84,6 +78,12 @@ export function groupItems(items: readonly CloseItem[]): CloseGroups {
 }
 
 export type CloseState = 'closed' | 'ready' | 'blocked';
+
+export const STATE_LABEL: Record<CloseState, Label> = {
+  closed: { ja: '締め済み', en: 'Closed' },
+  ready: { ja: '締められます', en: 'Ready to close' },
+  blocked: { ja: '締める前の作業があります', en: 'Work left before closing' },
+};
 
 export function closeState(readiness: Pick<CloseReadiness, 'period' | 'ready'>): CloseState {
   if (readiness.period.isClosed) return 'closed';
@@ -115,13 +115,56 @@ export function countText(count: number, locale: Locale): string {
   return locale === 'ja' ? `${count.toLocaleString('ja-JP')} 件` : `${count.toLocaleString('en-US')}`;
 }
 
+/** The badge of an item: its count, except the previous period, whose 1 / 0 is a state (still open / closed). */
+export function itemBadgeText(item: Pick<CloseItem, 'kind' | 'count'>, locale: Locale): string {
+  if (item.kind !== 'previous_period') return countText(item.count, locale);
+  if (item.count > 0) return locale === 'ja' ? '未締め' : 'Open';
+  return locale === 'ja' ? '締め済み' : 'Closed';
+}
+
+/** AC-9: link text naming where the item's link goes (a list, bank matching, or that period on this screen). */
+export function itemLinkText(kind: CloseItem['kind']): Label {
+  if (kind === 'previous_period') return { ja: 'その期間を開く', en: 'Open that period' };
+  if (kind === 'unreconciled_statement') return { ja: '銀行照合を開く', en: 'Open bank matching' };
+  return { ja: '一覧を開く', en: 'Open list' };
+}
+
 /** AC-10: why the close button is disabled, naming each remaining blocking item. */
 export function blockingSummary(items: readonly CloseItem[], locale: Locale): string {
   const parts = groupItems(items).blocking.map((item) =>
-    locale === 'ja' ? `${item.label.ja} ${countText(item.count, locale)}` : `${item.label.en} (${item.count})`,
+    locale === 'ja'
+      ? `${item.label.ja} ${countText(item.count, locale)}`
+      : `${item.label.en} (${countText(item.count, locale)})`,
   );
   if (parts.length === 0) return '';
   return locale === 'ja'
     ? `締める前に次を確定または削除してください: ${parts.join('、')}`
     : `Submit or delete these before closing: ${parts.join(', ')}`;
+}
+
+/** AC-10: why the check right before closing refused (someone closed the period meanwhile, or drafts appeared). */
+export function refusalMessage(fresh: Pick<CloseReadiness, 'period' | 'items'>, locale: Locale): string {
+  if (fresh.period.isClosed)
+    return locale === 'ja' ? 'この期間は既に締められています。' : 'This period has already been closed.';
+  return blockingSummary(fresh.items, locale);
+}
+
+/** What a finished re-check found, for the polite live region (the badge and reason change silently otherwise). */
+export function recheckAnnouncement(readiness: Pick<CloseReadiness, 'period' | 'ready' | 'items'>, locale: Locale) {
+  const state = STATE_LABEL[closeState(readiness)][locale];
+  const reason = closeState(readiness) === 'blocked' ? blockingSummary(readiness.items, locale) : '';
+  return locale === 'ja'
+    ? `再点検しました: ${readiness.period.code} ${state}。${reason}`
+    : `Checked again: ${readiness.period.code} ${state}. ${reason}`.trimEnd();
+}
+
+/** `details.reason` of accounting.close_readiness when the company has no fiscal period (NO_FISCAL_PERIOD). */
+export const NO_FISCAL_PERIOD = 'no_fiscal_period';
+
+/**
+ * AC-8 / AC-13: the company has no fiscal period yet, so there is nothing to pick or close. Known from an empty
+ * period list, or from the check's refusal reason before the list has loaded.
+ */
+export function noFiscalPeriods(periods: readonly unknown[] | undefined, errorReason: unknown): boolean {
+  return periods?.length === 0 || errorReason === NO_FISCAL_PERIOD;
 }

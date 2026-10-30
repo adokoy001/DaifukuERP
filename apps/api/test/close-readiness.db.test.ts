@@ -11,6 +11,7 @@ import {
   newId,
   PermissionDenied,
   registry,
+  StateError,
   repo,
   runAction,
   setSetting,
@@ -20,7 +21,13 @@ import {
   type ContextParams,
 } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
-import { closeReadinessOutput, FiscalPeriod, JournalEntry, type CloseReadiness } from '@daifuku/mod-accounting';
+import {
+  closeReadinessOutput,
+  FiscalPeriod,
+  JournalEntry,
+  NO_FISCAL_PERIOD,
+  type CloseReadiness,
+} from '@daifuku/mod-accounting';
 import { SALES_ISSUER_KEY, salesIssuerSchema } from '@daifuku/mod-sales';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { modules } from '../src/modules.ts';
@@ -247,7 +254,7 @@ describe('accounting.close_readiness (docs/specs/close-guide.md)', () => {
     expect(item(await september(), 'previous_period_open')).toEqual({
       id: 'previous_period_open',
       kind: 'previous_period',
-      label: { ja: '前の会計期間（2026-08）が締まっていない', en: 'Previous period (2026-08) is still open' },
+      label: { ja: '前の会計期間（2026-08）の締め', en: 'Close of the previous period (2026-08)' },
       count: 1,
       blocking: false,
       href: `/finance/close?periodId=${periods['2026-08']}`,
@@ -259,11 +266,20 @@ describe('accounting.close_readiness (docs/specs/close-guide.md)', () => {
     expect(item(await readiness({ periodId: periods['2026-01'] ?? '' }), 'previous_period_open')).toBeUndefined();
   });
 
-  it('AC-8 (server default) without periodId: the oldest open period that ended before today', async () => {
+  it('AC-8 (server default) without periodId: the oldest open period that ended before today, else the current one', async () => {
     expect(await readiness({})).toMatchObject({ defaulted: true, period: { code: '2026-01' } });
     for (const code of ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07'])
       await closePeriod(code);
     expect((await readiness({})).period.code).toBe('2026-09');
+    await closePeriod('2026-09');
+    expect(await readiness({})).toMatchObject({ defaulted: true, period: { code: '2026-10', isClosed: false } });
+    await act('accounting.reopen_period', { periodId: periods['2026-09'] ?? '' });
+  });
+
+  it('AC-8 a company without any fiscal period gets a StateError the page can recognise', async () => {
+    const failure = readiness({}, { ...ACCOUNTING, companyId: companyB });
+    await expect(failure).rejects.toBeInstanceOf(StateError);
+    await expect(failure).rejects.toMatchObject({ details: { reason: NO_FISCAL_PERIOD } });
   });
 
   it('AC-7 leaves out documents the caller cannot read, and pack documents the company has not applied', async () => {
