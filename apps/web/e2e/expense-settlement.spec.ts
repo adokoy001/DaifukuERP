@@ -50,7 +50,47 @@ async function fixture(request: APIRequestContext) {
     name: `従業員 ${suffix}`,
     isSupplier: true,
   });
-  return { headers, suffix, site, employee, manager, accountant, registered, partner };
+  return { headers, companyId, suffix, site, employee, manager, accountant, registered, partner };
+}
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+/** API headers of a fixture member (the employee and the site manager record and approve through their own sessions). */
+async function headersOf(request: APIRequestContext, email: string, companyId: string) {
+  const session = await api<{ token: string }>(request, {}, '/auth/login', { email, password: PASSWORD });
+  return { authorization: `Bearer ${session.token}`, 'x-company-id': companyId };
+}
+
+/** One expense recorded and submitted by the employee and approved by the site manager, all through the API. */
+async function approvedExpense(
+  request: APIRequestContext,
+  f: Fixture,
+  description: string,
+  amount: string,
+  paymentMethod: 'personal' | 'corporate_card' = 'personal',
+) {
+  const own = await headersOf(request, f.employee.email, f.companyId);
+  const manager = await headersOf(request, f.manager.email, f.companyId);
+  const saved = await api(request, own, '/actions/workforce.save_expense', {
+    expectedVersion: 0,
+    idempotencyKey: crypto.randomUUID(),
+    expenseDate: BUSINESS_DATE,
+    category: '交通費',
+    description,
+    amount,
+    evidence: '駅の領収書',
+    paymentMethod,
+  });
+  const submitted = await api(request, own, '/actions/workforce.submit_expense', {
+    expenseId: saved.id,
+    expectedVersion: saved.version,
+  });
+  await api(request, manager, '/actions/workforce.review_expense', {
+    expenseId: saved.id,
+    expectedVersion: submitted.version,
+    decision: 'approve',
+    reason: '領収書と業務目的を確認',
+  });
+  return saved.id;
 }
 
 const record = (page: Page, text: string): Locator =>
@@ -150,6 +190,10 @@ test('expense-settlement AC-20 AC-21 AC-22: record, approve, draft, submit with 
     await expect(form.getByRole('group', { name: section, exact: true })).toBeVisible();
   const grid = page.getByTestId('lines-expense_settlement_line');
   const line = grid.getByTestId('line-row').first();
+  // AC-23: the tax category choices are named, not raw codes
+  const taxCategory = line.locator('td[data-field="taxCategory"] select');
+  await expect(taxCategory.locator('option', { hasText: '課税（標準）' })).toHaveCount(1);
+  await expect(taxCategory.locator('option', { hasText: 'standard' })).toHaveCount(0);
   // copied from the expense, server-owned: shown read-only
   await expect(line.locator('td[data-field="description"]').getByRole('textbox')).toHaveValue(personal);
   await expect(line.locator('td[data-field="description"]').getByRole('textbox')).toBeDisabled();
@@ -247,6 +291,16 @@ test('expense-settlement AC-20 AC-23: roles, English, 390px without horizontal s
   await page.goto('/finance/expenses');
   await expect(page.getByTestId('expense-forbidden')).toContainText('workforce_payroll');
 
+  // AC-23 checks a populated screen: this test records its own waiting group (personal) and drafted-only group
+  // (corporate card, already in a draft), so it does not depend on what other tests left behind.
+  await approvedExpense(request, f, 'E2E 390 ' + f.suffix, '1100');
+  const drafted = await approvedExpense(request, f, 'E2E 下書き ' + f.suffix, '550', 'corporate_card');
+  const accountant = await headersOf(request, f.accountant.email, f.companyId);
+  const draft = await api<{ id: string }>(request, accountant, '/actions/expense.draft_settlement', {
+    employeeId: f.registered.id,
+    kind: 'corporate_card',
+    expenseIds: [drafted],
+  });
   await signInQuality(page, f.accountant.email, PASSWORD);
   await openScreen(page, '/finance/expenses');
   for (const run of [
@@ -257,11 +311,17 @@ test('expense-settlement AC-20 AC-23: roles, English, 390px without horizontal s
     await page.evaluate((locale) => localStorage.setItem('daifuku.locale', locale), run.locale);
     await page.goto('/finance/expenses');
     await expect(page.getByTestId('expense-settlement-page')).toBeVisible();
+    const group = page.getByTestId('expense-group').filter({ hasText: f.employee.name });
+    await expect(group).toBeVisible();
+    await expect(group.getByTestId('expense-create')).toBeVisible();
+    await expect(page.getByTestId('expense-drafted').locator('li').filter({ hasText: f.employee.name })).toBeVisible();
     await page.waitForLoadState('networkidle');
-    if (run.locale === 'en')
+    if (run.locale === 'en') {
       await expect(page.getByRole('heading', { name: 'Expense settlement', level: 1 })).toBeVisible();
-    else {
+      await expect(group).toContainText('Paid personally');
+    } else {
       await expect(page.getByRole('heading', { name: '経費精算', level: 1 })).toBeVisible();
+      await expect(group).toContainText('立替');
       await assertNoOverflow(page);
       await page.screenshot({ path: test.info().outputPath('expenses-mobile.png'), fullPage: true });
     }
@@ -270,4 +330,58 @@ test('expense-settlement AC-20 AC-23: roles, English, 390px without horizontal s
     const judgement = judge(results.violations, exceptions, a11yRun, results.incomplete);
     expect(judgement.failures, formatJudgement(a11yRun, judgement)).toEqual([]);
   }
+  // AC-23 on the generic settlement screen in English: the tax categories are named in English too.
+  await page.goto(`/e/expense_settlement/${draft.id}`);
+  const taxCategory = page
+    .getByTestId('lines-expense_settlement_line')
+    .getByTestId('line-row')
+    .first()
+    .locator('td[data-field="taxCategory"] select');
+  await expect(taxCategory.locator('option', { hasText: 'Taxable (standard)' })).toHaveCount(1);
+  await page.evaluate(() => localStorage.setItem('daifuku.locale', 'ja'));
+});
+
+test('expense-settlement AC-15 AC-20: an accountant with own approved expenses cannot draft them here', async ({
+  page,
+  request,
+}) => {
+  const f = await fixture(request);
+  // The accountant is also an employee of the site with an approved expense of their own.
+  await api(request, f.headers, '/actions/workforce.register_employee', {
+    userId: f.accountant.id,
+    siteId: f.site.id,
+    code: 'EXA-' + f.suffix,
+    name: f.accountant.name,
+    hiredOn: '2026-01-01',
+  });
+  const selfHeaders = await headersOf(request, f.accountant.email, f.companyId);
+  const manager = await headersOf(request, f.manager.email, f.companyId);
+  const saved = await api(request, selfHeaders, '/actions/workforce.save_expense', {
+    expectedVersion: 0,
+    idempotencyKey: crypto.randomUUID(),
+    expenseDate: BUSINESS_DATE,
+    category: '交通費',
+    description: 'E2E 自分 ' + f.suffix,
+    amount: '700',
+    evidence: '駅の領収書',
+  });
+  const submitted = await api(request, selfHeaders, '/actions/workforce.submit_expense', {
+    expenseId: saved.id,
+    expectedVersion: saved.version,
+  });
+  await api(request, manager, '/actions/workforce.review_expense', {
+    expenseId: saved.id,
+    expectedVersion: submitted.version,
+    decision: 'approve',
+    reason: '領収書と業務目的を確認',
+  });
+  await approvedExpense(request, f, 'E2E 他人 ' + f.suffix, '1100');
+  await signInQuality(page, f.accountant.email, PASSWORD);
+  await page.goto('/finance/expenses');
+  const mine = page.getByTestId('expense-group').filter({ hasText: f.accountant.name });
+  await expect(mine).toHaveAttribute('data-self', 'true');
+  await expect(mine.getByTestId('expense-blocked')).toContainText('自分の経費は別の担当者が精算します');
+  await expect(mine.getByTestId('expense-create')).toHaveCount(0);
+  const theirs = page.getByTestId('expense-group').filter({ hasText: f.employee.name });
+  await expect(theirs.getByTestId('expense-create')).toBeVisible();
 });

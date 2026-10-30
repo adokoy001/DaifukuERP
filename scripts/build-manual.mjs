@@ -21,19 +21,27 @@ const MIME = {
   '.gif': 'image/gif',
 };
 
-/** Chapter files in reading order: 00-…, 01-…, …, then appendix-a-…, appendix-b-…. */
+/**
+ * Chapters whose file name does not follow `NN-…` / `appendix-x-…` (linked by that name from other chapters, help.ts
+ * and specs): their sort rank among the chapters and their key (section id `ch-<key>`, id prefix `c<key>-`).
+ */
+const NAMED_CHAPTERS = {
+  'edge-service-setup.md': { rank: '1appendix-k-edge-service-setup.md', key: 'appendix-k' },
+  // expense settlement (docs/specs/expense-settlement.md): read right after 05 daily operations
+  'expense-settlement.md': { rank: '005-daily.md-expense-settlement', key: 'expense' },
+};
+
+/** Chapter files in reading order: 00-…, 01-…, …, then appendix-a-…, appendix-b-…; named chapters by their rank. */
 function chapterFiles() {
-  const names = readdirSync(MANUAL_DIR).filter(
-    (n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n === 'edge-service-setup.md',
-  );
-  const rank = (n) =>
-    n === 'edge-service-setup.md' ? '1appendix-k-edge-service-setup.md' : n.startsWith('appendix-') ? `1${n}` : `0${n}`;
+  const names = readdirSync(MANUAL_DIR).filter((n) => /^(\d\d-|appendix-[a-z]-).+\.md$/.test(n) || n in NAMED_CHAPTERS);
+  const rank = (n) => NAMED_CHAPTERS[n]?.rank ?? (n.startsWith('appendix-') ? `1${n}` : `0${n}`);
   return names.sort((a, b) => rank(a).localeCompare(rank(b)));
 }
 
 /** `05-daily.md` -> `05`, `appendix-a-glossary.md` -> `appendix-a`. Used for section ids and id prefixes. */
 function chapterKey(file) {
-  if (file === 'edge-service-setup.md') return 'appendix-k';
+  const named = NAMED_CHAPTERS[file];
+  if (named) return named.key;
   const m = /^(\d\d|appendix-[a-z])-/.exec(file);
   if (!m) throw new Error(`unexpected chapter file name: ${file}`);
   return m[1];
@@ -104,8 +112,13 @@ function rewriteIdsAndLinks(html, key) {
   const prefix = `c${key}-`;
   let out = html.replace(/ id="([^"]+)"/g, (_m, id) => ` id="${prefix}${id}"`);
   out = out.replace(/href="#([^"]+)"/g, (_m, anchor) => `href="#${prefix}${anchor}"`);
+  const toAnchor = (otherKey, anchor) =>
+    anchor ? `href="#c${otherKey}-${anchor.slice(1)}"` : `href="#ch-${otherKey}"`;
   out = out.replace(/href="((\d\d|appendix-[a-z])-[a-z0-9-]+)\.md(#[^"]*)?"/g, (_m, _file, otherKey, anchor) =>
-    anchor ? `href="#c${otherKey}-${anchor.slice(1)}"` : `href="#ch-${otherKey}"`,
+    toAnchor(otherKey, anchor),
+  );
+  out = out.replace(/href="([a-z0-9-]+\.md)(#[^"]*)?"/g, (m, file, anchor) =>
+    NAMED_CHAPTERS[file] ? toAnchor(NAMED_CHAPTERS[file].key, anchor) : m,
   );
   // Tables can be wider than the page on phones: give each its own scroll box.
   return out.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>');

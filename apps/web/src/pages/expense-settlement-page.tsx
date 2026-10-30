@@ -4,7 +4,6 @@
 // edited, submitted, cancelled and amended. No other read or write path.
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { isApiError } from '../api/client.ts';
 import { useDraftSettlement, useExpenseCandidates } from '../api/expense.ts';
 import { financeIdentity } from '../api/finance.ts';
 import { useMeta } from '../api/queries.ts';
@@ -15,21 +14,28 @@ import { useToast } from '../components/toast.tsx';
 import { useLocale } from '../i18n.tsx';
 import { describeError } from '../lib/error-view.ts';
 import {
+  advanceBlock,
   advancesOf,
   ADVANCE_ENTITY,
-  clearAdvanceInput,
   CANDIDATES_ACTION,
+  cappedNote,
   DRAFT_ACTION,
   draftedOnly,
-  draftInput,
+  draftFailureKind,
+  groupBlock,
+  groupKey,
   groupTitle,
+  inputFor,
   isPayrollRefusal,
   KIND_LABEL,
   readyGroups,
   REQUIRED_ROLES_TEXT,
+  sameTarget,
+  SELF_SETTLEMENT_TEXT,
   SETTLEMENT_ENTITY,
   summaryText,
   type CandidateGroup,
+  type DraftTarget,
   type OpenAdvance,
   type SettlementCandidates,
 } from '../lib/expense-settlement.ts';
@@ -67,28 +73,38 @@ export function ExpenseSettlementPage() {
   return <Candidates key={financeIdentity()} />;
 }
 
+const CREATING: Label = { ja: '精算書を作成中…', en: 'Creating the settlement…' };
+
 function Candidates() {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
   const toast = useToast();
   const candidates = useExpenseCandidates(true);
   const draft = useDraftSettlement();
-  const [failed, setFailed] = useState<{ input: Record<string, unknown>; error: unknown }>();
+  const [pending, setPending] = useState<DraftTarget>();
+  const [failed, setFailed] = useState<{ target: DraftTarget; error: unknown }>();
   if (candidates.isError && isPayrollRefusal(candidates.error)) return <Forbidden />;
   if (candidates.isError && !candidates.data)
     return <MetaError error={candidates.error} retry={() => void candidates.refetch()} />;
   const data = candidates.data;
-  const create = async (input: Record<string, unknown>) => {
-    if (draft.isPending) return;
+  // The input is built from the candidates at click time, so a retry after a refetch never resends stale expenses.
+  const create = async (target: DraftTarget) => {
+    const input = data ? inputFor(target, data) : null;
+    if (draft.isPending || !input) return;
     setFailed(undefined);
+    setPending(target);
     try {
       const created = await draft.mutateAsync({ action: DRAFT_ACTION, input });
       toast.success(t({ ja: '精算書の下書きを作成しました。', en: 'Created a draft expense settlement.' }));
       await navigate({ to: '/e/$entity/$id', params: { entity: SETTLEMENT_ENTITY, id: created.id } });
     } catch (error) {
-      setFailed({ input, error });
+      setFailed({ target, error });
+      void candidates.refetch(); // another accountant may have drafted these expenses meanwhile (CONFLICT)
+    } finally {
+      setPending(undefined);
     }
   };
+  const retryable = failed && data && inputFor(failed.target, data) ? failed.target : undefined;
   return (
     <div className="workspace-page flex flex-col gap-4" data-testid="expense-settlement-page">
       <PageHeader
@@ -111,9 +127,9 @@ function Candidates() {
         }
       />
       <p className="sr-only" aria-live="polite" data-testid="expense-live">
-        {data ? t(summaryText(data)) : ''}
+        {pending ? t(CREATING) : data ? t(summaryText(data)) : t({ ja: '読み込み中…', en: 'Loading…' })}
       </p>
-      {failed ? <DraftFailure failure={failed} onRetry={() => void create(failed.input)} /> : null}
+      {failed ? <DraftFailure failure={failed} onRetry={retryable ? () => void create(retryable) : undefined} /> : null}
       {data?.truncated ? (
         <p className="ui-notice ui-notice-warning" data-testid="expense-truncated">
           {t({
@@ -131,8 +147,8 @@ function Candidates() {
           {data ? (
             <GroupList
               data={data}
-              pending={draft.isPending}
-              onCreate={(g) => void create(draftInput(g, data.advances))}
+              pending={pending}
+              onCreate={(g) => void create({ kind: 'group', key: groupKey(g) })}
             />
           ) : (
             <div aria-busy="true">
@@ -153,7 +169,7 @@ function Candidates() {
             <ul className="flex flex-col" data-testid="expense-drafted">
               {draftedOnly(data.groups).map((g) => (
                 <li
-                  key={`${g.employeeId}|${g.paymentMethod}|${g.siteId}`}
+                  key={groupKey(g)}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle py-2 last:border-b-0"
                 >
                   <span className="min-w-0 flex-1 basis-48 text-sm text-text">{groupTitle(g, locale)}</span>
@@ -185,15 +201,58 @@ function Candidates() {
           {data ? (
             <AdvanceList
               advances={data.advances}
-              pending={draft.isPending}
-              onClear={(a) => void create(clearAdvanceInput(a))}
+              pending={pending}
+              onClear={(a) => void create({ kind: 'advance', id: a.id })}
             />
           ) : (
-            <SkeletonCard lines={2} />
+            <div aria-busy="true">
+              <SkeletonCard lines={2} />
+            </div>
           )}
         </FormSection>
       </Card>
     </div>
+  );
+}
+
+/**
+ * The create button of one group or advance: aria-disabled (keeps focus) while any draft is being created, "Creating…"
+ * on the one that was pressed, and absent when the group or advance cannot be drafted here (`block`).
+ */
+function CreateButton({
+  busy,
+  anyPending,
+  block,
+  label,
+  name,
+  variant,
+  testId,
+  onClick,
+}: {
+  busy: boolean;
+  anyPending: boolean;
+  block: Label | null;
+  label: Label;
+  name: string;
+  variant: 'primary' | 'default';
+  testId: string;
+  onClick: () => void;
+}) {
+  const { t } = useLocale();
+  if (block) return null;
+  return (
+    <Button
+      variant={variant}
+      size="sm"
+      aria-disabled={anyPending || undefined}
+      onClick={() => {
+        if (!anyPending) onClick();
+      }}
+      aria-label={name}
+      data-testid={testId}
+    >
+      {busy ? t({ ja: '作成中…', en: 'Creating…' }) : t(label)}
+    </Button>
   );
 }
 
@@ -203,27 +262,41 @@ function GroupList({
   onCreate,
 }: {
   data: SettlementCandidates;
-  pending: boolean;
+  pending: DraftTarget | undefined;
   onCreate: (group: CandidateGroup) => void;
 }) {
   const { t, locale } = useLocale();
   const groups = readyGroups(data.groups);
   if (groups.length === 0)
     return (
-      <p className="text-sm text-text-secondary" data-testid="expense-empty">
-        {t({ ja: '精算待ちの承認済み経費はありません。', en: 'No approved expense awaits settlement.' })}
-      </p>
+      <EmptyState
+        titleAs="h3"
+        testId="expense-empty"
+        title={t({ ja: '精算待ちの承認済み経費はありません', en: 'No approved expense awaits settlement' })}
+        description={t({
+          ja: '従業員が提出した経費は、拠点の管理者が承認するとここに並びます。',
+          en: 'Expenses appear here once a site manager approves what employees submitted.',
+        })}
+        action={
+          <Link to="/workforce" search={{ tab: 'expenses' }} className={buttonClass('default', 'sm')}>
+            {t({ ja: '経費の承認状況を見る', en: 'See expense approvals' })}
+          </Link>
+        }
+      />
     );
   return (
     <ul className="flex flex-col" data-testid="expense-groups">
       {groups.map((g) => {
         const title = groupTitle(g, locale);
         const advances = advancesOf(data.advances, g.employeeId);
+        const block = groupBlock(g, data.advances);
+        const capped = cappedNote(g);
         return (
           <li
-            key={`${g.employeeId}|${g.paymentMethod}|${g.siteId}`}
+            key={groupKey(g)}
             data-testid="expense-group"
             data-method={g.paymentMethod}
+            data-self={g.self || undefined}
             className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border-subtle py-3 last:border-b-0"
           >
             <span className="min-w-0 flex-1 basis-56">
@@ -242,35 +315,41 @@ function GroupList({
                   })}
                 </span>
               ) : null}
-              {g.kind === 'advance' ? (
+              {g.kind === 'advance' && advances.length > 0 ? (
                 <span className="block text-xs text-text-muted">
-                  {advances.length === 0
-                    ? t({ ja: 'この従業員に未精算の仮払はありません', en: 'This employee has no open advance' })
-                    : advances.length === 1
-                      ? t({
-                          ja: `仮払 ${advances[0]?.number ?? ''}（${yen(advances[0]?.amount ?? '0')}）を消し込みます`,
-                          en: `Clears advance ${advances[0]?.number ?? ''} (${yen(advances[0]?.amount ?? '0')})`,
-                        })
-                      : t({
-                          ja: '未精算の仮払が複数あります。精算書の画面で選んでください',
-                          en: 'Several open advances: choose one on the settlement',
-                        })}
+                  {advances.length === 1
+                    ? t({
+                        ja: `仮払 ${advances[0]?.number ?? ''}（${yen(advances[0]?.amount ?? '0')}）を消し込みます`,
+                        en: `Clears advance ${advances[0]?.number ?? ''} (${yen(advances[0]?.amount ?? '0')})`,
+                      })
+                    : t({
+                        ja: '未精算の仮払が複数あります。精算書の画面で選んでください',
+                        en: 'Several open advances: choose one on the settlement',
+                      })}
+                </span>
+              ) : null}
+              {capped && !block ? (
+                <span className="block text-xs text-text-muted" data-testid="expense-capped">
+                  {t(capped)}
+                </span>
+              ) : null}
+              {block ? (
+                <span className="block text-xs text-text-secondary" data-testid="expense-blocked">
+                  {t(block)}
                 </span>
               ) : null}
             </span>
             <Badge tone="accent">{t(KIND_LABEL[g.kind])}</Badge>
-            <Button
+            <CreateButton
+              busy={sameTarget(pending, { kind: 'group', key: groupKey(g) })}
+              anyPending={pending !== undefined}
+              block={block}
+              label={{ ja: '精算書を作成', en: 'Create settlement' }}
+              name={t({ ja: `精算書を作成（${title}）`, en: `Create settlement (${title})` })}
               variant="primary"
-              size="sm"
-              aria-disabled={pending || undefined}
-              onClick={() => {
-                if (!pending) onCreate(g);
-              }}
-              aria-label={t({ ja: `精算書を作成（${title}）`, en: `Create settlement (${title})` })}
-              data-testid="expense-create"
-            >
-              {t({ ja: '精算書を作成', en: 'Create settlement' })}
-            </Button>
+              testId="expense-create"
+              onClick={() => onCreate(g)}
+            />
           </li>
         );
       })}
@@ -284,68 +363,87 @@ function AdvanceList({
   onClear,
 }: {
   advances: readonly OpenAdvance[];
-  pending: boolean;
+  pending: DraftTarget | undefined;
   onClear: (advance: OpenAdvance) => void;
 }) {
   const { t } = useLocale();
   if (advances.length === 0)
     return (
-      <p className="text-sm text-text-secondary">{t({ ja: '未精算の仮払はありません。', en: 'No open advance.' })}</p>
+      <EmptyState
+        titleAs="h3"
+        testId="expense-advances-empty"
+        title={t({ ja: '未精算の仮払はありません', en: 'No open advance' })}
+        description={t({
+          ja: '出張などで先に渡すお金は、仮払として記録して確定すると支払が作られ、ここに並びます。',
+          en: 'Record and submit money handed out beforehand (a trip, for example) as an advance; it then appears here.',
+        })}
+        action={
+          <Link to="/e/$entity" params={{ entity: ADVANCE_ENTITY }} className={buttonClass('default', 'sm')}>
+            {t({ ja: '仮払の一覧へ', en: 'Go to advances' })}
+          </Link>
+        }
+      />
     );
   return (
     <ul className="flex flex-col" data-testid="expense-advances">
-      {advances.map((a) => (
-        <li
-          key={a.id}
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle py-2 last:border-b-0"
-        >
-          <span className="min-w-0 flex-1 basis-48">
-            <span className="block text-sm text-text">
-              {a.number ?? '—'} · {a.employeeName}
-            </span>
-            <span className="block text-xs text-text-muted">
-              {a.date} · {a.purpose}
-            </span>
-          </span>
-          <span className="text-sm tabular-nums text-text">{yen(a.amount)}</span>
-          <Link to="/e/$entity/$id" params={{ entity: ADVANCE_ENTITY, id: a.id }} className="ui-link">
-            {t({ ja: '仮払を開く', en: 'Open advance' })}
-          </Link>
-          <Button
-            size="sm"
-            aria-disabled={pending || undefined}
-            onClick={() => {
-              if (!pending) onClear(a);
-            }}
-            aria-label={t({
-              ja: `仮払精算を作成（${a.number ?? ''} ${a.employeeName}）`,
-              en: `Create advance clearing (${a.number ?? ''} ${a.employeeName})`,
-            })}
-            data-testid="expense-clear-advance"
+      {advances.map((a) => {
+        const block = advanceBlock(a);
+        return (
+          <li
+            key={a.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle py-2 last:border-b-0"
           >
-            {t({ ja: '仮払精算を作成', en: 'Create advance clearing' })}
-          </Button>
-        </li>
-      ))}
+            <span className="min-w-0 flex-1 basis-48">
+              <span className="block text-sm text-text">
+                {a.number ?? '—'} · {a.employeeName}
+              </span>
+              <span className="block text-xs text-text-muted">
+                {a.date} · {a.purpose}
+              </span>
+              {block ? <span className="block text-xs text-text-secondary">{t(block)}</span> : null}
+            </span>
+            <span className="text-sm tabular-nums text-text">{yen(a.amount)}</span>
+            <Link to="/e/$entity/$id" params={{ entity: ADVANCE_ENTITY, id: a.id }} className="ui-link">
+              {t({ ja: '仮払を開く', en: 'Open advance' })}
+            </Link>
+            <CreateButton
+              busy={sameTarget(pending, { kind: 'advance', id: a.id })}
+              anyPending={pending !== undefined}
+              block={block}
+              label={{ ja: '仮払精算を作成', en: 'Create advance clearing' }}
+              variant="default"
+              name={t({
+                ja: `仮払精算を作成（${a.number ?? ''} ${a.employeeName}）`,
+                en: `Create advance clearing (${a.number ?? ''} ${a.employeeName})`,
+              })}
+              testId="expense-clear-advance"
+              onClick={() => onClear(a)}
+            />
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 const DRAFT_FAILED: Label = { ja: '精算書を作成できませんでした。', en: 'Could not create the settlement.' };
 
-function DraftFailure({ failure, onRetry }: { failure: { error: unknown }; onRetry: () => void }) {
+function DraftFailure({ failure, onRetry }: { failure: { error: unknown }; onRetry: (() => void) | undefined }) {
   const { t } = useLocale();
   const view = describeError(failure.error);
-  const refusal = isPayrollRefusal(failure.error) || (isApiError(failure.error) && failure.error.status === 403);
+  const kind = draftFailureKind(failure.error);
+  const reason = kind === 'self' ? SELF_SETTLEMENT_TEXT : kind === 'roles' ? REQUIRED_ROLES_TEXT : view.explanation;
   return (
     <div role="alert" className="ui-notice ui-notice-danger" data-testid="expense-draft-error">
       <p className="font-semibold">{t(DRAFT_FAILED)}</p>
-      {refusal ? <p>{t(REQUIRED_ROLES_TEXT)}</p> : view.explanation ? <p>{t(view.explanation)}</p> : null}
+      {reason ? <p>{t(reason)}</p> : null}
       <p>{view.message}</p>
       <ErrorDetails view={view} />
-      <Button size="sm" onClick={onRetry}>
-        {t({ ja: '再試行', en: 'Try again' })}
-      </Button>
+      {kind === 'other' && onRetry ? (
+        <Button size="sm" onClick={onRetry}>
+          {t({ ja: '再試行', en: 'Try again' })}
+        </Button>
+      ) : null}
     </div>
   );
 }

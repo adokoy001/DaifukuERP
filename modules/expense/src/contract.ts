@@ -46,11 +46,20 @@ const id = z.uuid();
 const date = z.iso.date();
 const money = z.string();
 
+/** Most expenses one `expense.draft_settlement` call takes (AC-3); the screen sends a larger group's oldest ones. */
+export const MAX_DRAFT_EXPENSES = 200;
+
 export const draftSettlementInput = z
   .object({
     employeeId: id,
     kind: z.enum(EXPENSE_SETTLEMENT_KINDS),
-    expenseIds: z.array(id).min(1).max(200).optional(),
+    /** One line per expense (AC-3): an id listed twice is refused. */
+    expenseIds: z
+      .array(id)
+      .min(1)
+      .max(MAX_DRAFT_EXPENSES)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'duplicate expense id' })
+      .optional(),
     advanceId: id.optional(),
     partnerId: id.optional(),
     date: date.optional(),
@@ -76,6 +85,8 @@ export const candidateGroup = z.object({
   expenseIds: z.array(id),
   /** Approved expenses of the group already in a draft settlement. */
   inDraftCount: z.number().int(),
+  /** The employee is the caller: someone else settles these (AC-15 self-settlement). */
+  self: z.boolean(),
 });
 export type CandidateGroup = z.infer<typeof candidateGroup>;
 export const openAdvance = z.object({
@@ -87,6 +98,8 @@ export const openAdvance = z.object({
   date,
   amount: money,
   purpose: z.string(),
+  /** The advance was paid to the caller: someone else clears it (AC-15 self-settlement). */
+  self: z.boolean(),
 });
 export type OpenAdvance = z.infer<typeof openAdvance>;
 export const settlementCandidatesOutput = z.object({

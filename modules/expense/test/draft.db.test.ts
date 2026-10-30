@@ -58,6 +58,17 @@ describe('expense.draft_settlement (AC-3)', () => {
       details: { expenseId: a, settlementId: out.id },
     });
   });
+  it('AC-3 refuses an expense listed twice (one line per expense) and writes nothing', async () => {
+    const w = await f.worker();
+    const a = await f.approvedExpense(w, { amount: '1100' });
+    const before = await f.run({}, (ctx) => repo(ctx, ExpenseSettlement).count({ employeeId: w.employeeId }));
+    const e = await caught(f.draft({ employeeId: w.employeeId, kind: 'reimbursement', expenseIds: [a, a] }));
+    expect(e).toMatchObject({ code: 'VALIDATION' });
+    expect(messages(e)).toContain('duplicate expense id');
+    expect(await f.run({}, (ctx) => repo(ctx, ExpenseSettlement).count({ employeeId: w.employeeId }))).toBe(before);
+    const out = await f.draft({ employeeId: w.employeeId, kind: 'reimbursement', expenseIds: [a] });
+    expect((await f.getSettlement(out.id)).lines.expense_settlement_line.map((l) => l.expenseId)).toEqual([a]);
+  });
   it('AC-3 refuses when no expense is waiting (no empty draft), except an advance settlement naming its advance', async () => {
     const w = await f.worker();
     const before = await f.run({}, (ctx) => repo(ctx, ExpenseSettlement).count({ employeeId: w.employeeId }));

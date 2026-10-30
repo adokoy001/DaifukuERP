@@ -1,17 +1,8 @@
 // expense.settlement_candidates (spec AC-20): approved expenses waiting for a settlement, grouped by employee x payment
 // method x site, plus the open advances. Read-only, in the caller's Context (roles checked before any read, AC-15).
-import {
-  Decimal,
-  defineAction,
-  DOCSTATUS,
-  label,
-  repo,
-  type Context,
-  type EntityDef,
-  type Infer,
-} from '@daifuku/kernel';
+import { Decimal, defineAction, DOCSTATUS, label, repo, type Context, type Infer } from '@daifuku/kernel';
 import { WorkforceEmployee, WorkforceExpense, WorkforceSite } from '@daifuku/mod-workforce';
-import { requireSettlementRoles } from '../access.ts';
+import { actorUserId, requireSettlementRoles } from '../access.ts';
 import {
   PAYMENT_METHOD_KIND,
   settlementCandidatesInput,
@@ -20,19 +11,10 @@ import {
   type ExpensePaymentMethodValue,
   type SettlementCandidates,
 } from '../contract.ts';
-import { ExpenseAdvance, ExpenseSettlement, ExpenseSettlementLine } from '../entities/index.ts';
+import { ExpenseAdvance, ExpenseSettlement } from '../entities/index.ts';
+import { byIds, heldBy } from '../services/load.ts';
 
 const MAX_EXPENSES = 2000;
-
-async function byIds<E extends EntityDef>(ctx: Context, entity: E, ids: readonly string[]): Promise<Infer<E>[]> {
-  const out: Infer<E>[] = [];
-  const unique = [...new Set(ids)];
-  for (let i = 0; i < unique.length; i += 500) {
-    const chunk = unique.slice(i, i + 500);
-    out.push(...(await repo(ctx, entity).list({ where: { id: { $in: chunk } }, limit: 500 })).items);
-  }
-  return out;
-}
 
 async function approvedExpenses(ctx: Context) {
   const items: Infer<typeof WorkforceExpense>[] = [];
@@ -50,36 +32,9 @@ async function approvedExpenses(ctx: Context) {
   }
 }
 
-/** expense id -> docstatus of the draft/submitted settlement that holds it. */
-async function heldBy(ctx: Context, expenseIds: readonly string[]): Promise<Map<string, number>> {
-  const lines: Infer<typeof ExpenseSettlementLine>[] = [];
-  for (let i = 0; i < expenseIds.length; i += 500)
-    lines.push(
-      ...(
-        await repo(ctx, ExpenseSettlementLine).list({
-          where: { expenseId: { $in: expenseIds.slice(i, i + 500) } },
-          limit: 500,
-        })
-      ).items,
-    );
-  const settlements = await byIds(
-    ctx,
-    ExpenseSettlement,
-    lines.map((l) => l.settlementId),
-  );
-  const live = new Map(
-    settlements.filter((s) => s.docstatus !== DOCSTATUS.cancelled).map((s) => [s.id, s.docstatus] as const),
-  );
-  const out = new Map<string, number>();
-  for (const line of lines) {
-    const status = live.get(line.settlementId);
-    if (status !== undefined) out.set(line.expenseId, status);
-  }
-  return out;
-}
-
 async function candidates(ctx: Context): Promise<SettlementCandidates> {
   requireSettlementRoles(ctx, ExpenseSettlement.name, 'candidates');
+  const me = actorUserId(ctx);
   const { items: expenses, truncated } = await approvedExpenses(ctx);
   const held = await heldBy(
     ctx,
@@ -127,6 +82,7 @@ async function candidates(ctx: Context): Promise<SettlementCandidates> {
       oldestDate: null,
       expenseIds: [],
       inDraftCount: 0,
+      self: employee?.userId === me,
     };
     if (status === DOCSTATUS.draft) g.inDraftCount += 1;
     else {
@@ -148,6 +104,7 @@ async function candidates(ctx: Context): Promise<SettlementCandidates> {
       date: a.date,
       amount: a.amount.toString(),
       purpose: a.purpose,
+      self: a.userId === me,
     })),
     truncated,
   };

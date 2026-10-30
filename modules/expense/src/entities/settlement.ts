@@ -41,10 +41,10 @@ export const ExpenseSettlement = defineDocument({
     }),
     date: f.date({ required: true, index: true, label: label('精算日', 'Settlement date') }),
     partnerId: f.ref('partner', {
-      label: label('支払先（取引先）', 'Payee (partner)'),
+      label: label('精算先（取引先）', 'Settle with (partner)'),
       description: label(
-        '従業員用の取引先。法人カード精算ではカード会社',
-        "The employee's partner; the card company for a corporate-card settlement",
+        '従業員用の取引先。法人カード精算ではカード会社（領収書の発行者は明細の「支払先名」）',
+        "The employee's partner; the card company for a corporate-card settlement (the receipt issuer is the line's payee name)",
       ),
     }),
     advanceId: f.ref('expense_advance', { label: label('仮払', 'Advance') }),

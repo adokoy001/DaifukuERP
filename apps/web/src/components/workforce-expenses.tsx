@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { formText, type ExpenseSummary } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
@@ -34,6 +34,8 @@ function ExpenseForm({
   const { t } = useLocale();
   const task = useWorkforceTask();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const methodHelpId = useId();
+  const evidenceHelpId = useId();
   return (
     <WorkforceDialog
       title={t(
@@ -106,6 +108,7 @@ function ExpenseForm({
           className="input"
           name="paymentMethod"
           aria-label={t({ ja: '支払方法', en: 'Payment method' })}
+          aria-describedby={methodHelpId}
           required
           defaultValue={expense?.paymentMethod ?? DEFAULT_EXPENSE_PAYMENT_METHOD}
         >
@@ -115,7 +118,7 @@ function ExpenseForm({
             </option>
           ))}
         </select>
-        <small>
+        <small id={methodHelpId}>
           {t({
             ja: '自分で立て替えたか、会社の法人カードか、事前に受け取った仮払金から払ったかを選びます。',
             en: 'Choose whether you paid yourself, with the company card, or from an advance you received.',
@@ -139,12 +142,13 @@ function ExpenseForm({
           className="input"
           name="evidence"
           aria-label={t({ ja: '証憑の内容・保管場所', en: 'Evidence description and location' })}
+          aria-describedby={evidenceHelpId}
           required
           maxLength={1000}
           rows={2}
           defaultValue={expense?.evidence ?? ''}
         />
-        <small>
+        <small id={evidenceHelpId}>
           {t({
             ja: '領収書の発行元・日付や、会社で確認できる保管先を記載します。',
             en: 'Describe the receipt issuer/date and where your company can verify it.',

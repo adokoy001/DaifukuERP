@@ -1,6 +1,6 @@
 // expense_advance hooks (spec AC-13, AC-12, ADR-0039).
-// before_validate (draft): roles and self check (AC-15), the employee's user and site, today's date (JST); a positive
-//   whole-yen amount. before_submit: date not in the future, JPY, the cash/bank account default, status `open`.
+// before_validate (draft): roles and self check (AC-15; also on update and delete), the employee's user and site,
+//   today's date (JST); a positive whole-yen amount. before_submit: date not in the future, JPY, the cash/bank account default, status `open`.
 // after_submit: the payout through payment `createClearingPayment` (Dr 仮払金 / Cr cash/bank), its id recorded.
 // before_cancel: refused while `settled` (cancel the settlement first); after_cancel: the payout is cancelled with the
 //   same correction date. A submitted settlement that clears the advance blocks its cancellation (kernel DependencyError).
@@ -45,6 +45,7 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   if (previous && previous.docstatus !== DOCSTATUS.draft) return; // allowOnSubmit fields only
   if (previous && hasWriteCapability(ctx, A, 'update')) return;
   requireSettlementRoles(ctx, A, previous ? 'update' : 'create');
+  if (previous) refuseSelfSettlement(ctx, A, 'update', previous.userId);
   assertAmount(row.amount);
   if (previous) return;
   if (typeof row.employeeId !== 'string') return; // zod reports it
@@ -113,7 +114,10 @@ async function afterCancel(ctx: Context, { row, correctionDate }: HookArgs): Pro
 
 export function registerAdvanceHooks(): void {
   registry.registerHook(A, 'before_validate', beforeValidate);
-  registry.registerHook(A, 'before_delete', (ctx) => requireSettlementRoles(ctx, A, 'delete'));
+  registry.registerHook(A, 'before_delete', (ctx, { row }) => {
+    requireSettlementRoles(ctx, A, 'delete');
+    refuseSelfSettlement(ctx, A, 'delete', row.userId);
+  });
   registry.registerHook(A, 'before_submit', beforeSubmit);
   registry.registerHook(A, 'after_submit', afterSubmit);
   registry.registerHook(A, 'before_cancel', beforeCancel);

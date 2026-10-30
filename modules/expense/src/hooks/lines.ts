@@ -1,9 +1,10 @@
 // expense_settlement_line hooks (spec AC-4, AC-5, D28).
-// before_validate (caller writes; internal recalculation writes carry the capability and skip): the roles, a draft
-//   parent, then under the employee lock the AC-4 checks of the expense (VALIDATION with every issue) and the overlap
-//   with another draft or submitted settlement (CONFLICT naming it). The expense's user, date and description are
-//   copied (server-owned); account and tax category default from `expense.accounts.defaultExpense`; the invoice fields
-//   that do not apply to the chosen kind or category are cleared.
+// before_validate (caller writes; internal recalculation writes carry the capability and skip): the roles, a parent
+//   that is not the caller's own settlement (AC-15, also on delete), a draft parent, then under the employee lock the
+//   AC-4 checks of the expense (VALIDATION with every issue) and the overlap with another draft or submitted
+//   settlement (CONFLICT naming it). The expense's user, date and description are copied (server-owned); account and
+//   tax category default from `expense.accounts.defaultExpense`; the invoice fields that do not apply to the chosen
+//   kind or category are cleared.
 // after_create/update/delete (direct line writes only): recalculate the parent; a replace-all save recalculates once
 //   in the header's after_lines_saved instead.
 import {
@@ -22,7 +23,7 @@ import {
 import { Account } from '@daifuku/mod-accounting';
 import { isZeroRateCategory, type TaxCategory } from '@daifuku/mod-tax';
 import { lockEmployeeForSettlement, WorkforceExpense } from '@daifuku/mod-workforce';
-import { requireSettlementRoles } from '../access.ts';
+import { refuseSelfSettlement, requireSettlementRoles } from '../access.ts';
 import type { ExpenseSettlementKind } from '../contract.ts';
 import { ExpenseSettlement, ExpenseSettlementLine } from '../entities/index.ts';
 import { expenseIssues, liveSettlementOf, zeroIfMissing } from '../services/load.ts';
@@ -77,6 +78,7 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   requireSettlementRoles(ctx, ExpenseSettlement.name, 'update');
   const parent = await parentOf(ctx, merged(row, previous, 'settlementId'));
   if (!parent) return; // FK reports it
+  refuseSelfSettlement(ctx, ExpenseSettlement.name, 'update', parent.userId);
   if (parent.docstatus !== DOCSTATUS.draft)
     throw new StateError(`${ExpenseSettlement.name} ${parent.number ?? parent.id} is not a draft`, FROZEN_HINT);
   await lockEmployeeForSettlement(ctx, parent.employeeId);
@@ -119,6 +121,12 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   normalizeInvoiceFields(row, previous);
 }
 
+async function beforeDelete(ctx: Context, { row }: HookArgs): Promise<void> {
+  requireSettlementRoles(ctx, ExpenseSettlement.name, 'update');
+  const parent = await parentOf(ctx, row.settlementId);
+  if (parent) refuseSelfSettlement(ctx, ExpenseSettlement.name, 'update', parent.userId);
+}
+
 async function touch(ctx: Context, settlementId: unknown): Promise<void> {
   if (typeof settlementId !== 'string') return;
   if (hasWriteCapability(ctx, L, 'update') || hasWriteCapability(ctx, L, 'create')) return;
@@ -128,7 +136,7 @@ async function touch(ctx: Context, settlementId: unknown): Promise<void> {
 
 export function registerLineHooks(): void {
   registry.registerHook(L, 'before_validate', beforeValidate);
-  registry.registerHook(L, 'before_delete', (ctx) => requireSettlementRoles(ctx, ExpenseSettlement.name, 'update'));
+  registry.registerHook(L, 'before_delete', beforeDelete);
   registry.registerHook(L, 'after_create', (ctx, { row }) => touch(ctx, row.settlementId));
   registry.registerHook(L, 'after_update', (ctx, { row }) => touch(ctx, row.settlementId));
   registry.registerHook(L, 'after_delete', (ctx, { row }) => touch(ctx, row.settlementId));

@@ -1,7 +1,10 @@
 // Pure presentation of /finance/expenses (docs/specs/expense-settlement.md AC-20): the candidate groups of
-// expense.settlement_candidates (employee x payment method x site), their labels, sort order and summary, the refusal
-// that names the missing role (D26), and the draft request of one group. No React, no fetch.
+// expense.settlement_candidates (employee x payment method x site), their labels, sort order and summary, which group
+// can be drafted here (not the caller's own, not an advance group without an open advance), the refusals that name the
+// missing role or the self-settlement rule (D26, AC-15), and the draft request of one group. No React, no fetch.
 import {
+  MAX_DRAFT_EXPENSES,
+  SELF_SETTLEMENT_SUFFIX,
   settlementCandidatesOutput,
   type CandidateGroup,
   type ExpenseSettlementKind,
@@ -10,6 +13,7 @@ import {
 } from '@daifuku/mod-expense/contract';
 import { isApiError } from '../api/client.ts';
 import type { Label, Locale } from '../api/types.ts';
+import { expensePaymentMethods } from './workforce.ts';
 
 export const CANDIDATES_ACTION = 'expense.settlement_candidates';
 export const DRAFT_ACTION = 'expense.draft_settlement';
@@ -23,13 +27,6 @@ export const KIND_LABEL: Readonly<Record<ExpenseSettlementKind, Label>> = {
   reimbursement: { ja: '立替精算', en: 'Reimbursement' },
   corporate_card: { ja: '法人カード精算', en: 'Corporate card' },
   advance: { ja: '仮払精算', en: 'Advance clearing' },
-};
-
-/** Labels of workforce_expense.paymentMethod as the employee chose it (shared with /me and /workforce). */
-export const PAYMENT_METHOD_LABEL: Readonly<Record<CandidateGroup['paymentMethod'], Label>> = {
-  personal: { ja: '立替', en: 'Paid personally' },
-  corporate_card: { ja: '法人カード', en: 'Corporate card' },
-  advance: { ja: '仮払金から支払', en: 'Paid from an advance' },
 };
 
 /** Strict parse of the action output (a malformed answer fails the read instead of drawing wrong numbers). */
@@ -63,16 +60,20 @@ export function advancesOf(advances: readonly OpenAdvance[], employeeId: string)
   return advances.filter((a) => a.employeeId === employeeId);
 }
 
+/** The key of a group (one employee, payment method and site). */
+export const groupKey = (group: CandidateGroup): string => `${group.employeeId}|${group.paymentMethod}|${group.siteId}`;
+
 /**
- * The expense.draft_settlement input of a group: its kind and exactly its expenses (one site). An advance group with
- * exactly one open advance of the employee names it; with several, the accountant picks on the settlement form.
+ * The expense.draft_settlement input of a group: its kind and its expenses (one site), at most the
+ * MAX_DRAFT_EXPENSES oldest (candidates lists them oldest first; the rest go into the next settlement). An advance
+ * group with exactly one open advance of the employee names it; with several, the accountant picks on the form.
  */
 export function draftInput(group: CandidateGroup, advances: readonly OpenAdvance[]): Record<string, unknown> {
   const own = advancesOf(advances, group.employeeId);
   return {
     employeeId: group.employeeId,
     kind: group.kind,
-    expenseIds: [...group.expenseIds],
+    expenseIds: group.expenseIds.slice(0, MAX_DRAFT_EXPENSES),
     ...(group.kind === 'advance' && own.length === 1 && own[0] ? { advanceId: own[0].id } : {}),
   };
 }
@@ -85,9 +86,60 @@ export function clearAdvanceInput(advance: OpenAdvance): Record<string, unknown>
   return { employeeId: advance.employeeId, kind: 'advance', advanceId: advance.id };
 }
 
+/** A note when the group holds more expenses than one draft takes (AC-3: at most MAX_DRAFT_EXPENSES). */
+export function cappedNote(group: CandidateGroup): Label | null {
+  const rest = group.expenseIds.length - MAX_DRAFT_EXPENSES;
+  if (rest <= 0) return null;
+  return {
+    ja: `最初の ${MAX_DRAFT_EXPENSES} 件で精算書を作成します（残り ${rest} 件は次の精算書へ）`,
+    en: `The settlement takes the oldest ${MAX_DRAFT_EXPENSES}; the other ${rest} go into the next one`,
+  };
+}
+
+/**
+ * Why a group cannot be drafted from this screen, or null when it can: the caller's own expenses (AC-15: someone else
+ * settles them), or an advance group whose employee has no open advance (an advance settlement needs one to submit).
+ */
+export function groupBlock(group: CandidateGroup, advances: readonly OpenAdvance[]): Label | null {
+  if (group.self)
+    return { ja: '自分の経費は別の担当者が精算します', en: 'Your own expenses are settled by someone else' };
+  if (group.kind === 'advance' && advancesOf(advances, group.employeeId).length === 0)
+    return {
+      ja: '未精算の仮払がないため作成できません。先に「仮払の一覧」で仮払を記録して確定してください（手順はマニュアル）',
+      en: 'No open advance to clear: record and submit the advance first (All advances; see the manual)',
+    };
+  return null;
+}
+
+/** Why an open advance cannot be cleared from this screen (the caller's own advance), or null. */
+export function advanceBlock(advance: OpenAdvance): Label | null {
+  return advance.self
+    ? { ja: '自分の仮払は別の担当者が精算します', en: 'Your own advance is cleared by someone else' }
+    : null;
+}
+
+/** What a draft request is for, so a retry can rebuild it from the refreshed candidates. */
+export type DraftTarget = { kind: 'group'; key: string } | { kind: 'advance'; id: string };
+
+/** The input of `target` in the current candidates, or null when it is gone or blocked (nothing left to retry). */
+export function inputFor(target: DraftTarget, data: SettlementCandidates): Record<string, unknown> | null {
+  if (target.kind === 'group') {
+    const group = readyGroups(data.groups).find((g) => groupKey(g) === target.key);
+    return group && !groupBlock(group, data.advances) ? draftInput(group, data.advances) : null;
+  }
+  const advance = data.advances.find((a) => a.id === target.id);
+  return advance && !advanceBlock(advance) ? clearAdvanceInput(advance) : null;
+}
+
+export function sameTarget(a: DraftTarget | undefined, b: DraftTarget): boolean {
+  if (!a) return false;
+  if (a.kind === 'group') return b.kind === 'group' && a.key === b.key;
+  return b.kind === 'advance' && a.id === b.id;
+}
+
 export function groupTitle(group: CandidateGroup, locale: Locale): string {
   const code = group.employeeCode ? `${group.employeeCode} ` : '';
-  return `${code}${group.employeeName} · ${PAYMENT_METHOD_LABEL[group.paymentMethod][locale]} · ${group.siteName}`;
+  return `${code}${group.employeeName} · ${expensePaymentMethods[group.paymentMethod][locale]} · ${group.siteName}`;
 }
 
 export function summaryText(data: SettlementCandidates): Label {
@@ -104,11 +156,28 @@ export function summaryText(data: SettlementCandidates): Label {
   };
 }
 
+/** `details.op` of a PERMISSION_DENIED answer, or null for anything else. */
+function deniedOp(error: unknown): string | null {
+  if (!isApiError(error) || error.code !== 'PERMISSION_DENIED') return null;
+  const op = (error.details as { op?: unknown } | undefined)?.op;
+  return typeof op === 'string' ? op : '';
+}
+
 /** AC-20 / D26: the server refused because workforce_payroll is missing (accounting alone cannot settle). */
 export function isPayrollRefusal(error: unknown): boolean {
-  if (!isApiError(error) || error.code !== 'PERMISSION_DENIED') return false;
-  const details = error.details as { op?: unknown } | undefined;
-  return details?.op === REQUIRES_PAYROLL_OP;
+  return deniedOp(error) === REQUIRES_PAYROLL_OP;
+}
+
+/**
+ * The kind of a failed draft request: `self` (AC-15, `<op>:self-settlement`), `roles` (any other refusal: the
+ * `<op>:requires-workforce_payroll` suffix, the kernel's plain op, a bare 403), or `other` (validation, conflict,
+ * network: worth a retry). Only `other` offers a retry; a permission refusal answers the same every time.
+ */
+export function draftFailureKind(error: unknown): 'self' | 'roles' | 'other' {
+  const op = deniedOp(error);
+  if (op?.endsWith(SELF_SETTLEMENT_SUFFIX)) return 'self';
+  if (op !== null || (isApiError(error) && error.status === 403)) return 'roles';
+  return 'other';
 }
 
 export const REQUIRED_ROLES_TEXT: Label = {
@@ -116,4 +185,7 @@ export const REQUIRED_ROLES_TEXT: Label = {
   en: 'Expense settlement needs both the accounting and the workforce_payroll roles, with company-wide access (not limited to sites or stores). Ask your administrator to add them if you need them.',
 };
 
-export const settlementHref = (id: string) => `/e/${SETTLEMENT_ENTITY}/${id}`;
+export const SELF_SETTLEMENT_TEXT: Label = {
+  ja: '自分の経費・仮払の精算書は作成・変更・確定できません。別の経理担当者に依頼してください。',
+  en: 'You cannot create, change or submit the settlement of your own expenses or advance. Ask another accountant.',
+};

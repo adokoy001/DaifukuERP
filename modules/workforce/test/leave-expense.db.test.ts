@@ -1,6 +1,6 @@
 import { Decimal, newId, repo, runAction, type ContextParams } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
+import { reopenExpensesForSource, WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
 import { leaveBalance } from '../src/leave-balance.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
 let f: Fixture;
@@ -327,6 +327,35 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
       expenses: { id: string; paymentMethod: string }[];
     };
     expect(managed.expenses.find((e) => e.id === card.row.id)?.paymentMethod).toBe('advance');
+  });
+  it('expense-settlement AC-11 reopening for a settling document touches only expenses that carry its reference', async () => {
+    const w = await worker();
+    const saved = await expense(w);
+    const approved = await approveExpense(w, saved.row);
+    await call(f.db, f.payroll.params, 'settle_expense', {
+      expenseId: approved.id,
+      expectedVersion: approved.version,
+      paidOn: '2026-09-12',
+      reference: 'MANUAL-1',
+    });
+    const reopen = (reference: string) =>
+      f.db.run(f.payroll.params, (ctx) =>
+        reopenExpensesForSource(ctx, { employeeId: w.employeeId, expenseIds: [approved.id], reference }),
+      );
+    await reopen('EXP-2026-999999');
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'settled',
+      paidOn: '2026-09-12',
+      paymentReference: 'MANUAL-1',
+      settledBy: f.payroll.id,
+    });
+    await reopen('MANUAL-1');
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'approved',
+      paidOn: null,
+      paymentReference: null,
+      settledBy: null,
+    });
   });
   it('requires headquarters and a real settlement date; cancelled submissions cannot be approved', async () => {
     const w = await worker();

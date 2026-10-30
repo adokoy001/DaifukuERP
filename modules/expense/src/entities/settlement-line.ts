@@ -2,7 +2,7 @@
 // document kept for it. The expense's date and description are copied (server-owned, D27); tax amounts are computed per
 // expense x rate by hooks/recalc.ts (D7). `delete` is granted because the kernel's replace-all line save removes rows.
 import { defineEntity, f, label } from '@daifuku/kernel';
-import { TAX_CATEGORIES } from '@daifuku/mod-tax';
+import { TAX_CATEGORIES, TAX_CATEGORY_LABELS } from '@daifuku/mod-tax';
 import { BOOKS_ONLY_REASONS, INVOICE_KINDS } from '../contract.ts';
 
 const owned = { serverOwned: true } as const;
@@ -47,6 +47,7 @@ export const ExpenseSettlementLine = defineEntity({
       required: true,
       default: 'standard',
       label: label('税区分', 'Tax category'),
+      labels: TAX_CATEGORY_LABELS,
     }),
     amount: f.money({ required: true, label: label('金額（税込）', 'Amount (tax incl.)') }),
     invoiceKind: f.enum(INVOICE_KINDS, { label: label('請求書区分', 'Invoice kind'), labels: INVOICE_KIND_LABELS }),

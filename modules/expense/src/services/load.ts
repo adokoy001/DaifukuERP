@@ -1,5 +1,14 @@
 // Company-aware helpers shared by the hooks and actions: reads through the caller's Repository only (ADR-0007).
-import { Decimal, DOCSTATUS, getCompany, repo, type Context, type Infer, type LocalDate } from '@daifuku/kernel';
+import {
+  Decimal,
+  DOCSTATUS,
+  getCompany,
+  repo,
+  type Context,
+  type EntityDef,
+  type Infer,
+  type LocalDate,
+} from '@daifuku/kernel';
 import { resolveCreditRatio } from '@daifuku/mod-purchase';
 import { loadTaxRates, loadTaxSettings, taxScaleForCurrency, type TaxCategory } from '@daifuku/mod-tax';
 import type { WorkforceExpense } from '@daifuku/mod-workforce';
@@ -114,6 +123,55 @@ export async function liveSettlementOf(
     limit: 1,
   });
   return live.items[0]?.id ?? null;
+}
+
+/** Rows of `entity` with these ids that the caller can read, in chunks of the 500-row list limit. */
+export async function byIds<E extends EntityDef>(ctx: Context, entity: E, ids: readonly string[]): Promise<Infer<E>[]> {
+  const out: Infer<E>[] = [];
+  const unique = [...new Set(ids)];
+  for (let i = 0; i < unique.length; i += 500) {
+    const chunk = unique.slice(i, i + 500);
+    out.push(...(await repo(ctx, entity).list({ where: { id: { $in: chunk } }, limit: 500 })).items);
+  }
+  return out;
+}
+
+/** Every line of every settlement (any status) that names one of `expenseIds`, paged past the 500-row list limit. */
+async function linesOf(ctx: Context, expenseIds: readonly string[]): Promise<SettlementLineRow[]> {
+  const lines: SettlementLineRow[] = [];
+  for (let i = 0; i < expenseIds.length; i += 500) {
+    const chunk = expenseIds.slice(i, i + 500);
+    for (let offset = 0; ; offset += 500) {
+      const page = await repo(ctx, ExpenseSettlementLine).list({
+        where: { expenseId: { $in: chunk } },
+        orderBy: [{ field: 'id', dir: 'asc' }],
+        limit: 500,
+        offset,
+      });
+      lines.push(...page.items);
+      if (!page.items.length || offset + page.items.length >= page.total) break;
+    }
+  }
+  return lines;
+}
+
+/** expense id -> docstatus of the draft/submitted settlement that holds it. */
+export async function heldBy(ctx: Context, expenseIds: readonly string[]): Promise<Map<string, number>> {
+  const lines = await linesOf(ctx, expenseIds);
+  const settlements = await byIds(
+    ctx,
+    ExpenseSettlement,
+    lines.map((l) => l.settlementId),
+  );
+  const live = new Map(
+    settlements.filter((s) => s.docstatus !== DOCSTATUS.cancelled).map((s) => [s.id, s.docstatus] as const),
+  );
+  const out = new Map<string, number>();
+  for (const line of lines) {
+    const status = live.get(line.settlementId);
+    if (status !== undefined) out.set(line.expenseId, status);
+  }
+  return out;
 }
 
 export function zeroIfMissing(value: unknown): Decimal {

@@ -18,14 +18,15 @@ import {
   draftSettlementInput,
   draftSettlementOutput,
   KIND_PAYMENT_METHOD,
+  MAX_DRAFT_EXPENSES,
   type DraftSettlementInput,
 } from '../contract.ts';
 import { ExpenseAdvance, ExpenseSettlement, ExpenseSettlementLine } from '../entities/index.ts';
 import { internalWrite } from '../internal.ts';
-import { liveSettlementOf, type ExpenseRow } from '../services/load.ts';
+import { heldBy, type ExpenseRow } from '../services/load.ts';
 import { loadExpenseAccountCodes } from '../settings.ts';
 
-const MAX_EXPENSES = 200;
+const MAX_EXPENSES = MAX_DRAFT_EXPENSES;
 
 async function candidates(ctx: Context, input: DraftSettlementInput): Promise<ExpenseRow[]> {
   if (input.expenseIds) {
@@ -40,18 +41,24 @@ async function candidates(ctx: Context, input: DraftSettlementInput): Promise<Ex
     }
     return rows;
   }
-  const listed = await repo(ctx, WorkforceExpense).list({
-    where: { employeeId: input.employeeId, status: 'approved', paymentMethod: KIND_PAYMENT_METHOD[input.kind] },
-    orderBy: [
-      { field: 'expenseDate', dir: 'asc' },
-      { field: 'createdAt', dir: 'asc' },
-    ],
-    limit: 500,
-  });
+  // Oldest first, paged until MAX_EXPENSES free ones are found: the first page may be held entirely by other drafts.
   const free: ExpenseRow[] = [];
-  for (const row of listed.items) {
-    if (free.length >= MAX_EXPENSES) break;
-    if (!(await liveSettlementOf(ctx, row.id, null))) free.push(row);
+  for (let offset = 0; free.length < MAX_EXPENSES; offset += 500) {
+    const page = await repo(ctx, WorkforceExpense).list({
+      where: { employeeId: input.employeeId, status: 'approved', paymentMethod: KIND_PAYMENT_METHOD[input.kind] },
+      orderBy: [
+        { field: 'expenseDate', dir: 'asc' },
+        { field: 'createdAt', dir: 'asc' },
+      ],
+      limit: 500,
+      offset,
+    });
+    const held = await heldBy(
+      ctx,
+      page.items.map((row) => row.id),
+    );
+    for (const row of page.items) if (free.length < MAX_EXPENSES && !held.has(row.id)) free.push(row);
+    if (!page.items.length || offset + page.items.length >= page.total) break;
   }
   return free;
 }

@@ -1,7 +1,8 @@
 // expense_settlement header hooks (spec AC-3..AC-12, ADR-0039).
-// before_validate (draft create/update): role and self-settlement checks first (AC-15), then on create the employee's
-//   user and site (server-owned), today's date (JST) and zeroed computed fields. Internal updates (recalc, paymentId)
-//   carry the module capability and skip these checks.
+// before_validate (draft create/update): role and self-settlement checks first (AC-15; the self check covers create,
+//   update and, in before_delete, delete of the draft), then on create the employee's user and site (server-owned),
+//   today's date (JST) and zeroed computed fields. Internal updates (recalc, paymentId) carry the module capability
+//   and skip these checks.
 // before_create / before_update (draft): advance-derived amounts from the stored total (AC-7).
 // after_lines_saved: one recalculation per replace-all line save (hooks/recalc.ts).
 // before_submit: under the employee lock, every AC-6 check — including AC-4 on every line and the advance — then the
@@ -77,7 +78,10 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   if (previous && previous.docstatus !== DOCSTATUS.draft) return; // allowOnSubmit fields only
   if (previous && hasWriteCapability(ctx, S, 'update')) return; // module-internal recalculation
   requireSettlementRoles(ctx, S, previous ? 'update' : 'create');
-  if (previous) return;
+  if (previous) {
+    refuseSelfSettlement(ctx, S, 'update', previous.userId); // nobody edits the draft of their own settlement
+    return;
+  }
   if (typeof row.employeeId !== 'string') return; // zod reports it
   const employee = await repo(ctx, WorkforceEmployee).get(row.employeeId);
   refuseSelfSettlement(ctx, S, 'create', employee.userId);
@@ -326,7 +330,10 @@ export function registerSettlementHooks(): void {
   registry.registerHook(S, 'before_validate', beforeValidate);
   registry.registerHook(S, 'before_create', deriveAdvanceAmounts);
   registry.registerHook(S, 'before_update', deriveAdvanceAmounts);
-  registry.registerHook(S, 'before_delete', (ctx) => requireSettlementRoles(ctx, S, 'delete'));
+  registry.registerHook(S, 'before_delete', (ctx, { row }) => {
+    requireSettlementRoles(ctx, S, 'delete');
+    refuseSelfSettlement(ctx, S, 'delete', row.userId);
+  });
   registry.registerHook(S, 'after_lines_saved', afterLinesSaved);
   registry.registerHook(S, 'before_submit', beforeSubmit);
   registry.registerHook(S, 'after_submit', afterSubmit);

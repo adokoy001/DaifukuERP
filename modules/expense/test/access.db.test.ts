@@ -5,6 +5,7 @@
 import {
   appMeta,
   companies,
+  DOCSTATUS,
   companyMemberships,
   newId,
   repo,
@@ -136,6 +137,93 @@ describe('two roles are required (AC-15, D26)', () => {
     expect(
       await caught(f.draft({ employeeId: adminEmployee.employeeId, kind: 'reimbursement' }, f.admin.params)),
     ).toMatchObject(denied('create:self-settlement'));
+  });
+  it('AC-15 nobody updates or deletes the draft settlement, its lines or the draft advance of their own expenses after a colleague created them', async () => {
+    const selfie = await f.person('selfie-edit', ['workforce_employee']);
+    const w = await f.worker('selfie-edit-emp', f.siteA, selfie);
+    const own: Partial<ContextParams> = {
+      actor: { type: 'user', id: selfie.id },
+      roles: ['accounting', 'workforce_payroll'],
+      accessScope: 'all',
+      siteIds: [],
+    };
+    const r = await ready(w);
+    const before = await f.getSettlement(r.id);
+    const lineId = before.lines.expense_settlement_line[0]?.id ?? '';
+    expect(await caught(f.edit(r.id, { partnerId: f.partners.card }, undefined, own))).toMatchObject(
+      denied('update:self-settlement'),
+    );
+    expect(await caught(f.edit(r.id, {}, [{ invoiceKind: 'qualified' }], own))).toMatchObject(
+      denied('update:self-settlement'),
+    );
+    expect(
+      await caught(f.run(own, (ctx) => repo(ctx, ExpenseSettlementLine).update(lineId, { payeeName: '別の店' }))),
+    ).toMatchObject(denied('update:self-settlement'));
+    expect(await caught(f.run(own, (ctx) => repo(ctx, ExpenseSettlementLine).delete(lineId)))).toMatchObject(
+      denied('update:self-settlement'),
+    );
+    expect(
+      await caught(f.act(own, 'expense_settlement.delete', { id: r.id, expectedVersion: before.version })),
+    ).toMatchObject(denied('delete:self-settlement'));
+    const after = await f.getSettlement(r.id);
+    expect(after).toMatchObject({ version: before.version, partnerId: f.partners.alice, docstatus: DOCSTATUS.draft });
+    expect(after.lines.expense_settlement_line.map((l) => [l.id, l.payeeName, l.invoiceKind])).toEqual([
+      [lineId, '店', 'small_amount'],
+    ]);
+    const adv = await f.act<Row & { id: string; version: number }>(f.settler.params, 'expense_advance.create', {
+      employeeId: w.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    expect(
+      await caught(
+        f.act(own, 'expense_advance.update', { id: adv.id, expectedVersion: adv.version, patch: { amount: '900000' } }),
+      ),
+    ).toMatchObject(denied('update:self-settlement'));
+    expect(
+      await caught(f.act(own, 'expense_advance.delete', { id: adv.id, expectedVersion: adv.version })),
+    ).toMatchObject(denied('delete:self-settlement'));
+    expect(await f.act(f.settler.params, 'expense_advance.get', { id: adv.id })).toMatchObject({
+      amount: '1000',
+      version: adv.version,
+    });
+    // a colleague still edits and deletes them
+    await f.edit(r.id, { note: '確認済み' });
+    await f.act(f.settler.params, 'expense_advance.delete', { id: adv.id, expectedVersion: adv.version });
+  });
+  it('AC-15 AC-20 candidates flag the caller’s own expense groups and advances (someone else settles them)', async () => {
+    const selfie = await f.person('selfie-list', ['workforce_employee']);
+    const w = await f.worker('selfie-list-emp', f.siteA, selfie);
+    const other = await f.worker();
+    await f.approvedExpense(w);
+    await f.approvedExpense(other);
+    const adv = await f.act<Row & { id: string }>(f.settler.params, 'expense_advance.create', {
+      employeeId: w.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    await f.act(f.settler.params, 'expense_advance.submit', { id: adv.id });
+    const own: Partial<ContextParams> = {
+      actor: { type: 'user', id: selfie.id },
+      roles: ['accounting', 'workforce_payroll'],
+      accessScope: 'all',
+      siteIds: [],
+    };
+    type Out = {
+      groups: { employeeId: string; self: boolean }[];
+      advances: { id: string; self: boolean }[];
+    };
+    const mine = await f.act<Out>(own, 'expense.settlement_candidates', {});
+    expect(mine.groups.find((g) => g.employeeId === w.employeeId)?.self).toBe(true);
+    expect(mine.groups.find((g) => g.employeeId === other.employeeId)?.self).toBe(false);
+    expect(mine.advances.find((a) => a.id === adv.id)?.self).toBe(true);
+    const colleague = await f.act<Out>(f.settler.params, 'expense.settlement_candidates', {});
+    expect(colleague.groups.find((g) => g.employeeId === w.employeeId)?.self).toBe(false);
+    expect(colleague.advances.find((a) => a.id === adv.id)?.self).toBe(false);
   });
 });
 
