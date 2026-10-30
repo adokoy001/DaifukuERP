@@ -48,6 +48,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   // Screens of the same round (docs/specs/inbox.md, close-guide.md), mapped to the chapters those specs update.
   '/inbox': NAVIGATION,
   '/finance/close': topic(MONTHLY),
+  // docs/specs/opening-balances.md AC-31: the setup chapter explains the opening balance import.
+  '/finance/opening': topic('03-setup.md', '期首残高の取込'),
 };
 /** Reports explained in the monthly chapter; every other table report uses the report-screen appendix. */
 const REPORTS: Readonly<Record<string, HelpTopic>> = {

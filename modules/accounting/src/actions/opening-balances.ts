@@ -175,7 +175,7 @@ async function planRows(
         partnerId: null,
         side: amount.side,
         amount: amount.amount,
-        memo: memo ?? clearingMemo(account),
+        memo: clearingMemo(account, memo),
         clearingFrom: account,
       });
       rows.push(rowResult(line, 'clearing'));

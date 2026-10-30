@@ -38,6 +38,7 @@ import { CommandPalette } from './components/command-palette.tsx';
 import { forgetRecentNames } from './api/navigation-assist.ts';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
+import { parseOpeningSearch } from './lib/opening-balances.ts';
 import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
@@ -362,6 +363,13 @@ const closeRoute = createRoute({
   validateSearch: parseCloseSearch,
   component: lazyRouteComponent(() => import('./pages/close-page.tsx'), 'ClosePage'),
 });
+// docs/specs/opening-balances.md AC-31 / AC-32: the opening balance import; the chosen year stays in ?fiscalYearId=.
+const openingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/opening',
+  validateSearch: parseOpeningSearch,
+  component: lazyRouteComponent(() => import('./pages/opening-balances-page.tsx'), 'OpeningBalancesPage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -431,6 +439,7 @@ const routeTree = rootRoute.addChildren([
     tradeRoute,
     bankingRoute,
     closeRoute,
+    openingRoute,
     taxFilingRoute,
   ]),
 ]);

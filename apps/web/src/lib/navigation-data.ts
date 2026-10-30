@@ -220,6 +220,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/finance/opening',
+    workspace: 'finance',
+    module: 'accounting',
+    action: 'accounting.import_opening_balances',
+    label: { ja: '期首残高の取込', en: 'Opening balances' },
+    description: {
+      ja: '利用開始時の開始仕訳・売掛金と買掛金・在庫の期首残高を CSV で事前確認して取り込みます。',
+      en: 'Preview and import the opening journal, receivables and payables, and stock from CSV when you start.',
+    },
+  },
+  {
     href: '/finance/filing',
     workspace: 'finance',
     module: 'tax_filing',

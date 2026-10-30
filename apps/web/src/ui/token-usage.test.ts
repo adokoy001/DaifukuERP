@@ -48,6 +48,8 @@ const CONVERTED = [
   'components/form-draft.tsx',
   'components/form-shortcuts-help.tsx',
   'components/record-nav.tsx',
+  // opening-balances (docs/specs/opening-balances.md)
+  'pages/opening-balances-page.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

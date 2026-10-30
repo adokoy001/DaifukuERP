@@ -70,6 +70,7 @@ describe('AC-9 AC-10 accounts', () => {
   });
   it('AC-10: the clearing memo names the original account', () => {
     expect(clearingMemo(base)).toBe('期首残高 1300 売掛金（取引先別は期首請求書）');
+    expect(clearingMemo(base, '合計')).toBe('期首残高 1300 売掛金（取引先別は期首請求書） 合計');
     expect(clearingMemo({ code: 'X', name: 'あ'.repeat(300) })).toHaveLength(200);
   });
 });

@@ -166,9 +166,12 @@ export function accountRowIssue(account: ClassifiedAccount, clearingAccountId: s
   return null;
 }
 
-/** AC-10: the memo of a row moved to the clearing account names the original account. */
-export function clearingMemo(account: Pick<ClassifiedAccount, 'code' | 'name'>): string {
-  return `期首残高 ${account.code} ${account.name}（取引先別は期首請求書）`.slice(0, 200);
+/**
+ * AC-10: the memo of a row moved to the clearing account always names the original account (the status and AC-32 name
+ * the moved accounts from it); the row's own memo, when given, follows.
+ */
+export function clearingMemo(account: Pick<ClassifiedAccount, 'code' | 'name'>, memo?: string | null): string {
+  return `期首残高 ${account.code} ${account.name}（取引先別は期首請求書）${memo ? ` ${memo}` : ''}`.slice(0, 200);
 }
 
 export interface SidedAmount {
