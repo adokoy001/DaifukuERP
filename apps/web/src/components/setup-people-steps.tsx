@@ -122,14 +122,25 @@ export function UsersStep(props: SetupStepProps) {
   const createStatus = useMemo(() => editorStatus('create'), [editorStatus]);
   const inviteStatus = useMemo(() => editorStatus('invite'), [editorStatus]);
   const membershipStatus = useMemo(() => editorStatus('membership'), [editorStatus]);
-  // A saved membership changes the access catalog (useAccessMutation invalidates it): re-read the setup status then.
-  const updatedAt = catalog.dataUpdatedAt;
-  const firstUpdate = useRef(updatedAt);
-  useEffect(() => {
-    if (updatedAt !== firstUpdate.current) void refresh();
-  }, [updatedAt, refresh]);
-  const created = createdId ? catalog.data?.users.find((user) => user.id === createdId) : undefined;
   const companyId = getCompanyId() ?? undefined;
+  // A saved membership changes the access catalog (useAccessMutation invalidates it). Re-read the setup status only
+  // when this company's active members changed — not on the catalog's own refetch on focus (no automatic re-checks).
+  const members = catalog.data
+    ? catalog.data.memberships
+        .filter((m) => m.companyId === companyId && catalog.data.users.some((u) => u.id === m.userId && u.active))
+        .map((m) => m.userId)
+        .sort()
+        .join(',')
+    : undefined;
+  const firstMembers = useRef(members);
+  useEffect(() => {
+    if (firstMembers.current === undefined) firstMembers.current = members;
+    else if (members !== firstMembers.current) {
+      firstMembers.current = members;
+      void refresh();
+    }
+  }, [members, refresh]);
+  const created = createdId ? catalog.data?.users.find((user) => user.id === createdId) : undefined;
   return (
     <div className="flex flex-col gap-3">
       <SetupChecks checks={props.step.checks} />
