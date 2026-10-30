@@ -150,11 +150,12 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 ### アクセシビリティの自動検査（axe）
 
-主要 8 画面は日英 × 1280px / 390px で axe の WCAG 2.1 A/AA 検査を通す（[spec](../specs/e2e-a11y.md)、使い方は [テスト規約](testing.md#アクセシビリティ自動検査axe)）。導入時に見つかった違反（`color-contrast` 12 件、`scrollable-region-focusable` 1 件）はすべて直し、例外は 0 件。画面を作る・直すときは次を守る。
+主要 8 画面は日英 × 1280px / 390px で axe の WCAG 2.1 A/AA 検査を通す（[spec](../specs/e2e-a11y.md)、使い方は [テスト規約](testing.md#アクセシビリティ自動検査axe)）。画面を作る・直すときは次を守る。
 
 - 読ませる文字（補足・日付・利用者名・「戻る」リンク・見出し上の小さな英字など）は `--text-muted` 以上の濃さ、強調色の文字は `--accent` 以上の濃さにする。旧来の `#738098`・`#8b69c8`・`#8869ad` などの淡い色は `--canvas` 上で 4.5:1 に届かない。色付きの面（`#fff3ef` など）の上では、`--text-muted` でも 4.5:1 ぎりぎり（4.51:1）なので、これより淡くしない。
-- 共有の補助クラス `.muted`（`operations.css`）と `.eyebrow`（`styles.css`）はトークンで書いてある。専用画面で色を上書きするときもトークンを使う。
-- 横に流れる枠（`overflow-x: auto`）の中に焦点を受ける要素が無いときは、枠に `tabIndex={0}`、`role="region"`、`aria-label` を付ける（キーボードで横に送れるようにする。例: `analytics-result.tsx` の集計表、`line-grid.tsx` の明細が 0 行または読取専用のとき）。中に入力欄やリンクがあるときは付けない（Tab の止まりが増えるため）。
+- 共有の補助クラス `.muted`（`operations.css`）と `.eyebrow`（`styles.css`）はトークンで書いてある。専用画面で色を上書きするときも原則トークンを使う。暗い hero の上の明るい文字のように対応するトークンが無い色（既存の各画面の `.eyebrow` の上書き `#a9f0f1` など）は、背景に対して 4.5:1（大きな文字は 3:1）以上あることを確かめてから使う。グラデーションの上の文字は axe が判定できない（報告の needs review に出るだけ）ので、いちばん明るい色の位置で計算する。
+- 横に流れる枠（`overflow-x: auto`）の中に焦点を受ける要素が無いときは、枠に `tabIndex={0}`、`role="region"`、`aria-label` を付ける（キーボードで横に送れるようにする。例: `analytics-result.tsx` の集計表）。中に入力欄やリンクがあるときは付けない（Tab の止まりが増えるため）。中身が変わる枠は、`line-grid.tsx` の `useFocusableInside` のように実際の DOM で判定する（明細が 0 行、または読取専用でリンクが無いときだけ枠が止まる）。
+- `aria-label` は役割のある要素に付ける。役割の無い `div` / `span` には付けない（ARIA 1.2 で禁止。名前を付けたいまとまりは `role="group"` など）。
 - 違反をすぐ直せないときだけ `apps/web/e2e/a11y-exceptions.json` に理由と追跡先を付けて登録する。
 
 ## 会社設定の画面（settings console）

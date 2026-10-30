@@ -1,7 +1,7 @@
 // web-phase1 AC-1/AC-2: one editable grid per line entity — inline widgets by kind, add/remove/reorder, Enter/Tab
 // navigation, decimal footer sums ("参考値"). Row model and arithmetic live in lib/lines.ts.
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { useCurrencyScale } from '../api/company.tsx';
 import { useMeta, useRecord } from '../api/queries.ts';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
@@ -36,6 +36,32 @@ function focusCell(root: HTMLElement | null, rowKey: string, field: string | und
     'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
   );
   el?.focus();
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * e2e-a11y: whether anything inside the element can take focus (editable cells, record links). Read from the DOM and
+ * re-read when it changes, because a cell's link appears only after its record loads (and not at all without access).
+ */
+function useFocusableInside(frame: RefObject<HTMLElement | null>): boolean {
+  const [inside, setInside] = useState(false);
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const update = () => setInside(element.querySelector(FOCUSABLE) !== null);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(element, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'href', 'tabindex'],
+    });
+    return () => observer.disconnect();
+  }, [frame]);
+  return inside;
 }
 
 function useKeyboard(rows: GridRow[], columns: FieldMeta[], readOnly: boolean, onChange: (rows: GridRow[]) => void) {
@@ -218,6 +244,8 @@ function SumsFooter({ columns, rows }: { columns: FieldMeta[]; rows: GridRow[] }
 export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReason, errors, children }: LineGridProps) {
   const { t } = useLocale();
   const { body, addRow, onKeyDown } = useKeyboard(rows, columns, readOnly, onChange);
+  const frame = useRef<HTMLDivElement>(null);
+  const focusableInside = useFocusableInside(frame);
   const entities = useMeta().data?.entities ?? NO_ENTITIES;
   const setCell = (key: string, field: string, v: FormValue) =>
     onChange(rows.map((r) => (r.key === key ? { ...r, values: { ...r.values, [field]: v } } : r)));
@@ -250,10 +278,12 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
       </header>
       {children}
       <div
+        ref={frame}
         className="overflow-x-auto"
-        // e2e-a11y: without editable cells (no rows yet, or read-only) nothing inside can take focus, so the scrolling
-        // frame itself does; otherwise keyboard users cannot reach the columns beyond a narrow screen (WCAG 2.1.1).
-        {...(readOnly || rows.length === 0
+        // e2e-a11y: when nothing inside can take focus (no rows yet, or read-only cells without record links) the
+        // scrolling frame itself does; otherwise keyboard users cannot reach the columns beyond a narrow screen
+        // (WCAG 2.1.1). With inputs or links inside it adds no extra Tab stop (docs/conventions/ui.md).
+        {...(!focusableInside
           ? {
               tabIndex: 0,
               role: 'region',

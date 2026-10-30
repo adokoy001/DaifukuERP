@@ -1,13 +1,15 @@
 // e2e-a11y (docs/specs/e2e-a11y.md): the screen matrix and the exception rules that apps/web/e2e/a11y.spec.ts applies
 // to axe results, and the checked-in exception file. The browser run itself is the Playwright spec.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   A11Y_SCREENS,
   WCAG_TAGS,
   a11yRuns,
   a11yTitle,
+  expiredDeadlines,
   formatJudgement,
+  isIsoDate,
   isSmokeRun,
   judge,
   parseExceptions,
@@ -18,6 +20,8 @@ import {
 } from '../e2e/a11y-policy.ts';
 
 const RUN: A11yRun = { screen: 'home', locale: 'ja', width: 1280 };
+const repoRoot = new URL('../../../', import.meta.url);
+const documentExists = (path: string) => existsSync(new URL(path, repoRoot));
 const violation = (id: string, impact: string | null, ...targets: string[]): AxeViolation => ({
   id,
   impact,
@@ -26,7 +30,7 @@ const violation = (id: string, impact: string | null, ...targets: string[]): Axe
   nodes: targets.map((target) => ({
     target: [target],
     html: `<span class="${target}">x</span>`,
-    failureSummary: 'Fix',
+    failureSummary: `Fix any of the following:\n  ${id} on ${target}`,
   })),
 });
 const exception = (overrides: Partial<A11yException> = {}): A11yException => ({
@@ -98,6 +102,7 @@ describe('e2e-a11y AC-2: which findings fail a run', () => {
     const report = formatJudgement(RUN, result);
     expect(report).toContain('[serious] color-contrast: color-contrast help');
     expect(report).toContain('target: .eyebrow');
+    expect(report).toContain('Fix any of the following:\n      color-contrast on .eyebrow');
     expect(report).toContain('https://dequeuniversity.com/rules/axe/4.13/button-name');
   });
 
@@ -125,6 +130,21 @@ describe('e2e-a11y AC-2: which findings fail a run', () => {
     expect(result.advisory.map((item) => item.rule)).toEqual(['region', 'x']);
     expect(formatJudgement(RUN, result)).toContain('moderate/minor (reported, not failing) (2)');
     expect(judge([violation('y', null, 'p')], [], RUN).failures).toHaveLength(1);
+  });
+
+  it('AC-2: axe needs-review (incomplete) nodes are counted per rule in the report and never fail', () => {
+    const targets = Array.from({ length: 7 }, (_, index) => `.nav-${index}`);
+    const result = judge([], [], RUN, [
+      violation('color-contrast', 'serious', ...targets),
+      violation('aria-prohibited-attr', 'serious', '.analytics-paging'),
+    ]);
+    expect(result.failures).toHaveLength(0);
+    expect(result.needsReview).toHaveLength(8);
+    const report = formatJudgement(RUN, result);
+    expect(report).toContain('needs review: axe could not judge these nodes (not failing) (8):');
+    expect(report).toContain('  - color-contrast [serious] 7 nodes: .nav-0, .nav-1, .nav-2, .nav-3, .nav-4, +2 more');
+    expect(report).toContain('  - aria-prohibited-attr [serious] 1 nodes: .analytics-paging');
+    expect(formatJudgement(RUN, judge([], [], RUN))).not.toContain('needs review');
   });
 
   it('AC-2: the target joins frames and shadow-DOM paths', () => {
@@ -166,14 +186,63 @@ describe('e2e-a11y AC-3: exceptions need reasons and must stay in use', () => {
       'exceptions[3].locales must be a non-empty list of ja / en',
       'exceptions[4].widths must be a non-empty list of 1280 / 390',
       'exceptions[5].until is not a known field',
-      'exceptions[7] duplicates rule/screen/target color-contrast .eyebrow',
+      'exceptions[7] overlaps exceptions[6] for color-contrast home .eyebrow at ja/1280, ja/390, en/1280, en/390',
       'exceptions[8] must be an object',
     ]);
     expect(parseExceptions([]).errors).toEqual(['the file must be an object with an "exceptions" array']);
   });
 
-  it('AC-3: the checked-in apps/web/e2e/a11y-exceptions.json is well-formed', () => {
+  it('AC-3: entries for one rule/screen/target may split the conditions but not share one', () => {
+    // A finding seen only at ja/1280 and en/390 needs two narrowed entries (one entry would be stale at ja/390, en/1280).
+    const disjoint = parseExceptions({
+      exceptions: [exception({ locales: ['ja'], widths: [1280] }), exception({ locales: ['en'], widths: [390] })],
+    });
+    expect(disjoint.errors).toEqual([]);
+    expect(disjoint.exceptions).toHaveLength(2);
+    const found = [violation('color-contrast', 'serious', '.eyebrow')];
+    for (const run of [RUN, { ...RUN, locale: 'en' as const, width: 390 as const }]) {
+      const result = judge(found, disjoint.exceptions, run);
+      expect([result.failures.length, result.stale.length, result.waived.length]).toEqual([0, 0, 1]);
+    }
+    expect(judge([], disjoint.exceptions, { ...RUN, width: 390 }).stale).toEqual([]);
+    expect(
+      parseExceptions({ exceptions: [exception({ locales: ['ja'] }), exception({ widths: [390] })] }).errors,
+    ).toEqual(['exceptions[1] overlaps exceptions[0] for color-contrast home .eyebrow at ja/390']);
+    // Another target, rule or screen is a different key.
+    expect(
+      parseExceptions({ exceptions: [exception(), exception({ target: '.other' }), exception({ screen: 'me' })] })
+        .errors,
+    ).toEqual([]);
+  });
+
+  it('AC-3: followUp is a real YYYY-MM-DD deadline or an existing docs/ document (optionally with #anchor)', () => {
+    const errorsOf = (followUp: string) =>
+      parseExceptions({ exceptions: [exception({ followUp })] }, { documentExists }).errors;
+    expect(errorsOf('2027-03-31')).toEqual([]);
+    expect(errorsOf('docs/specs/ui-kit.md')).toEqual([]);
+    expect(errorsOf('docs/specs/test-tiers.md#受入基準ears')).toEqual([]);
+    expect(errorsOf('x')).toEqual([
+      'exceptions[0].followUp "x" must be a deadline YYYY-MM-DD or a docs/....md path (optional #anchor)',
+    ]);
+    expect(errorsOf('2027-02-30')).toHaveLength(1);
+    expect(errorsOf('2027/03/31')).toHaveLength(1);
+    expect(errorsOf('docs/../package.json')).toHaveLength(1);
+    expect(errorsOf('docs/specs/no-such-spec.md')).toEqual([
+      'exceptions[0].followUp docs/specs/no-such-spec.md does not exist',
+    ]);
+    expect(isIsoDate('2028-02-29')).toBe(true);
+    expect(isIsoDate('2027-02-29')).toBe(false);
+  });
+
+  it('AC-3: a deadline before today is listed as expired (the a11y spec warns; a document follow-up never expires)', () => {
+    const past = exception({ followUp: '2026-01-31' });
+    const exceptions = [past, exception({ followUp: '2026-10-30' }), exception()];
+    expect(expiredDeadlines(exceptions, '2026-10-30')).toEqual([past]);
+    expect(expiredDeadlines(exceptions, '2026-01-31')).toEqual([]);
+  });
+
+  it('AC-3: the checked-in apps/web/e2e/a11y-exceptions.json is well-formed and its documents exist', () => {
     const raw: unknown = JSON.parse(readFileSync(new URL('../e2e/a11y-exceptions.json', import.meta.url), 'utf8'));
-    expect(parseExceptions(raw).errors).toEqual([]);
+    expect(parseExceptions(raw, { documentExists }).errors).toEqual([]);
   });
 });

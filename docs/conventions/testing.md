@@ -45,12 +45,12 @@
 
 ## アクセシビリティ自動検査（axe）
 
-[spec](../specs/e2e-a11y.md)。`apps/web/e2e/a11y.spec.ts` が `@axe-core/playwright` で主要 8 画面（ログイン、ホーム、取引先一覧、売上請求書の新規、会社設定、`/me`、`/workforce`、`/analytics`）を日英 × 1280px / 390px の 32 件で検査する。通常のブラウザ試験（`chromium` project）に含まれ、日本語・1280px の 8 件は `@smoke`。
+[spec](../specs/e2e-a11y.md)。`apps/web/e2e/a11y.spec.ts` が `@axe-core/playwright` で主要 8 画面（ログイン、ホーム、取引先一覧、売上請求書の新規、会社設定、`/me`、`/workforce`、`/analytics`）を日英 × 1280px / 390px の 32 件で検査する（ほかに例外ファイルの形式と、明細表の横スクロール枠の焦点を各 1 件）。通常のブラウザ試験（`chromium` project）に含まれ、日本語・1280px の 8 件は `@smoke`。
 
 - 対象は WCAG 2.1 A/AA の rule tag（`wcag2a`、`wcag2aa`、`wcag21a`、`wcag21aa`）。`serious` / `critical` は失敗、`moderate` / `minor` は出力だけ。best-practice の rule は対象外。
-- 失敗の報告には rule・影響度・target・説明・help URL が出る。各実行の axe の結果全体は `test-results/<試験>/axe.json` に残る。
-- **まず直す。** 直せないものだけを `apps/web/e2e/a11y-exceptions.json` に登録する。項目は `rule`、`screen`（`a11y-policy.ts` の画面 id）、`target`（報告の target をそのまま。完全一致）、`reason`、`followUp`（追跡先の spec・計画項目、または期限 `YYYY-MM-DD`）が必須で、`locales`（`ja` / `en`）・`widths`（`1280` / `390`）で条件を絞れる。理由の無い項目、未知の画面・条件・項目名、重複は Web unit と a11y spec の両方で失敗する。
-- **古い例外は残らない。** 例外は適用される実行ごとに照合し、その実行で 1 件も一致しなければその実行が失敗する。違反が一部の条件だけで出るなら、`locales` / `widths` で絞る。
+- 失敗の報告には rule・影響度・target・説明（failureSummary）・help URL が出る。各実行の axe の `violations` と `incomplete`（axe が判定できなかった node）は `test-results/<試験>/axe.json` に残る（`passes` などそれ以外は残さない）。`incomplete` は報告に rule ごとの件数と先頭 5 件の target を出すだけで、失敗にはしない。左メニューや専用画面の hero のようにグラデーションの上に置いた文字は axe がコントラストを判定できず、ここに出る。
+- **まず直す。** 直せないものだけを `apps/web/e2e/a11y-exceptions.json` に登録する。項目は `rule`、`screen`（`a11y-policy.ts` の画面 id）、`target`（報告の target をそのまま。完全一致）、`reason`、`followUp`（追跡先の spec・計画項目＝存在する `docs/…/*.md`、`#anchor` 可。または実在する日付の期限 `YYYY-MM-DD`）が必須で、`locales`（`ja` / `en`）・`widths`（`1280` / `390`）で条件を絞れる（書かなければ全条件）。理由の無い項目、`followUp` の形が違う・文書が無い項目、未知の画面・条件・項目名、同じ rule・画面・target で条件が重なる項目は Web unit と a11y spec の両方で失敗する。期限を過ぎた項目は a11y spec が警告（annotation と標準エラー）を出すが、失敗にはしない（同じコミットの結果を日付で変えないため）。
+- **古い例外は残らない。** 例外は適用される実行ごとに照合し、その実行で 1 件も一致しなければその実行が失敗する。違反が一部の条件だけで出るなら、`locales` / `widths` で絞る。条件は言語 × 幅の直積なので、ja/1280 と en/390 だけのように直積で表せないときは、条件の重ならない 2 項目に分ける。
 - 例外を足す・消すときは、spec の未決事項か作業記録に理由を書く。
-- 画面を追加して検査対象にするときは `a11y-policy.ts` の `A11Y_SCREENS` に足す（Web unit の画面一覧と件数も更新する）。検査は `h1` の表示、`meta-error`・`aria-busy="true"`・`loading-view` が無いこと、通信の落ち着きを待ってから行う。
+- 画面を追加して検査対象にするときは `a11y-policy.ts` の `A11Y_SCREENS` に足す（Web unit の画面一覧と件数も更新する）。検査は `h1` の表示、通信の落ち着き（`networkidle`）、`meta-error`・`aria-busy="true"`・`loading-view` が無いことをこの順に待ってから行う。
 - 検査は初期表示だけ。ダイアログや開いたメニューなど操作後の状態は、必要になった画面の試験で `AxeBuilder` を同じ規則（`judge`）で呼ぶ。

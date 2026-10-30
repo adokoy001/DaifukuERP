@@ -66,7 +66,7 @@ export interface A11yException {
   /** The axe node target, frames joined with ` >>> ` (see `targetOf`). Matched exactly. */
   target: string;
   reason: string;
-  /** Where the fix is tracked (spec, plan item) or a deadline (YYYY-MM-DD). */
+  /** Where the fix is tracked (a repository document under `docs/`, optionally with `#anchor`) or a deadline (YYYY-MM-DD). */
   followUp: string;
   locales?: A11yLocale[];
   widths?: A11yWidth[];
@@ -75,8 +75,39 @@ export interface A11yException {
 const KEYS = new Set(['rule', 'screen', 'target', 'reason', 'followUp', 'locales', 'widths']);
 const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 
-/** AC-3: every exception names a known screen and condition, a target, a reason and a follow-up. */
-export function parseExceptions(raw: unknown): { exceptions: A11yException[]; errors: string[] } {
+/** A calendar date `YYYY-MM-DD` that exists (2027-02-30 does not). */
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/** The repository path of a `docs/...` follow-up without its `#anchor`, or null when it is not a document reference. */
+export function followUpDocument(followUp: string): string | null {
+  const path = /^(docs\/[\w./-]+\.md)(?:#[^\s#]+)?$/u.exec(followUp)?.[1];
+  return path && !path.split('/').includes('..') ? path : null;
+}
+
+/** The locale x width conditions an exception applies to (an omitted list means every value). */
+function conditionsOf(exception: Pick<A11yException, 'locales' | 'widths'>): string[] {
+  return (exception.locales ?? A11Y_LOCALES).flatMap((locale) =>
+    (exception.widths ?? A11Y_WIDTHS).map((width) => `${locale}/${width}`),
+  );
+}
+
+export interface ParseOptions {
+  /** Whether a repository-relative path exists. Given by callers that can read files (Web unit, the a11y spec). */
+  documentExists?: (path: string) => boolean;
+}
+
+/**
+ * AC-3: every exception names a known screen and condition, a target, a reason and a follow-up (a `docs/` document
+ * that exists, or a real date). Two entries for the same rule/screen/target may not share a locale x width condition.
+ */
+export function parseExceptions(
+  raw: unknown,
+  options: ParseOptions = {},
+): { exceptions: A11yException[]; errors: string[] } {
   const errors: string[] = [];
   const file = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
   const list = file && Array.isArray(file.exceptions) ? (file.exceptions as unknown[]) : null;
@@ -84,7 +115,8 @@ export function parseExceptions(raw: unknown): { exceptions: A11yException[]; er
   for (const key of Object.keys(file))
     if (key !== 'exceptions' && key !== 'about') errors.push(`${key} is not a known top-level field`);
   const screens = new Set(A11Y_SCREENS.map((screen) => screen.id));
-  const seen = new Set<string>();
+  /** rule/screen/target/condition -> index of the entry that took it. */
+  const taken = new Map<string, number>();
   const exceptions: A11yException[] = [];
   list.forEach((item, index) => {
     const at = `exceptions[${index}]`;
@@ -99,6 +131,16 @@ export function parseExceptions(raw: unknown): { exceptions: A11yException[]; er
       if (!text(entry[key])) errors.push(`${at}.${key} is required (non-empty string)`);
     if (text(entry.screen) && !screens.has(entry.screen as string))
       errors.push(`${at}.screen "${String(entry.screen)}" is not one of ${[...screens].join(', ')}`);
+    if (text(entry.followUp)) {
+      const followUp = (entry.followUp as string).trim();
+      const document = followUpDocument(followUp);
+      if (!isIsoDate(followUp) && !document)
+        errors.push(
+          `${at}.followUp "${followUp}" must be a deadline YYYY-MM-DD or a docs/....md path (optional #anchor)`,
+        );
+      else if (document && options.documentExists && !options.documentExists(document))
+        errors.push(`${at}.followUp ${document} does not exist`);
+    }
     const subset = (key: 'locales' | 'widths', allowed: readonly unknown[]) => {
       const value = entry[key];
       if (value === undefined) return;
@@ -109,15 +151,31 @@ export function parseExceptions(raw: unknown): { exceptions: A11yException[]; er
     subset('widths', A11Y_WIDTHS);
     if (errors.length > before) return;
     const exception = entry as unknown as A11yException;
-    const key = [exception.rule, exception.screen, exception.target].join('\u0000');
-    if (seen.has(key)) {
-      errors.push(`${at} duplicates rule/screen/target ${exception.rule} ${exception.target}`);
+    const keys = conditionsOf(exception).map((condition) => ({
+      condition,
+      key: [exception.rule, exception.screen, exception.target, condition].join('\u0000'),
+    }));
+    const clash = keys.filter(({ key }) => taken.has(key));
+    if (clash.length) {
+      const others = [...new Set(clash.map(({ key }) => `exceptions[${taken.get(key)}]`))].join(', ');
+      errors.push(
+        `${at} overlaps ${others} for ${exception.rule} ${exception.screen} ${exception.target} at ` +
+          clash.map(({ condition }) => condition).join(', '),
+      );
       return;
     }
-    seen.add(key);
+    for (const { key } of keys) taken.set(key, index);
     exceptions.push(exception);
   });
   return { exceptions, errors };
+}
+
+/**
+ * Exceptions whose follow-up is a deadline before `today` (YYYY-MM-DD). The a11y spec reports them as warnings and
+ * does not fail on them, so the same commit gives the same result on any day.
+ */
+export function expiredDeadlines(exceptions: readonly A11yException[], today: string): A11yException[] {
+  return exceptions.filter((exception) => isIsoDate(exception.followUp.trim()) && exception.followUp.trim() < today);
 }
 
 /** The subset of axe's result shape the policy reads. */
@@ -158,6 +216,8 @@ export interface A11yJudgement {
   stale: A11yException[];
   /** Moderate / minor findings: printed, never failing. */
   advisory: A11yFinding[];
+  /** axe's `incomplete` nodes (it could not decide, e.g. text over a gradient): printed as counts, never failing. */
+  needsReview: A11yFinding[];
 }
 
 export function appliesTo(exception: A11yException, run: A11yRun): boolean {
@@ -168,28 +228,38 @@ export function appliesTo(exception: A11yException, run: A11yRun): boolean {
   );
 }
 
+function findingsOf(violation: AxeViolation): A11yFinding[] {
+  return violation.nodes.map((node) => ({
+    rule: violation.id,
+    impact: violation.impact ?? 'unknown',
+    help: violation.help,
+    helpUrl: violation.helpUrl,
+    target: targetOf(node),
+    html: node.html ?? '',
+    summary: node.failureSummary ?? '',
+  }));
+}
+
+/** `incomplete` is axe's needs-review list (same shape as violations); it is reported and never fails the run. */
 export function judge(
   violations: readonly AxeViolation[],
   exceptions: readonly A11yException[],
   run: A11yRun,
+  incomplete: readonly AxeViolation[] = [],
 ): A11yJudgement {
   const applicable = exceptions.filter((exception) => appliesTo(exception, run));
   const used = new Set<A11yException>();
-  const result: A11yJudgement = { failures: [], waived: [], stale: [], advisory: [] };
+  const result: A11yJudgement = {
+    failures: [],
+    waived: [],
+    stale: [],
+    advisory: [],
+    needsReview: incomplete.flatMap(findingsOf),
+  };
   for (const violation of violations) {
     // axe always sets the impact of a violation; a missing one is treated as failing rather than silently advisory.
-    const impact = violation.impact ?? 'unknown';
-    const failing = impact === 'unknown' || FAILING_IMPACTS.includes(impact);
-    for (const node of violation.nodes) {
-      const finding: A11yFinding = {
-        rule: violation.id,
-        impact,
-        help: violation.help,
-        helpUrl: violation.helpUrl,
-        target: targetOf(node),
-        html: node.html ?? '',
-        summary: node.failureSummary ?? '',
-      };
+    const failing = !violation.impact || FAILING_IMPACTS.includes(violation.impact);
+    for (const finding of findingsOf(violation)) {
       if (!failing) {
         result.advisory.push(finding);
         continue;
@@ -205,7 +275,8 @@ export function judge(
   return result;
 }
 
-/** A readable report: rule, impact, target and description of each finding, then stale and waived exceptions. */
+/** A readable report: each failing finding (rule, impact, target, description), stale and waived exceptions, then the
+ * moderate/minor findings and a per-rule count of what axe could not judge. */
 export function formatJudgement(run: A11yRun, judgement: A11yJudgement): string {
   const lines: string[] = [`axe ${run.screen} (${run.locale}, ${run.width}px)`];
   const finding = (item: A11yFinding) =>
@@ -224,6 +295,16 @@ export function formatJudgement(run: A11yRun, judgement: A11yJudgement): string 
   if (judgement.advisory.length) {
     lines.push(`moderate/minor (reported, not failing) (${judgement.advisory.length}):`);
     lines.push(...judgement.advisory.map(finding));
+  }
+  if (judgement.needsReview.length) {
+    const byRule = new Map<string, A11yFinding[]>();
+    for (const item of judgement.needsReview) byRule.set(item.rule, [...(byRule.get(item.rule) ?? []), item]);
+    lines.push(`needs review: axe could not judge these nodes (not failing) (${judgement.needsReview.length}):`);
+    for (const [rule, items] of byRule) {
+      const targets = items.slice(0, 5).map((item) => item.target);
+      const more = items.length > targets.length ? `, +${items.length - targets.length} more` : '';
+      lines.push(`  - ${rule} [${items[0]?.impact ?? 'unknown'}] ${items.length} nodes: ${targets.join(', ')}${more}`);
+    }
   }
   return lines.join('\n');
 }

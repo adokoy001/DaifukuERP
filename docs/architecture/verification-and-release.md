@@ -13,7 +13,7 @@
 | 段階実行 | 編集中は変更に関係する検査だけ、完了前は全体 | `pnpm gate:quick` / `gate:light` / `gate:full`（[3段階の回帰テスト](../specs/test-tiers.md)） |
 | Web | 単体・型とproduction build | `pnpm --filter @daifuku/web test` / `typecheck` / `build` |
 | API成果物 | 型検査済みJS・固定依存・管理CLI | `pnpm build:api`、`pnpm test:deploy`、[配置の契約](compiled-api.md) |
-| E2E | 実画面の導線・失効・スマホ操作 | CONTRIBUTINGの空DB fixture + Playwright |
+| E2E | 実画面の導線・失効・スマホ操作、主要8画面のaxe（WCAG 2.1 A/AA、serious/criticalで失敗、例外は `apps/web/e2e/a11y-exceptions.json`） | CONTRIBUTINGの空DB fixture + Playwright（[e2e-a11y](../specs/e2e-a11y.md)） |
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
 | 配布・機器 | 固定graph・改変検知・agent journal/実通信 | `pnpm test:deploy`、`pnpm --filter @daifuku/edge build`、専用DBで実API/TLS試験 |
 | 文書 | AI入口と現行ソースの整合 | 主要文書のリンクと構成/契約を照合 |
