@@ -7,7 +7,7 @@
 | 場所 | 責任 | 変更の入口 |
 | --- | --- | --- |
 | `kernel/` | DSL、権限、行境界、Repository、伝票、監査、採番、イベント、storage | [公開API](../../kernel/src/index.ts) |
-| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、商流、銀行、申告準備、添付、従業員/労務、業種共通の案件処理 | 各packageの `src/index.ts` と `src/module.ts` |
+| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、商流、銀行、申告準備、添付、従業員/労務、業種共通の案件処理、帳票の共通レイアウト（`print-layout`、module を登録しない純粋関数のライブラリ） | 各packageの `src/index.ts` と `src/module.ts`（`print-layout` は `src/index.ts` だけ） |
 | `l10n/jp/` | 日本向けの帳票・制度・設定 | [日本module](../../l10n/jp/src/index.ts) |
 | `packs/` | 業種固有のdocument、workflow、設定、sample、UIメニュー | 各packageの公開indexとpack定義 |
 | `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
@@ -51,6 +51,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## 新しい共通業務の入口
 
 - [従業員module](../../modules/workforce/src/index.ts): 公開entity・wire contract・制度seed。勤怠/休暇/経費/給与は各actionから開始する。
+- [帳票の共通レイアウト](../../modules/print-layout/src/index.ts): 発行者・宛先・明細表・税率別内訳・合計・状態の帯・`printDocument` と設定 `print_layout.date_style`。各 module の `render_<document>_html` action（売上請求書・合計請求書・見積書・注文書・納品書・領収書・支払通知書・給与明細）が使う（[spec](../specs/print-templates.md)）。
 - [領収書module](../../modules/workforce-evidence/src/index.ts): 経費に従属する添付サービスと型。
 - [業種共通処理](../../modules/industry-operations/src/index.ts): 業種固有の案件documentを組み立て、開始/完了/請求/集計を共通化する。
 - [10業界の定義](../../packs/industry-catalog/src/index.ts): 選択したpackだけを読み、業種固有項目・検収条件・サンプルを載せる。

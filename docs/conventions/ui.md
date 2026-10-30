@@ -20,7 +20,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | ext の提出後編集 | `allowOnSubmit` | `'ext'` があれば全 ext フィールド、`'ext.<key>'` があればそのフィールドだけ、確定後も編集可 | `lib/ext.ts isExtFieldEditable` |
 | フォームの節 | `views.form` の各グループ。`string[]`（見出しなし）または `{ label, fields }`（ADR-0002 追補） | ラベル付きは `FormSection as="fieldset"`（legend が見出し）。768px 未満でラベル付きの節（追加項目を含む）が 4 つ以上ならタブ。どのグループにも無い非表示でない項目は末尾の見出しなしの枠（タブでは「その他」）。下記「フォームの節・エラー要約・ショートカット」 | `lib/form.ts formSections / sectionLayout`, `components/form-sections.tsx` |
 | エラーの紐付け | VALIDATION の `details.issues[].path` | `patch.` / `input.` / `body.` を外して先頭の項目へ。`ext.<key>` は ext フィールドへ。`lines.<entity>.<i>.<field>` は明細セルへ。どれでもなければフォーム上部 | `lib/form.ts issuesToFieldErrors`, `lib/lines.ts splitLineIssues` |
-| 印刷ビュー | `<entity.module>.render_invoice_html` アクションで、`inputSchema.properties.id` がある | 確定済み document のヘッダに「請求書を表示」 | `lib/print.ts` |
+| 印刷ビュー | アクションの `print: { entity, label, idInput, when?, fields? }`（名前 `<module>.render_<document>_html`、出力 `{ html }`）で、`inputSchema.properties[idInput]` がある | 記録画面（document は確定済みだけ）のヘッダに `label` のボタン。下記「帳票（印刷ビュー）」 | `lib/print.ts`, `components/print-button.tsx` |
 | 消込（入出金の配分） | 下記「消込」 | 明細グリッドの上に 配分合計／未配分 と「未消込の請求書から選ぶ」 | `lib/allocation.ts`, `components/allocation-picker.tsx`（web-phase15 AC-1/AC-2） |
 | 金額の桁 | `FieldMeta.money` / `scale`、`/auth/me` の `company.currency` | 下記「小数の表示」 | `lib/format.ts`, `lib/currency.ts`, `api/company.tsx`（web-phase15 AC-4/AC-8） |
 | 受信箱の提供元 | 名前が `<module>.todo` で `mutates: false`、generic でないアクション。入力 `{}`、出力 `TodoResult` | ホームの「やること」カードと `/inbox`。下記「やること受信箱」 | `api/inbox.ts`, `lib/inbox.ts`, `components/inbox-card.tsx`, `pages/inbox-page.tsx`（inbox） |
@@ -95,6 +95,21 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 0 と言い切らない | 提供元が返さなかった項目（例: `restaurant_chain.todo` の `missing_reports`）を 0 件と表示しない。受信箱の検査で落ちた項目は「開ける画面がない項目」として示す |
 | 保存 | 選んだビューの id だけを `assist-storage.ts` の種類 `home`（利用者・tenant・会社ごと）に保存する。選んだときだけ書き、既定で表示しただけでは書かない。保存できないときはその画面の間だけ切り替える |
 | 差込口 | 導入管理ビューの「導入・管理」カードが B3（setup-health、`/admin/health`）と B4（setup-wizard、`/setup`）の差込口。カタログに入口があるときだけリンクを出し、それらのコードを import しない |
+
+## 帳票（印刷ビュー、`<module>.render_<document>_html`）
+
+2026-10-30 に一般化した（[spec](../specs/print-templates.md)、[ADR-0009 追記](../adr/0009-actions-rest-mcp.md)）。以前は module 名と接尾辞 `render_invoice_html` から推測していたが、今は action の宣言だけで決まる。Web に帳票ごとの対応表は無い。
+
+| 決まり | 内容 |
+|---|---|
+| 名前と形 | `defineAction({ name: '<module>.render_<document>_html', input: z.object({ id: z.uuid() }), output: z.object({ html: z.string() }), tx: 'none', mutates: false, print: { entity, label } })`。入力の記録 id の property 名が `id` でなければ `print.idInput`（例: 合計請求書の `partnerId`）。`defineAction` が命名・`tx`・`mutates`・`internal`・入力の形を検査する |
+| どこに出すか | `print.entity` の記録画面。`when`（例 `{ direction: 'receive' }`）の値が記録とすべて一致するときだけ。document は確定済み（docstatus 1）だけ。1 つの entity に複数の帳票があってよい（入出金の領収書と支払通知書）。並びは `/meta` の順 |
+| 追加の入力 | `idInput` 以外の property があると、押したときに入力ダイアログ（`SchemaFields`）を開く。ラベルと補助文は `print.fields` の日英（設定画面と同じ presentation）。VALIDATION はダイアログを閉じずに該当欄の下へ出す |
+| 開き方 | クリック（またはダイアログの「表示」）の処理内で新しいタブを同期的に開き（ポップアップ対策）、`POST /actions/<name>` の `html` に印刷・閉じるバー（`withPrintBar`、紙には出ない）を付けて表示する。失敗したらタブを閉じてトースト |
+| 権限 | `permission: { entity, op: 'read' }`。対象と付随する記録は要求者の `Context` で `repo()` から読む。`/meta` に出ない（実行できない）ロールにはボタンも出ない |
+| 帳票の HTML | 共通部品 `@daifuku/mod-print-layout`（発行者・宛先・明細表・税率別内訳・合計・備考・状態の帯・`printDocument`）で組み立てる。保存値を表示するだけで再計算しない。`<script>`・外部資源・イベント属性を出さず、記録の文字列はすべてエスケープする。日付は会社設定 `print_layout.date_style` |
+| 差し替え | レイアウトは `registry.override('<module>.<document>_html', 既定の関数)`（引数 `(data, tools)`）。状態の帯は差し替え後にも action が入れる |
+| 他の入口 | 一覧ではない画面から開くときは `PrintActionButton`（例: `/me`・`/workforce` の給与明細）に `/meta` の action と記録 id を渡す |
 
 ## 2026-09-12 UI更新の規約
 
