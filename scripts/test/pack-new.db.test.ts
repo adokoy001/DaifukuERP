@@ -1,11 +1,12 @@
 // docs/specs/pack-scaffold.md AC-24 (with AC-13..AC-18): the generated pack's DB test runs against the current kernel and
-// partner on every DB run. The pack is generated into a temporary workspace outside the repository (node_modules is a
-// symlink to packs/example/node_modules, as in the AC-20 type check) and its test/pack.db.test.ts runs in a child vitest
+// partner on every DB run. The pack is generated into a temporary workspace outside the repository (its node_modules
+// links each entry of packs/example/node_modules, so the child's .vite cache stays in the temporary directory) and its
+// test/pack.db.test.ts runs in a child vitest
 // on the same test database (TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL). This suite opens no connection itself, so
 // the child's freshDb() may recreate the database. Each AC below asserts that the generated tests carrying the matching
 // generated AC id passed, and that nothing failed or was skipped.
 import { spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,7 +67,10 @@ beforeAll(async () => {
   });
   if (code !== 0) throw new Error(`pack-new exited ${code}:\n${output}`);
   const pack = join(workspace, 'packs', NAME);
-  symlinkSync(join(ROOT, 'packs/example/node_modules'), join(pack, 'node_modules'));
+  const modules = join(ROOT, 'packs/example/node_modules');
+  mkdirSync(join(pack, 'node_modules'));
+  for (const entry of readdirSync(modules).filter((name) => !name.startsWith('.')))
+    symlinkSync(join(modules, entry), join(pack, 'node_modules', entry));
   const reportFile = join(workspace, 'report.json');
   const child = await runChild(
     pack,

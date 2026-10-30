@@ -603,12 +603,20 @@ export const defaultIo = Object.freeze({
 });
 
 /** Both write targets must resolve to <root>/packs/<k> and <root>/docs/specs/pack-<k>.md (path traversal, AC-9). */
+function realDirectory(root, path) {
+  try {
+    return realpathSync(join(root, path));
+  } catch {
+    throw new PackNewError(`${path}/ does not exist under ${root}`);
+  }
+}
+
 export function assertTargets(root, plan) {
-  const packs = realpathSync(join(root, 'packs'));
+  const packs = realDirectory(root, 'packs');
   const target = resolve(packs, basename(plan.packDir));
   if (dirname(target) !== packs || `packs/${basename(target)}` !== plan.packDir)
     throw new PackNewError(`refusing to write outside ${packs}: ${plan.packDir}`);
-  const specs = realpathSync(join(root, 'docs/specs'));
+  const specs = realDirectory(root, 'docs/specs');
   const spec = resolve(specs, basename(plan.specPath));
   if (dirname(spec) !== specs || `docs/specs/${basename(spec)}` !== plan.specPath)
     throw new PackNewError(`refusing to write outside ${specs}: ${plan.specPath}`);

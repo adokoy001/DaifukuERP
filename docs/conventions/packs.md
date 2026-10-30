@@ -31,6 +31,44 @@ packs/<p>/
   test/*.db.test.ts       専用 DB（daifuku_test_packs 等）で実行
 ```
 
+## 雛形から始める
+
+新しい pack は生成器から始める（[spec](../specs/pack-scaffold.md)）。`packs/example` を手で写さない（ext key・ラベル上書き・設定が衝突する）。
+
+```sh
+node scripts/pack-new.mjs bike-shop --label-ja 自転車店 --label-en "Bike shop"            # 生成だけ
+node scripts/pack-new.mjs bike-shop --register --label-ja 自転車店 --label-en "Bike shop" # 登録の 4 編集まで
+node scripts/pack-new.mjs bike-shop --dry-run --register                                    # 何も書かずに一覧・差分・手順
+```
+
+- **名前**: kebab-case・2〜24 文字（`bike-shop` → pack `bike_shop`、package `@daifuku/pack-bike-shop`、export `BikeShopPack`、ext key `bikeShopNote`）。予約名 `pack`・`packs`・`all`・`none`・`kernel`・`company`・`constructor`・`missing` と、既存の module・pack・entity・ext key・カタログのキー・package 名・spec と衝突する名前は拒否され、何も書かれない（静的な走査。factory が組み立てる名前は import 時の kernel の `Conflict` が最終判定）。
+- **ラベル**: `--label-en` を省くと名前の title case（`Bike Shop`）、`--label-ja` を省くと英語と同じ文字列になり警告と spec の `TODO:` が出る。日本語名は必ず決める。
+- **生成物**: `packs/<name>/`（`package.json`・`tsconfig.json` は `packs/example` から、`src/index.ts`・`src/pack.ts`・`src/entities/<name>-tag.ts`・`src/actions/count-tags.ts`・`src/seed.ts`・`src/sample.ts`・`test/pack.db.test.ts`）と `docs/specs/pack-<name>.md`（AC-1〜AC-7 と `TODO:` の記入欄）。中身は partner の ext 1 項目、小さなマスタ 1 つとメニュー、読取の action 1 つ、冪等な seed、1 回だけの sample。生成した DB テストは規約の「テスト」節の最低限と、権限・会社・未適用会社・拠点限定の境界を確かめる。設定・ラベル上書き・hooks・伝票は生成しない（`packs/example`・`packs/restaurant-chain` を見て足す）。`.ts` は固定の Prettier で整形済み。
+- **書込**: すべての検査と出力の計算を終えてから、`node_modules/.cache/pack-new/` で組み立てて `packs/<name>` へ名前を変える。途中の失敗や Ctrl-C ではその実行が作ったものを消し、編集を戻す。
+
+**登録の 4 編集**（`--register` が行う。付けなければ貼り付けられる行を表示する）:
+
+| ファイル | 編集 | 理由 |
+| --- | --- | --- |
+| `apps/runtime/src/packs.ts` | `AVAILABLE` の最後に `bike_shop: async () => (await import('@daifuku/pack-bike-shop')).BikeShopPack,` | runtime catalog（ADR-0017）。schema 生成も全登録 pack を読む |
+| `apps/runtime/package.json` | `dependencies` の最後に `"@daifuku/pack-bike-shop": "workspace:*"` | 動的 import はこの依存と `pnpm install` でしか解決しない |
+| `apps/runtime/test/runtime.test.ts` | AC-3 の `expect(schema.packs).toEqual([` の配列の最後に `'bike_shop',` | カタログを完全一致で固定するテスト |
+| `apps/web/e2e/workforce.spec.ts` | `利用できる業界テンプレート <N> 種` を `<N+1>` に | `/templates` は `example` 以外の pack を数える（gate:full のブラウザ試験） |
+
+**順序**（生成器が番号付きで表示する。順番を変えない）:
+
+1. 登録（上の 4 編集）。未登録で試すときは飛ばしてよいが、後で登録したら 2 をやり直す。
+2. `pnpm install`（新しい workspace package の link と lockfile。登録の編集の後に実行する）。
+3. 登録した後で `pnpm db:generate pack_<name>`（pack の entity の表。`apps/api/test/migrations.db.test.ts`・`industry-templates.db.test.ts`・`ext-index-migration.db.test.ts`・`boolean-migration.db.test.ts` は未生成の差分があると落ちる）。
+4. `pnpm --filter @daifuku/pack-<name> typecheck` と `pnpm exec vitest run --project db packs/<name>/test/pack.db.test.ts`。
+5. `pnpm gate:light`（新しい `package.json`・lockfile・migration で DB 全件に昇格する）。
+6. 任意: `.env` の `DAIFUKU_PACKS`、`apps/web/src/lib/templates.ts` の説明、`apps/web/src/lib/navigation-data.ts` の業務分野（無ければ「その他」）、`docs/manual`、作業記録、spec の `TODO:`。
+7. 適用: `pnpm pack:apply <snake名> --sample` または `/templates`。
+
+**片付け**（試しに作った pack をコミットせずに消す）: `git restore apps/runtime/src/packs.ts apps/runtime/package.json apps/runtime/test/runtime.test.ts apps/web/e2e/workforce.spec.ts pnpm-lock.yaml apps/api/drizzle`、`git clean -nd -- apps/api/drizzle` で確認してから `git clean -fd -- apps/api/drizzle`（生成した migration と snapshot）、`rm -rf packs/<name> docs/specs/pack-<name>.md`、`pnpm install --frozen-lockfile`、`git status --short` に未追跡のパスが残っていないこと。
+
+**テンプレートの保守**: `scripts/test/pack-new.test.ts`（unit）が生成物の型検査を、`scripts/test/pack-new.db.test.ts`（DB）が生成した DB テストの実行を毎回行う。登録・migration 生成・画面での適用は自動試験に含まれないので、台帳 [`PV-PACK-SCAFFOLD-01`](../verification/invariants.md) にリンクしたファイル（テンプレート、`kernel/src/pack.ts` などの適用・権限・meta・試験基盤）を変えたとき（`check-assurance --changed` が再確認を表示する）や登録先のファイルの形を変えたときは、spec の検証手順 4（登録して `gate:light` と画面での適用）をやり直し、作業記録に残す。
+
 ## definePack
 ```ts
 import { definePack, f, label, registry } from '@daifuku/kernel';
@@ -79,9 +117,9 @@ export const RetailPack = definePack({
 - 導入済みでサンプル追加もforceも指定しない再適用は何もしない（`alreadyApplied: true`、書き込みゼロ）。未追加のサンプルは `sample: true` で後から一度追加できる。version を上げても自動では再適用しない。既存設定の上書きを含む再導入は `force` の明示操作になる。
 
 ## apps への追加
-1. `apps/runtime/src/packs.ts` のカタログに動的importを足す（ADR-0017）。API/MCPの個別一覧を増やさない。
-2. `apps/runtime/package.json` のdependenciesに `@daifuku/pack-<p>` を足す（`pnpm install` は統合担当が実行）。
-3. エンティティを足したらマイグレーション生成を本体に依頼する（作業記録に書く）。
+1. 上の「登録の 4 編集」を行う（`node scripts/pack-new.mjs <name> --register` なら済み）。`apps/runtime/src/packs.ts` のカタログに動的importを足し（ADR-0017）、API/MCPの個別一覧を増やさない。
+2. 編集の後に `pnpm install` を実行する（`apps/runtime/package.json` の依存を link する。lockfile が並行ブランチと衝突したら統合担当が再実行する）。
+3. エンティティを足したら `pnpm db:generate pack_<p>` で migration を生成する（番号が統合時に衝突したら統合担当が作り直す。作業記録に書く）。
 
 ## テスト
 - `packs/<p>/test/*.db.test.ts`、専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` で指定。

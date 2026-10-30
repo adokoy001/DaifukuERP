@@ -159,6 +159,21 @@ const BIKE_FILES = [
   'packs/bike-shop/tsconfig.json',
 ];
 const BIKE_ARGS = ['bike-shop', '--label-ja', '自転車店', '--label-en', 'Bike shop'];
+// The registration targets are copied from the repository, so expectations derive from their current content (the
+// catalog grows whenever a pack is registered) instead of naming today's last pack or template count.
+const COUNT_LINE = /^.*利用できる業界テンプレート (\d+) 種.*$/m;
+function templateCountLine(text: string): { line: string; count: number } {
+  const match = COUNT_LINE.exec(text);
+  if (!match?.[1]) throw new Error('workforce.spec.ts has no template count');
+  return { line: match[0], count: Number(match[1]) };
+}
+function lastCatalogEntry(text: string): string {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.includes(CATALOG_TEST_MARKER));
+  const end = lines.findIndex((line, index) => index > start && /^\s*\]\);\s*$/.test(line));
+  return lines[end - 1] ?? '';
+}
+const repoCount = () => templateCountLine(readFileSync(join(ROOT, REGISTER_FILES.workforceSpec), 'utf8')).count;
 
 describe('pack-new generation (AC-1..AC-5)', { timeout: 30_000 }, () => {
   it('AC-1 creates exactly the ten files, changes nothing else, leaves no staging directory and exits 0', async () => {
@@ -339,7 +354,8 @@ describe('pack-new steps (AC-6)', { timeout: 30_000 }, () => {
   it('AC-6 prints the steps in order in both modes: register, pnpm install, db:generate, checks, gate:light, optional, apply', async () => {
     const names = packNames('bike-shop');
     for (const register of [false, true]) {
-      const steps = nextSteps(names, { register, count: 15 });
+      const count = repoCount();
+      const steps = nextSteps(names, { register, count });
       const order = [
         (line: string) => line.startsWith('1. Register'),
         (line: string) => line.startsWith('2. pnpm install'),
@@ -362,14 +378,14 @@ describe('pack-new steps (AC-6)', { timeout: 30_000 }, () => {
             "        bike_shop: async () => (await import('@daifuku/pack-bike-shop')).BikeShopPack,",
             '        "@daifuku/pack-bike-shop": "workspace:*"',
             "        'bike_shop',",
-            "        '利用できる業界テンプレート 15 種' -> '利用できる業界テンプレート 16 種'",
+            `        '利用できる業界テンプレート ${count} 種' -> '利用できる業界テンプレート ${count + 1} 種'`,
           ]),
         );
     }
     const root = fixture();
     const result = await run(root, BIKE_ARGS);
     expect(result.stdout).toContain(
-      `\nNext steps:\n${nextSteps(names, { register: false, count: 15 })
+      `\nNext steps:\n${nextSteps(names, { register: false, count: repoCount() })
         .map((line) => `  ${line}\n`)
         .join('')}`,
     );
@@ -395,10 +411,12 @@ describe('pack-new --register (AC-7)', { timeout: 30_000 }, () => {
     });
     expect(after.get(REGISTER_FILES.catalog)).toMatch(/BikeShopPack,\n};\n/);
     expect(diff(REGISTER_FILES.runtimeTest)).toEqual({ removed: [], added: ["      'bike_shop',"] });
-    expect(after.get(REGISTER_FILES.runtimeTest)).toContain("'beauty_salon',\n      'bike_shop',\n    ]);");
+    const last = lastCatalogEntry(before.get(REGISTER_FILES.runtimeTest) ?? '');
+    expect(after.get(REGISTER_FILES.runtimeTest)).toContain(`${last}\n      'bike_shop',\n    ]);`);
+    const { line, count } = templateCountLine(before.get(REGISTER_FILES.workforceSpec) ?? '');
     expect(diff(REGISTER_FILES.workforceSpec)).toEqual({
-      removed: ["  await expect(page.getByText('利用できる業界テンプレート 15 種', { exact: true })).toBeVisible();"],
-      added: ["  await expect(page.getByText('利用できる業界テンプレート 16 種', { exact: true })).toBeVisible();"],
+      removed: [line],
+      added: [line.replace(`テンプレート ${count} 種`, `テンプレート ${count + 1} 種`)],
     });
     const pkgBefore = JSON.parse(before.get(REGISTER_FILES.runtimePackage) ?? '{}') as Record<string, unknown>;
     const pkgAfter = JSON.parse(after.get(REGISTER_FILES.runtimePackage) ?? '{}') as Record<string, unknown>;
@@ -512,6 +530,10 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
     expect(assertTargets(root, { packDir: 'packs/ok', specPath: 'docs/specs/pack-ok.md' }).target).toBe(
       join(root, 'packs/ok'),
     );
+    rmSync(join(root, 'docs/specs'), { recursive: true });
+    expect(() => assertTargets(root, { packDir: 'packs/ok', specPath: 'docs/specs/pack-ok.md' })).toThrow(
+      'docs/specs/ does not exist',
+    );
   });
 
   it('AC-10 lists every collision (directory, package name, module/pack, entity, ext key, derived identifiers, catalog key, spec) and writes nothing', async () => {
@@ -580,7 +602,7 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
       ],
       [
         REGISTER_FILES.runtimeTest,
-        (t) => t.replace("'beauty_salon',", "'beauty_salon',\n      'bike_shop',"),
+        (t) => t.replace(lastCatalogEntry(t), `${lastCatalogEntry(t)}\n      'bike_shop',`),
         'already',
       ],
       [REGISTER_FILES.runtimePackage, (t) => JSON.stringify(JSON.parse(t), null, 4), 'reformat'],
@@ -589,8 +611,8 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
         (t) => t.replace('"@daifuku/kernel": "workspace:*",', '"@daifuku/pack-bike-shop": "workspace:*",'),
         'already depends',
       ],
-      [REGISTER_FILES.workforceSpec, (t) => t.replace('業界テンプレート 15 種', '業界テンプレート'), 'found 0 times'],
-      [REGISTER_FILES.workforceSpec, (t) => `${t}\n// 利用できる業界テンプレート 15 種\n`, 'found 2 times'],
+      [REGISTER_FILES.workforceSpec, (t) => t.replace(/業界テンプレート \d+ 種/, '業界テンプレート'), 'found 0 times'],
+      [REGISTER_FILES.workforceSpec, (t) => `${t}\n// 利用できる業界テンプレート 1 種\n`, 'found 2 times'],
     ];
     for (const [path, mutate, reason] of variants) {
       const root = fixture();
