@@ -1,6 +1,6 @@
 # Spec: fixed-assets（固定資産台帳と減価償却）
 
-- 状態: draft（批評への対応済み、実装中）
+- 状態: implemented（2026-10-30。償却率表の一次資料との照合は含まない: 未決事項 Q1）
 - モジュール: 新 `modules/fixed-assets`（package `@daifuku/mod-fixed-assets`、module 名 `fixed_assets`）、`l10n/jp`（日本の償却規則データ・勘定科目）、`apps/web`（`/finance/depreciation`）、`apps/runtime`（カタログ） ／ 依存: accounting（`postFromSource`・`reverseSourceEntry`・会計年度/期間・`assertOpenPeriod`）、tax（`taxSummaryFor`）、partner、[settings-console](settings-console.md)（B1）、[setup-health](setup-health.md)（B3）、[csv-import](csv-import.md)（B5）、[list-workbench](list-workbench.md)（C1）、[inbox](inbox.md)（C3）、[close-guide](close-guide.md)（C4）、[navigation-assist](navigation-assist.md)（D2）、[form-ergonomics](form-ergonomics.md)（D3）
 - ADR: 不要。kernel・DSL・kernel port を追加しない。module が定義する override 点に国別パックが期間付きデータを登録する形は ADR-0008（override）・ADR-0011（国パック）・ADR-0013（port と層）の既存の形で、前例は `purchase.exempt_supplier_credit_ratio`（l10n/jp `transitional-credit.ts`）。この項目に予約された ADR-0040 は使わない（実装中に DSL で表せないことが見つかった場合に限り使う）
 - 作成: 2026-10-30 ／ 作成者: agent（spec 作成セッション、ブランチ `wip/fixed-assets`、基点 `ffc2f42`）。設計の元は [完成度向上の実装計画](../completion-plan.md) E1 ／ 作業記録: `docs/log/2026-10-30-fixed-assets.md`
@@ -159,6 +159,10 @@
 - D21 run の取消は新しい順に限る（AC-16）。途中の期間を取り消すと同じ年度の再実行（AC-9）で不足分を計上できないため。
 - D22 除却・売却の年の当年償却は 12 か月分の額の月割を限度額とし、月の配分（AC-9）とは独立に計算する（AC-18）。法令の限度額に合わせ、上限の年度でも過小にならない。
 
+- D23 設定 `fixed_assets.accounts` に、AC-28 の 6 項目に加えて `outputTax`（仮受消費税、既定 2200）を持つ。理由: 売却の消費税の貸方（AC-19、golden D2）の科目を、日本の科目表の固定コードではなく設定で変えられるようにするため。`purchase.accounts` の `taxReceivable` と同じ形（実装時の追加）。
+- D24 `depreciation_run` と明細の汎用作成の拒否（AC-16）は before_create に加えて before_validate（作成時のみ）でも行う。理由: 全項目が serverOwned のため、汎用の作成・複製の入力は schema の必須検査で before_create の前に `VALIDATION` になり、`use_depreciation_screen` の案内が届かない（実装時の補足）。
+- D25 科目表とパックの seed の重なりの単体テスト（AC-29）は `apps/runtime/test/runtime.test.ts` ではなく新しい `apps/runtime/test/chart-codes.test.ts` に置く。理由: 既存のファイルは子プロセスでカタログを読み込む試験で、パックを import すると試験の前提（未登録の状態）を変えるため。
+
 ## 批評への対応（2026-10-30、実装セッションの冒頭）
 
 spec の批評の指摘 18 件への対応。採用は本文（AC・golden・決定・検証）に反映済み。
@@ -218,7 +222,7 @@ spec の批評の指摘 18 件への対応。採用は本文（AC・golden・決
 | AC-21、AC-22 | 単体・DB | `modules/fixed-assets/test/property-tax.test.ts`（PT1、計の恒等式）、`modules/fixed-assets/test/reports.db.test.ts`（明細表の各列と合計、accounting は 2 つの帳票の CSV を出力でき、viewer は `PERMISSION_DENIED`） |
 | AC-24〜AC-27 | DB | `modules/fixed-assets/test/access.db.test.ts`（ロール別、別会社、店舗・拠点限定の文脈、監査の actor） |
 | AC-28 | DB | `modules/fixed-assets/test/asset.db.test.ts`（科目コードが無い場合の `StateError`） |
-| AC-29 | DB・単体 | `l10n/jp/test/l10n-jp.db.test.ts`（科目の件数と区分、既存コードの非上書き、override の登録）、`apps/runtime/test/runtime.test.ts`（日本の科目表とパックの seed の科目コードが重ならない）、`packs/real-estate/test/scenario-real-estate.db.test.ts`（回帰） |
+| AC-29 | DB・単体 | `l10n/jp/test/l10n-jp.db.test.ts`（科目の件数と区分、既存コードの非上書き、override の登録）、`apps/runtime/test/chart-codes.test.ts`（日本の科目表とパックの seed の科目コードが重ならない。D25）、`packs/real-estate/test/scenario-real-estate.db.test.ts`（回帰） |
 | AC-30 | DB | `apps/api/test/setup-health.db.test.ts`（項目 id・順序・href）、`modules/fixed-assets/test/health.db.test.ts`（資産 0 件は ok、資産ありで未照合は warn、照合記録で ok、国・通貨違いは warn、settings ロールは warn） |
 | AC-31 | DB | `modules/fixed-assets/test/todo.db.test.ts`（未実行の資産の件数、償却済みの資産は数えない、実行の後に登録した資産は数える） |
 | AC-32〜AC-34 | Web 単体・ブラウザ | `apps/web/src/lib/depreciation.test.ts`（表示の組立て、文言、既定期間の URL）、`apps/web/e2e/fixed-assets.spec.ts`（照合記録の無い会社で実行の操作が無効、設定に照合を記録、汎用フォームで資産を登録 → 試算 → 実行 → 2 回目は計上なし → 除却の確定、未照合の帯、viewer に実行なし、英語表示、390px、`judge()`） |
