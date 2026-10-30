@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 pack 雛形生成（B7）
 
 - セッション: B7 実装（branch `wip/pack-scaffold`、開始 commit `c361ba5`） ／ 担当: agent ／ 対象: [docs/specs/pack-scaffold.md](../specs/pack-scaffold.md)
-- 計測: tokens=null, agent_minutes=80, human_minutes=0, rework_lines=45, gate_failures=1
+- 計測: tokens=null, agent_minutes=80 + レビュー後の修正 約55（fixer）, human_minutes=0, rework_lines=45 + 約100（レビュー後の修正で削除・置換した行）, gate_failures=1
 
 ## 決めたこと（と理由）
 
@@ -21,8 +21,8 @@
 ## やったこと
 
 - `scripts/pack-new.mjs`（引数・名前・ラベルの検査、衝突の静的走査、テンプレートの描画と Prettier 整形、登録の 4 編集の計算、手順の表示、`--dry-run`、一時ディレクトリ経由の書込と巻戻し）と型 `scripts/pack-new.d.mts`。
-- `scripts/pack-template/`（`src/index.ts`・`src/pack.ts`・`src/entities/tag.ts`・`src/actions/count-tags.ts`・`src/seed.ts`・`src/sample.ts`・`test/pack.db.test.ts`・`spec.md` の `.tmpl`）。生成 DB テストは生成 AC-1〜AC-7 の 11 件（登録、初回適用と 2 回目の書込ゼロ、force と sample、admin 限定の適用・viewer の読取・作成拒否・付与の無いロール・拠点限定文脈、適用済み 2 社の分離と未適用会社での拒否、ext の検証・where・search、`appMeta`）。
-- `scripts/test/pack-new.test.ts`（unit 26 件、AC-1〜AC-12・AC-20・AC-23）と `scripts/test/pack-new.db.test.ts`（DB 7 件、AC-13〜AC-18・AC-24）。
+- `scripts/pack-template/`（`src/index.ts`・`src/pack.ts`・`src/entities/tag.ts`・`src/actions/count-tags.ts`・`src/seed.ts`・`src/sample.ts`・`test/pack.db.test.ts`・`spec.md` の `.tmpl`）。生成 DB テストは生成 AC-1〜AC-7 の 11 件（登録、初回適用と 2 回目の書込ゼロ、force と sample、admin 限定の適用・viewer の読取・作成拒否・付与の無いロール・拠点限定文脈（レビュー後の修正で admin の action 経由の適用と、店舗・拠点限定での `list`・作成の拒否を追加）、適用済み 2 社の分離と未適用会社での拒否、ext の検証・where・search、`appMeta`）。
+- `scripts/test/pack-new.test.ts`（unit 26 件、レビュー後の修正で 29 件。AC-1〜AC-12・AC-20・AC-23）と `scripts/test/pack-new.db.test.ts`（DB 7 件、AC-13〜AC-18・AC-24）。
 - 文書: [pack の書き方](../conventions/packs.md)「雛形から始める」と「apps への追加」、[拡張手順](../architecture/extension-guide.md) の手順 5 と「引継ぎを確認する記録」、[検証根拠の台帳](../verification/invariants.md) `PV-PACK-SCAFFOLD-01`。
 
 ## 検証（何を・どう確認したか。コードレビューか実測かを明記）
@@ -43,15 +43,36 @@
 - [レビュー] 生成 spec（`docs/specs/pack-scaffold-check.md`）を読み、`_template.md` の見出しの順、AC-1〜AC-7、`TODO:` 欄、相対リンク（ADR-0015・ADR-0016・pack-scaffold・pack の書き方）が実在することを確認した（docs:check の対象外のファイルのため目視）。
 - [未検証] `pnpm gate:full`（統合担当）。人間の第三者による手順の完走。Windows など Linux 以外での実行（rename とシグナルの扱い）。生成した pack を他の pack と同じ会社に適用したときのメニュー表示の並び（order 90）は目視していない。
 
+## レビュー後の修正（2026-10-30、fixer）
+
+実装（`5f8814e`）への 3 観点（spec・safety・ux）のレビュー指摘 19 件（major 3・minor 8・nit 8）をコードと照合した。重複（AC-19 の 2 件）を含めすべて実際の挙動・記述として確認でき、却下は無い。spec 末尾「実装レビューへの対応」に一覧を置いた。主なもの:
+
+- **途中で失敗した書込の巻戻し（spec・major）。** 編集は `io.writeFile` が返った後に巻戻しの対象へ入れていたので、`O_TRUNC` の後で ENOSPC などで失敗すると切り詰めたファイルが残った。spec も `wx` の作成後の失敗で途中までのファイルが残り、次の実行が「既にある」で拒否された。編集は書込の前に対象へ入れ（直前に `before` と照合済みなので戻すのは常に安全）、spec は `EEXIST` 以外の失敗でも削除の対象にした。巻戻しが一部失敗したときは「すべて戻した」と書かず、戻せなかったパスを出す。
+- **AC-19 の前提（spec・major ×2）。** 状態行・AC-19・AC/試験の表に「E2 `8083d57` の統合が前提、基準 `4afa6d1` 単独では旧版更新試験 2 件で不成立」を明記した。状態は implemented のまま、前提を同じ行に書いた。
+- **sample の取引先コードの衝突（safety・minor）。** `_` を落として 12 文字に切っていたため `bike-shop` と `bikeshop` が同じ `BIKESHOP-0001` になり、同じ会社に両方の sample を適用すると後の pack は何も作らずに `sampledAt` だけを記録した。コードを `<s>` の大文字（15 文字まで、超えたら先頭 10 文字＋`_`＋SHA-256 の 4 桁）にし、既存 pack のディレクトリ名から導いたコードの一致と、`<CODE>-` で始まるリテラルが `kernel/`・`modules/`・`l10n/`・`packs/`・`apps/` にあることを衝突として拒否する。ハッシュが一致する 2 つの名前（`industrial-mach-a493`・`industrial-mach-a649`）を総当たりで見つけて単体テストに使った。
+- **生成テストの権限（spec・nit、safety・nit）。** AC-4 に admin が action `pack.apply` を実行できること（適用済みで書込なし）と、店舗限定・拠点限定の両方で `count_tags`・`<s>_tag.list`・admin の作成が拒否されることを加えた（`it` の数 11 は不変）。
+- **手順と文言（ux）。** 未登録の手順から「`--register` を付けて再実行」をやめ（必ず拒否されるため）、後から登録するときは 4 編集を手で行うと書いた。`--dry-run --register` は「編集する予定」と出す。手順 5 に「完了と言う前に `pnpm gate:full`」を加えた（4 番目の編集の件数を確かめるのはブラウザ試験だけ）。`--label-ja` 省略時の警告に entity のファイルを加えた。規約の `db:generate` の記述の食い違い、`pack_<snake名>` の表記、spec 内の検証手順の参照番号、台帳のテンプレートのリンク（3 件 → 8 件）、拡張手順の記録の書き方（2 回の実行を分けて書く）、検証 4.5 の `e2e-run.sh` 依存を直した。
+- **その他（nit）。** 作業用ディレクトリの親の削除を再帰しない `rmdir` にした。`workforce.spec.ts` の試験名の `fifteen` を件数を含まない形に一度だけ改めた（登録のたびに件数と食い違うため。検査は不変）。使われない export 17 件と型宣言を消し、spec が公開関数に挙げる `parsePackNewArgs` に直接の単体テストを足した。
+
+検証（fixer、DB `daifuku_test_b7fx`、ブラウザ slot 6）:
+
+- [実測] 単体 `scripts/test/pack-new.test.ts` 29 件成功（26 件 + 途中で失敗した書込、`parsePackNewArgs`、`bike-shop`／`bikeshop`。11 秒）。途中で失敗した書込の試験は、修正前の順序（書込の後に対象へ入れる）に戻すと `apps/runtime/package.json` の内容の不一致で失敗することを確かめてから戻した。
+- [実測] DB `scripts/test/pack-new.db.test.ts` 7 件成功（7.1 秒）。子プロセスが新しいテンプレートの生成テスト 11 件を実行した。
+- [実測] worktree での登録経路の一巡（検証手順 4。生成物はコミットせず片付けた）: `node scripts/pack-new.mjs scaffold-check --register --label-ja 雛形確認 --label-en "Scaffold check"` 0.7 秒（`--dry-run` を先に実行し「--register would edit」の表示を確認）、`pnpm install` 4.5 秒、`pnpm db:generate pack_scaffold_check` 5.1 秒（`0018_pack_scaffold_check.sql`）、pack の typecheck 7.9 秒成功、生成 DB テスト 11 件成功、`apps/runtime/test/` の unit 7 件成功、生成物の Prettier 検査と ESLint 成功、`migrations.db.test.ts`・`industry-templates.db.test.ts` 6 件成功。`boolean-migration.db.test.ts`（1 件失敗・8 件成功）と `ext-index-migration.db.test.ts`（1 件失敗・1 件成功）は実装時と同じく旧版更新試験で失敗し、E2 `8083d57` の 2 ファイルの差分を一時的に当てるとそれぞれ 9 件・2 件成功した（差分は戻した）。登録状態の `apps/web/e2e/workforce.spec.ts`（件数 16、改めた試験名）は industry project 込みで 6 件成功（2.1 分）。作業前に無かった `node_modules/.cache` は生成後に残っていなかった（`rmdir` の連鎖で消えた）。片付けは検証手順 4.6 のとおりで、`git status --short` は空。**登録状態の `gate:light` 全体は再実行していない**（基準 `4afa6d1` では上記 2 件で落ちることが分かっているため。統合担当が E2 の後に実行する）。
+- [実測] コミットした状態の `apps/web/e2e/workforce.spec.ts`（件数 15、改めた試験名）を industry project 込みで実行し 6 件成功（3.0 分）。
+- [実測] コミット `b3b6873` の `pnpm gate:light --base 4afa6d1` 成功（約 309 秒、load average 8.4〜10.6）: format 37.1 秒、docs・assurance（`PV-PACK-SCAFFOLD-01` の再確認を表示）、typecheck（root／API／Web）、lint、unit 155 ファイル 1,576 件 101.9 秒、DB 5/132 ファイル 31 件 43.5 秒（常時の 4 suite と `scripts/test/pack-new.db.test.ts`）、deploy 25.7 秒。
+
 ## 見つけた問題と修正（発見経路つき）
 
 - 単体テストが現在のカタログの状態（`利用できる業界テンプレート 15 種`、配列の最後の `'beauty_salon'`）を直書きしていて、どれかの pack が登録されると落ちる状態だった — 発見: 実測（登録した状態での gate:light の unit で AC-6・AC-7・AC-11 の 3 件が失敗）。修正: 期待値を一時コピーした登録先ファイルの内容から導くようにした（この PR 内）。生成器そのものの不具合ではない。
 - 子プロセスの vitest が `node_modules` のシンボリックリンク経由で `packs/example/node_modules/.vite` にキャッシュを書いていた（git 管理外だが一時 workspace の外への書込）— 発見: 実測（ディレクトリの確認）。修正: 一時 pack の `node_modules` を実ディレクトリにし、example の各項目へのリンクを並べた。作ってしまったキャッシュは削除した。
 - `docs/specs` が無いリポジトリで書込先の検査が `ENOENT` の例外になった — 発見: レビュー。修正: `PackNewError`（終了コード 1）にして単体テストを足した。
+- 書込が途中で失敗すると切り詰めた編集対象・途中までの spec が巻き戻されない、sample の取引先コードが別の名前と一致する、未登録の手順と `--dry-run` の表示が誤る、ほか 16 件 — 発見: 実装後のレビュー（spec・safety・ux の 3 観点、再現の probe つき）。修正: 上記「レビュー後の修正」（この PR 内）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
 - `pnpm gate:full`（統合担当が実行する）。
+- E2（`8083d57`）を統合したブランチで検証手順 4（登録 → `pnpm install` → `pnpm db:generate` → `pnpm gate:light`）をやり直し、AC-19 の成立を記録する（統合担当。B7 は E2 の後か同時に統合する）。
 - 第三者完走の記録（人間の第三者が業務台本つきで行う。下記「第三者完走の記録条件」）。
 - B2 の kernel の会社作成が統合されたら、生成テストの追加会社（owner 接続の insert）を置き換える（D11）。
 
