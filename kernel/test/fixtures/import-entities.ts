@@ -1,10 +1,13 @@
 // Test-only masters for the CSV import port (docs/specs/csv-import.md): every importable field kind, a ref target with a
-// normalised code and a non-unique display name, server-owned / json / hidden / field-group fields, and a hook.
+// normalised code and a non-unique display name, server-owned / json / hidden / field-group fields, a hook, an opted-out
+// master, and a site-scoped master with a row rule whose hook takes a sequence number and emits an event.
 import { defineEntity } from '../../src/dsl/entity.ts';
 import { f } from '../../src/dsl/fields.ts';
 import { ValidationError } from '../../src/errors.ts';
 import { label } from '../../src/i18n.ts';
+import { nextNumber } from '../../src/numbering.ts';
 import { registry } from '../../src/registry.ts';
+import './entities.ts'; // registers test_partner, the row-ruled ref target of ImpScoped
 
 export const ImpCategory = defineEntity({
   name: 'test_imp_category',
@@ -83,4 +86,51 @@ export const ImpOwned = defineEntity({
 registry.registerHook('test_imp_item', 'before_create', async (_ctx, { row }) => {
   if (row.name === 'REJECT')
     throw new ValidationError('rejected by hook', [{ path: 'name', message: 'the hook rejects this name' }]);
+});
+
+/** Settable fields, but opted out with `import: false` (like an append-only ledger): no import (AC-1). */
+export const ImpOptOut = defineEntity({
+  name: 'test_imp_opt_out',
+  label: label('テスト取込対象外', 'Test opted out'),
+  fields: { code: f.text({ unique: true }), name: f.text() },
+  permissions: { roles: {} },
+  import: false,
+});
+
+/** A site: visible to a site-limited context only when its id is one of the context's sites. */
+export const ImpSite = defineEntity({
+  name: 'test_imp_site',
+  label: label('テスト拠点', 'Test site'),
+  fields: { code: f.text({ unique: true }), name: f.text({ required: true }) },
+  permissions: { roles: { sales: ['read'], local: ['read'] } },
+  siteAccess: { kind: 'store', field: 'id' },
+});
+
+/** Site-scoped, row-ruled for `sales` (own records only), with a ref to the row-ruled test_partner (AC-4/AC-6). */
+export const ImpScoped = defineEntity({
+  name: 'test_imp_scoped',
+  label: label('テスト拠点別', 'Test scoped'),
+  fields: {
+    code: f.text({ unique: true, label: label('コード', 'Code') }),
+    name: f.text({ required: true, label: label('名称', 'Name') }),
+    siteId: f.ref('test_imp_site', { required: true, label: label('拠点', 'Site') }),
+    partnerId: f.ref('test_partner', { label: label('取引先', 'Partner') }),
+    ownerId: f.uuid({ label: label('担当者', 'Owner') }),
+    serialNo: f.text({ serverOwned: true, label: label('採番', 'Serial number') }),
+  },
+  permissions: {
+    roles: { sales: ['read', 'create', 'update'], local: ['read', 'create', 'update'] },
+    rowRules: [{ roles: ['sales'], where: { ownerId: '$ctx.userId' } }],
+  },
+  siteAccess: { kind: 'store', field: 'siteId' },
+});
+
+/** Dry-run must leave sequences and the outbox as they were (ADR-0028): the hook uses both kernel ports. */
+registry.registerHook('test_imp_scoped', 'before_create', async (ctx, { row }) => {
+  row.serialNo = await nextNumber(ctx, {
+    naming: { type: 'sequence', prefix: 'IMP-', key: 'test_imp_scoped' },
+    date: '2026-10-29',
+    entityName: 'test_imp_scoped',
+  });
+  await ctx.emit('test_imp_scoped.numbered', { serialNo: row.serialNo });
 });

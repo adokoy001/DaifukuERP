@@ -2,6 +2,7 @@
 // import-values.ts through /meta), header -> field auto-mapping, the request body, and the error CSV. Pure.
 import type { EntityMeta, FieldMeta, Label, Locale } from '../api/types.ts';
 import type { CsvTable } from './csv-parse.ts';
+import { errorExplanation } from './error-view.ts';
 
 /** Kernel IMPORT_MAX_ROWS / IMPORT_MAX_BYTES (kernel/src/import-values.ts); the server enforces them too. */
 export const IMPORT_MAX_ROWS = 5000;
@@ -22,10 +23,35 @@ export function headerKey(s: string): string {
 /** One entry per header: the field it fills, or '' (ignored). */
 export type ColumnMapping = string[];
 
+const FORMULA_LEAD = '=+@-';
+const PLAIN_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+/** As lib/csv.ts: spaces and control characters before the first visible one do not hide a formula. */
+const firstVisible = (s: string) => [...s].find((c) => c.charCodeAt(0) > 32 && !/\s/.test(c));
+
+/**
+ * Spreadsheet formula guard, as lib/csv.ts writes it for text: a cell whose first visible character is = + - @ gets a
+ * leading apostrophe, unless it is a plain number such as -5 (the column type is not known here).
+ */
+export function guardCell(raw: string): string {
+  const lead = firstVisible(raw);
+  return lead !== undefined && FORMULA_LEAD.includes(lead) && !PLAIN_NUMBER.test(raw.trim()) ? `'${raw}` : raw;
+}
+
+/**
+ * The inverse when a file is read: one leading apostrophe before = + - @ is the guard of the error CSV or a report
+ * export (lib/csv.ts), not data, so a file can be downloaded, fixed and imported again unchanged.
+ */
+export function unguardCell(cell: string): string {
+  if (!cell.startsWith("'")) return cell;
+  const lead = firstVisible(cell.slice(1));
+  return lead !== undefined && FORMULA_LEAD.includes(lead) ? cell.slice(1) : cell;
+}
+
 /** AC-11: exact field name first, then a single field whose name or ja/en label matches; a field is used once. */
 export function autoMapColumns(headers: readonly string[], fields: readonly FieldMeta[]): ColumnMapping {
   const used = new Set<string>();
-  return headers.map((header) => {
+  return headers.map((raw) => {
+    const header = unguardCell(raw);
     const exact = fields.find((f) => f.name === header);
     const key = headerKey(header);
     const matches = exact
@@ -65,12 +91,15 @@ export interface ImportRequest {
   atomic?: boolean;
 }
 
-/** Mapped, non-blank cells keyed by field name (blank = not given on the server too, and it keeps the body small). */
+/**
+ * Mapped, non-blank cells keyed by field name (blank = not given on the server too, and it keeps the body small), with
+ * the formula guard removed (unguardCell).
+ */
 export function importRows(table: CsvTable, mapping: ColumnMapping): Record<string, string>[] {
   return table.rows.map((record) => {
     const row: Record<string, string> = {};
     mapping.forEach((field, i) => {
-      const cell = record[i] ?? '';
+      const cell = unguardCell(record[i] ?? '');
       if (field && cell.trim() !== '') row[field] = cell;
     });
     return row;
@@ -114,27 +143,30 @@ const CODE_TEXT: Record<string, Label> = {
   exists: { ja: '同じキーの記録が既にあります', en: 'A record with this key already exists' },
   immutable: { ja: '作成後は変更できない項目です', en: 'Cannot change after create' },
   unchanged: { ja: '変更はありません', en: 'No changes' },
+  database: { ja: 'データベースが行を受け付けませんでした', en: 'The database rejected the row' },
 };
 
-/** One readable line per message: "<field label>: <localized reason> (<server message>)". */
+/**
+ * One readable line per message: "<field label>: <localized reason> (<server message>)". Import codes have their own
+ * text; kernel codes (VALIDATION, CONFLICT, …) use the explanation the error views use.
+ */
 export function messageText(m: ImportMessage, fields: readonly FieldMeta[], locale: Locale): string {
   const field = m.field ? fields.find((f) => f.name === m.field) : undefined;
   const where = field ? field.label[locale] || field.name : m.column;
-  const known = CODE_TEXT[m.code];
+  const known = CODE_TEXT[m.code] ?? errorExplanation(m.code, undefined);
   const what = known ? `${known[locale]} (${m.message})` : m.message;
   return where ? `${where}: ${what}` : what;
 }
 
-/** Message cells may open in a spreadsheet: neutralise a leading formula character (as lib/csv.ts does). */
-function csvCell(raw: string, guard: boolean): string {
-  const lead = [...raw].find((c) => !/\s/.test(c));
-  const s = guard && lead !== undefined && '=+@-'.includes(lead) ? `'${raw}` : raw;
+/** A spreadsheet may open the file: every cell carries the formula guard (guardCell; read back by unguardCell). */
+function csvCell(raw: string): string {
+  const s = guardCell(raw);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /**
- * AC-13: the failed rows as they were in the file (original columns and cells, unchanged so the file can be fixed and
- * imported again), followed by the data row number and the reasons. UTF-8 with BOM and CRLF for spreadsheets.
+ * AC-13: the failed rows as they were in the file (original columns and cells; only the formula guard is added, and the
+ * import removes it again), followed by the data row number and the reasons. UTF-8 with BOM and CRLF for spreadsheets.
  */
 export function errorCsv(
   table: CsvTable,
@@ -143,16 +175,16 @@ export function errorCsv(
   locale: Locale,
   labels: { line: Label; reason: Label },
 ): string {
-  const out = [[...table.headers.map((h) => csvCell(h, false)), labels.line[locale], labels.reason[locale]].join(',')];
+  const out = [[...table.headers.map(csvCell), labels.line[locale], labels.reason[locale]].join(',')];
   for (const row of result.rows) {
     if (row.status !== 'error') continue;
     const record = table.rows[row.line - 1] ?? [];
     const reasons = (row.messages ?? []).map((m) => messageText(m, fields, locale)).join(' / ');
     out.push(
       [
-        ...table.headers.map((_, i) => csvCell(record[i] ?? '', false)),
+        ...table.headers.map((_, i) => csvCell(record[i] ?? '')),
         String(table.lines[row.line - 1] ?? row.line),
-        csvCell(reasons, true),
+        csvCell(reasons),
       ].join(','),
     );
   }

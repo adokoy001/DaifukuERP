@@ -64,7 +64,18 @@ describe('AC-11: RFC 4180 records', () => {
         ['A2', ''],
       ],
       lines: [1, 3],
+      wide: [],
     });
-    expect(csvTable([])).toEqual({ headers: [], rows: [], lines: [] });
+    expect(csvTable([])).toEqual({ headers: [], rows: [], lines: [], wide: [] });
+  });
+
+  it('AC-11: records with a non-blank cell past the header (an unquoted comma) are reported by data row number', () => {
+    const table = csvTable(
+      parseCsv('code,name,kana\r\nP1,ACME, Inc,ｱｸﾒ\r\nP2,Short\r\n\r\nP3,"ACME, Inc",ｱｸﾒ,\r\nP4,a,b,c\r\n'),
+    );
+    // P1's 4th cell would otherwise vanish and " Inc" would land in kana; a trailing comma (P3) is harmless.
+    expect(table.wide).toEqual([1, 5]);
+    expect(table.lines).toEqual([1, 2, 4, 5]);
+    expect(table.rows[2]).toEqual(['P3', 'ACME, Inc', 'ｱｸﾒ']);
   });
 });

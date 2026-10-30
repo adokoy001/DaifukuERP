@@ -1,5 +1,6 @@
 // csv-import (docs/specs/csv-import.md) AC-11..AC-14 through the browser: 100 partners with 3 bad rows (UTF-8 BOM) from
-// preview to execute and the error CSV, a 20-row Shift_JIS product file, 390px, and where the "Import" link appears.
+// preview to execute and the error CSV, a 20-row Shift_JIS product file, 390px, where the "Import" link appears, a file
+// with a shifted row, an atomic run that rolls back, and a file without the key column.
 // Files are generated here; data goes to the isolated E2E database through the real import action.
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
@@ -35,6 +36,21 @@ function shiftJisEncoder(): (text: string) => Buffer {
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const summaryCount = (page: Page, scope: string, status: string) =>
   page.getByTestId(scope).getByTestId('import-summary').locator(`[data-status="${status}"] dd`);
+const summaryLabel = (page: Page, scope: string, status: string) =>
+  page.getByTestId(scope).getByTestId('import-summary').locator(`[data-status="${status}"] dt`);
+/** A long export-style name: one unbreakable token that must wrap instead of widening the page. */
+const LONG_NAME = 'partner_master_export_from_legacy_system_20261029_final_v2_for_the_csv_import.csv';
+
+/**
+ * AC-14 at 390px: neither the document nor the app's scroll area (#screen-content, where an over-wide page would scroll
+ * sideways inside the shell while the document keeps its width) is wider than the viewport.
+ */
+async function assertFits(page: Page) {
+  await assertNoOverflow(page);
+  expect(await page.locator('#screen-content').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+}
+
+const utf8File = (lines: string[]) => Buffer.concat([BOM, Buffer.from(lines.join('\r\n') + '\r\n', 'utf8')]);
 
 async function openImport(page: Page, entity: string) {
   await page.goto(`/e/${entity}`);
@@ -63,13 +79,13 @@ test('csv-import AC-11/AC-12/AC-13/AC-14: 100 partners with 3 bad rows — previ
       [code, name, 'ﾄﾘｺﾐ', override.顧客 ?? 'はい', override.締め日 ?? '20', override.登録番号 ?? ''].join(','),
     );
   }
-  const file = Buffer.concat([BOM, Buffer.from(lines.join('\r\n') + '\r\n', 'utf8')]);
+  const file = utf8File(lines);
   const total = async () =>
     (await api<{ total: number }>(request, headers, `/api/partner?search=${encodeURIComponent(prefix)}&limit=1`)).total;
 
   await signInQuality(page);
   await openImport(page, 'partner');
-  await page.getByLabel('CSV ファイル').setInputFiles({ name: 'partners.csv', mimeType: 'text/csv', buffer: file });
+  await page.getByLabel('CSV ファイル').setInputFiles({ name: LONG_NAME, mimeType: 'text/csv', buffer: file });
   await expect(page.getByTestId('import-encoding')).toHaveText('UTF-8 (BOM)');
   await expect(page.getByTestId('import-file-info')).toContainText('100');
   // Every header is a field label, so every column is matched automatically.
@@ -87,6 +103,9 @@ test('csv-import AC-11/AC-12/AC-13/AC-14: 100 partners with 3 bad rows — previ
   await page.getByRole('button', { name: '事前確認', exact: true }).click();
   await expect(summaryCount(page, 'import-preview', 'created')).toHaveText('97');
   await expect(summaryCount(page, 'import-preview', 'error')).toHaveText('3');
+  await expect(page.getByTestId('import-key')).toHaveText('照合キー: 取引先コード');
+  await expect(page.getByTestId('import-ignored')).toHaveCount(0);
+  await expect(page.getByTestId('import-first-rows')).toHaveText('先頭 50 行を表示しています。');
   await expect(page.getByTestId('import-error-note')).toHaveText(
     'エラーの行は取り込まれません。それ以外の行を取り込みます。',
   );
@@ -101,11 +120,14 @@ test('csv-import AC-11/AC-12/AC-13/AC-14: 100 partners with 3 bad rows — previ
   expect(await total()).toBe(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await assertNoOverflow(page);
+  await assertFits(page);
   await page.screenshot({ path: test.info().outputPath('csv-import-preview-390.png'), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.getByRole('button', { name: '取り込む', exact: true }).click();
+  // The pressed button went away with the preview card: focus is on the result heading, not on <body>.
+  await expect(page.getByTestId('import-result-heading')).toBeFocused();
+  await expect(summaryLabel(page, 'import-result', 'created')).toHaveText('作成');
   await expect(summaryCount(page, 'import-result', 'created')).toHaveText('97');
   await expect(summaryCount(page, 'import-result', 'error')).toHaveText('3');
   await expect(page.getByTestId('import-result-table').getByTestId('import-row')).toHaveCount(3);
@@ -178,7 +200,7 @@ test('csv-import AC-11/AC-14: a Shift_JIS product file of 20 rows maps labels, e
   await page.getByRole('button', { name: '事前確認', exact: true }).click();
   await expect(summaryCount(page, 'import-preview', 'created')).toHaveText('20');
   await expect(summaryCount(page, 'import-preview', 'error')).toHaveText('0');
-  await assertNoOverflow(page);
+  await assertFits(page);
   await page.screenshot({ path: test.info().outputPath('csv-import-sjis-390.png'), fullPage: true });
   await page.getByRole('button', { name: '取り込む', exact: true }).click();
   await expect(summaryCount(page, 'import-result', 'created')).toHaveText('20');
@@ -238,4 +260,75 @@ test('csv-import AC-11: the import link needs create permission and an importabl
   await page.goto('/e/partner');
   await expect(page.getByTestId('row').first().or(page.getByTestId('empty-state'))).toBeVisible();
   await expect(page.getByRole('link', { name: '取込', exact: true })).toHaveCount(0);
+});
+
+test('csv-import AC-11/AC-12/AC-5: a shifted row refuses the file; atomic rolls back; no key column means all new', async ({
+  page,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const prefix = 'AT' + crypto.randomUUID().slice(0, 6).toUpperCase();
+  const total = async () =>
+    (await api<{ total: number }>(request, headers, `/api/partner?search=${encodeURIComponent(prefix)}&limit=1`)).total;
+  await signInQuality(page);
+  await openImport(page, 'partner');
+  const input = page.getByLabel('CSV ファイル');
+
+  // AC-11: an unquoted comma shifts the row's cells; the file is refused with its data row numbers, nothing is mapped.
+  await input.setInputFiles({
+    name: 'shifted.csv',
+    mimeType: 'text/csv',
+    buffer: utf8File([
+      '取引先コード,名称,カナ名称',
+      `${prefix}-1,Daifuku, Inc.,ﾀﾞｲﾌｸ`,
+      `${prefix}-2,"Daifuku, Inc.",ﾀﾞｲﾌｸ`,
+      `${prefix}-3,一,二,三`,
+    ]),
+  });
+  await expect(page.getByTestId('import-file-error')).toContainText('見出しより多くのセルがある行があります');
+  await expect(page.getByTestId('import-file-error')).toContainText('データ行: 1, 3');
+  await expect(page.getByTestId('import-mapping')).toHaveCount(0);
+
+  // AC-7/AC-12: atomic with one failing row keeps nothing, and the result says "to create", not "created".
+  await input.setInputFiles({
+    name: 'atomic.csv',
+    mimeType: 'text/csv',
+    buffer: utf8File(['取引先コード,名称,締め日', `${prefix}-1,一号,20`, `${prefix}-2,二号,32`, `${prefix}-3,三号,10`]),
+  });
+  await expect(page.getByTestId('import-file-error')).toHaveCount(0);
+  await page.getByLabel('1 行でもエラーがあれば何も取り込まない').check();
+  await page.getByRole('button', { name: '事前確認', exact: true }).click();
+  await expect(page.getByTestId('import-error-note')).toHaveText('エラーがあるため、実行しても何も取り込まれません。');
+  await page.getByRole('button', { name: '取り込む', exact: true }).click();
+  await expect(page.getByTestId('import-result-heading')).toBeFocused();
+  await expect(page.getByTestId('import-result')).toContainText('エラーがあったため、何も取り込んでいません。');
+  await expect(summaryLabel(page, 'import-result', 'created')).toHaveText('作成予定');
+  await expect(summaryCount(page, 'import-result', 'created')).toHaveText('2');
+  const resultRows = page.getByTestId('import-result-table').getByTestId('import-row');
+  await expect(resultRows).toHaveCount(1);
+  await page.getByLabel('エラーの行だけ表示').uncheck();
+  await expect(resultRows).toHaveCount(3);
+  await expect(resultRows.first()).toContainText('作成予定');
+  expect(await total()).toBe(0);
+  // A new preview replaces the earlier result instead of standing above it.
+  await page.getByRole('button', { name: '事前確認', exact: true }).click();
+  await expect(page.getByTestId('import-preview')).toBeVisible();
+  await expect(page.getByTestId('import-result')).toHaveCount(0);
+
+  // AC-5: without the key column nothing is matched (a warning says so); unmatched columns are listed as not imported.
+  await input.setInputFiles({
+    name: 'no-key.csv',
+    mimeType: 'text/csv',
+    buffer: utf8File(['名称,旧システムID', `${prefix} キーなし,OLD-1`]),
+  });
+  await page.getByLabel('この行の値で更新する').check();
+  await page.getByRole('button', { name: '事前確認', exact: true }).click();
+  await expect(page.getByTestId('import-key')).toHaveText(
+    'キーの列が無いため、既存の記録とは照合せず、すべて新規として扱います。',
+  );
+  await expect(page.getByTestId('import-ignored')).toHaveText('取り込まない列: 旧システムID');
+  // Zero rows with errors under the filter: an empty state, not a bare header row.
+  await page.getByLabel('エラーの行だけ表示').check();
+  await expect(page.getByTestId('import-no-error-rows')).toHaveText('エラーの行はありません');
+  expect(await total()).toBe(0);
 });

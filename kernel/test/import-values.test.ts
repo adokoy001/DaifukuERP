@@ -14,18 +14,20 @@ import {
   templateHeaders,
 } from '../src/import-values.ts';
 import { TMemo, TMemoLine, TPartner } from './fixtures/entities.ts';
-import { ImpDup, ImpItem, ImpOwned } from './fixtures/import-entities.ts';
+import { ImpDup, ImpItem, ImpOptOut, ImpOwned } from './fixtures/import-entities.ts';
 
 const field = (name: string) => ImpItem.config.fields[name as keyof typeof ImpItem.config.fields] as AnyField;
 const value = (name: string, raw: string | null | undefined) => coerceCell(field(name), raw);
 
 describe('AC-1: which entities offer import', () => {
-  it('AC-1: masters do; documents, their line entities and masters without settable fields do not', () => {
+  it('AC-1: masters do; documents, their line entities, masters without settable fields and opted-out ones do not', () => {
     expect(isImportable(ImpItem)).toBe(true);
     expect(isImportable(TPartner)).toBe(true);
     expect(isImportable(TMemo)).toBe(false);
     expect(isImportable(TMemoLine)).toBe(false);
     expect(isImportable(ImpOwned)).toBe(false);
+    // `import: false` (append-only ledgers, derived tables, upload-only rows) although it has settable fields.
+    expect(isImportable(ImpOptOut)).toBe(false);
   });
 
   it('AC-1/AC-9: importable fields leave out server-owned and json fields, keep hidden ones', () => {
@@ -100,6 +102,28 @@ describe('AC-3: cell strings become field values', () => {
     const at = value('syncedAt', '2026-04-01 09:00:00+09:00');
     expect(at.status === 'value' && (at.value as Date).toISOString()).toBe('2026-04-01T00:00:00.000Z');
     expect(value('syncedAt', '2026-04-01T09:00').status).toBe('invalid');
+  });
+
+  it('AC-3: an impossible date, time or offset in a timestamp is refused, not rolled over (as date cells are)', () => {
+    const iso = (raw: string) => {
+      const at = value('syncedAt', raw);
+      return at.status === 'value' ? (at.value as Date).toISOString() : at.status;
+    };
+    expect(iso('2026-12-31T23:59:59.999Z')).toBe('2026-12-31T23:59:59.999Z');
+    expect(iso('2026-04-01T09:00-0530')).toBe('2026-04-01T14:30:00.000Z');
+    expect(iso('2026-04-01T09:00+14:00')).toBe('2026-03-31T19:00:00.000Z');
+    // new Date() would give 2026-03-02T00:00Z, 2026-05-01T00:00Z and the next day at 01:00.
+    for (const bad of [
+      '2026-02-30T09:00:00+09:00',
+      '2026-04-31T09:00Z',
+      '2026-04-01T25:00+09:00',
+      '2026-04-01T24:00Z',
+      '2026-04-01T09:60Z',
+      '2026-04-01T09:00:60Z',
+      '2026-04-01T09:00+09:60',
+      '2026-04-01T09:00+15:00',
+    ])
+      expect(iso(bad), bad).toBe('invalid');
   });
 });
 

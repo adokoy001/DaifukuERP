@@ -11,7 +11,7 @@ import { registry } from '../src/registry.ts';
 import { repo } from '../src/repository/repository.ts';
 import { freshDb, type TestDb } from '../src/testing.ts';
 import { TMemo, TPartner } from './fixtures/entities.ts';
-import { ImpCategory, ImpItem } from './fixtures/import-entities.ts';
+import { ImpCategory, ImpItem, ImpScoped, ImpSite } from './fixtures/import-entities.ts';
 
 let db: TestDb;
 const categories: Record<string, string> = {};
@@ -55,6 +55,7 @@ describe('AC-1: one derived import action per master entity', () => {
     expect(registry.hasAction('test_memo.import')).toBe(false);
     expect(registry.hasAction('test_memo_line.import')).toBe(false);
     expect(registry.hasAction('test_imp_owned.import')).toBe(false);
+    expect(registry.hasAction('test_imp_opt_out.import')).toBe(false);
   });
 });
 
@@ -220,6 +221,49 @@ describe('AC-5: existing rows by keyField', () => {
     expect((await itemByCode(code))?.kind).toBe('goods');
   });
 
+  it('AC-5: an immutable field that is empty on the record cannot be filled by an update either (as the Repository says)', async () => {
+    const serial = String(900_000 + Math.floor(Math.random() * 90_000));
+    const created = await asAdmin({ mode: 'execute', onExisting: 'error', rows: [{ serial, name: 'No code yet' }] });
+    expect(created.rows[0]?.status).toBe('created');
+    const filled = await asAdmin({
+      mode: 'execute',
+      onExisting: 'update',
+      keyField: 'serial',
+      rows: [{ serial, name: 'No code yet', code: unique('LATE') }],
+    });
+    expect(filled.rows[0]).toMatchObject({ status: 'error', messages: [{ code: 'immutable', field: 'code' }] });
+    const row = await db.run({}, (ctx) => repo(ctx, ImpItem).get(created.rows[0]?.id as string));
+    expect(row.code).toBeNull();
+  });
+
+  it('AC-5: matching by key needs read permission, even when the role may create', async () => {
+    // `blind` may create but not read: with the key column the import would read existing records, so it is refused.
+    await expect(
+      run(['blind'], { mode: 'dry-run', onExisting: 'skip', rows: [{ code: unique('BLIND'), name: 'x' }] }),
+    ).rejects.toThrow(PermissionDenied);
+    expect((await run(['blind'], { mode: 'dry-run', onExisting: 'skip', rows: [{ name: 'x' }] })).rows).toEqual([
+      { line: 1, status: 'created', id: expect.any(String) },
+    ]);
+  });
+
+  it('AC-5/AC-4: a key or ref cell starting with "$ctx." fails its row instead of being read as a context token', async () => {
+    const ok = unique('TOK');
+    const result = await asAdmin({
+      mode: 'dry-run',
+      onExisting: 'skip',
+      rows: [
+        { code: ok, name: 'plain' },
+        { code: '$ctx.oops', name: 'unknown token' },
+        { code: '$ctx.companyId', name: 'known token' },
+        { code: unique('TOK'), name: 'ref token', categoryId: '$ctx.companyId' },
+      ] satisfies Rows,
+    });
+    expect(result.rows.map((r) => r.status)).toEqual(['created', 'error', 'error', 'error']);
+    expect(result.rows[1]?.messages).toEqual([expect.objectContaining({ code: 'invalid_value', field: 'code' })]);
+    expect(result.rows[2]?.messages).toEqual([expect.objectContaining({ code: 'invalid_value', field: 'code' })]);
+    expect(result.rows[3]?.messages).toEqual([expect.objectContaining({ code: 'invalid_value', field: 'categoryId' })]);
+  });
+
   it('AC-5: an explicit keyField must be a unique field with a column; without a key column every row creates', async () => {
     await expect(
       asAdmin({ mode: 'dry-run', onExisting: 'skip', keyField: 'name', rows: [{ name: 'x' }] }),
@@ -314,6 +358,22 @@ describe('AC-2: limits and request shape', () => {
     expect(await itemCount()).toBe(before);
   });
 
+  it('AC-2: more than 500 distinct columns is one issue; at most 50 column issues are listed', async () => {
+    const wide = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`c${i}`, '']));
+    await expect(asAdmin({ mode: 'dry-run', onExisting: 'skip', rows: [wide] })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { issues: [{ path: 'rows', message: 'at most 500 distinct columns per request' }] },
+    });
+    const unknown = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`謎${i}`, 'x']));
+    const refused = await asAdmin({ mode: 'dry-run', onExisting: 'skip', rows: [{ name: 'x', ...unknown }] }).catch(
+      (e: unknown) => e as ValidationError,
+    );
+    const issues = (refused as ValidationError).details?.issues as { path: string; message: string }[];
+    expect(issues).toHaveLength(51);
+    expect(issues[0]).toEqual({ path: 'rows.謎0', message: 'unknown column' });
+    expect(issues[50]).toEqual({ path: 'rows', message: '10 more column issues not listed' });
+  });
+
   it('AC-2: the port refuses documents and validates its own input for in-process callers', async () => {
     await expect(
       db.run({}, (ctx) => importRecords(ctx, TMemo, { mode: 'dry-run', onExisting: 'skip', rows: [{ note: 'x' }] })),
@@ -321,6 +381,113 @@ describe('AC-2: limits and request shape', () => {
     await expect(db.run({}, (ctx) => importRecords(ctx, TPartner, { mode: 'later', rows: [] }))).rejects.toThrow(
       ValidationError,
     );
+  });
+});
+
+describe('AC-4/AC-6: row rules, site scope and side effects of the dry-run', () => {
+  const sites: Record<string, string> = {};
+  const partners: Record<string, string> = {};
+  const scopedByCode = (code: string) =>
+    db.run({}, async (ctx) => (await repo(ctx, ImpScoped).list({ where: { code } })).items[0]);
+  const runScoped = (params: Record<string, unknown>, input: Record<string, unknown>) =>
+    db.run(params, (ctx) => runAction(ctx, 'test_imp_scoped.import', input)) as Promise<ImportResult>;
+  const siteLimited = (siteId: string) => ({ roles: ['local'], accessScope: 'sites', siteIds: [siteId], storeIds: [] });
+
+  beforeAll(async () => {
+    await db.run({}, async (ctx) => {
+      sites.A = (await repo(ctx, ImpSite).create({ code: 'SITE-A', name: 'Site A' })).id;
+      sites.B = (await repo(ctx, ImpSite).create({ code: 'SITE-B', name: 'Site B' })).id;
+      // test_partner's row rule shows `sales` only its own partners and unowned ones.
+      partners.shared = (await repo(ctx, TPartner).create({ name: 'Shared partner', code: unique('PS') })).id;
+      partners.hidden = (
+        await repo(ctx, TPartner).create({ name: 'Hidden partner', code: unique('PH'), ownerId: crypto.randomUUID() })
+      ).id;
+      // Owned by someone else: hidden from `sales` by the row rule; at site B: hidden from a site-A context.
+      await repo(ctx, ImpScoped).create({
+        code: 'HIDDEN-OWNER',
+        name: 'Hidden by row rule',
+        siteId: sites.B ?? '',
+        ownerId: crypto.randomUUID(),
+      });
+    });
+  });
+
+  it('AC-4: a row-ruled role cannot reach hidden records: no update by key, no ref to a hidden target', async () => {
+    const hiddenCode = (await db.run({}, (ctx) => repo(ctx, TPartner).get(partners.hidden ?? ''))).code as string;
+    const sharedCode = (await db.run({}, (ctx) => repo(ctx, TPartner).get(partners.shared ?? ''))).code as string;
+    const result = await runScoped(
+      { roles: ['sales'] },
+      {
+        mode: 'execute',
+        onExisting: 'update',
+        rows: [
+          { code: 'HIDDEN-OWNER', name: 'Taken over', siteId: 'SITE-B' },
+          { code: unique('RR'), name: 'hidden ref', siteId: 'SITE-A', partnerId: hiddenCode },
+          { code: unique('RR'), name: 'visible ref', siteId: 'SITE-A', partnerId: sharedCode },
+        ],
+      },
+    );
+    // The hidden record is not matched; creating its key again collides with it instead of updating it.
+    expect(result.rows.map((r) => r.status)).toEqual(['error', 'error', 'created']);
+    expect(result.rows[0]?.messages?.[0]?.code).toBe('CONFLICT');
+    expect(result.rows[1]?.messages?.[0]).toMatchObject({ code: 'ref_not_found', field: 'partnerId' });
+    expect(await scopedByCode('HIDDEN-OWNER')).toMatchObject({ name: 'Hidden by row rule', version: 1 });
+  });
+
+  it('AC-4: a site-limited context cannot refer to a site outside its scope (by code, name or id) or update there', async () => {
+    const result = await runScoped(siteLimited(sites.A ?? ''), {
+      mode: 'execute',
+      onExisting: 'update',
+      rows: [
+        { code: unique('ST'), name: 'by code', siteId: 'SITE-B' },
+        { code: unique('ST'), name: 'by name', siteId: 'Site B' },
+        { code: unique('ST'), name: 'by id', siteId: sites.B ?? '' },
+        { code: 'HIDDEN-OWNER', name: 'Moved', siteId: 'SITE-A' },
+        { code: unique('ST'), name: 'own site', siteId: 'SITE-A' },
+      ],
+    });
+    expect(result.rows.map((r) => r.status)).toEqual(['error', 'error', 'error', 'error', 'created']);
+    for (const row of result.rows.slice(0, 3))
+      expect(row.messages?.[0]).toMatchObject({ code: 'ref_not_found', field: 'siteId' });
+    expect(result.rows[3]?.messages?.[0]?.code).toBe('CONFLICT');
+    expect(await scopedByCode('HIDDEN-OWNER')).toMatchObject({ name: 'Hidden by row rule', siteId: sites.B });
+  });
+
+  it('AC-6: a dry-run whose hook takes a sequence number and emits an event leaves sequences and the outbox as they were', async () => {
+    const state = async () => {
+      const [seq] = await db.owner.sql`select coalesce(max(next_value), 0)::int as n from sequences
+        where key = 'test_imp_scoped'`;
+      const [out] = await db.owner.sql`select count(*)::int as n from outbox where topic = 'test_imp_scoped.numbered'`;
+      const [aud] = await db.owner.sql`select count(*)::int as n from audit_log where entity = 'test_imp_scoped'`;
+      const [rows] = await db.owner.sql`select count(*)::int as n from test_imp_scoped`;
+      return { sequence: seq?.n, outbox: out?.n, audit: aud?.n, rows: rows?.n };
+    };
+    const before = await state();
+    const preview = await runScoped(
+      {},
+      {
+        mode: 'dry-run',
+        onExisting: 'skip',
+        rows: [
+          { code: unique('DRY'), name: 'one', siteId: 'SITE-A' },
+          { code: unique('DRY'), name: 'two', siteId: 'SITE-B' },
+        ],
+      },
+    );
+    expect(preview.rows.map((r) => r.status)).toEqual(['created', 'created']);
+    expect(await state()).toEqual(before);
+    // The same rows executed do move all four, so the probe would have seen a dry-run leak.
+    await runScoped(
+      {},
+      { mode: 'execute', onExisting: 'skip', rows: [{ code: unique('EXE'), name: 'x', siteId: 'SITE-A' }] },
+    );
+    const after = await state();
+    expect(after).toEqual({
+      sequence: (before.sequence || 1) + 1,
+      outbox: (before.outbox ?? 0) + 1,
+      audit: (before.audit ?? 0) + 1,
+      rows: (before.rows ?? 0) + 1,
+    });
   });
 });
 

@@ -13,7 +13,9 @@ import {
   defaultKeyField,
   importFields,
   IMPORT_MAX_BYTES,
+  IMPORT_MAX_COLUMNS,
   IMPORT_MAX_ROWS,
+  isContextToken,
   isImportable,
   isUuid,
   resolveHeader,
@@ -26,7 +28,7 @@ import { registry } from './registry.ts';
 import { repo } from './repository/repository.ts';
 import { withSavepoint } from './transactions.ts';
 
-export { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, isImportable } from './import-values.ts';
+export { IMPORT_MAX_BYTES, IMPORT_MAX_COLUMNS, IMPORT_MAX_ROWS, isImportable } from './import-values.ts';
 
 // ---- contract ---------------------------------------------------------------------------------------
 
@@ -103,6 +105,8 @@ interface Plan {
 
 const KEY_KINDS = new Set(['text', 'int', 'date', 'enum', 'uuid']);
 const PREFETCH_CHUNK = 500;
+/** Column issues listed in one 400 body; the rest are counted (an unknown-column flood must not bloat the answer). */
+const MAX_LISTED_ISSUES = 50;
 const IGNORED_MESSAGE: Record<IgnoredReason, string> = {
   'server-owned': 'set by the system; the column is ignored',
   system: 'system column; the column is ignored',
@@ -135,6 +139,12 @@ function plan(ctx: Context, entity: EntityDef, input: ImportInput): Plan {
       'Split the file and import it in several requests.',
     );
   const headers = [...new Set(input.rows.flatMap((row) => Object.keys(row)))];
+  if (headers.length > IMPORT_MAX_COLUMNS)
+    throw new ValidationError(
+      `import request has ${headers.length} distinct columns`,
+      [{ path: 'rows', message: `at most ${IMPORT_MAX_COLUMNS} distinct columns per request` }],
+      'Send only the columns of the entity (GET /api/<entity>/import-template.csv lists them).',
+    );
   const columns: [string, string][] = [];
   const notices: ImportResult['notices'] = [];
   const issues: { path: string; message: string }[] = [];
@@ -153,6 +163,11 @@ function plan(ctx: Context, entity: EntityDef, input: ImportInput): Plan {
     if (prior) issues.push({ path: `rows.${column}`, message: `column maps to ${field}, as does "${prior}"` });
     seen.set(field, column);
   }
+  if (issues.length > MAX_LISTED_ISSUES)
+    issues.splice(MAX_LISTED_ISSUES, issues.length, {
+      path: 'rows',
+      message: `${issues.length - MAX_LISTED_ISSUES} more column issues not listed`,
+    });
   if (issues.length)
     throw new ValidationError(
       `${entity.name}: the import columns do not match the entity`,
@@ -214,6 +229,14 @@ function fieldMessage(p: Plan, field: string, code: string, message: string, hin
   return { code, message, field, ...(column ? { column } : {}), ...(hint ? { hint } : {}) };
 }
 
+function contextTokenMessage(text: string): ImportMessage {
+  return {
+    code: 'invalid_value',
+    message: `"${text}" starts with "$ctx.", which is reserved for context tokens and cannot be matched`,
+    hint: 'Change the value (for example, drop the leading "$").',
+  };
+}
+
 /** AC-3/AC-4: `ref` cells by id, then the target's `code`, then its displayField; 0 or 2+ matches fail the row. */
 async function resolveRef(ctx: Context, cache: RefCache, fd: AnyField, text: string): Promise<string | ImportMessage> {
   // A target outside the entity registry (e.g. `@company`) has no Repository: only its id can be given.
@@ -240,7 +263,9 @@ async function resolveRef(ctx: Context, cache: RefCache, fd: AnyField, text: str
     return tfd?.kind === 'text' && !tfd.opts.outputHidden && !masked.has(name);
   });
   for (const name of lookups) {
-    const found = await r.list({ where: { [name]: storedText(target.config.fields[name], text) }, limit: 2 });
+    const value = storedText(target.config.fields[name], text);
+    if (isContextToken(value)) return contextTokenMessage(text);
+    const found = await r.list({ where: { [name]: value }, limit: 2 });
     if (found.items.length === 1 && found.items[0]) {
       cache.set(key, found.items[0].id);
       return found.items[0].id;
@@ -273,6 +298,12 @@ async function rowValues(ctx: Context, p: Plan, cache: RefCache, row: Record<str
       else messages.push({ ...fieldMessage(p, field, ref.code, ref.message, ref.hint) });
     }
   }
+  // The key is matched with a domain query, which would read a `$ctx.` value as a token (import-values.ts).
+  const key = p.keyField ? keyOf(p, values[p.keyField]) : undefined;
+  if (p.keyField && key !== undefined && isContextToken(key)) {
+    const m = contextTokenMessage(key);
+    messages.push(fieldMessage(p, p.keyField, m.code, m.message, m.hint));
+  }
   if (messages.length) throw new RowFailure(messages);
   return values;
 }
@@ -304,7 +335,8 @@ async function prefetchExisting(ctx: Context, p: Plan, input: ImportInput): Prom
     const cell = coerceCell(fd, row[column]);
     if (cell.status !== 'value') continue;
     const key = keyOf(p, cell.value);
-    if (key !== undefined) keys.set(key, typeof cell.value === 'number' ? cell.value : key);
+    // Such a row fails on its own (rowValues); querying with the value would substitute or reject it for every row.
+    if (key !== undefined && !isContextToken(key)) keys.set(key, typeof cell.value === 'number' ? cell.value : key);
   }
   const all = [...keys.values()];
   const r = repo(ctx, p.entity);
@@ -335,7 +367,8 @@ function updatePatch(p: Plan, existing: Values, values: Values): Values {
     if (field === p.keyField) continue;
     const fd = p.entity.config.fields[field] as AnyField;
     if (sameValue(fd, existing[field], next)) continue;
-    if (fd.opts.immutable && existing[field] !== null && existing[field] !== undefined)
+    // As Repository.update does, an immutable field may not change at all, from empty to a value either.
+    if (fd.opts.immutable)
       messages.push(
         fieldMessage(
           p,

@@ -21,6 +21,8 @@ export const StockBalance = defineEntity({
     lastSeq: f.int({ label: label('最終連番', 'Last seq'), required: true, default: 0, min: 0, hidden: true }),
   },
   audit: 'none',
+  // Derived from the ledger (hooks/guard.ts), so a CSV import could only fail (ADR-0028).
+  import: false,
   unique: [['productId', 'warehouseId']],
   permissions: {
     roles: {

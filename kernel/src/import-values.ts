@@ -12,8 +12,10 @@ import { registry } from './registry.ts';
 
 /** AC-2: one request carries at most this many data rows… */
 export const IMPORT_MAX_ROWS = 5000;
-/** …and at most this many bytes (UTF-8 JSON of the request). */
+/** …and at most this many bytes (UTF-8 JSON of the request)… */
 export const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+/** …and at most this many distinct columns (far above any entity's field count; bounds the work and the error body). */
+export const IMPORT_MAX_COLUMNS = 500;
 
 const IMPORTABLE_KINDS: ReadonlySet<FieldKind> = new Set([
   'text',
@@ -37,9 +39,12 @@ function importableField(fd: AnyField): boolean {
   return IMPORTABLE_KINDS.has(fd.kind) && !fd.opts.serverOwned && !fd.opts.outputHidden;
 }
 
-/** AC-1: master entities (not documents, not line entities) with at least one field a file may set. */
+/**
+ * AC-1: master entities (not documents, not line entities, not opted out with `import: false`) with at least one field a
+ * file may set.
+ */
 export function isImportable(entity: EntityDef): boolean {
-  if (entity.kind !== 'entity' || lineEntityNames().has(entity.name)) return false;
+  if (entity.kind !== 'entity' || entity.config.import === false || lineEntityNames().has(entity.name)) return false;
   return Object.values(entity.config.fields).some(importableField);
 }
 
@@ -91,7 +96,8 @@ export type HeaderResolution =
 
 /**
  * AC-2/AC-9: a header names a field by its name or its Japanese / English label. Server-owned fields, system columns and
- * ext fields (out of scope in this version) are ignored with a notice; anything else that matches nothing is unknown.
+ * ext fields (`ext.<key>`, the bare key or the label; out of scope in this version) are ignored with a notice; anything
+ * else that matches nothing is unknown.
  */
 export function resolveHeader(entity: EntityDef, header: string, appliedPacks?: readonly string[]): HeaderResolution {
   const fields = importFields(entity, appliedPacks);
@@ -104,14 +110,28 @@ export function resolveHeader(entity: EntityDef, header: string, appliedPacks?: 
   if (matches.length > 1) return { kind: 'ambiguous', fields: matches.map((f) => f.name) };
   if (header.startsWith(EXT_PREFIX)) return { kind: 'ignored', reason: 'ext' };
   if ([...SYSTEM_COLUMNS].some((name) => headerKey(name) === key)) return { kind: 'ignored', reason: 'system' };
+  const named = (name: string, label: Label | undefined) =>
+    headerKey(name) === key || (label !== undefined && (headerKey(label.ja) === key || headerKey(label.en) === key));
   for (const [name, fd] of Object.entries(entity.config.fields)) {
     const label = registry.labelOverrides(entity.name, appliedPacks)?.fields?.[name] ?? fd.opts.label;
-    const named = headerKey(name) === key || (label && (headerKey(label.ja) === key || headerKey(label.en) === key));
     // Output-hidden fields are not public: they read as unknown columns.
-    if (!named || fd.opts.outputHidden) continue;
+    if (!named(name, label) || fd.opts.outputHidden) continue;
     return { kind: 'ignored', reason: fd.opts.serverOwned ? 'server-owned' : 'unsupported' };
   }
+  // An ext field named by its key or its label (what the screens show), when visible to the caller's packs (as in /meta).
+  if (entity.hasExt && visibleExtFields(entity, appliedPacks).some((d) => named(d.key, d.field.opts.label)))
+    return { kind: 'ignored', reason: 'ext' };
   return { kind: 'unknown' };
+}
+
+function visibleExtFields(entity: EntityDef, appliedPacks: readonly string[] | undefined) {
+  return registry
+    .extFields(entity.name)
+    .filter(
+      (d) =>
+        !d.field.opts.outputHidden &&
+        (!appliedPacks || !d.source.startsWith('pack:') || appliedPacks.includes(d.source.slice(5))),
+    );
 }
 
 /**
@@ -146,7 +166,7 @@ export type CellValue =
 const TRUE_WORDS = new Set(['true', '1', 'yes', 'はい']);
 const FALSE_WORDS = new Set(['false', '0', 'no', 'いいえ']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-](\d{2}):?(\d{2}))$/i;
 
 /** Full-width digits, signs and spaces to ASCII (NFKC), U+2212 minus to '-'. Used for every non-text kind. */
 function ascii(raw: string): string {
@@ -175,6 +195,21 @@ export function dateCell(raw: string): string | undefined {
   if (!m) return undefined;
   const s = `${m[1]}-${(m[2] ?? '').padStart(2, '0')}-${(m[3] ?? '').padStart(2, '0')}`;
   return isLocalDate(s) ? s : undefined;
+}
+
+/**
+ * AC-3: ISO 8601 with a UTC offset. Every part is range-checked first, because `new Date()` rolls an impossible day or
+ * hour over into the next month or day (2026-02-30 -> 2026-03-02) instead of refusing it.
+ */
+export function timestampCell(raw: string): Date | undefined {
+  const s = ascii(raw);
+  const m = TIMESTAMP.exec(s);
+  if (!m || !isLocalDate(m[1] ?? '')) return undefined;
+  const part = (i: number) => Number(m[i] ?? 0);
+  if (part(2) > 23 || part(3) > 59 || part(4) > 59 || part(6) > 59 || part(5) * 60 + part(6) > 14 * 60)
+    return undefined;
+  const at = new Date(s.replace(' ', 'T'));
+  return Number.isNaN(at.getTime()) ? undefined : at;
 }
 
 function enumCell(fd: AnyField, raw: string): string | undefined {
@@ -221,9 +256,8 @@ export function coerceCell(fd: AnyField, raw: string | null | undefined): CellVa
         : { status: 'value', value: d };
     }
     case 'timestamp': {
-      const s = ascii(raw);
-      const at = TIMESTAMP.test(s) ? new Date(s.replace(' ', 'T')) : undefined;
-      return at && !Number.isNaN(at.getTime())
+      const at = timestampCell(raw);
+      return at
         ? { status: 'value', value: at }
         : invalid(`"${raw}" is not a timestamp with a UTC offset (e.g. 2026-04-01T09:00+09:00)`);
     }
@@ -251,4 +285,12 @@ export function storedText(fd: AnyField | undefined, value: string): string {
 
 export function isUuid(s: string): boolean {
   return UUID.test(s);
+}
+
+/**
+ * Domain queries read a string starting with `$ctx.` as a context token (permissions.ts), so such a key or ref cell
+ * cannot be matched as literal text: the import refuses it per row instead of querying with it.
+ */
+export function isContextToken(s: string): boolean {
+  return s.startsWith('$ctx.');
 }

@@ -6,10 +6,12 @@ import {
   autoMapColumns,
   checkMapping,
   errorCsv,
+  guardCell,
   importableFields,
   importRows,
   messageText,
   requestBytes,
+  unguardCell,
   type ImportResult,
 } from './import-map.ts';
 
@@ -66,6 +68,22 @@ describe('AC-11: columns map to fields', () => {
       new TextEncoder().encode(JSON.stringify({ rows, mode: 'dry-run', onExisting: 'skip' })).length,
     );
   });
+
+  it("AC-11/AC-13: the formula guard (a leading ' before = + - @) is removed from cells and headers when read", () => {
+    const table = csvTable(parseCsv("'=名称,取引先コード\n'=cmd,P1\n'+81-3-1234,P2\n'note,P3\n-5,P4\n"));
+    expect(autoMapColumns(table.headers, importableFields(entity))).toEqual(['', 'code']);
+    expect(importRows(table, ['name', 'code']).map((r) => r.name)).toEqual(['=cmd', '+81-3-1234', "'note", '-5']);
+    // guardCell writes what unguardCell reads back; plain numbers and other text are left alone.
+    for (const raw of ['=SUM(A1)', ' +1', '@x', '-x', '-5', '+1.5', 'text', "'quoted", '', '\u0001=cmd'])
+      expect(unguardCell(guardCell(raw)), raw).toBe(raw);
+    expect([guardCell('=1+1'), guardCell('-5'), guardCell('-x'), guardCell("'=x"), guardCell('\u0001=x')]).toEqual([
+      "'=1+1",
+      '-5',
+      "'-x",
+      "'=x",
+      "'\u0001=x",
+    ]);
+  });
 });
 
 describe('AC-13: error CSV', () => {
@@ -91,13 +109,13 @@ describe('AC-13: error CSV', () => {
   };
   const labels = { line: { ja: '行', en: 'Line' }, reason: { ja: '理由', en: 'Reason' } };
 
-  it('AC-13: failed rows keep their original cells, then the file row number and localized reasons', () => {
+  it('AC-13: failed rows keep their original cells (formula-guarded), then the file row number and localized reasons', () => {
     const csv = errorCsv(table, result, fields, 'ja', labels);
     expect(csv.startsWith('\uFEFF')).toBe(true);
     expect(csv.slice(1).split('\r\n')).toEqual([
       '取引先コード,名称,締め日,行,理由',
-      'P2,二号,99,3,締め日: Too big: <=31',
-      'P3,=cmd,x,4,"締め日: 値の形式が正しくありません (""x"" is not an integer) / 取引先コード: 同じキーの記録が既にあります (=SUM(A1))"',
+      'P2,二号,99,3,締め日: 入力内容を確認してください。 (Too big: <=31)',
+      `P3,'=cmd,x,4,"締め日: 値の形式が正しくありません (""x"" is not an integer) / 取引先コード: 同じキーの記録が既にあります (=SUM(A1))"`,
       '',
     ]);
     expect(errorCsv(table, result, fields, 'en', labels).split('\r\n')[0]).toBe(
@@ -117,5 +135,19 @@ describe('AC-13: error CSV', () => {
     expect(messageText({ code: 'ref_not_found', field: 'code', message: 'no uom' }, fields, 'en')).toBe(
       'Code: Referenced record not found (no uom)',
     );
+  });
+
+  it('AC-8/AC-14: the database code and kernel codes read in the locale too; unknown codes keep the server text', () => {
+    const sql = { code: 'database', message: 'the database rejected the row (SQLSTATE 23514)' };
+    expect(messageText(sql, fields, 'ja')).toBe(
+      'データベースが行を受け付けませんでした (the database rejected the row (SQLSTATE 23514))',
+    );
+    expect(messageText({ code: 'CONFLICT', message: 'duplicate code' }, fields, 'ja')).toBe(
+      '他の更新と競合しました。最新の内容を読み込んでから、もう一度お試しください。 (duplicate code)',
+    );
+    expect(messageText({ code: 'INVALID_STATE', field: 'name', message: 'locked' }, fields, 'en')).toBe(
+      'Name: This cannot be done in the current state. (locked)',
+    );
+    expect(messageText({ code: 'SOMETHING_NEW', message: 'as sent' }, fields, 'ja')).toBe('as sent');
   });
 });

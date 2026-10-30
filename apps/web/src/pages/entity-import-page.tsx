@@ -3,7 +3,7 @@
 // Built on the UI kit; every write goes through the derived <entity>.import action (POST /api/:entity/import).
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { downloadImportTemplate, runImport } from '../api/import.ts';
 import { useEntityMeta } from '../api/queries.ts';
 import type { EntityMeta, FieldMeta, Label } from '../api/types.ts';
@@ -76,7 +76,10 @@ const T = {
   noneMapped: L('取り込む列を 1 つ以上選んでください。', 'Match at least one column to a field.'),
   optionsStep: L('3. 取込の方法', '3. How to import'),
   existing: L('同じキーの記録が既にあるとき', 'When a record with the same key exists'),
-  keyNote: L('キーは一意な項目（例: コード）です。', 'The key is a unique field such as the code.'),
+  keyNote: L(
+    'キーは一意な項目（例: コード）です。キーの列が無いファイルは照合せず、すべて新規として扱います。',
+    'The key is a unique field such as the code. Without a key column, every row is treated as new.',
+  ),
   skip: L('変更しない（スキップ）', 'Leave it (skip)'),
   update: L('この行の値で更新する', 'Update it with this row'),
   error: L('エラーにする', 'Report an error'),
@@ -86,6 +89,16 @@ const T = {
   previewStep: L('4. 事前確認の結果', '4. Preview'),
   errorsOnly: L('エラーの行だけ表示', 'Show only rows with errors'),
   firstRows: L('先頭 50 行を表示しています。', 'Showing the first 50 rows.'),
+  allInCsv: L(
+    'エラーの行はすべて「エラーの行を CSV でダウンロード」で確認できます。',
+    ' Every failed row is in “Download failed rows as CSV”.',
+  ),
+  noErrors: L('エラーの行はありません', 'No rows with errors'),
+  key: L('照合キー', 'Matching key'),
+  noKey: L(
+    'キーの列が無いため、既存の記録とは照合せず、すべて新規として扱います。',
+    'There is no key column, so rows are not matched with existing records: every row is treated as new.',
+  ),
   line: L('行', 'Line'),
   status: L('状態', 'Status'),
   record: L('内容', 'Record'),
@@ -118,6 +131,12 @@ const T = {
   ),
   binary: L('CSV として読めないファイルです。', 'This file cannot be read as CSV.'),
   quote: L('引用符（"）が閉じていません。行: ', 'An opening quote (") is never closed. Line: '),
+  wide: L(
+    '見出しより多くのセルがある行があります（引用符で囲んでいないカンマなど）。値が別の項目にずれるため、カンマを含むセルを " で囲んでから選び直してください。データ行: ',
+    'Some rows have more cells than the header (an unquoted comma, for example), which would shift values into other fields. Wrap cells containing commas in double quotes and choose the file again. Data rows: ',
+  ),
+  andMore: L(' ほか', ' and'),
+  moreRows: L(' 行', ' more'),
   previewDone: L('事前確認が終わりました。', 'Preview finished.'),
   importDone: L('取込が終わりました。', 'Import finished.'),
 };
@@ -131,11 +150,27 @@ const STATUS: Record<ImportRowResult['status'], { preview: Label; done: Label; t
 const PREVIEW_ROWS = 50;
 /** A file this large is not a 5,000-row master list; refuse it before decoding. */
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/** Row numbers listed in a file error before "and N more". */
+const LISTED_LINES = 10;
 
 interface LoadedFile {
   name: string;
   encoding: CsvEncoding;
   table: CsvTable;
+}
+
+/** What the preview and result cards read: the loaded file, its mapping and the entity's importable fields. */
+interface ImportViewState {
+  file: LoadedFile;
+  mapping: ColumnMapping;
+  entity: EntityMeta;
+  fields: FieldMeta[];
+}
+
+/** Kept as a label (plus row numbers) and translated while rendering, so a language switch applies to it too. */
+interface FileError {
+  label: Label;
+  lines?: number[];
 }
 
 function Summary({ result, done }: { result: ImportResult; done: boolean }) {
@@ -160,25 +195,18 @@ function Summary({ result, done }: { result: ImportResult; done: boolean }) {
   );
 }
 
-function ResultTable({
-  result,
-  file,
-  mapping,
-  entity,
-  fields,
-  done,
-}: {
-  result: ImportResult;
-  file: LoadedFile;
-  mapping: ColumnMapping;
-  entity: EntityMeta;
-  fields: FieldMeta[];
-  done: boolean;
-}) {
+/**
+ * `done`: the rows were kept (past-tense labels). A dry-run and a rolled-back atomic run use the "to create" labels: their
+ * statuses say what would have happened. An executed run opens on its errors.
+ */
+function ResultTable({ result, view, done }: { result: ImportResult; view: ImportViewState; done: boolean }) {
+  const { file, mapping, entity, fields } = view;
   const { t, locale } = useLocale();
-  const [errorsOnly, setErrorsOnly] = useState(done && result.summary.errors > 0);
+  const executed = result.mode === 'execute';
+  const [errorsOnly, setErrorsOnly] = useState(executed && result.summary.errors > 0);
   const id = useId();
-  const shown = (errorsOnly ? result.rows.filter((r) => r.status === 'error') : result.rows).slice(0, PREVIEW_ROWS);
+  const filtered = errorsOnly ? result.rows.filter((r) => r.status === 'error') : result.rows;
+  const shown = filtered.slice(0, PREVIEW_ROWS);
   // What identifies the row to a person: the key column and the display column when the file has them.
   const columns = [result.keyField, entity.displayField]
     .map((field) => (field ? mapping.indexOf(field) : -1))
@@ -200,9 +228,11 @@ function ResultTable({
         {t(T.errorsOnly)}
       </label>
       <DataTableShell
-        label={t(done ? T.resultTitle : T.previewStep)}
+        label={t(executed ? T.resultTitle : T.previewStep)}
         columnCount={4}
-        testId={done ? 'import-result-table' : 'import-preview-table'}
+        testId={executed ? 'import-result-table' : 'import-preview-table'}
+        isEmpty={shown.length === 0}
+        empty={<EmptyState title={t(T.noErrors)} testId="import-no-error-rows" />}
         head={
           <tr>
             <th scope="col" className="ui-cell-num">
@@ -231,10 +261,120 @@ function ResultTable({
           </tr>
         ))}
       </DataTableShell>
-      {result.rows.length > PREVIEW_ROWS && !errorsOnly ? (
-        <p className="text-xs text-text-secondary">{t(T.firstRows)}</p>
+      {filtered.length > PREVIEW_ROWS ? (
+        <p className="text-xs text-text-secondary" data-testid="import-first-rows">
+          {t(T.firstRows)}
+          {executed ? t(T.allInCsv) : ''}
+        </p>
       ) : null}
     </div>
+  );
+}
+
+/** Columns left unmatched are not sent; the server's notices name columns an API caller sent but the server ignored. */
+function ignoredColumns({ file, mapping }: ImportViewState, result: ImportResult): string[] {
+  return [
+    ...new Set([
+      ...file.table.headers.flatMap((h, i) => (mapping[i] ? [] : [h || `#${i + 1}`])),
+      ...result.notices.map((n) => n.column),
+    ]),
+  ];
+}
+
+function fieldLabelOf(fields: readonly FieldMeta[], name: string): Label | string {
+  return fields.find((f) => f.name === name)?.label ?? name;
+}
+
+/** AC-12: step 4 — what the dry-run found (counts, matching key, ignored columns, rows), then "Import". */
+function PreviewCard({
+  preview,
+  view,
+  atomic,
+  execute,
+}: {
+  preview: ImportResult;
+  view: ImportViewState;
+  atomic: boolean;
+  execute: { disabled: boolean; pending: boolean; run: () => void };
+}) {
+  const { t } = useLocale();
+  const ignored = ignoredColumns(view, preview);
+  const keyLabel = preview.keyField ? fieldLabelOf(view.fields, preview.keyField) : undefined;
+  return (
+    <Card data-testid="import-preview">
+      <FormSection title={t(T.previewStep)}>
+        <Summary result={preview} done={false} />
+        {keyLabel !== undefined ? (
+          <p className="text-sm" data-testid="import-key">
+            {t(T.key)}: {typeof keyLabel === 'string' ? keyLabel : t(keyLabel)}
+          </p>
+        ) : (
+          // AC-5: without the key column nothing is matched, whichever "existing record" option is chosen.
+          <p className="text-sm text-warning-on-soft" data-testid="import-key">
+            {t(T.noKey)}
+          </p>
+        )}
+        {ignored.length ? (
+          <p className="text-xs break-words text-text-secondary" data-testid="import-ignored">
+            {t(T.ignored)}: {ignored.join(', ')}
+          </p>
+        ) : null}
+        <ResultTable result={preview} view={view} done={false} />
+        {preview.summary.errors > 0 ? (
+          <p className="text-sm text-warning-on-soft" data-testid="import-error-note">
+            {t(atomic ? T.atomicBlocked : T.willSkipErrors)}
+          </p>
+        ) : null}
+        <div>
+          <Button variant="primary" disabled={execute.disabled} onClick={execute.run}>
+            {t(execute.pending ? T.executing : T.execute)}
+          </Button>
+        </div>
+      </FormSection>
+    </Card>
+  );
+}
+
+/**
+ * AC-13: the outcome and the failed rows as CSV. A rolled-back atomic run keeps the "to create" labels next to "nothing
+ * was imported". "Import" sat in the preview card this card replaces, so focus moves to this heading, not to <body>.
+ */
+function ResultCard({ result, view }: { result: ImportResult; view: ImportViewState }) {
+  const { t, locale } = useLocale();
+  const heading = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    heading.current?.focus();
+  }, [result]);
+  const downloadErrors = () => {
+    const csv = errorCsv(view.file.table, result, view.fields, locale, { line: T.line, reason: T.reason });
+    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${view.entity.name}-import-errors.csv`);
+  };
+  return (
+    <Card data-testid="import-result">
+      <FormSection
+        title={
+          <span ref={heading} tabIndex={-1} data-testid="import-result-heading">
+            {t(T.resultTitle)}
+          </span>
+        }
+      >
+        <Summary result={result} done={result.committed} />
+        {!result.committed ? <p className="text-sm text-danger-text">{t(T.nothingKept)}</p> : null}
+        {result.summary.errors > 0 ? (
+          <>
+            <ResultTable result={result} view={view} done={result.committed} />
+            <div>
+              <Button onClick={downloadErrors}>{t(T.errorCsv)}</Button>
+            </div>
+          </>
+        ) : null}
+        <div>
+          <Link to="/e/$entity" params={{ entity: view.entity.name }} className={buttonClass()}>
+            {t(T.backToList)}
+          </Link>
+        </div>
+      </FormSection>
+    </Card>
   );
 }
 
@@ -245,13 +385,13 @@ function ImportView({ entity }: { entity: EntityMeta }) {
   const formId = useId();
   const fields = useMemo(() => importableFields(entity), [entity]);
   const [file, setFile] = useState<LoadedFile>();
-  const [fileError, setFileError] = useState<string>();
+  const [fileError, setFileError] = useState<FileError>();
   const [mapping, setMapping] = useState<ColumnMapping>([]);
   const [onExisting, setOnExisting] = useState<OnExisting>('skip');
   const [atomic, setAtomic] = useState(false);
   const [preview, setPreview] = useState<ImportResult>();
   const [done, setDone] = useState<ImportResult>();
-  const [announce, setAnnounce] = useState('');
+  const [announce, setAnnounce] = useState<Label>();
   // Any change of file, mapping or options makes an earlier preview (or a late answer to it) stale.
   const generation = useRef(0);
   const check = useMemo(() => checkMapping(mapping, fields), [mapping, fields]);
@@ -260,7 +400,7 @@ function ImportView({ entity }: { entity: EntityMeta }) {
     generation.current++;
     setPreview(undefined);
     setDone(undefined);
-    setAnnounce('');
+    setAnnounce(undefined);
   };
 
   const choose = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -270,19 +410,21 @@ function ImportView({ entity }: { entity: EntityMeta }) {
     setFileError(undefined);
     const chosen = event.target.files?.[0];
     if (!chosen) return;
-    if (chosen.size > MAX_FILE_BYTES) return setFileError(t(T.tooLarge));
+    if (chosen.size > MAX_FILE_BYTES) return setFileError({ label: T.tooLarge });
     try {
       const decoded = decodeCsvBytes(new Uint8Array(await chosen.arrayBuffer()));
       if (mine !== generation.current) return;
-      if (decoded.text.includes('\0')) return setFileError(t(T.binary));
+      if (decoded.text.includes('\0')) return setFileError({ label: T.binary });
       const table = csvTable(parseCsv(decoded.text));
-      if (!table.headers.length || !table.rows.length) return setFileError(t(T.emptyFile));
-      if (table.rows.length > IMPORT_MAX_ROWS) return setFileError(t(T.tooMany));
+      if (!table.headers.length || !table.rows.length) return setFileError({ label: T.emptyFile });
+      if (table.rows.length > IMPORT_MAX_ROWS) return setFileError({ label: T.tooMany });
+      // A shifted row would import its cells into the wrong fields: refuse the file (csv-parse.ts `wide`).
+      if (table.wide.length) return setFileError({ label: T.wide, lines: table.wide });
       setFile({ name: chosen.name, encoding: decoded.encoding, table });
       setMapping(autoMapColumns(table.headers, fields));
     } catch (e) {
-      if (e instanceof CsvParseError) setFileError(`${t(T.quote)}${e.line}`);
-      else setFileError(t(T.binary));
+      if (e instanceof CsvParseError) setFileError({ label: T.quote, lines: [e.line] });
+      else setFileError({ label: T.binary });
     }
   };
 
@@ -294,24 +436,33 @@ function ImportView({ entity }: { entity: EntityMeta }) {
       onExisting,
       ...(atomic ? { atomic: true } : {}),
     };
-    if (requestBytes(body) > IMPORT_MAX_BYTES) return setFileError(t(T.tooLarge));
+    if (requestBytes(body) > IMPORT_MAX_BYTES) return setFileError({ label: T.tooLarge });
     setFileError(undefined);
     const mine = generation.current;
     run.mutate(body, {
       onSuccess: async (result) => {
         if (mine !== generation.current) return;
         if (mode === 'dry-run') {
+          // A new preview replaces an earlier result: two summaries would contradict each other.
+          setDone(undefined);
           setPreview(result);
-          setAnnounce(t(T.previewDone));
+          setAnnounce(T.previewDone);
           return;
         }
         setPreview(undefined);
         setDone(result);
-        setAnnounce(t(T.importDone));
+        setAnnounce(T.importDone);
         await qc.invalidateQueries({ queryKey: ['list', entity.name] });
       },
       onError: (e) => toast.error(e),
     });
+  };
+
+  const fileErrorText = (error: FileError) => {
+    const lines = error.lines ?? [];
+    const listed = lines.slice(0, LISTED_LINES).join(', ');
+    const more = lines.length > LISTED_LINES ? `${t(T.andMore)} ${lines.length - LISTED_LINES}${t(T.moreRows)}` : '';
+    return `${t(error.label)}${listed}${more}`;
   };
 
   const template = async () => {
@@ -321,12 +472,6 @@ function ImportView({ entity }: { entity: EntityMeta }) {
     } catch (e) {
       toast.error(e);
     }
-  };
-
-  const downloadErrors = () => {
-    if (!file || !done) return;
-    const csv = errorCsv(file.table, done, fields, locale, { line: T.line, reason: T.reason });
-    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${entity.name}-import-errors.csv`);
   };
 
   const fieldLabel = (name: string) => {
@@ -349,7 +494,7 @@ function ImportView({ entity }: { entity: EntityMeta }) {
         actions={<Button onClick={() => void template()}>{t(T.template)}</Button>}
       />
       <p className="sr-only" aria-live="polite">
-        {announce}
+        {announce ? t(announce) : ''}
       </p>
       <Card>
         <FormSection title={t(T.fileStep)} description={t(T.fileHelp)}>
@@ -364,17 +509,27 @@ function ImportView({ entity }: { entity: EntityMeta }) {
               accept=".csv,text/csv"
               className="max-w-full text-sm"
               aria-describedby={fileError ? `${formId}-file-error` : undefined}
+              // Browsers fire no change event when the same file is chosen again (e.g. after fixing it): clear first.
+              onClick={(e) => {
+                e.currentTarget.value = '';
+              }}
               onChange={(e) => void choose(e)}
             />
             {file ? (
               <p className="text-sm text-text-secondary" data-testid="import-file-info">
-                {file.name} · {t(T.encoding)}: <span data-testid="import-encoding">{ENCODING[file.encoding]}</span> ·{' '}
+                <span className="break-all">{file.name}</span> · {t(T.encoding)}:{' '}
+                <span data-testid="import-encoding">{ENCODING[file.encoding]}</span> ·{' '}
                 <span className="font-mono tabular-nums">{file.table.rows.length}</span> {t(T.rows)}
               </p>
             ) : null}
             {fileError ? (
-              <p id={`${formId}-file-error`} role="alert" className="text-sm text-danger-text">
-                {fileError}
+              <p
+                id={`${formId}-file-error`}
+                role="alert"
+                className="text-sm break-words text-danger-text"
+                data-testid="import-file-error"
+              >
+                {fileErrorText(fileError)}
               </p>
             ) : null}
           </div>
@@ -387,7 +542,7 @@ function ImportView({ entity }: { entity: EntityMeta }) {
               {file.table.headers.map((header, i) => (
                 <li key={`${i}-${header}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <label htmlFor={`${formId}-col-${i}`} className="min-w-0 flex-1 basis-40 text-sm">
-                    <span className="font-medium">{header || `#${i + 1}`}</span>
+                    <span className="font-medium break-all">{header || `#${i + 1}`}</span>
                     <span className="block truncate text-xs text-text-secondary">
                       {t(T.sample)}: {file.table.rows[0]?.[i] ?? ''}
                     </span>
@@ -474,49 +629,18 @@ function ImportView({ entity }: { entity: EntityMeta }) {
         </Card>
       ) : null}
       {file && preview ? (
-        <Card data-testid="import-preview">
-          <FormSection title={t(T.previewStep)}>
-            <Summary result={preview} done={false} />
-            {preview.notices.length ? (
-              <p className="text-xs text-text-secondary">
-                {t(T.ignored)}: {preview.notices.map((n) => n.column).join(', ')}
-              </p>
-            ) : null}
-            <ResultTable result={preview} file={file} mapping={mapping} entity={entity} fields={fields} done={false} />
-            {preview.summary.errors > 0 ? (
-              <p className="text-sm text-warning-on-soft" data-testid="import-error-note">
-                {t(atomic ? T.atomicBlocked : T.willSkipErrors)}
-              </p>
-            ) : null}
-            <div>
-              <Button variant="primary" disabled={blocked || run.isPending} onClick={() => send('execute')}>
-                {t(pendingMode === 'execute' ? T.executing : T.execute)}
-              </Button>
-            </div>
-          </FormSection>
-        </Card>
+        <PreviewCard
+          preview={preview}
+          view={{ file, mapping, entity, fields }}
+          atomic={atomic}
+          execute={{
+            disabled: blocked || run.isPending,
+            pending: pendingMode === 'execute',
+            run: () => send('execute'),
+          }}
+        />
       ) : null}
-      {file && done ? (
-        <Card data-testid="import-result">
-          <FormSection title={t(T.resultTitle)}>
-            <Summary result={done} done />
-            {!done.committed ? <p className="text-sm text-danger-text">{t(T.nothingKept)}</p> : null}
-            {done.summary.errors > 0 ? (
-              <>
-                <ResultTable result={done} file={file} mapping={mapping} entity={entity} fields={fields} done />
-                <div>
-                  <Button onClick={downloadErrors}>{t(T.errorCsv)}</Button>
-                </div>
-              </>
-            ) : null}
-            <div>
-              <Link to="/e/$entity" params={{ entity: entity.name }} className={buttonClass()}>
-                {t(T.backToList)}
-              </Link>
-            </div>
-          </FormSection>
-        </Card>
-      ) : null}
+      {file && done ? <ResultCard result={done} view={{ file, mapping, entity, fields }} /> : null}
     </div>
   );
 }

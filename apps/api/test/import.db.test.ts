@@ -92,7 +92,7 @@ describe('csv-import over REST', () => {
     expect(again.json()).toMatchObject({ summary: { created: 0, skipped: 1, errors: 1 } });
   });
 
-  it('AC-1: documents (and unknown entities) have no import route', async () => {
+  it('AC-1: documents, opted-out masters (and unknown entities) have no import route', async () => {
     const doc = await call('POST', '/api/sales_invoice/import', {
       rows: [{ x: '1' }],
       mode: 'dry-run',
@@ -100,6 +100,18 @@ describe('csv-import over REST', () => {
     });
     expect(doc.statusCode).toBe(409);
     expect(doc.json()).toMatchObject({ error: { code: 'INVALID_STATE' } });
+    // `import: false`: their generic create is always refused, so an import could only fail row by row.
+    for (const entity of ['stock_ledger', 'stock_balance', 'attachment']) {
+      const res = await call('POST', `/api/${entity}/import`, {
+        rows: [{ x: '1' }],
+        mode: 'dry-run',
+        onExisting: 'skip',
+      });
+      expect(res.statusCode, entity).toBe(409);
+      expect((await call('POST', `/actions/${entity}.import`, { rows: [], mode: 'dry-run' })).statusCode, entity).toBe(
+        404,
+      );
+    }
     expect((await call('POST', '/api/nope/import', { rows: [], mode: 'dry-run', onExisting: 'skip' })).statusCode).toBe(
       404,
     );

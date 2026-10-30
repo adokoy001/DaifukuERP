@@ -91,6 +91,11 @@ export interface EntityConfig<F extends FieldMap = FieldMap> {
   /** Composite unique constraints (tenant/company are prepended automatically). */
   unique?: readonly (readonly string[])[];
   indexes?: readonly (readonly string[])[];
+  /**
+   * `false`: no derived `<entity>.import` (CSV import, ADR-0028) for a master whose generic create is always refused
+   * (append-only ledgers, derived tables, rows that need server-owned input such as uploaded files).
+   */
+  import?: false;
 }
 
 export type StoreAccessPolicy =

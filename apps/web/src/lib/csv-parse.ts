@@ -83,10 +83,16 @@ export function parseCsv(text: string): string[][] {
 
 export interface CsvTable {
   headers: string[];
-  /** Data records (blank records dropped), each as long as `headers`. */
+  /** Data records (blank records dropped), each as long as `headers` (short records are padded with blank cells). */
   rows: string[][];
   /** For each entry of `rows`: its 1-based data row number in the file (header not counted; blank records counted). */
   lines: number[];
+  /**
+   * Data row numbers (as in `lines`) of records with a non-blank cell past the last header — usually an unquoted comma
+   * that shifted every later cell. RFC 4180 records have as many cells as the header, and `rows` would silently drop
+   * those cells, so the screen refuses such a file. Blank cells past the header (a trailing comma) are not counted.
+   */
+  wide: number[];
 }
 
 const blank = (record: readonly string[]) => record.every((cell) => cell.trim() === '');
@@ -94,14 +100,16 @@ const blank = (record: readonly string[]) => record.every((cell) => cell.trim() 
 /** The first non-blank record is the header (cells trimmed); records of only blank cells are dropped. */
 export function csvTable(records: readonly string[][]): CsvTable {
   const start = records.findIndex((r) => !blank(r));
-  if (start < 0) return { headers: [], rows: [], lines: [] };
+  if (start < 0) return { headers: [], rows: [], lines: [], wide: [] };
   const headers = (records[start] ?? []).map((h) => h.trim());
   const rows: string[][] = [];
   const lines: number[] = [];
+  const wide: number[] = [];
   records.slice(start + 1).forEach((record, index) => {
     if (blank(record)) return;
+    if (!blank(record.slice(headers.length))) wide.push(index + 1);
     rows.push(headers.map((_, i) => record[i] ?? ''));
     lines.push(index + 1);
   });
-  return { headers, rows, lines };
+  return { headers, rows, lines, wide };
 }
