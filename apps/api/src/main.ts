@@ -26,6 +26,7 @@ async function main(): Promise<void> {
     jwtSecret: cfg.jwtSecret,
     trustedProxies: cfg.trustedProxies,
     readiness: createReadiness({ owner, app, storageDirectory }),
+    storageDirectory,
     corsOrigins: cfg.corsOrigins,
     squarePosConnections,
     ...(identity ? { identity } : {}),

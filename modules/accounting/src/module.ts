@@ -1,7 +1,8 @@
 // Module manifest (docs/conventions/layers.md). Importing @daifuku/mod-partner first registers the partner entity
 // that journal_line references and satisfies `depends`.
-import { defineModule, label } from '@daifuku/kernel';
+import { defineModule, label, registry } from '@daifuku/kernel';
 import { PartnerModule } from '@daifuku/mod-partner';
+import { fiscalPeriodHealthCheck } from './health.ts';
 import { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts';
 import { closeReadinessAction } from './actions/close-readiness.ts';
 import { generalLedgerAction } from './actions/general-ledger.ts';
@@ -42,6 +43,7 @@ export const AccountingModule = defineModule({
     registerNoCancelHook();
     registerFreezeLinesHook();
     registerFiscalDateHooks();
+    registry.registerHealthCheck(fiscalPeriodHealthCheck);
   },
   seed: seedFiscalYear,
   menus: [

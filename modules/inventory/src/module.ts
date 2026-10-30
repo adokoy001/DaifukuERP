@@ -2,8 +2,9 @@
 // `purchase_invoice` and `sales_invoice` are registered before our entities and hooks reference them. accounting is a
 // declared dependency (sales/purchase need it) but inventory posts no journal entries (三分法, spec 目的).
 import { InventoryPeriodClose, registerPeriodCloseHooks } from './period-close.ts';
-import { defineModule, label } from '@daifuku/kernel';
+import { defineModule, label, registry } from '@daifuku/kernel';
 import { AccountingModule } from '@daifuku/mod-accounting';
+import { stockSettingsHealthCheck } from './health.ts';
 import { PartnerModule } from '@daifuku/mod-partner';
 import { ProductModule } from '@daifuku/mod-product';
 import { PurchaseModule } from '@daifuku/mod-purchase';
@@ -56,6 +57,7 @@ export const InventoryModule = defineModule({
     registerInvoiceHooks();
     registerCountHooks();
     registerInventorySettings();
+    registry.registerHealthCheck(stockSettingsHealthCheck);
   },
   seed: seedWarehouses,
   menus: [

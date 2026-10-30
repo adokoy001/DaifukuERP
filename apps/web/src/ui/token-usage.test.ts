@@ -40,6 +40,8 @@ const CONVERTED = [
   'components/navigation-assist.css',
   // company-admin (docs/specs/company-admin.md)
   'pages/companies-page.tsx',
+  // setup-health (docs/specs/setup-health.md)
+  'pages/health-page.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

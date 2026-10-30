@@ -2,7 +2,7 @@
 
 - 状態: 採択（2026-10-29）／ 確信度: 中
 - 関連: [ADR-0013](0013-hexagonal-ports.md)（L1 設定 `registerSetting`）、[ADR-0015](0015-packs.md)（pack の設定既定値）、[受入基準](../specs/settings-console.md)、[UI 規約](../conventions/ui.md)
-- 追記: §6 B2 の `company.profile`（[company-admin](../specs/company-admin.md)、2026-10-30）。追記予定: B4 の `setup.progress`（[setup-wizard](../specs/setup-wizard.md)）
+- 追記: §6 B2 の `company.profile`（[company-admin](../specs/company-admin.md)、2026-10-30）、§7 B3 の導入チェックの登録 port（[setup-health](../specs/setup-health.md)、2026-10-30）。追記予定: B4 の `setup.progress`（[setup-wizard](../specs/setup-wizard.md)）
 
 ## 背景
 
@@ -82,6 +82,17 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 - 登録: `ensureCompanyProfileSetting()`（冪等）を apps/runtime の `loadRuntime` が呼ぶ。`packs.applied` と同じく kernel の設定なので module の import には載らない。kernel を直接使う試験は自分で呼ぶ。
 - 読取: `getCompanyProfile(ctx)`（保存値が schema に合わなければ空のプロフィールと警告ログ）、`companyProfileOf(settings)`（会社行の `settings` から。1 回の会社読取で他の設定と一緒に解決するため）。
 - 最初の読み手は販売: `sales.issuer` が未設定（または schema に合わない保存値）のとき、請求書の発行者は `company.profile` の正式名称（無ければ会社名）・登録番号・郵便番号・住所・電話・メールから組み立てる（`modules/sales` の `resolveIssuer`）。`sales.issuer` が有効なら細目単位で混ぜず、それをまとめて使う（振込先など請求書だけの情報を別名義で持てるように）。申告・給与資料の読取元の切替は各資料の仕様で扱う。
+
+### 7. 導入チェックの登録 port（2026-10-30 追記、[setup-health](../specs/setup-health.md)）
+
+設定が業務に使える状態か（今日を含む会計期間、有効な税率、発行者、倉庫など）を点検する `GET /meta/health` のため、kernel に小さな port を足す（ADR-0013 の「足りない port は kernel に足して ADR に書く」に当たる）。
+
+- `registry.registerHealthCheck({ id, label, order?, run })`（`kernel/src/registry.ts`）。`id` は `<module>.<name>` で一意かつ安定（B4 のウィザードが完了条件に使う）。ラベルは日英必須、`order` は整数。module は `defineModule` の `hooks` で登録する（accounting・tax・sales・inventory）。`registry.reset()` で消える。
+- `run(ctx)` は `{ status: 'ok' | 'warn' | 'fail', detail: Label, href? }` を返す。`runHealthChecks(ctx, extra)`（`kernel/src/health.ts`）が、kernel の点検（`company.profile`、`system.outbox`）・登録された点検・呼出し元が渡す `extra`（API の運用点検: メール・OIDC・移行・保存先）を `order` 順に、**呼出し元の Context のまま**それぞれ savepoint の中で実行する。権限のバイパスは作らない。読めない entity の点検は「点検する権限がありません」の `warn` になる。
+- 例外・不正な結果は `warn`（「点検できませんでした」）。例外の文はログにだけ出し、応答には出さない。`href` はアプリ内の相対パス（先頭が `/` 1 つ、`//`・`..`・スキームなし、200 文字以内）だけを残す（`isHealthHref`）。
+- 呼出しは admin か `settings` ロール、かつ所属が店舗・拠点限定でないこと（`assertHealthAccess`。会社設定と同じ境界）。
+- 規約: 点検の結果には接続先・秘密値・ファイルパス・例外の文を入れない。運用の点検は真偽と件数だけを返す（メール・OIDC は設定の有無、移行は件数、保存先は書込み可否）。
+- API の運用点検を registry に登録せず `extra` で渡すのは、サーバーごとの設定（識別情報・保存先）を process 全体の registry に持ち込まないため（試験で複数のサーバーを作っても重複しない）。
 
 ## 却下した案
 

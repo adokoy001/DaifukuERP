@@ -16,6 +16,7 @@ import { registerRestRoutes } from './routes/rest.ts';
 import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
 import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
+import { registerHealthRoutes } from './routes/health.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
 import { registerSquarePosRoutes } from './routes/square-pos.ts';
 import { registerWorkforceEvidenceRoutes } from './routes/workforce-evidence.ts';
@@ -31,6 +32,10 @@ export interface ServerOptions {
   readiness?: () => Promise<{ ready: boolean }>;
   identity?: IdentityOptions;
   squarePosConnections?: SquareConnection[];
+  /** Attachment storage directory (DAIFUKU_STORAGE_DIR); the setup health report says whether it is writable. */
+  storageDirectory?: string;
+  /** Release migration catalog for the setup health report; defaults to the API's drizzle/migrations. */
+  migrationsDirectory?: string;
   /** Exact browser origins. Omitted means same-origin only; main passes validated environment policy. */
   corsOrigins?: readonly string[];
   logger?: FastifyServerOptions['logger'];
@@ -76,6 +81,15 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerAttachmentRoutes(server, { db: opts.app });
   registerAccessAdminRoutes(server, { db: opts.app });
   registerCompanyAdminRoutes(server, { db: opts.app });
+  registerHealthRoutes(server, {
+    db: opts.app,
+    platform: {
+      owner: opts.owner,
+      ...(opts.identity ? { identity: opts.identity } : {}),
+      ...(opts.storageDirectory ? { storageDirectory: opts.storageDirectory } : {}),
+      ...(opts.migrationsDirectory ? { migrationsDirectory: opts.migrationsDirectory } : {}),
+    },
+  });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
   registerAnalyticsRoutes(server, { db: opts.app });
   await registerSquarePosRoutes(server, {

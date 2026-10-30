@@ -95,3 +95,4 @@ export type SalesInvoiceLineInsert = InsertInput<typeof SalesInvoiceLine>;
 export { SalesSettlement } from './entities/settlement.ts';
 export { invoiceBalancesAsOf } from './settlements.ts';
 export { postingDimensions } from '@daifuku/mod-accounting';
+export { issuerHealthCheck } from './health.ts';

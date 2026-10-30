@@ -282,6 +282,12 @@ const companiesRoute = createRoute({
   path: '/admin/companies',
   component: lazyRouteComponent(() => import('./pages/companies-page.tsx'), 'CompaniesPage'),
 });
+// setup-health AC-9/AC-10: the setup check for admin or settings.
+const healthRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/health',
+  component: lazyRouteComponent(() => import('./pages/health-page.tsx'), 'HealthPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
@@ -412,6 +418,7 @@ const routeTree = rootRoute.addChildren([
     reportsRoute,
     accessRoute,
     companiesRoute,
+    healthRoute,
     employeeRoute,
     workforceRoute,
     inboxRoute,

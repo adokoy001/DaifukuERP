@@ -25,8 +25,11 @@ interface AppliedMigration extends DatabaseIdentity {
   hash: string;
   created_at: string;
 }
-const defaultMigrations = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
-async function expectedMigrations(directory: string) {
+/** The release migration catalog next to the API (also read by the setup health item `system.migrations`). */
+export const DEFAULT_MIGRATIONS_DIRECTORY = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
+const defaultMigrations = DEFAULT_MIGRATIONS_DIRECTORY;
+/** Hash and timestamp of every catalog entry, in journal order; throws on a missing or malformed catalog. */
+export async function expectedMigrations(directory: string) {
   const data = JSON.parse(await readFile(resolve(directory, 'meta/_journal.json'), 'utf8')) as {
     entries?: { idx: number; when: number; tag: string }[];
   };

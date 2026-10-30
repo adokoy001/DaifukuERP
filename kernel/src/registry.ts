@@ -85,6 +85,28 @@ export interface SettingDef<T = unknown> {
   valueLabels?: Readonly<Record<string, Label>>;
 }
 
+export type HealthStatus = 'ok' | 'warn' | 'fail';
+
+/** What a setup-health check found (docs/specs/setup-health.md). Labels and an in-app path only: no secrets or paths. */
+export interface HealthOutcome {
+  status: HealthStatus;
+  detail: Label;
+  /** In-app path of the screen that fixes or shows it (e.g. `/settings?tab=company`); anything else is dropped. */
+  href?: string;
+}
+
+/**
+ * A setup-health check a module contributes (ADR-0027 §7). `id` is `<module>.<name>` and stable: the setup wizard uses
+ * it as a completion condition. `run` gets the caller's Context (its permissions apply) inside a savepoint.
+ */
+export interface HealthCheckDef {
+  id: string;
+  label: Label;
+  /** Position in the report (ascending); checks without one come after, in registration order. */
+  order?: number;
+  run: (ctx: Context) => Promise<HealthOutcome>;
+}
+
 class Registry {
   private modules = new Map<string, ModuleDef>();
   private entities = new Map<string, EntityDef>();
@@ -96,6 +118,7 @@ class Registry {
   private systemTables = new Map<string, PgTable>();
   private registrationSource: string | undefined;
   private settings = new Map<string, SettingDef>();
+  private healthDefs = new Map<string, HealthCheckDef>();
   private ext = new Map<string, Map<string, ExtFieldDef>>();
   /** entity -> stamp of its last ext registration. Stamps only grow (also across reset) so caches keyed by them stay valid. */
   private extVersions = new Map<string, number>();
@@ -371,6 +394,21 @@ class Registry {
     return [...this.settings.values()];
   }
 
+  /** Declares a setup-health check (GET /meta/health). Modules call it from their `hooks`. */
+  registerHealthCheck(def: HealthCheckDef): void {
+    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.id))
+      throw new Error(`health check id "${def.id}" must look like "<module>.<name>" in snake_case`);
+    if (this.healthDefs.has(def.id)) throw new Error(`health check "${def.id}" is already registered`);
+    if (!def.label?.ja?.trim() || !def.label?.en?.trim())
+      throw new Error(`health check "${def.id}": label must have non-empty ja and en text`);
+    if (def.order !== undefined && !Number.isInteger(def.order))
+      throw new Error(`health check "${def.id}": order must be an integer`);
+    this.healthDefs.set(def.id, def);
+  }
+  healthChecks(): HealthCheckDef[] {
+    return [...this.healthDefs.values()];
+  }
+
   registerSystemTable(name: string, table: PgTable): void {
     this.systemTables.set(name, table);
   }
@@ -403,6 +441,7 @@ class Registry {
     this.guards.clear();
     this.subscriptions.clear();
     this.settings.clear();
+    this.healthDefs.clear();
     this.ext.clear();
     this.extVersions.clear();
     this.packDefs.clear();

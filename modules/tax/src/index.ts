@@ -60,3 +60,4 @@ export { SEED_TAX_RATES, seedTaxRates } from './seeds/rates.ts';
 export type TaxRateRow = Infer<typeof TaxRate>;
 export type TaxRateInsert = InsertInput<typeof TaxRate>;
 export type TaxRateUpdate = UpdateInput<typeof TaxRate>;
+export { standardRateHealthCheck } from './health.ts';

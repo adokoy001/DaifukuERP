@@ -128,3 +128,4 @@ export {
   createAndSubmitEntry as createSourceStockEntry,
   cancelLinkedEntries as cancelSourceStockEntries,
 } from './hooks/invoices.ts';
+export { stockSettingsHealthCheck } from './health.ts';

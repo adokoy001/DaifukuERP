@@ -2,8 +2,9 @@
 // `product`, `tax_rate` and `journal_entry` are registered before the invoice entities reference them.
 import { SalesSettlement } from './entities/settlement.ts';
 import { registerSettlementHooks } from './settlements.ts';
-import { defineModule, label } from '@daifuku/kernel';
+import { defineModule, label, registry } from '@daifuku/kernel';
 import { PartnerModule } from '@daifuku/mod-partner';
+import { issuerHealthCheck } from './health.ts';
 import { ProductModule } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { AccountingModule } from '@daifuku/mod-accounting';
@@ -31,6 +32,7 @@ export const SalesModule = defineModule({
     registerSubmitHooks();
     registerCancelHook();
     registerSalesSettings();
+    registry.registerHealthCheck(issuerHealthCheck);
   },
   menus: [
     { label: label('売上請求書', 'Sales invoices'), entity: SalesInvoice.name, order: 40 },

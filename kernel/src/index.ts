@@ -79,6 +79,9 @@ export {
   type EventHandler,
   type SettingDef,
   type RegistryWarning,
+  type HealthCheckDef,
+  type HealthOutcome,
+  type HealthStatus,
 } from './registry.ts';
 export {
   type Context,
@@ -267,6 +270,18 @@ export {
   type CreateCompanyOptions,
   type CreatedCompany,
 } from './company-admin.ts';
+export {
+  assertHealthAccess,
+  COMPANY_PROFILE_CHECK,
+  HEALTH_STATUSES,
+  healthChecks,
+  isHealthHref,
+  KERNEL_HEALTH_CHECKS,
+  OUTBOX_CHECK,
+  runHealthChecks,
+  type HealthItem,
+  type HealthReport,
+} from './health.ts';
 export {
   COMPANY_PROFILE_KEY,
   COMPANY_PROFILE_SETTING,

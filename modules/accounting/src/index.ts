@@ -147,3 +147,4 @@ export type JournalLineInsert = InsertInput<typeof JournalLine>;
 export { reverseSourceEntry } from './actions/reverse-source.ts';
 export { assertJpySettlement } from './money-contract.ts';
 export { postingDimensions } from './dimensions.ts';
+export { fiscalPeriodHealthCheck, FISCAL_PERIOD_HORIZON_DAYS } from './health.ts';

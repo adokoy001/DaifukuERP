@@ -323,6 +323,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/admin/health',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'settings',
+    label: { ja: '導入チェック', en: 'Setup check' },
+    description: {
+      ja: '会計期間・税率・発行者・在庫・運用の設定漏れを点検し、直す画面へ移動します。',
+      en: 'Check fiscal periods, tax rates, invoice issuer, inventory and operations, and open the screen that fixes each.',
+    },
+  },
+  {
     href: '/admin/users',
     workspace: 'admin',
     kind: 'setting',
