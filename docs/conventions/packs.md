@@ -60,6 +60,7 @@ export const RetailPack = definePack({
 - **ext の索引**: text の `equalityIndex: true` は完全一致 / IN 用の内部計算列と tenant/company 付き非 unique B-tree を作る。追加時は全 pack を読んで新規 migration を生成する。`searchable: true` は部分一致検索への参加指定であり、索引を作らない。通常リクエストや会社への pack 適用で DDL を実行しない。先頭ゼロ・長い既存値・全文比較を保持する方式と導入時のロックは [ADR-0026](../adr/0026-ext-equality-indexes.md) を参照。
 - **entities**: テーブルができるのでマイグレーション生成が要る（統合時に本体が `pnpm db:generate`）。テスト（`freshDb`）はレジストリからスキーマを作るので生成前でも動く。
 - **settings**: キーは登録済みの設定（`depends` の module が宣言したもの、または pack の `hooks` で `registry.registerSetting` したもの）で、値は schema を通ること。検査は適用時（未登録キー・不正値は `ValidationError`、何も書かれない）。会社が既に値を持つキーは上書きしない。
+- **pack 自身の設定**（`hooks` で `registerSetting` するもの）: 設定画面の「業界」タブに出る。object の設定は全 property に日英の `fields` ラベルを、enum には `valueLabels` を書き、`default` に `getSetting` の fallback と同じ値を書く（[ADR-0027](../adr/0027-setting-presentation.md)、[UI 規約「会社設定の画面」](ui.md)）。科目コードの細目は `widget: 'account-code'`。書き忘れは `apps/runtime/test/setting-labels.test.ts` が落とす。
 - **labels**: 会社に適用されたパックだけを反映する。同じ会社で複数のパックが同じラベルを指定した場合は登録順に解決されるため、業種のデモは別会社へ分ける。ext 項目のラベルは ext 定義に書く。
 - **hooks**: definePackのhooksで登録したフック・差し替え・購読は、現在の会社の適用scopeで実行される（ADR-0016）。未適用会社へ波及しない。固有アクション・エンティティも未適用なら拒否される。特別な条件を加える場合も現在のContextを保つ:
   ```ts

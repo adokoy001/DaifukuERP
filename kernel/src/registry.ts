@@ -12,6 +12,12 @@ import { Conflict, DependencyError } from './errors.ts';
 import type { Label } from './i18n.ts';
 import type { LocalDate } from './ids.ts';
 import { packIsActive } from './pack-scope.ts';
+import {
+  checkSettingDef,
+  type SettingCategory,
+  type SettingFieldDef,
+  type SettingWidget,
+} from './setting-presentation.ts';
 
 export const HOOK_PHASES = [
   'before_validate',
@@ -46,25 +52,37 @@ export type GuardFn = (ctx: Context, row: Record<string, unknown>) => Promise<bo
 export type OverrideFn = (...args: never[]) => unknown;
 export type EventHandler = (ctx: Context, payload: unknown, meta: { topic: string; id: string }) => Promise<void>;
 
-/**
- * A company setting declared by a module (ADR-0013 L1). `key` is `<module>.<name>`; `schema` validates the value
- * stored in companies.settings (see settings.ts getSetting/setSetting) and is what the generic settings UI renders.
- */
 export interface RegistryWarning {
   kind: 'label_override';
   message: string;
 }
 
+/**
+ * A company setting declared by a module (ADR-0013 L1). `key` is `<module>.<name>`; `schema` validates the value
+ * stored in companies.settings (see settings.ts getSetting/setSetting) and is what the generic settings UI renders.
+ * `category`, `order`, `fields`, `widget` and `valueLabels` only change how the settings console shows it (ADR-0027);
+ * registerSetting checks them against the schema.
+ */
 export interface SettingDef<T = unknown> {
   key: string;
   label: Label;
   description?: Label;
   schema: z.ZodType<T>;
   /**
-   * The value the module uses when the company has none. Declaring it lets applyPack treat a stored value equal to
-   * it (e.g. written by an l10n seed) as "still the default" and replace it with the pack's default (ADR-0015).
+   * The value the module uses when the company has none (its getSetting fallback). The settings console shows it as
+   * the default; it must pass `schema`. applyPack does not compare stored values with it (it keeps every stored value).
    */
   default?: T;
+  /** Settings console tab; when omitted, derived from the key prefix (defaultSettingCategory). */
+  category?: SettingCategory;
+  /** Position inside the tab (ascending); settings without one come after, then by label. */
+  order?: number;
+  /** Object schemas only: label, help and widget of each property (keys must be schema properties). */
+  fields?: Readonly<Record<string, SettingFieldDef>>;
+  /** Scalar (non-object) schemas only: the widget of the single value. */
+  widget?: SettingWidget;
+  /** Scalar enum schemas only: labels of the enum values. */
+  valueLabels?: Readonly<Record<string, Label>>;
 }
 
 class Registry {
@@ -335,6 +353,7 @@ class Registry {
     if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.key))
       throw new Error(`setting key "${def.key}" must look like "<module>.<name>" in snake_case`);
     if (this.settings.has(def.key)) throw new Error(`setting "${def.key}" is already registered`);
+    checkSettingDef(def as SettingDef);
     this.settings.set(def.key, def as SettingDef);
   }
   hasSetting(key: string): boolean {

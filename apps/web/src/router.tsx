@@ -27,7 +27,7 @@ import { EntityListPage } from './pages/entity-list-page.tsx';
 import { HomePage } from './pages/home-page.tsx';
 import { LoginPage } from './pages/login-page.tsx';
 import { ReportPage } from './pages/report-page.tsx';
-import { SettingsPage } from './pages/settings-page.tsx';
+import { parseSettingsSearch, SettingsPage } from './pages/settings-page.tsx';
 import { TemplatesPage } from './pages/templates-page.tsx';
 import { ActionPage } from './pages/action-page.tsx';
 import { ReadRefreshNotice } from './components/read-refresh-notice.tsx';
@@ -186,7 +186,12 @@ const recordRoute = createRoute({
   component: () => <EntityFormPage mode="edit" />,
 });
 const reportRoute = createRoute({ getParentRoute: () => appRoute, path: '/r/$action', component: ReportPage });
-const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: '/settings', component: SettingsPage });
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings',
+  validateSearch: parseSettingsSearch,
+  component: SettingsPage,
+});
 const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: '/templates', component: TemplatesPage });
 const actionRoute = createRoute({ getParentRoute: () => appRoute, path: '/a/$action', component: ActionPage });
 

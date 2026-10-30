@@ -113,10 +113,27 @@ export {
   findCompany,
   getSetting,
   setSetting,
+  deleteSetting,
+  settingHistory,
   currencyScale,
   DEFAULT_CURRENCY_SCALE,
   type CompanyInfo,
+  type SettingChange,
 } from './settings.ts';
+export {
+  SETTING_CATEGORIES,
+  SETTING_WIDGETS,
+  checkSettingDef,
+  defaultSettingCategory,
+  settingCategory,
+  settingShape,
+  type SettingCategory,
+  type SettingFieldDef,
+  type SettingPresentation,
+  type SettingShape,
+  type SettingValueInfo,
+  type SettingWidget,
+} from './setting-presentation.ts';
 export { configureStorage, storage, LocalStorage, type StoragePort, type StoredObject } from './storage.ts';
 export { snapshot } from './repository/rows.ts';
 export { submitDocument, cancelDocument, amendDocument, transitionDocument, findDependents } from './document.ts';

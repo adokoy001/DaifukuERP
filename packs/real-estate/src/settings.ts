@@ -35,10 +35,35 @@ export const REAL_ESTATE_ACCOUNTS_SETTING: SettingDef<RealEstateAccounts> = {
   key: REAL_ESTATE_ACCOUNTS_KEY,
   label: label('賃貸管理の勘定科目', 'Rental accounts'),
   description: label(
-    '科目コード: deposit=預り金（敷金）, rentRevenue=賃貸料収入（参考。転記先は sales.accounts.revenue）, bank=敷金の入出金口座（省略時 payment.accounts.bank）, deduction=敷金から控除した原状回復費の計上先',
-    'Account codes: deposit (security deposits held), rentRevenue (informational; invoices post to sales.accounts.revenue), bank (deposit receipts/returns; defaults to payment.accounts.bank), deduction (amount kept from a returned deposit)',
+    '敷金の預り・返還と賃貸料の仕訳に使う勘定科目',
+    'Accounts used by security deposit receipts / returns and rent',
   ),
   schema: realEstateAccountsSchema,
+  default: REAL_ESTATE_ACCOUNTS_DEFAULT,
+  fields: {
+    deposit: {
+      label: label('預り金（敷金）', 'Security deposits held'),
+      widget: 'account-code',
+    },
+    rentRevenue: {
+      label: label('賃貸料収入', 'Rent revenue'),
+      description: label(
+        '参考。請求書の転記先は売上転記の勘定科目の売上高',
+        'Informational; invoices post to the revenue account of the sales posting accounts',
+      ),
+      widget: 'account-code',
+    },
+    bank: {
+      label: label('敷金の入出金口座', 'Deposit bank account'),
+      description: label('省略時は入出金の勘定科目の普通預金', 'Defaults to the bank account of the payment accounts'),
+      widget: 'account-code',
+    },
+    deduction: {
+      label: label('敷金から控除した原状回復費', 'Deposit deductions'),
+      description: label('返還時に控除した額の計上先', 'Where the amount kept from a returned deposit is posted'),
+      widget: 'account-code',
+    },
+  },
 };
 
 /** Company setting defaults written by pack:apply (only for keys the company has not set). */

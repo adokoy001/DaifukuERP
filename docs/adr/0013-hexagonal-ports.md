@@ -14,6 +14,7 @@
 4. **カスタマイズの4層**（上ほど軽い。下ほど強いがコードが要る）:
    - L1 設定: 会社設定（`companies.settings`）、税・採番・丸めなどのパラメータ（率×有効期間のデータ）
      - 2026-09-10 追記: モジュールは `registry.registerSetting({ key: '<module>.<name>', label, schema })` で設定を宣言する。kernel の `getSetting/setSetting` が同じ schema で検証し、apps/api は `GET /meta/settings`（`[{ key, label, schema(JSON Schema), value }]`）と `PUT /meta/settings/:key`（admin または `settings` ロール）を、apps/web は `/settings` 画面を、宣言だけから導出する（docs/specs/web-phase1.md AC-5）。
+     - 2026-10-29 追記: 宣言は表示属性（`category`、`order`、property ごとの日英ラベルと widget の `fields`、`default`）も持ち、登録時に schema と照合する。`DELETE /meta/settings/:key`（既定に戻す）と `GET /meta/settings/:key/audit`（変更履歴）を追加した（[ADR-0027](0027-setting-presentation.md)）。
    - L2 メタデータ: ext フィールド定義、ワークフロー遷移、帳票テンプレート、一覧/フォームのビュー定義（テナントごとに上書き可、コード不要）
    - L3 フック/差し替え: `registerHook` / `registerOverride` / イベント購読（小さなコード。テナント別に有効化）
    - L4 パック: `defineEntity`/`defineAction` を含む独立モジュール（業種・顧客固有の追加業務）

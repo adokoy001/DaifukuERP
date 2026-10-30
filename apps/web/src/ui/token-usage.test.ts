@@ -20,6 +20,8 @@ const CONVERTED = [
   'components/toast.tsx',
   'components/docstatus-badge.tsx',
   'components/action-confirm.tsx',
+  'components/setting-card.tsx',
+  'components/setting-code-field.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

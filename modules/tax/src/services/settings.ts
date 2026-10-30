@@ -42,6 +42,23 @@ export const TAX_SETTING_DEFS: readonly SettingDef[] = [
       'Rounded once per rate. mode: half_up/down/up; unit: invoice (delivery-note rounding is not supported)',
     ),
     schema: taxRoundingSchema,
+    default: TAX_ROUNDING_DEFAULT,
+    order: 10,
+    fields: {
+      mode: {
+        label: label('端数処理', 'Rounding mode'),
+        valueLabels: {
+          half_up: label('四捨五入', 'Round half up'),
+          down: label('切捨て', 'Round down'),
+          up: label('切上げ', 'Round up'),
+        },
+      },
+      unit: {
+        label: label('丸める単位', 'Rounding unit'),
+        description: label('納品書単位は未対応', 'Delivery-note rounding is not supported'),
+        valueLabels: { invoice: label('請求書ごと', 'Per invoice') },
+      },
+    },
   },
   {
     key: TAX_PRICE_INCLUDES_TAX_KEY,
@@ -49,5 +66,6 @@ export const TAX_SETTING_DEFS: readonly SettingDef[] = [
     description: label('伝票の金額を税込で入力するか', 'Whether document amounts are entered tax-inclusive'),
     schema: taxPriceIncludesTaxSchema,
     default: TAX_PRICE_INCLUDES_TAX_DEFAULT,
+    order: 20,
   },
 ];

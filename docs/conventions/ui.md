@@ -101,7 +101,7 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 部品は翻訳済みの文字列を受け取り、`useLocale()` を呼ばない（`renderToStaticMarkup` で単体検査できるようにするため）。`ui/` が import してよいのは React と `components/icon.tsx` だけ。
 
-`Tabs` は画面での利用者がまだ無い（B1 の設定画面が最初の利用者の予定）。キーボード操作は純粋関数 `nextTabIndex` と描画結果だけを unit で確かめており、ブラウザでの焦点移動は未検証。最初に使う画面で ← → Home End と無効タブの飛ばしをブラウザ試験に入れる。
+`Tabs` の最初の利用者は設定画面（`/settings`、[settings-console](../specs/settings-console.md)）。ブラウザ試験 `e2e/settings-console.spec.ts` で、roving tabindex（選択中のタブだけが Tab 順に入る）、← → による移動と選択（端で反対側へ回る）、Home / End、Tab でタブ一覧からパネルへ出ることを確かめた。無効タブを飛ばす動きは、無効タブを持つ画面がまだ無いため `nextTabIndex` の unit だけで確かめている。選択を URL に残す画面は `onSelect` で `navigate({ search: { tab }, replace: true })` し、`validateSearch` で知らない値を捨て、`resolveTab` のように表示中のタブに無い値は先頭のタブへ倒す。
 
 ### 大きさ
 
@@ -145,3 +145,20 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 - 表の中の「検索をクリア」「再試行」を押したら、焦点を検索欄へ移す。押したボタンは再読込で消え、焦点が `<body>` に落ちるため。
 - 失敗は人向けの文を先に、技術情報（コード・HTTP・hint）は折りたたみやトーストの補助行に残す。情報は削らない。
 - `<html lang>` は表示言語に合わせる（`i18n.tsx` の `syncDocumentLang`）。
+
+## 会社設定の画面（settings console）
+
+2026-10-29 に `/settings` を作り替えた（[spec](../specs/settings-console.md)、[ADR-0027](../adr/0027-setting-presentation.md)）。画面は `GET /meta/settings` の宣言だけから作る。設定を足す module / pack は画面を触らず、`registry.registerSetting` に次を書く。
+
+- `fields`（object schema の property ごと）: `label`（日英）、必要なら `description`、`widget`、enum なら `valueLabels`。**全 property の日英ラベルと全 enum 値のラベルが必須**（`apps/runtime/test/setting-labels.test.ts` が全 module・全 pack を読み込んで検査する）。綴り違いの property 名や型の合わない widget は登録時に `Error` になる。
+- 単一値の設定は定義の直下に `widget` / `valueLabels`。boolean はチェックボックス、enum は選択肢、整数は数値の欄になる（JSON 入力にはならない）。record・配列は従来どおり JSON 入力。
+- 勘定科目のコードは `widget: 'account-code'`、倉庫のコードは `'warehouse-code'`、住所・振込先などの長文は `'textarea'`。コードの選択欄は有効な勘定科目（`isActive`）・倉庫を利用者自身の権限で `GET /api/<entity>?orderBy=code:asc&limit=500` から読み、「コード 名称」で並べる。保存値はコード文字列のまま。
+- `default` に module の `getSetting` の fallback と同じ値を書く。画面は会社に値が無いとき「既定値を使用中」と既定値を表示し、入力欄も既定値から始める。
+- `category` は key の先頭から決まる（`tax`→消費税、`payment`→会計、pack・業界の key→業界 など。ADR-0027）。違う分類に置くときだけ書く。`order` はタブ内の並び（無ければラベル順）。
+
+画面の決まり:
+
+- タブは設定がある分類だけ。選択は `?tab=` に残す。タブ内のカードは `components/setting-card.tsx`（kit の `Card` + `FormSection`）。
+- 会社の値があるカードに「既定に戻す」を出し、kit の `Dialog` で確認する（最初の焦点は「戻る」）。実行後はボタンが消えるので、焦点はそのカードの「保存」に移す。既定値の無い JSON の記録（`packs.applied`）には出さない。
+- 「変更履歴」は `GET /meta/settings/:key/audit` の直近 20 件を、時刻・op（変更 / 既定に戻す）・操作者・変わった細目の「変更前 → 変更後」で並べる。表ではなくリストにして 390px で横にはみ出さないようにする。
+- 表示用の文言とロジック（タブ、並び、既定値の文、履歴の要約）は `lib/settings-console.ts` に置き、unit で確かめる。

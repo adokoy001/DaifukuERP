@@ -18,4 +18,6 @@ export const DEFAULT_RANK_SETTING: SettingDef<CustomerRank> = {
     'Used when a partner is created without a rank (e.g. sample data)',
   ),
   schema: defaultRankSchema,
+  default: DEFAULT_RANK,
+  valueLabels: { A: label('A（重点）', 'A (key)'), B: label('B', 'B'), C: label('C', 'C') },
 };

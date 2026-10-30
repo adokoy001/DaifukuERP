@@ -32,31 +32,34 @@ export const INVENTORY_SETTING_DEFS: readonly SettingDef[] = [
     key: ALLOW_NEGATIVE_STOCK_KEY,
     label: label('マイナス在庫を許可', 'Allow negative stock'),
     description: label(
-      'false（既定）なら在庫が足りない出庫・取消を拒否',
-      'false (default): issues and cancellations that would go below zero are refused',
+      '許可しない（既定）と、在庫が足りなくなる出庫・取消を拒否する',
+      'When off (default), issues and cancellations that would go below zero are refused',
     ),
     schema: boolSettingSchema,
     default: false,
+    order: 40,
   },
   {
     key: AUTO_RECEIPT_ON_PURCHASE_KEY,
     label: label('仕入請求書から自動入庫', 'Auto receipt from purchase invoices'),
     description: label(
-      '仕入請求書の submit で物品明細を既定の倉庫に入庫（既定 true）',
-      'Submitting a purchase invoice receives its goods lines into the default warehouse (default true)',
+      '仕入請求書の確定（submit）で物品の明細を既定の倉庫に入庫する（既定: する）',
+      'Submitting a purchase invoice receives its goods lines into the default warehouse (default: on)',
     ),
     schema: boolSettingSchema,
     default: true,
+    order: 20,
   },
   {
     key: AUTO_ISSUE_ON_SALES_KEY,
     label: label('売上請求書から自動出庫', 'Auto issue from sales invoices'),
     description: label(
-      '売上請求書の submit で物品明細を既定の倉庫から出庫（既定 true）',
-      'Submitting a sales invoice issues its goods lines from the default warehouse (default true)',
+      '売上請求書の確定（submit）で物品の明細を既定の倉庫から出庫する（既定: する）',
+      'Submitting a sales invoice issues its goods lines from the default warehouse (default: on)',
     ),
     schema: boolSettingSchema,
     default: true,
+    order: 30,
   },
   {
     key: DEFAULT_WAREHOUSE_KEY,
@@ -66,6 +69,9 @@ export const INVENTORY_SETTING_DEFS: readonly SettingDef[] = [
       'Warehouse code used by auto receipts/issues and when a document omits the warehouse (default MAIN)',
     ),
     schema: warehouseCodeSchema,
+    default: INVENTORY_SETTING_DEFAULTS[DEFAULT_WAREHOUSE_KEY],
+    order: 10,
+    widget: 'warehouse-code',
   },
 ];
 

@@ -152,13 +152,50 @@ export interface TableResult {
 
 // ---- settings (apps/api/src/routes/settings.ts) --------------------------------------------
 
+/** Settings console tabs (kernel SETTING_CATEGORIES, ADR-0027); typed as string so a new kernel category still renders. */
+export type SettingCategory = string;
+export type SettingWidget = 'account-code' | 'warehouse-code' | 'textarea';
+
+export interface SettingFieldMeta {
+  label: Label;
+  description?: Label;
+  widget?: SettingWidget;
+  valueLabels?: Record<string, Label>;
+}
+
 export interface SettingMeta {
   key: string;
   label: Label;
   description?: Label;
   schema: JsonSchema;
-  /** null when unset. */
+  /** null when unset (or when the stored value no longer matches the schema). */
   value: unknown;
+  category: SettingCategory;
+  order?: number;
+  /** Object settings: presentation of each property. */
+  fields?: Record<string, SettingFieldMeta>;
+  /** Scalar settings: widget and enum labels of the single value. */
+  widget?: SettingWidget;
+  valueLabels?: Record<string, Label>;
+  /** The module default, when the definition declares one. */
+  defaultValue?: unknown;
+  /** True when the company has no stored value. */
+  isDefault: boolean;
+}
+
+/** GET /meta/settings/:key/audit (kernel settingHistory). `before` / `after` are the key's values (null = unset). */
+export interface SettingChange {
+  id: string;
+  at: string;
+  op: string;
+  actorType: string;
+  actorId: string;
+  actorName: string | null;
+  onBehalfOf: string | null;
+  onBehalfOfName: string | null;
+  action: string | null;
+  before: unknown;
+  after: unknown;
 }
 
 export type ErrorCode =
