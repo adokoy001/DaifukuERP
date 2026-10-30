@@ -126,6 +126,9 @@ test('AC-20..AC-24 cash forecast: default period, summary, warning, chart, daily
   // AC-23: the daily table hides quiet days by default.
   const daily = page.getByRole('tabpanel', { name: '日別の表' });
   await expect(daily.getByTestId('report-row')).toHaveCount(2);
+  await expect(daily.getByTestId('cash-quiet-note')).toHaveText(
+    '動きのない 88 日を隠しています（合計・グラフ・CSV は全 90 日）',
+  );
   await expect(daily.getByTestId('report-table').getByRole('columnheader')).toContainText([
     '日付',
     '記帳済み入金',
@@ -134,6 +137,7 @@ test('AC-20..AC-24 cash forecast: default period, summary, warning, chart, daily
   ]);
   await daily.getByLabel('動きのない日を隠す', { exact: true }).uncheck();
   await expect(daily.getByTestId('report-visible-count')).toContainText('受信 90 行');
+  await expect(daily.getByTestId('cash-quiet-note')).toHaveCount(0);
   await expect(daily.getByTestId('report-totals')).toContainText('-149,000');
   // AC-24: schedule with labels, badges and document links.
   await page.getByRole('tab', { name: /入出金予定/ }).click();
@@ -156,18 +160,29 @@ test('AC-20..AC-24 cash forecast: default period, summary, warning, chart, daily
   await expect.poll(() => new URL(page.url()).searchParams.get('drafts')).toBe('1');
   await expect(page.getByTestId('cash-stale')).toHaveCount(0);
   expect(await page.evaluate(() => history.length)).toBe(historyLength);
-  await page.getByRole('tab', { name: /入出金予定/ }).click();
+  // the re-run keeps the chosen tab and the quiet-days choice
+  await expect(page.getByRole('tab', { name: /入出金予定/ })).toHaveAttribute('aria-selected', 'true');
   await expect(rows).toHaveCount(4);
   await expect(page.getByTestId('cash-schedule-table')).toContainText('下書き');
   await expect(summary(page, 'closing')).toHaveText('-149,000');
   await page.getByRole('tab', { name: '日別の表' }).click();
   await expect(page.getByTestId('report-table').getByRole('columnheader', { name: /下書きを含む残高/ })).toBeVisible();
   await expect(page.getByTestId('cash-column-legend')).toContainText('下書き（残高に含めない）');
-  // AC-10: overdue on today changes the balance and the guidance.
+  await expect(daily.getByLabel('動きのない日を隠す', { exact: true })).not.toBeChecked();
+  // AC-10: overdue on today changes the balance and the guidance. Show from the keyboard keeps the focus on the
+  // button, for new conditions and for a re-run of the same ones.
   await page.getByLabel('期日超過を今日に含める', { exact: true }).check();
-  await page.getByRole('button', { name: '表示', exact: true }).click();
+  const show = page.getByRole('button', { name: '表示', exact: true });
+  await show.focus();
+  await page.keyboard.press('Enter');
   await expect(summary(page, 'closing')).toHaveText('-99,000');
   await expect(page.getByTestId('cash-notice-overdue')).toContainText('今日の日付に含めています');
+  await expect(show).toBeFocused();
+  const rerun = page.waitForResponse((r) => r.url().endsWith('/actions/banking.cash_forecast'));
+  await page.keyboard.press('Enter');
+  await rerun;
+  await expect(page.getByTestId('cash-result')).toBeVisible();
+  await expect(show).toBeFocused();
 
   // AC-17 / AC-20: invalid ranges are refused before sending.
   const before = calls.length;

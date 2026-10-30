@@ -99,6 +99,14 @@ export function CashForecastPage() {
 
 type FieldErrors = { from?: Label; to?: Label };
 
+/** The table view the user chose; kept by CashForecastView so a re-run (new conditions or Show) keeps it. */
+interface TableView {
+  tab: 'daily' | 'schedule';
+  setTab: (tab: 'daily' | 'schedule') => void;
+  hideQuiet: boolean;
+  setHideQuiet: (hide: boolean) => void;
+}
+
 function CashForecastView({
   canExportForecast,
   canExportSchedule,
@@ -118,6 +126,9 @@ function CashForecastView({
   useEffect(() => setForm(JSON.parse(appliedKey) as CashConditions), [appliedKey]);
   const forecast = useCashForecast(applied);
   const schedule = useCashSchedule(applied);
+  const busy = forecast.isFetching || schedule.isFetching;
+  const [tab, setTab] = useState<'daily' | 'schedule'>('daily');
+  const [hideQuiet, setHideQuiet] = useState(true);
   const stale = !sameConditions(form, applied);
   const fromRef = useRef<HTMLInputElement>(null);
   const toRef = useRef<HTMLInputElement>(null);
@@ -237,14 +248,16 @@ function CashForecastView({
             />
             {t({ ja: '期日超過を今日に含める', en: 'Include overdue on today' })}
           </label>
-          <Button type="submit" variant="primary" disabled={forecast.isFetching || schedule.isFetching}>
+          {/* Not disabled while fetching: a disabled button drops keyboard focus to <body>. Pressing it again restarts
+              the request (a refetch cancels the running one; new conditions start a new query). */}
+          <Button type="submit" variant="primary" aria-busy={busy || undefined} data-testid="cash-show">
             {t({ ja: '表示', en: 'Show' })}
           </Button>
         </div>
         <p className="cash-note">
           {t({
             ja: '日付は日本時間の暦日です。期間は366日以内、終了日は今日から730日以内です。',
-            en: 'Dates are Japanese calendar dates. The period is at most 366 days and ends within 730 days from today.',
+            en: 'Dates are calendar dates in Japan time (JST). The period is at most 366 days and ends within 730 days from today.',
           })}
         </p>
       </Card>
@@ -263,6 +276,7 @@ function CashForecastView({
         canExportForecast={canExportForecast}
         canExportSchedule={canExportSchedule}
         validationOnly={Object.keys(serverFieldErrors).length > 0}
+        view={{ tab, setTab, hideQuiet, setHideQuiet }}
       />
     </div>
   );
@@ -275,6 +289,7 @@ function Results({
   canExportForecast,
   canExportSchedule,
   validationOnly,
+  view,
 }: {
   forecast: ReturnType<typeof useCashForecast>;
   schedule: ReturnType<typeof useCashSchedule>;
@@ -282,6 +297,7 @@ function Results({
   canExportForecast: boolean;
   canExportSchedule: boolean;
   validationOnly: boolean;
+  view: TableView;
 }) {
   const { t } = useLocale();
   if (validationOnly) return null;
@@ -317,6 +333,7 @@ function Results({
       stale={stale}
       canExportForecast={canExportForecast}
       canExportSchedule={canExportSchedule}
+      view={view}
     />
   );
 }
@@ -338,6 +355,7 @@ function ResultView({
   stale,
   canExportForecast,
   canExportSchedule,
+  view: { tab, setTab, hideQuiet, setHideQuiet },
 }: {
   forecast: CashForecastResult;
   scheduleRows: CashScheduleRow[];
@@ -347,14 +365,15 @@ function ResultView({
   stale: boolean;
   canExportForecast: boolean;
   canExportSchedule: boolean;
+  view: TableView;
 }) {
   const { t } = useLocale();
   const scale = useCurrencyScale();
   const meta = forecast.meta;
-  const [tab, setTab] = useState<'daily' | 'schedule'>('daily');
-  const [hideQuiet, setHideQuiet] = useState(true);
   const quietId = useId();
   const table = useMemo(() => (hideQuiet ? hideQuietDays(forecast.table) : forecast.table), [hideQuiet, forecast]);
+  const allDays = forecast.table.rows.length;
+  const hiddenDays = allDays - table.rows.length;
   const notices = cashNotices(meta, scale);
   const warning = minBalanceWarning(meta, scale);
   const input = {
@@ -475,6 +494,14 @@ function ResultView({
                 />
                 {t({ ja: '動きのない日を隠す', en: 'Hide days without movements' })}
               </label>
+              {hiddenDays > 0 ? (
+                <span className="cash-quiet-note" data-testid="cash-quiet-note">
+                  {t({
+                    ja: `動きのない ${hiddenDays} 日を隠しています（合計・グラフ・CSV は全 ${allDays} 日）`,
+                    en: `${hiddenDays} days without movements are hidden (totals, chart and CSV cover all ${allDays} days)`,
+                  })}
+                </span>
+              ) : null}
               <ReportExport
                 actionName={CASH_FORECAST_ACTION}
                 input={input}

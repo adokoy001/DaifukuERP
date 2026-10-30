@@ -40,13 +40,13 @@ function read<T>(action: string, conditions: CashConditions, parse: (table: Tabl
 
 const options = { retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: false, networkMode: 'always' } as const;
 
-export function useCashForecast(conditions: CashConditions | undefined) {
+export function useCashForecast(conditions: CashConditions) {
   return useQuery({
-    queryKey: ['finance', financeIdentity(), CASH_FORECAST_ACTION, conditions ?? null],
+    queryKey: ['finance', financeIdentity(), CASH_FORECAST_ACTION, conditions],
     queryFn: ({ signal }) =>
       read(
         CASH_FORECAST_ACTION,
-        conditions as CashConditions,
+        conditions,
         (table): CashForecastResult => ({
           table,
           meta: cashForecastMeta.parse(table.meta),
@@ -54,18 +54,17 @@ export function useCashForecast(conditions: CashConditions | undefined) {
         }),
         signal,
       ),
-    enabled: conditions !== undefined,
     ...options,
   });
 }
 
-export function useCashSchedule(conditions: CashConditions | undefined) {
+export function useCashSchedule(conditions: CashConditions) {
   return useQuery({
-    queryKey: ['finance', financeIdentity(), CASH_SCHEDULE_ACTION, conditions ?? null],
+    queryKey: ['finance', financeIdentity(), CASH_SCHEDULE_ACTION, conditions],
     queryFn: ({ signal }) =>
       read(
         CASH_SCHEDULE_ACTION,
-        conditions as CashConditions,
+        conditions,
         (table): CashScheduleResult => ({
           table,
           meta: cashScheduleMeta.parse(table.meta),
@@ -73,7 +72,6 @@ export function useCashSchedule(conditions: CashConditions | undefined) {
         }),
         signal,
       ),
-    enabled: conditions !== undefined,
     ...options,
   });
 }

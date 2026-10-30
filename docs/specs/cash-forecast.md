@@ -3,7 +3,7 @@
 - 状態: implemented（2026-10-30。検証の記録は [作業記録](../log/2026-10-30-cash-forecast.md)）
 - モジュール: `modules/banking`（`banking.cash_forecast`、`banking.cash_schedule`、集計の純粋関数、ブラウザ用の入出力 schema は `contract.ts`）、`modules/contract`（契約請求予定の入金見込みを返す関数）、`modules/workforce`（給与の支払予定を返す関数）、`apps/web`（`/finance/cash-forecast`） ／ 依存: 既存の sales・purchase・payment・accounting・partner・tax、banking の依存に contract と workforce を追加、[ui-kit](ui-kit.md)（D1）
 - ADR: 不要（kernel・DSL・port の変更なし、新しい書込経路なし）。この項目に予約された ADR-0036 は使わない。module 間の依存の追加は [商流・銀行・申告準備の構造](../architecture/commerce-finance.md) の責任分担に記録する
-- 作成: 2026-10-30 ／ 作成者: agent（spec writer、`wip/cash-forecast`）。設計の元は [完成度向上の実装計画](../completion-plan.md) §5 E3、完了の定義は同 §7。2026-10-30 に spec critic の指摘を反映（決定事項 14〜27）
+- 作成: 2026-10-30 ／ 作成者: agent（spec writer、`wip/cash-forecast`）。設計の元は [完成度向上の実装計画](../completion-plan.md) §5 E3、完了の定義は同 §7。2026-10-30 に spec critic の指摘を反映（決定事項 14〜27）、同日に実装レビューの指摘を反映（決定事項 28〜31）
 
 ## 目的（1段落）
 
@@ -38,7 +38,7 @@
 ### 予定の内訳
 
 - AC-5 THE SYSTEM SHALL 売上請求・仕入請求の予定に確定済みの伝票だけを含め、下書き（AC-11 の列を除く）・取消・残高 0（入金済・支払済）を含めない。一部入金・一部支払の伝票は残高だけを予定にし、入金・支払の分は記帳済みの入出金として記帳日に現れる（二重に数えない）。残高が負の伝票は符号のまま合計に入れる（D-4）。
-- AC-6 WHEN 確定済みの仕入請求が準備済みまたは出力済みの支払ファイルに予約されている THE SYSTEM SHALL その請求を振込予定として振込指定日に置き、支払期日の仕入請求には置かない。WHEN 支払ファイルが取り消され予約が無効になった THE SYSTEM SHALL 支払期日の仕入請求に戻す。金額は請求書の現在の残高とする。
+- AC-6 WHEN 確定済みの仕入請求が準備済みまたは出力済みの支払ファイルに予約されている THE SYSTEM SHALL その請求を振込予定として振込指定日に置き、支払期日の仕入請求には置かない（支払期日が `to` より後でも、振込指定日が `to` 以前なら置く。期日前の支払は通常の操作のため。2026-10-30 実装レビューで明確化）。WHEN 支払ファイルが取り消され予約が無効になった THE SYSTEM SHALL 支払期日の仕入請求に戻す。金額は請求書の現在の残高とする。
 - AC-7 THE SYSTEM SHALL 契約請求の予定を D-4 の規則で作り、金額と予定日を、その対象月を `contract.generate_invoices` で請求した場合に作られる売上請求書の `total` と `dueDate` に一致させる。請求書の作成後はその対象月を契約請求に含めない。作成された請求書が下書き（`submit = false`）なら `includeDrafts` のときだけ下書きの列に現れ、確定済み（`submit = true` または設定 `contract.auto_submit`）なら売上請求に現れる。どちらの場合も契約請求の列からその対象月が消える。
 - AC-8 THE SYSTEM SHALL 給与の予定を D-4 の規則で作り、取消済み・下書きの給与と、支払日が今日より前の給与を含めない。確定済みで支払日の証跡が無い給与のうち、対象月が「今日の前月」から「`to` の月」までのものは残高に含めず、件数と差引支給額の合計を `meta.unscheduledPayroll` に返す。給与と支払仕訳を結ぶ記録は無いため、給与の支払仕訳を支払日以前（未来日付を含む）に記帳済みの場合は、その日の記帳済み出金と給与の予定の両方に現れる（二重に数える）。給与を含めるとき `meta.notices` に `payroll_posted_overlap` を入れ、画面は AC-25 で注意を示す。
 - AC-9 THE SYSTEM SHALL 期首残高と記帳済みの入出金を資金科目の転記済み仕訳明細から D-3・D-6 のとおり求め、下書きの仕訳、資金科目以外の科目、資金科目間の振替を入出金に数えない。未来日付で記帳済みの入出金もその日の記帳済みの入出金に含める。仕訳ごとの集計は `aggregate`（上限 10,000 グループ）を `entryDate`・`entryId` の昇順の keyset（`entryDate > d` または `entryDate = d かつ entryId > id`）で 10,000 未満の結果が返るまで繰り返して読み、1 日に 10,000 件を超える仕訳があっても打ち切らない。
@@ -61,10 +61,10 @@
 
 ### 画面（`/finance/cash-forecast`）
 
-- AC-20 WHEN `/finance/cash-forecast` を開いた THE SYSTEM SHALL 条件（開始日・終了日、簡単入力「今日から30日」「今日から90日」「今月」「来月」、「下書きを表示」、「期日超過を今日に含める」）を表示し、URL の `?from=&to=&drafts=1&overdue=1` が妥当ならその値（flag は数値の 1。文字列 "1" だと router が JSON の引用符を付けるため）、無ければ今日〜今日 + 89 日で 2 つの action を 1 回ずつ実行する。結果として、要約（期首残高・入金計・出金計・期末残高・最低残高とその日）、グラフ、日別の表、入出金予定を表示する。条件を変えて「表示」を押すと URL を置き換え（履歴を増やさない）、再実行する。条件が表示中の結果と違う間はその旨を示し CSV を止める（[UI 規約](../conventions/ui.md#レポートとピボットの入力表示)）。日付の実在・前後関係・期間の上限は送信前に検査し、サーバーの `VALIDATION` は該当の入力欄に示す。読込中は骨格、失敗は `MetaError`（再試行付き、0 件と表示しない）、予定も記帳済みの動きも無い期間は `EmptyState`。
+- AC-20 WHEN `/finance/cash-forecast` を開いた THE SYSTEM SHALL 条件（開始日・終了日、簡単入力「今日から30日」「今日から90日」「今月」「来月」、「下書きを表示」、「期日超過を今日に含める」）を表示し、URL の `?from=&to=&drafts=1&overdue=1` が妥当ならその値（flag は数値の 1。文字列 "1" だと router が JSON の引用符を付けるため）、無ければ今日〜今日 + 89 日で 2 つの action を 1 回ずつ実行する。結果として、要約（期首残高・入金計・出金計・期末残高・最低残高とその日）、グラフ、日別の表、入出金予定を表示する。条件を変えて「表示」を押すと URL を置き換え（履歴を増やさない）、再実行する（選んだタブと「動きのない日を隠す」の選択は保ち、「表示」は読込中も押せてフォーカスを失わない）。条件が表示中の結果と違う間はその旨を示し CSV を止める（[UI 規約](../conventions/ui.md#レポートとピボットの入力表示)）。日付の実在・前後関係・期間の上限は送信前に検査し、サーバーの `VALIDATION` は該当の入力欄に示す。読込中は骨格、失敗は `MetaError`（再試行付き、0 件と表示しない）、予定も記帳済みの動きも無い期間は `EmptyState`。
 - AC-21 THE SYSTEM SHALL 期間の全日の `balance` を折れ線で描くインライン SVG のグラフを表示する。0 の基準線を引き、残高が負の区間を意味トークンの別の色で区別し、下書きを表示するときは `balanceWithDrafts` を凡例付きの破線で重ねる。グラフは `role="img"` と、期首残高・期末残高・最低残高とその日を述べる `aria-label` を持ち、正確な値は表で読める（`components/operations-trend.tsx` と同じ方式）。
 - AC-22 IF `minBalance.balance`（下書きを含まない `balance` だけで判定）が負 THEN THE SYSTEM SHALL 「残高がマイナスになる日があります（最初の日 YYYY-MM-DD、最低残高 ¥X）」を warning の表示で示す（live region にしない）。
-- AC-23 THE SYSTEM SHALL 日別の表を既存の `ReportTable` で表示し（結果内検索・十進の並替え・ページ送り、合計は action の値のまま）、「動きのない日を隠す」（既定 on。グラフと合計は変えない）を持つ。記帳済み・予定・下書きの列を見出しで区別し、下書きの列は「下書き」のラベルと別の色で示す。各 action の CSV は既存の `ReportExport` で、`canExport` が true のときだけ出し、条件が古いか 0 行のときは無効にする。
+- AC-23 THE SYSTEM SHALL 日別の表を既存の `ReportTable` で表示し（結果内検索・十進の並替え・ページ送り、合計は action の値のまま）、「動きのない日を隠す」（既定 on。グラフと合計は変えない。隠しているときは隠した日数を示す）を持つ。記帳済み・予定・下書きの列を見出しで区別し、下書きの列は「下書き」のラベルと別の色で示す。各 action の CSV は既存の `ReportExport` で、`canExport` が true のときだけ出し、条件が古いか 0 行のときは無効にする。
 - AC-24 THE SYSTEM SHALL 入出金予定を `Tabs` の 2 つ目のタブ（1 つ目は日別の表）で表示し、方向・種類・状態を日英の文言で示す。状態は `Badge`（確定と下書きで別の tone）、期日超過は warning の `Badge`、伝票番号は売上請求書・仕入請求書・契約の画面へのリンクにする。給与の行は「給与（N 件）」とだけ表示し、氏名・個人別の金額を出さない。
 - AC-25 THE SYSTEM SHALL 結果に応じて次の案内を表示する: 含めなかった種類（`meta.sources` の `included: false`。例「給与は閲覧・出力の権限がないため含めていません」）、期日超過の件数と金額（「期日超過を今日に含める」への案内付き）、支払日が未登録の確定給与の件数と金額（給与画面で支払日の証跡を登録する案内付き）、給与を含むときの二重計上の注意（`notices` の `payroll_posted_overlap`:「給与の支払仕訳を支払日以前に記帳済みの場合、その分を二重に数えます」）、請求されずに 12 か月より前に残った契約請求の件数と税抜額（`contractBacklog`、契約の請求予定画面への案内付き）、未消込の入出金の件数と金額（`unallocated`、「後で充てる請求書の予定と重なる場合があります」）、資金科目外に記帳された入出金の科目（`uncountedPaymentAccounts`、銀行口座の登録への案内付き）、見つからない資金科目のコード、計算に使った資金科目の一覧（コード・名称・残高。開閉できる領域）。
 - AC-26 THE SYSTEM SHALL 画面を「会計・資金」分野の専用画面「資金繰り表」として画面検索・分野一覧・コマンドパレットに表示し（`lib/navigation-data.ts`）、`banking.cash_forecast` を実行できない利用者には表示しない。権限の無い利用者が URL を直接開いたときは action を呼ばずに権限が無いことを説明する。画面の説明リンクを `lib/help.ts` に登録する（[付録 L](../manual/appendix-l-commerce-bank-filing.md) の節「資金繰り表」）。
@@ -80,14 +80,14 @@
 
 - `modules/banking/src/contract.ts`（既存・ブラウザ用）: `cashForecastInput`（strict、日付の実在・前後・366 日の検査）、`cashForecastMeta`・`cashScheduleMeta`（zod）、種類・方向・状態・注意の列挙。server の `defineAction` の入力と web の結果の検査が同じ schema を使う
 - `modules/banking/src/cash-plan.ts`（新規・純粋）: D-3〜D-7 の配置規則、日別の行、残高、最低残高、明細の並びと打ち切り、keyset の繰返し読取（読取関数を引数で受ける）。入力は「記帳済みの入出金（日付・入金・出金）」「予定（種類・方向・状態・予定日・金額・件数・参照）」「`ledgerBalance`」「`today` / `from` / `to` / 2 つの flag」、出力は 2 つの `TableResult` の材料。kernel の `Decimal` と `LocalDate` だけを使う
-- `modules/banking/src/cash-sources.ts`（新規）: 種類ごとの利用可否（AC-14、kernel の `can`、`rowFilter`、`assertReadableFields`、`isAdmin`）と読取。2 つの action が同じ読取関数を使う。資金科目は `@daifuku/mod-payment` の `loadPaymentAccountCodes` と `BankAccount`、期首残高は `@daifuku/mod-accounting` の `movementsByAccount`、記帳済みの入出金は `JournalLine` の `aggregate`（`groupBy: ['entryDate', 'entryId']`、資金科目と期間で絞る、AC-9 の keyset）、売上・仕入請求は確定済みで残高 ≠ 0 の伝票を `list` で全件（500 件ずつ、`id` 順）、振込予定はその仕入請求に対する有効な `BankTransferReservation` と `BankTransfer`、取引先名は `Partner`、注意情報は `Payment` の `aggregate`
+- `modules/banking/src/cash-sources.ts`（新規）: 種類ごとの利用可否（AC-14、kernel の `can`、`rowFilter`、`assertReadableFields`、`isAdmin`）と読取。2 つの action が同じ読取関数を使う。資金科目は `@daifuku/mod-payment` の `loadPaymentAccountCodes` と `BankAccount`、期首残高は `@daifuku/mod-accounting` の `movementsByAccount`、記帳済みの入出金は `JournalLine` の `aggregate`（`groupBy: ['entryDate', 'entryId']`、資金科目と期間で絞る、AC-9 の keyset）、売上・仕入請求は確定済みで残高 ≠ 0 の伝票を `list` で全件（500 件ずつ、`id` の keyset。振込予定を含めるときの仕入請求は支払期日を問わず読む）、振込予定はその仕入請求に対する有効な `BankTransferReservation` と `BankTransfer`、取引先名は `Partner`、注意情報は `Payment` の `aggregate`
 - `modules/banking/src/cash-tables.ts`（新規・純粋、実装時に追加）: 列の定義と `TableResult`・`totals`・`meta` の形（`cash-plan.ts` を Decimal と LocalDate だけに保つため分けた）
-- `modules/banking/src/cash-forecast.ts`（新規）: 2 つの action（`defineAction`、入力 schema は `contract.ts`、列、`exportEntities`、`permission: { roles: ['accounting'] }`、handler の最初に既存の `assertBankContext`）。`modules/banking/src/actions.ts`（export に追加）、`index.ts`、`module.ts`（`depends` に `ContractModule.name`、`WorkforceModule.name`）、`package.json`（`@daifuku/mod-contract`、`@daifuku/mod-workforce`、`@daifuku/mod-tax` を追加）、`pnpm-lock.yaml`
-- `modules/contract/src/cash-plan.ts`（新規）と `index.ts`: `plannedContractReceipts(ctx, { today, to })` が D-4 の契約請求の予定（契約 id・番号・取引先 id・対象月・請求日・予定日・税抜・税・税込）と `backlog { count, subtotal }` を返す。契約・明細・請求履歴・取引先・税率・税設定は 1 回ずつ読み、対象月ごとの計画はメモリ上で `planPeriod` を使う。既存の `termsOf`、`linesByContract`、`companyScale`、`allPages`、`inChunks`、`@daifuku/mod-tax` の `loadTaxRates`・`loadTaxSettings`・`resolveRate`・`summarizeTax`・`taxScaleForCurrency`、`@daifuku/mod-partner` の `computeDueDate` を再利用する
+- `modules/banking/src/cash-forecast.ts`（新規）: 2 つの action（`defineAction`、入力 schema は `contract.ts`、列、`exportEntities`、`permission: { roles: ['accounting'] }`、handler の最初に既存の `assertBankContext`）。`modules/banking/src/actions.ts`（export に追加）、`index.ts`、`module.ts`（`depends` に `ContractModule.name`、`WorkforceModule.name`）、`package.json`（`@daifuku/mod-contract`、`@daifuku/mod-workforce` を追加。tax は contract の中で使い、banking からは import しない）、`pnpm-lock.yaml`
+- `modules/contract/src/cash-plan.ts`（新規）と `index.ts`: `plannedContractReceipts(ctx, { today, to })` が D-4 の契約請求の予定（契約 id・番号・取引先 id・対象月・請求日・予定日・税抜・税・税込）と `backlog { count, subtotal }` を返す。契約・明細・請求履歴・取引先・税率・税設定は 1 回ずつ読み、対象月ごとの計画はメモリ上で `planPeriod` を使う。窓より前で開始月の後・終了月の前にある満額の対象月の並びは、1 回の `planPeriod` から件数と金額を数える（`walkContractPeriods`。全対象月に `planPeriod` を使った結果と同じ。開始日の年の誤入力でも計算量が開始日に比例しない）。既存の `termsOf`、`linesByContract`、`companyScale`、`allPages`、`inChunks`、`@daifuku/mod-tax` の `loadTaxRates`・`loadTaxSettings`・`resolveRate`・`summarizeTax`・`taxScaleForCurrency`、`@daifuku/mod-partner` の `computeDueDate` を再利用する
 - `modules/workforce/src/payroll-cash.ts`（新規）と `index.ts`: `payrollCashSchedule(ctx, { today, to })` が D-4 の給与の予定（支払日ごとの件数と差引支給額の合計）と `unscheduled { count, netPay }` を返す。読取は `WorkforcePayroll`、`WorkforcePayrollTaxEvidence` の `Repository`
 - `apps/web/src/pages/cash-forecast-page.tsx`（新規）、`apps/web/src/api/cash-forecast.ts`（新規、既存の action 呼出しを使い、`meta` を `@daifuku/mod-banking/contract` の schema で検査する）、`apps/web/src/lib/cash-forecast.ts`（新規・純粋: URL の検査、簡単入力の日付、動きのない日の除外、グラフの座標、案内の文言の選択）、`apps/web/src/components/cash-forecast-chart.tsx`（新規）、既存の `components/report-table.tsx`、`components/report-export.tsx`、`ui/`（`PageHeader`、`Card`、`Toolbar`、`Tabs`、`Badge`、`EmptyState`、`Skeleton`）、`pages/status-views.tsx`（`MetaError`）
 - `apps/web/src/router.tsx`（route と `validateSearch`）、`apps/web/src/lib/navigation-data.ts`、`apps/web/src/lib/help.ts`、`apps/web/src/ui/token-usage.test.ts`（`CONVERTED` に新しいページと部品を追加）
-- 試験: `modules/banking/test/cash-forecast.test.ts`（unit・golden・property）、`modules/banking/test/golden/cash-forecast-basic.json`、`modules/banking/test/cash-sources.test.ts`（unit）、`modules/banking/test/cash-forecast.db.test.ts`（DB）、`modules/contract/test/cash-plan.db.test.ts`（DB）、`modules/workforce/test/payroll-cash.db.test.ts`（DB、既存の `helpers.ts` を使う）、`apps/web/src/lib/cash-forecast.test.ts`（Web unit）、`apps/web/e2e/cash-forecast.spec.ts`（ブラウザ）、`modules/banking/test/cash-forecast-benchmark.ts`（計測用、gate では動かさない）
+- 試験: `modules/contract/test/cash-plan.test.ts`（unit・property、`walkContractPeriods` と全対象月の計画の一致）、`modules/banking/test/cash-forecast.test.ts`（unit・golden・property）、`modules/banking/test/golden/cash-forecast-basic.json`、`modules/banking/test/cash-sources.test.ts`（unit）、`modules/banking/test/cash-forecast.db.test.ts`（DB）、`modules/contract/test/cash-plan.db.test.ts`（DB）、`modules/workforce/test/payroll-cash.db.test.ts`（DB、既存の `helpers.ts` を使う）、`apps/web/src/lib/cash-forecast.test.ts`（Web unit）、`apps/web/e2e/cash-forecast.spec.ts`（ブラウザ）、`modules/banking/test/cash-forecast-benchmark.ts`（計測用、gate では動かさない）
 - 文書: `docs/manual/appendix-l-commerce-bank-filing.md`（節「資金繰り表」）、`docs/architecture/commerce-finance.md`（責任分担と依存）、`docs/architecture/program-map.md`、`docs/manual/appendix-n-navigation.md`（画面の一覧）
 
 ## データ・業務ルール（出典）
@@ -128,7 +128,7 @@
 10. **ADR は不要**。kernel・DSL・port を変えず、新しい書込経路も作らない。予約済みの ADR-0036 は使わない（統合担当は欠番として扱う）。banking の依存の追加は lockfile の変更を伴い、light の昇格パターン（依存）に当たる。
 11. **期間の上限は両端を含めて 366 日、終了日は今日から 730 日まで**。日別の行（最大 366 行）と、`from > today` のときの見込みの計算量を抑える。日別の行は動きのない日も返す（グラフと残高の連続性のため）。表で隠すかは画面が決める。
 12. **新しい会社設定は作らない**。資金科目は既存の `payment.accounts` と銀行口座から決め、使った科目を `meta.cashAccounts` で見せる。
-13. **画面の実行は既存の action 経路（read committed）**。複数の読取の間に入出金が確定すると、その 1 回の結果で二重計上・計上漏れが起こりうる（再実行で解消）。CSV は既存の export 経路が 1 つの repeatable read で実行する。action を repeatable read で実行する仕組みは DSL の拡張（ADR が必要）になるのでこの項目では作らない。
+13. **画面の実行は既存の action 経路（read committed）**。複数の読取の間に入出金が確定すると、その 1 回の結果で二重計上・計上漏れが起こりうる（再実行で解消）。CSV は既存の export 経路が 1 つの repeatable read で実行する。action を repeatable read で実行する仕組みは DSL の拡張（ADR が必要）になるのでこの項目では作らない。`tx: 'none'` は説明用の属性で、action の経路は read committed のトランザクションを 1 つ開く（実装レビューで注記を訂正）。伝票の一覧の複数頁の読取は `id` の keyset にし、頁の間に別の伝票が支払済みになっても、まだ未決済の伝票を読み飛ばさない（決定事項 29）。残る食い違いは、記帳済みの入出金（帳簿）を読んでから伝票の残高を読むまでの間に確定・取消された入出金だけ。
 
 ### spec critic の指摘への対応（2026-10-30）
 
@@ -146,6 +146,13 @@
 25. **下書きの合計と最低残高（採用、nit）**。`balanceWithDrafts` 系は `includeDrafts` のときだけ返す。`minBalance` は `from`〜`to` の `balance` だけで決め、期首残高と下書きを含む残高を見ない。AC-22 は `balance` だけを見る。
 26. **計算量と計測（一部採用、nit）**。契約・明細・請求履歴・税率は 1 回ずつ読み、対象月ごとの計画はメモリ上で行う（AC-7 の関数の説明）。明細の `totals` を `aggregate` で求める案は採らない: 明細は並び替えと打ち切りのために対象の伝票をすべて読む必要があり、2 つの action が同じ読取関数を使うこと（AC-4）を優先する。代わりに、確定済みの未決済の請求書と契約を多数作った会社で 2 つの action の所要時間を測り、作業ログに測定として記録する（検証手順 6）。
 27. **記帳済みの売上・仕入請求の読み方**（指摘に伴う変更）。日別の action も明細と同じく未決済の伝票を `list` で全件読み、種類ごとの日別合計は読んだ伝票から作る（AC-4 の一致を構造で保つ）。件数の上限は設けず、計測で確かめる。
+
+### 実装レビューの指摘への対応（2026-10-30）
+
+28. **期日が期間の後の請求の振込予定（採用、blocker）**。支払期日で絞った仕入請求だけから予約を探していたため、支払期日が `to` より後で振込指定日が期間内の請求が両方の action から消えていた。振込予定を含めるときは確定済みで残高 ≠ 0 の仕入請求を支払期日を問わず読み（D-4 の定義どおり）、予定日が `to` より後のものだけを外す。予約側（`prepared` / `exported` の支払ファイル）から探す案は、出力済みの支払ファイルが状態を変えずに残り続けるため、読む量が未決済の請求ではなく支払ファイルの履歴に比例するので採らなかった。DB 試験で、支払期日 12-31 の請求を期間内の 09-28 に予約すると日別の `transfers` と明細の `bank_transfer`（`date` = 振込指定日、`dueDate` = 支払期日）に現れることを確かめる。
+29. **頁送りの読み飛ばし（採用、minor）**。`balance ≠ 0` のように途中で変わる条件を offset で頁送りすると、頁の間に前の頁の伝票が支払済みになったとき後ろの伝票を 1 件読み飛ばす。伝票・予約・支払ファイル・銀行口座の一覧を `id` の keyset（`id > 前の頁の最後`、500 件未満で終了）にした。帳簿と伝票の間の食い違いは決定事項 13 に記した（kernel の拡張はスコープ外のまま）。
+30. **契約の積み残しの計算量（採用、nit）**。開始日が極端に古い契約（年の誤入力など）で対象月ごとに `planPeriod` を呼んでいたため、窓より前の満額の対象月の並びを 1 回の `planPeriod` から数える（D-4 の `contract`、上の `modules/contract/src/cash-plan.ts`）。結果は全対象月を計画した場合と同じで、unit の property で一致を確かめる。開始日の妥当性の検査（1900 年より前を拒否するなど）は contract module の入力規則の変更になるので、この項目では足さない。
+31. **画面（採用、minor・nit）**。「表示」ボタンを読込中も無効にしない（無効にするとキーボードのフォーカスが失われる。押し直すと実行し直す）。グラフの縦軸の目盛は、上端は最大値が正のときだけ、下端は最小値が負のときだけ表示し、0 の目盛と近すぎる目盛は出さない（全日がマイナスのとき上端にマイナスの値が出て 0 と重なっていた）。日別の表のタブと「動きのない日を隠す」の選択は、条件を変えて再実行しても保つ。動きのない日を隠しているときは隠した日数と、合計・グラフ・CSV は全日であることを表の上に示す。
 
 ## スコープ外（明記）
 
@@ -169,15 +176,15 @@
 | AC-1、AC-2 | `cash-forecast.test.ts`（golden の表と totals・meta） | `cash-forecast.db.test.ts`（列・totals・meta、`/r/` の入力 schema） | — |
 | AC-3、AC-4 | 同（明細の並び・打ち切り・totals、日別との一致） | 同（売上・仕入・振込・契約の混在で日別と明細の一致） | — |
 | AC-5 | 同（負の残高） | 同（下書き・取消・入金済の除外、一部入金の残高） | — |
-| AC-6 | 同（振込予定の重複なし） | 同（支払ファイルの準備・出力・取消で列が移る） | — |
-| AC-7 | — | `contract/test/cash-plan.db.test.ts`（予定 → `contract.generate_invoices` の `total` と `dueDate` が一致、`submit = false` / `true` の後は契約請求から消える、窓の前の積み残し） | — |
+| AC-6 | 同（振込予定の重複なし） | 同（支払ファイルの準備・出力・取消で列が移る、支払期日が `to` より後の請求の期間内の振込） | — |
+| AC-7 | `contract/test/cash-plan.test.ts`（窓より前の対象月の数え方が全対象月の計画と一致） | `contract/test/cash-plan.db.test.ts`（予定 → `contract.generate_invoices` の `total` と `dueDate` が一致、`submit = false` / `true` の後は契約請求から消える、窓の前の積み残し） | — |
 | AC-8 | 同（給与と同じ日の記帳済み出金の二重計上を固定） | `workforce/test/payroll-cash.db.test.ts`（証跡の支払日・取消・下書き・過去日・未登録） | — |
 | AC-9 | 同（仕訳ごとの相殺、keyset の繰返し） | `cash-forecast.db.test.ts`（下書き仕訳・資金科目間の振替・未来日付の記帳） | — |
 | AC-10 | 同（`to < today`、`from > today` の見込み期首残高、`includeOverdue`） | — | — |
 | AC-11 | 同 | 同（下書きの列と `balance` 不変） | 下書きの表示 |
 | AC-12 | property（fast-check で残高の関係） | — | — |
 | AC-13 | — | 同（sales・purchasing・viewer・workforce_payroll だけ・店舗限定・会社なしの拒否） | — |
-| AC-14 | `cash-sources.test.ts`（行の制限・隠し項目・export の判定） | 同（accounting では給与の列なし・`sources`、accounting + workforce_payroll と admin では給与の列あり）、`payroll-cash.db.test.ts`（金額） | 給与を除いた応答の案内（応答の差し替え） |
+| AC-14 | `cash-sources.test.ts`（行の制限・隠し項目・export の判定、export の無い読取権限では給与だけが外れる） | 同（accounting では給与の列なし・`sources`、accounting + workforce_payroll と admin では給与の列あり）、`payroll-cash.db.test.ts`（金額） | 給与を除いた応答の案内（応答の差し替え） |
 | AC-15 | — | 同（2 社のデータで影響なし） | — |
 | AC-16 | — | 同（`canExportAction` が accounting で false・admin で true、export の結果が action と同じ） | admin で CSV を取得 |
 | AC-17 | 同（入力 schema と期間の検査） | 同（何も読まずに拒否） | 送信前の検査 |

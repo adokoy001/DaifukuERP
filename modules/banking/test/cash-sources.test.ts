@@ -4,8 +4,14 @@
 import { defineEntity, f, label, newId, type Context } from '@daifuku/kernel';
 import { describe, expect, it } from 'vitest';
 import { BankingModule } from '../src/index.ts';
-import { entityAllows, SOURCE_READS, sourceIncluded, sourceStatuses } from '../src/cash-sources.ts';
-import { CASH_SOURCES } from '../src/contract.ts';
+import {
+  entityAllows,
+  SOURCE_NEEDS_EXPORT,
+  SOURCE_READS,
+  sourceIncluded,
+  sourceStatuses,
+} from '../src/cash-sources.ts';
+import { CASH_SOURCES, type CashSource } from '../src/contract.ts';
 
 const Probe = defineEntity({
   name: 'cash_source_probe',
@@ -57,6 +63,18 @@ describe('AC-14 entity access rules', () => {
     expect(entityAllows(ctxOf(['admin']), Probe, ['owner', 'amount'], true)).toBe(true);
     // no grant at all
     expect(entityAllows(ctxOf(['sales']), Probe, ['owner'], false)).toBe(false);
+  });
+
+  it('AC-14: sourceIncluded asks export for payroll only (a reader without export loses payroll alone)', () => {
+    expect([...SOURCE_NEEDS_EXPORT]).toEqual(['payroll']);
+    // every source reads the probe, so only the export rule differs between them
+    const probeReads = Object.fromEntries(
+      CASH_SOURCES.map((source) => [source, [{ entity: Probe.name, fields: ['owner'] }]]),
+    ) as Record<CashSource, { entity: string; fields: string[] }[]>;
+    const reader = ctxOf(['probe_reader']);
+    for (const source of CASH_SOURCES)
+      expect([source, sourceIncluded(reader, source, probeReads)]).toEqual([source, source !== 'payroll']);
+    for (const source of CASH_SOURCES) expect(sourceIncluded(ctxOf(['probe_exporter']), source, probeReads)).toBe(true);
   });
 
   it('AC-14: every field a source reads exists on its entity', async () => {

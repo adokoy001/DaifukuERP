@@ -1,7 +1,9 @@
 // banking.cash_forecast / banking.cash_schedule (docs/specs/cash-forecast.md): the daily cash forecast and the
-// schedule of expected receipts and payments. Read-only report actions outside the request transaction; the CSV goes
-// through the existing POST /actions/<name>/export (one repeatable-read snapshot). Both actions read the scheduled
-// items with the same function and place them with the same pure rules (AC-4).
+// schedule of expected receipts and payments. Read-only report actions. `tx: 'none'` only describes them: the action
+// route still runs them in one read-committed transaction, so a payment committed between the ledger read and the
+// invoice read can be counted twice or not at all in that one result (spec decision 13); the CSV goes through the
+// existing POST /actions/<name>/export, one repeatable-read snapshot. Both actions read the scheduled items with the
+// same function and place them with the same pure rules (AC-4).
 import {
   Decimal,
   defineAction,

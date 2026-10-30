@@ -61,7 +61,7 @@ flowchart TD
 `banking.cash_forecast`（日別）と `banking.cash_schedule`（予定の明細）は読取専用の帳票 action です（[仕様](../specs/cash-forecast.md)）。所有者を banking にしたのは、振込予約を自分の entity として持ち、権限の境界（会社全体の accounting / admin）が資金繰りと同じだからです。契約の請求予定（`planPeriod`）を使うため、banking の依存に contract と workforce を足しました。contract は sales に、workforce は kernel だけに依存し、どちらも banking に依存しないので循環しません。accounting は sales・purchase・contract から依存される側なので、ここに置くと循環します。
 
 - 残高の正は帳簿です。期首残高と記帳済みの入出金は資金科目（`payment.accounts` の現金・普通預金と銀行口座の帳簿科目）の転記済み仕訳から読み、仕訳ごとに相殺して資金科目間の振替を数えません。`aggregate` の 10,000 グループの上限は `entryDate`・`entryId` の keyset で繰り返して読みます。銀行明細は残高に使いません。
-- 予定は確定済みの売上・仕入請求の現在の残高、有効な振込予約（振込指定日へ移す）、contract の `plannedContractReceipts`（今日の月の 12 か月前の月初から、生成時と同じ明細・税・支払期日。それより前の未作成は件数だけ）、workforce の `payrollCashSchedule`（支払日の証跡がある確定給与を支払日ごとに合算）です。2 つの action は同じ読取関数と同じ純粋な配置規則を使います。
+- 予定は確定済みの売上・仕入請求の現在の残高（`id` の keyset で頁送り。振込予定を含めるときの仕入請求は支払期日を問わない）、有効な振込予約（振込指定日へ移す）、contract の `plannedContractReceipts`（今日の月の 12 か月前の月初から、生成時と同じ明細・税・支払期日。それより前の未作成は件数だけで、満額の対象月の並びは 1 回の計画から数える）、workforce の `payrollCashSchedule`（支払日の証跡がある確定給与を支払日ごとに合算）です。2 つの action は同じ読取関数と同じ純粋な配置規則を使います。
 - 種類ごとに、呼出者がすべての entity を行の制限なく読め、使う項目が隠されていないとき（給与は export も）だけ含めます。含めない種類は列を除き `meta.sources` に理由を返します。権限を広げた読取はしません。
 - 給与と支払仕訳の結び付き、未消込の入出金、資金科目外の入出金は二重計上・計上漏れの原因になるので、残高は変えずに `meta` の注意情報として返します。
 

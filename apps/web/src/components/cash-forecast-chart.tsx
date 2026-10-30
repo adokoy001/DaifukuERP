@@ -38,17 +38,11 @@ export function CashForecastChart({
         <line x1={m.left} x2={m.right} y1={m.top} y2={m.top} className="cash-chart-grid" />
         <line x1={m.left} x2={m.right} y1={m.bottom} y2={m.bottom} className="cash-chart-grid" />
         <line x1={m.left} x2={m.right} y1={m.zeroY} y2={m.zeroY} className="cash-chart-zero" />
-        <text x={m.left - 6} y={m.top + 4} textAnchor="end" className="cash-chart-label">
-          {formatDecimal(m.max, scale)}
-        </text>
-        <text x={m.left - 6} y={m.zeroY + 4} textAnchor="end" className="cash-chart-label">
-          0
-        </text>
-        {m.min.startsWith('-') ? (
-          <text x={m.left - 6} y={m.bottom + 4} textAnchor="end" className="cash-chart-label">
-            {formatDecimal(m.min, scale)}
+        {m.axis.map((a) => (
+          <text key={a.y} x={m.left - 6} y={a.y + 4} textAnchor="end" className="cash-chart-label">
+            {a.value === '0' ? '0' : formatDecimal(a.value, scale)}
           </text>
-        ) : null}
+        ))}
         {includeDrafts ? <path d={m.draftPath} className="cash-chart-drafts" /> : null}
         <path d={m.path} className="cash-chart-line" clipPath={`url(#${above})`} />
         <path d={m.path} className="cash-chart-line is-negative" clipPath={`url(#${below})`} />

@@ -8,6 +8,7 @@ import {
   cashNotices,
   chartLabel,
   chartModel,
+  LABEL_GAP,
   columnGroup,
   conditionErrors,
   conditionsFromSearch,
@@ -176,6 +177,36 @@ describe('daily table and chart (AC-21, AC-23)', () => {
     const single = chartModel([{ date: TODAY, balance: '10' }], false);
     expect(single.zeroY).toBeCloseTo(single.bottom);
     expect(single.points[0]?.x).toBeCloseTo((single.left + single.right) / 2);
+  });
+
+  it('AC-21: y-axis labels name the value at their position and never overlap', () => {
+    const labels = (balances: string[]) => {
+      const m = chartModel(
+        balances.map((balance, i) => ({ date: `2026-11-${String(10 + i)}`, balance })),
+        false,
+      );
+      for (let i = 1; i < m.axis.length; i++)
+        expect((m.axis[i]?.y ?? 0) - (m.axis[i - 1]?.y ?? 0)).toBeGreaterThanOrEqual(LABEL_GAP);
+      return { m, values: m.axis.map((a) => a.value) };
+    };
+    // mixed: max at the top, 0 between, min at the bottom
+    const mixed = labels(['1000', '-500', '250']);
+    expect(mixed.values).toEqual(['1000', '0', '-500']);
+    expect(mixed.m.axis.map((a) => a.y)).toEqual([mixed.m.top, mixed.m.zeroY, mixed.m.bottom]);
+    // all positive: 0 at the bottom, no min label
+    const positive = labels(['5000', '8000']);
+    expect(positive.values).toEqual(['8000', '0']);
+    expect(positive.m.axis[1]?.y).toBeCloseTo(positive.m.bottom);
+    // all negative: 0 is the top (no negative number printed there), min at the bottom
+    const negative = labels(['-50000', '-120000']);
+    expect(negative.values).toEqual(['0', '-120000']);
+    expect(negative.m.axis[0]?.y).toBeCloseTo(negative.m.top);
+    // a slight dip below zero: the min label would touch the 0 label and is left out
+    expect(labels(['5000000', '-50000']).values).toEqual(['5000000', '0']);
+    // a slight rise above zero over a deep negative: the max label is left out
+    expect(labels(['50000', '-5000000']).values).toEqual(['0', '-5000000']);
+    // all zero: only the baseline
+    expect(labels(['0', '0']).values).toEqual(['0']);
   });
 
   it('AC-21: the chart label names opening, closing and the lowest balance with its date', () => {

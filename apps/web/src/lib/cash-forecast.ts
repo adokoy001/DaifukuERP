@@ -233,7 +233,7 @@ export interface CashNoticeView {
 
 const SOURCE_EXCLUDED: Readonly<Record<CashSource, Label>> = {
   sales_invoice: { ja: '売上請求', en: 'Sales invoices' },
-  contract: { ja: '契約請求', en: 'Contract billing' },
+  contract: { ja: '契約請求', en: 'Contract billings' },
   purchase_invoice: { ja: '仕入請求', en: 'Purchase invoices' },
   bank_transfer: { ja: '振込予定', en: 'Scheduled transfers' },
   payroll: { ja: '給与', en: 'Payroll' },
@@ -365,11 +365,16 @@ export interface ChartModel {
   draftPath: string;
   max: string;
   min: string;
+  /** Y-axis labels, top to bottom: the largest value (only when above zero) at the top, 0 at the baseline, the
+   * smallest (only when below zero) at the bottom; a label closer than LABEL_GAP to the baseline is left out. */
+  axis: { value: string; y: number }[];
 }
 
 const W = 740;
 const H = 240;
 const PAD = { left: 64, right: 16, top: 20, bottom: 36 };
+/** Minimum distance between two y-axis labels (the label text is 12 units high). */
+export const LABEL_GAP = 14;
 
 /** AC-21: coordinates of the balance line (and the dashed balance with drafts) with a zero baseline. */
 export function chartModel(rows: readonly Record<string, unknown>[], includeDrafts: boolean): ChartModel {
@@ -393,20 +398,29 @@ export function chartModel(rows: readonly Record<string, unknown>[], includeDraf
   const pathOf = (list: ChartPoint[]) =>
     list.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   const sorted = [...all].sort((a, b) => compareDecimalStrings(a, b) ?? 0);
+  const max = sorted.at(-1) ?? '0';
+  const min = sorted[0] ?? '0';
+  const zeroY = PAD.top + (hi / span) * plotH;
+  const bottom = H - PAD.bottom;
+  const axis = [{ value: '0', y: zeroY }];
+  if ((compareDecimalStrings(max, '0') ?? 0) > 0 && zeroY - PAD.top >= LABEL_GAP)
+    axis.unshift({ value: max, y: PAD.top });
+  if ((compareDecimalStrings(min, '0') ?? 0) < 0 && bottom - zeroY >= LABEL_GAP) axis.push({ value: min, y: bottom });
   return {
     width: W,
     height: H,
     left: PAD.left,
     right: W - PAD.right,
     top: PAD.top,
-    bottom: H - PAD.bottom,
-    zeroY: PAD.top + (hi / span) * plotH,
+    bottom,
+    zeroY,
     points,
     drafts,
     path: pathOf(points),
     draftPath: pathOf(drafts),
-    max: sorted.at(-1) ?? '0',
-    min: sorted[0] ?? '0',
+    max,
+    min,
+    axis,
   };
 }
 

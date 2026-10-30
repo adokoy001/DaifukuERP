@@ -7,7 +7,9 @@
 // (computeDueDate with the partner's terms). Older due periods are only counted (backlog, tax-exclusive): they are not
 // expected receipts and resolving their historical tax rates must not fail the forecast.
 // Contracts, lines, billing records, partners, tax rates and settings are read once, in the caller's context; the
-// per-period planning runs in memory. The window never depends on the report's `from`.
+// per-period planning runs in memory. The window never depends on the report's `from`. Runs of whole periods that
+// surely bill before the window are counted from one planPeriod call, so a contract started decades ago (or with a
+// mistyped year) costs a few calls instead of one per period.
 import { Decimal, DOCSTATUS, getCompany, repo, StateError, type Context, type LocalDate } from '@daifuku/kernel';
 import { computeDueDate, Partner } from '@daifuku/mod-partner';
 import {
@@ -23,8 +25,8 @@ import { ContractBilling } from './entities/contract-billing.ts';
 import { Contract } from './entities/contract.ts';
 import { allPages, inChunks } from './ledger.ts';
 import { companyScale, linesByContract, termsOf, type ContractRow } from './load.ts';
-import { addMonths, periodOf, periodStart, type Period } from './services/periods.ts';
-import { planPeriod, type PlannedLine } from './services/plan.ts';
+import { addMonths, isAligned, monthsBetween, periodOf, periodStart, type Period } from './services/periods.ts';
+import { planPeriod, type ContractTerms, type PlannedLine, type TermLine } from './services/plan.ts';
 
 /** Months before today's month where the planning window starts (intervalMonths is at most 12). */
 export const CONTRACT_CASH_WINDOW_MONTHS = 12;
@@ -54,6 +56,70 @@ export interface ContractCashPlan {
 /** First day of the month CONTRACT_CASH_WINDOW_MONTHS before today's month. */
 export function contractCashWindowStart(today: LocalDate): LocalDate {
   return periodStart(addMonths(periodOf(today), -CONTRACT_CASH_WINDOW_MONTHS));
+}
+
+export interface ContractWalkInput {
+  terms: ContractTerms;
+  lines: readonly TermLine[];
+  /** Periods that already have a billing record. */
+  billed: ReadonlySet<Period>;
+  /** Currency scale of the company. */
+  scale: number;
+  windowStart: LocalDate;
+  to: LocalDate;
+}
+
+export interface ContractWalk {
+  /** Due periods billed from windowStart through `to`, in period order. */
+  due: { period: Period; billingDate: LocalDate; lines: PlannedLine[] }[];
+  /** Due periods billed before windowStart (tax-exclusive subtotal). */
+  backlog: { count: number; subtotal: Decimal };
+}
+
+/**
+ * The due periods of one contract up to `to` (D-4), the same result as calling planPeriod for every aligned period from
+ * the start month. A period before `bulkEnd` bills in its own or the next month, so before both windowStart and `to`;
+ * when it also comes after the start period and its months end before the end month, it is a whole period inside the
+ * contract and bills the same lines as any other such period. A run of those is counted (minus its billed periods)
+ * from one planPeriod call.
+ */
+export function walkContractPeriods(input: ContractWalkInput): ContractWalk {
+  const { terms, lines, billed, scale, windowStart, to } = input;
+  const k = terms.intervalMonths;
+  const start = periodOf(terms.startDate);
+  const lastPeriod = periodOf(to);
+  const limits = [addMonths(periodOf(windowStart), -1), addMonths(lastPeriod, -1)];
+  if (terms.endDate !== null) limits.push(addMonths(periodOf(terms.endDate), 1 - k));
+  const bulkEnd = limits.reduce((a, b) => (b < a ? b : a));
+  const plan = (period: Period, alreadyGenerated: boolean) =>
+    planPeriod({ terms, lines, period, alreadyGenerated, scale });
+  const due: ContractWalk['due'] = [];
+  const backlog = { count: 0, subtotal: Decimal.zero() };
+  for (let period = start; period <= lastPeriod;) {
+    if (terms.endDate !== null && terms.endDate < periodStart(period)) break;
+    if (period > start && period < bulkEnd) {
+      const runs = Math.ceil(monthsBetween(period, bulkEnd) / k);
+      const next = addMonths(period, runs * k);
+      let open = runs;
+      for (const p of billed) if (p >= period && p < next && isAligned(p, start, k)) open -= 1;
+      const whole = plan(period, false);
+      if (whole.status === 'due' && open > 0) {
+        backlog.count += open;
+        backlog.subtotal = backlog.subtotal.plus(whole.subtotal.times(open));
+      }
+      period = next;
+      continue;
+    }
+    const p = plan(period, billed.has(period));
+    if (p.status === 'due' && p.billingDate <= to) {
+      if (p.billingDate < windowStart) {
+        backlog.count += 1;
+        backlog.subtotal = backlog.subtotal.plus(p.subtotal);
+      } else due.push({ period, billingDate: p.billingDate, lines: p.lines });
+    }
+    period = addMonths(period, k);
+  }
+  return { due, backlog };
 }
 
 async function billablePeriodsBilled(ctx: Context, ids: readonly string[]): Promise<Map<string, Set<Period>>> {
@@ -125,29 +191,20 @@ export async function plannedContractReceipts(
   const billed = await billablePeriodsBilled(ctx, ids);
   const lines = await linesByContract(ctx, ids);
   const scale = await companyScale(ctx);
-  const lastPeriod = periodOf(input.to);
   const due: { contract: ContractRow; period: Period; billingDate: LocalDate; lines: PlannedLine[] }[] = [];
   const backlog = { count: 0, subtotal: Decimal.zero() };
   for (const contract of contracts) {
-    const terms = termsOf(contract);
-    const done = billed.get(contract.id) ?? new Set<Period>();
-    for (let period = periodOf(contract.startDate); period <= lastPeriod;) {
-      if (contract.endDate !== null && contract.endDate < periodStart(period)) break;
-      const plan = planPeriod({
-        terms,
-        lines: lines.get(contract.id) ?? [],
-        period,
-        alreadyGenerated: done.has(period),
-        scale,
-      });
-      if (plan.status === 'due' && plan.billingDate <= input.to) {
-        if (plan.billingDate < windowStart) {
-          backlog.count += 1;
-          backlog.subtotal = backlog.subtotal.plus(plan.subtotal);
-        } else due.push({ contract, period, billingDate: plan.billingDate, lines: plan.lines });
-      }
-      period = addMonths(period, terms.intervalMonths);
-    }
+    const walk = walkContractPeriods({
+      terms: termsOf(contract),
+      lines: lines.get(contract.id) ?? [],
+      billed: billed.get(contract.id) ?? new Set<Period>(),
+      scale,
+      windowStart,
+      to: input.to,
+    });
+    for (const d of walk.due) due.push({ contract, ...d });
+    backlog.count += walk.backlog.count;
+    backlog.subtotal = backlog.subtotal.plus(walk.backlog.subtotal);
   }
   if (due.length === 0) return { windowStart, receipts: [], backlog };
   const taxOf = await taxCalculator(ctx);

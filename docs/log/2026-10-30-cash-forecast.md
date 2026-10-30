@@ -17,7 +17,7 @@
 - **明細の action は資金科目を読まない。** AC-18（資金科目なしの `INVALID_STATE`）は日別の action だけに適用する（明細は記帳済みの入出金を行にしないため）。spec に明記した。
 - **画面の URL の flag は数値の 1。** TanStack Router は文字列 "1" を JSON の引用符付きで URL に書くため（`?drafts=%221%22`）。数値にして `?drafts=1` にした（ブラウザ試験で発見）。
 - **`ReportTable` に任意の `columnClass` を足した。** 下書き・予定・記帳済みの列を別の色で示すため（AC-23）。既存の呼出しは変わらない。
-- **ADR は作らなかった。** kernel・DSL・port の変更なし。予約された ADR-0036 は使っていない。banking の依存に contract・workforce・tax を足した（`commerce-finance.md` に理由）。
+- **ADR は作らなかった。** kernel・DSL・port の変更なし。予約された ADR-0036 は使っていない。banking の依存に contract・workforce を足した（`commerce-finance.md` に理由）。初版は tax も足していたが banking から import していなかったので、実装レビューの後に外した（下の「実装レビューの指摘への対応」）。
 
 ## やったこと
 
@@ -43,6 +43,30 @@
 
 - [実測] 後片付け: `pnpm test:db:templates -- --drop` で自分の DB の template 68 個（777 MB）を削除し、自分で作った DB `daifuku_test_e3cf` も削除した。ブラウザ試験の fixture DB は補助スクリプトが終了時に削除した。
 
+## 実装レビューの指摘への対応（2026-10-30、fixer）
+
+12 件の指摘をコードと照合した。11 件は正しく、修正した。AI_INDEX の 1 件は、この round の規則（AI_INDEX.md は統合担当だけが編集する）に従い、統合担当への申し送りにした。spec の決定事項 28〜31 に理由を記した。
+
+- **[blocker] 支払期日が `to` より後の仕入請求の振込予定が消える。** 指摘どおりだった。予約を探す元の仕入請求を支払期日（`dueUpTo(to)`）で絞っていた。振込予定を含めるときは、確定済みで残高 ≠ 0 の仕入請求を支払期日を問わず読み、予定日が `to` より後のものだけを外すようにした（D-4 の定義どおり）。指摘の案（`prepared` / `exported` の支払ファイルから予約を引く）は採らなかった。出力済みの支払ファイルは状態が変わらずに残り続けるので、読む量が支払ファイルの履歴に比例するため。DB 試験を足した（支払期日 12-31 の請求を 09-28 に予約すると、日別の `transfers` と明細の `bank_transfer` に現れ、`dueDate` は支払期日。期間が 09-27 までなら現れない。取消で消える）。
+- **[minor] 頁送りの読み飛ばし・帳簿と伝票の食い違い・冒頭の注記。** 伝票・予約・支払ファイル・銀行口座の一覧を offset から `id` の keyset（`allById`）に変えた。DB 試験を足した（501 件の頁送りで、1 頁目を読んだ直後に別のトランザクションが 1 頁目の行を条件から外しても、残りの 500 件をすべて読む）。帳簿を読んでから伝票を読むまでの食い違いは、kernel の拡張（ADR が要る、spec のスコープ外）をせず、spec の決定事項 13 とマニュアルに書いた。`cash-forecast.ts` の冒頭の注記（「request transaction の外」）は誤りだったので訂正した（`tx: 'none'` は説明用で、action の経路は read committed のトランザクションを開く）。
+- **[nit] 給与の export 要件の配線に試験が届かない。** export を要する種類を `SOURCE_NEEDS_EXPORT` に出し、`sourceIncluded` が読む entity の一覧を引数で受けられるようにした（既定は `SOURCE_READS`）。unit 試験で、read だけを持つ検査用ロールでは給与だけが外れ、他の種類は含まれることを確かめた。
+- **[nit] 契約の積み残しの計算量。** 契約ごとの対象月の走査を純粋関数 `walkContractPeriods` に分け、窓より前で開始月の後・終了月の前にある満額の対象月の並びを 1 回の `planPeriod` から数えるようにした（結果は変えない）。unit の property（fast-check 400 回、開始日・終了日・間隔・請求の時期・按分・端数処理・請求済みの対象月を変える）で、全対象月に `planPeriod` を使う参照実装と一致することを確かめた。開始日が 0001-01-01 の契約でも同じ結果（積み残し 24,296 件）になる。開始日の妥当性の検査は contract module の入力規則の変更になるので足していない。
+- **[minor・nit] グラフの縦軸の目盛。** `chartModel` が位置付きの目盛（`axis`）を返すようにした。上端は最大値が正のときだけ、下端は最小値が負のときだけ、0 の目盛と 14 単位より近い目盛は出さない。unit 試験に、正負混在・全日プラス・全日マイナス・わずかなマイナス・わずかなプラス・全日 0 を足した（どの 2 つの目盛も 14 単位以上離れること）。
+- **[minor] 「表示」ボタンの無効化でフォーカスを失う。** `disabled` をやめ、読込中は `aria-busy` にした。押し直すと再実行する（同じ条件は refetch が実行中の読取を取り消し、新しい条件は新しい query）。ブラウザ試験に、キーボードで「表示」を押した後（新しい条件と同じ条件の両方）にフォーカスがボタンに残ることを足した。`disabled` に戻すとこの試験が失敗することを確かめた。
+- **[nit] 文言。** 英語の除外の案内を「Contract billings are not included …」にした。注記の英語を「Dates are calendar dates in Japan time (JST).」にした。マニュアルのボタン名を「CSV ダウンロード」にした。
+- **[nit] タブと「動きのない日を隠す」が再実行で戻る・受信件数。** 2 つの選択を `CashForecastView` に移し、再実行で保つようにした。隠しているときは「動きのない N 日を隠しています（合計・グラフ・CSV は全 M 日）」を表の上に出す（`ReportTable` の受信件数は表示中の行数のまま）。ブラウザ試験で、再実行後もタブが選ばれたままで、選択も保たれることを確かめた。
+- **[nit] 使っていない `@daifuku/mod-tax` の依存。** banking の `package.json` と lockfile から外した（`pnpm install --offline --frozen-lockfile` で lockfile が一致することを確認）。
+- **[nit] 使われない分岐。** `useCashForecast` / `useCashSchedule` の引数を `CashConditions` にし、`enabled`・`?? null`・型の強制を外した。
+- **[nit] AI_INDEX の読み方の行。** この round では AI_INDEX.md を編集しない規則なので、統合担当に行の追加を申し送った（「次のセッションへ」）。
+
+検証（fixer）:
+
+- [実測] unit: `modules/contract/test/cash-plan.test.ts`（新規 3 件、property 400 回）、`modules/banking/test/cash-sources.test.ts`（6 件）、`cash-forecast.test.ts`（21 件）、`apps/web/src/lib/cash-forecast.test.ts`（13 件）が成功。変異で確かめた: export 要件を `false` にすると cash-sources の試験が 1 件失敗、終了月の上限をずらすと contract の試験が 2 件失敗。
+- [実測] DB（自分の DB `daifuku_test_w49`）: `banking/test/cash-forecast.db.test.ts` 13 件（新規 2 件）と `contract/test/cash-plan.db.test.ts` 5 件が成功。修正前の読み方（支払期日で絞る、offset の頁送り）に戻すと新規の 2 件が失敗することを確かめた。
+- [実測] ブラウザ（`e2e-run.sh <worktree> 20 e2e/cash-forecast.spec.ts --project=chromium --no-deps`、API :3120 / Web :5220、新しい fixture DB）: 4 件成功（2.0 分。日英 × 1280 / 390px の axe を含む）。「表示」を `disabled` に戻すとフォーカスの確認で失敗することを確かめた（`toBeFocused`）。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`（自分の DB）: 成功、41 分（ロードアベレージ 11〜15）。format・docs・assurance・typecheck（全体・api・web）・lint・unit（166 ファイル 1,745 件）・deploy・DB（137 ファイル 904 件、2,451 秒。DB は schema template を使わず作り直した）。
+- [未検証] `pnpm gate:full`（統合担当が実行）。
+
 ## 見つけた問題と修正（発見経路つき）
 
 - 給与の未登録件数の試験が「`to` の月」の範囲を誤って期待していた（試験の誤り。実装は spec どおり） — 発見: DB 試験、修正: 試験の期待値を spec に合わせ、範囲外の確認を足した。
@@ -63,4 +87,5 @@
 ## 次のセッションへ
 
 - 統合時: `router.tsx`、`navigation-data.ts`、`help.ts`、`token-usage.test.ts` の `CONVERTED` は同じ round の他の項目と衝突しうる（追記だけ）。banking の依存追加で lockfile が変わる。
+- 統合担当へ: AI_INDEX.md に資金繰り表・入出金予定の行を足す。読む文書は [仕様](../specs/cash-forecast.md)、[構造](../architecture/commerce-finance.md#資金繰り表の読取と依存)、[操作](../manual/appendix-l-commerce-bank-filing.md#資金繰り表)、主なファイルは `modules/banking/src/cash-forecast.ts`・`cash-sources.ts`・`cash-plan.ts`、`modules/contract/src/cash-plan.ts`、`apps/web/src/pages/cash-forecast-page.tsx`。
 - 予定の種類を足すとき（E2 定期仕訳、E5 経費精算、E1 固定資産）は `CASH_SOURCES` と `SOURCE_READS` に足し、`cash-sources.ts` に読取を、`cash-plan.ts` は変えずに済む。

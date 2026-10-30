@@ -183,6 +183,11 @@
   justify-content: space-between;
   margin-bottom: calc(var(--spacing) * 2);
 }
+.cash-quiet-note {
+  flex: 1 1 16rem;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
 .cash-legend {
   margin: 0 0 calc(var(--spacing) * 2);
   font-size: var(--text-xs);

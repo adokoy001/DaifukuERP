@@ -31,6 +31,7 @@ import {
   CASH_SOURCE_COLUMN,
   type CashForecastMeta,
 } from '../src/contract.ts';
+import { allById } from '../src/cash-sources.ts';
 import { bankingFixture, required, type BankFixture } from './fixture.ts';
 
 let f: BankFixture;
@@ -339,6 +340,75 @@ describe('cash forecast over real documents', () => {
     const cancelled = await forecast();
     expect(day(cancelled, '2026-09-25')).toMatchObject({ transfers: '0' });
     expect(day(cancelled, '2026-10-05')).toMatchObject({ payables: '25000' });
+  });
+
+  it('AC-6: an invoice due after the period is placed on a transfer date inside it (paying before the due date)', async () => {
+    const p4 = await invoice('purchase', '44000', { date: '2026-09-01', dueDate: '2026-12-31' });
+    const unreserved = await forecast();
+    expect(unreserved.totals).toMatchObject({ payables: '75000', transfers: '0' });
+    expect((await schedule()).rows.find((r) => r.purchaseInvoiceId === p4.id)).toBeUndefined();
+    const batch = await f.action(
+      'prepare_transfer',
+      {
+        requestId: newId(),
+        bankAccountId: f.account.id,
+        accountVersion: f.account.version,
+        transferDate: '2026-09-28',
+        items: [
+          {
+            invoiceId: p4.id,
+            expectedVersion: p4.version,
+            expectedBalance: '44000',
+            payeeId: f.payee.id,
+            payeeVersion: f.payee.version,
+          },
+        ],
+      },
+      bankTransferDetail,
+    );
+    const reserved = await forecast();
+    expect(day(reserved, '2026-09-28')).toMatchObject({ transfers: '44000' });
+    expect(reserved.totals).toMatchObject({ payables: '75000', transfers: '44000' });
+    expect([metaOf(unreserved).closingBalance, metaOf(reserved).closingBalance]).toEqual(['585000', '541000']);
+    const row = required((await schedule()).rows.find((r) => r.purchaseInvoiceId === p4.id));
+    expect(row).toMatchObject({ source: 'bank_transfer', date: '2026-09-28', dueDate: '2026-12-31', amount: '44000' });
+    // a transfer date after `to` stays out, like any item scheduled after the period
+    expect((await forecast({ from: '2026-09-01', to: '2026-09-27' })).totals).toMatchObject({ transfers: '0' });
+    await f.action(
+      'cancel_transfer',
+      { batchId: batch.id, expectedVersion: batch.version, reason: '試験のため取消' },
+      bankTransferView,
+    );
+    expect((await forecast()).totals).toMatchObject({ payables: '75000', transfers: '0' });
+  });
+
+  it('decision 3: keyset paging keeps every still-matching row when a read row leaves the filter between pages', async () => {
+    // the open-invoice reads page 500 rows by id; partners stand in for invoices (same port, cheap to create)
+    const marker = `頁送り-${newId().slice(-8)}`;
+    await f.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) await repo(ctx, Partner).create({ name: `${marker}-${i}`, isCustomer: true });
+    });
+    const where = { name: { $like: `${marker}-%` }, isActive: true };
+    let pages = 0;
+    let changed = '';
+    const read = await f.run((ctx) =>
+      allById(async (q) => {
+        const page = await repo(ctx, Partner).list(q);
+        if (pages++ === 0) {
+          // another transaction commits a change that drops the first row of page 1 out of the filter
+          changed = required(page.items[0]).id;
+          await f.run((other) => repo(other, Partner).update(changed, { isActive: false }));
+        }
+        return page;
+      }, where),
+    );
+    const stillMatching = await f.run((ctx) => allById((q) => repo(ctx, Partner).list(q), where));
+    expect(pages).toBe(2);
+    expect(stillMatching).toHaveLength(500);
+    // offset paging would have skipped the 501st row (offset 500 over 500 remaining rows)
+    expect(read.map((p) => p.id)).toEqual(expect.arrayContaining(stillMatching.map((p) => p.id)));
+    expect(read.map((p) => p.id)).toContain(changed);
+    expect(read).toHaveLength(501);
   });
 
   it('AC-7: a generated and submitted contract invoice leaves the contract column and appears in receivables', async () => {

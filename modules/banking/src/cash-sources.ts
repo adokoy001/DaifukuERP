@@ -16,6 +16,7 @@ import {
   type Context,
   type Domain,
   type EntityDef,
+  type ListQuery,
   type ListResult,
   type LocalDate,
 } from '@daifuku/kernel';
@@ -79,6 +80,10 @@ export const SOURCE_READS: Readonly<Record<CashSource, readonly { entity: string
   ],
 };
 
+/** Sources that also need export on every entity they read (AC-14: payroll, so a caller who cannot put payroll in a
+ * CSV does not see it on the screen either). */
+export const SOURCE_NEEDS_EXPORT: ReadonlySet<CashSource> = new Set<CashSource>(['payroll']);
+
 /**
  * AC-14 for one entity: read without a row rule (kernel rowFilter undefined), every used field readable (no role mask,
  * no output-hidden field) and, when asked, export.
@@ -95,11 +100,18 @@ export function entityAllows(ctx: Context, entity: EntityDef, fields: readonly s
   }
 }
 
-/** AC-14: whether the caller may see a source in full (payroll also needs export). */
-export function sourceIncluded(ctx: Context, source: CashSource): boolean {
-  return SOURCE_READS[source].every(
+/**
+ * AC-14: whether the caller may see a source in full (payroll also needs export). `reads` is SOURCE_READS; the unit
+ * test passes a probe entity there to reach the export rule with a role no real module defines.
+ */
+export function sourceIncluded(
+  ctx: Context,
+  source: CashSource,
+  reads: Readonly<Record<CashSource, readonly { entity: string; fields: readonly string[] }[]>> = SOURCE_READS,
+): boolean {
+  return reads[source].every(
     ({ entity, fields }) =>
-      registry.hasEntity(entity) && entityAllows(ctx, registry.entity(entity), fields, source === 'payroll'),
+      registry.hasEntity(entity) && entityAllows(ctx, registry.entity(entity), fields, SOURCE_NEEDS_EXPORT.has(source)),
   );
 }
 
@@ -107,13 +119,25 @@ export function sourceStatuses(ctx: Context): SourceStatus[] {
   return CASH_SOURCES.map((source) => ({ source, included: sourceIncluded(ctx, source) }));
 }
 
-async function allPages<T>(page: (offset: number) => Promise<ListResult<T>>): Promise<T[]> {
+/**
+ * Every row matching `where`, keyset-paged on id. A row that leaves the filter between two pages (an invoice paid
+ * meanwhile) cannot shift the later pages, so no row that still matches is skipped, which offset paging would do.
+ */
+export async function allById<T extends { id: string }>(
+  list: (q: ListQuery) => Promise<ListResult<T>>,
+  where: Domain,
+): Promise<T[]> {
   const out: T[] = [];
-  for (let offset = 0; ;) {
-    const res = await page(offset);
-    out.push(...res.items);
-    offset += res.items.length;
-    if (res.items.length === 0 || offset >= res.total) return out;
+  for (let after: string | undefined; ;) {
+    const page = await list({
+      where: after === undefined ? where : { $and: [where, { id: { $gt: after } }] },
+      orderBy: [{ field: 'id', dir: 'asc' }],
+      limit: PAGE,
+    });
+    out.push(...page.items);
+    const last = page.items.at(-1);
+    if (page.items.length < PAGE || last === undefined) return out;
+    after = last.id;
   }
 }
 
@@ -133,39 +157,29 @@ function dueUpTo(to: LocalDate): Domain {
 
 type InvoiceEntity = typeof SalesInvoice | typeof PurchaseInvoice;
 
-async function invoices(ctx: Context, entity: InvoiceEntity, docstatus: number, to: LocalDate) {
+/** Open documents (`to` given: only those due up to `to`). */
+async function invoices(ctx: Context, entity: InvoiceEntity, docstatus: number, to: LocalDate | undefined) {
   const r = repo(ctx, entity as typeof SalesInvoice);
   const where: Domain = {
     docstatus,
     ...(docstatus === DOCSTATUS.submitted ? { balance: { $ne: '0' } } : { total: { $ne: '0' } }),
-    ...dueUpTo(to),
+    ...(to === undefined ? {} : dueUpTo(to)),
   };
-  return allPages((offset) => r.list({ where, orderBy: [{ field: 'id', dir: 'asc' }], limit: PAGE, offset }));
+  return allById((q) => r.list(q), where);
 }
 
 /** Purchase invoice id -> transfer date of its active reservation in a prepared/exported transfer file (D-4). */
 async function reservedTransfers(ctx: Context, invoiceIds: readonly string[]): Promise<Map<string, LocalDate>> {
   const reservations = await inChunks(invoiceIds, (chunk) =>
-    allPages((offset) =>
-      repo(ctx, BankTransferReservation).list({
-        where: { invoiceId: { $in: chunk }, active: true },
-        orderBy: [{ field: 'id', dir: 'asc' }],
-        limit: PAGE,
-        offset,
-      }),
-    ),
+    allById((q) => repo(ctx, BankTransferReservation).list(q), { invoiceId: { $in: chunk }, active: true }),
   );
   const batches = await inChunks(
     reservations.map((r) => r.batchId),
     (chunk) =>
-      allPages((offset) =>
-        repo(ctx, BankTransfer).list({
-          where: { id: { $in: chunk }, state: { $in: ['prepared', 'exported'] } },
-          orderBy: [{ field: 'id', dir: 'asc' }],
-          limit: PAGE,
-          offset,
-        }),
-      ),
+      allById((q) => repo(ctx, BankTransfer).list(q), {
+        id: { $in: chunk },
+        state: { $in: ['prepared', 'exported'] },
+      }),
   );
   const dates = new Map(batches.map((b) => [b.id, b.transferDate]));
   const out = new Map<string, LocalDate>();
@@ -239,7 +253,7 @@ export interface ScheduledItems {
 
 /**
  * Every scheduled item of the included sources (D-4, D-7), shared by both actions (AC-4). Drafts are read only when
- * asked. Items due after `to` are not read; placement (D-5) happens in cash-plan.ts.
+ * asked. Items scheduled after `to` are left out here; the rest of the placement (D-5) happens in cash-plan.ts.
  */
 export async function loadScheduledItems(
   ctx: Context,
@@ -265,8 +279,11 @@ export async function loadScheduledItems(
         );
   }
   if (q.included.has('purchase_invoice') || q.included.has('bank_transfer')) {
-    const open = await invoices(ctx, PurchaseInvoice, DOCSTATUS.submitted, q.to);
-    const reserved = q.included.has('bank_transfer')
+    // A reserved invoice is placed on its transfer date, which may come before its due date (paying early is normal),
+    // so with transfers every open invoice is read whatever its due date (D-4 `bank_transfer` has no due condition).
+    const withTransfers = q.included.has('bank_transfer');
+    const open = await invoices(ctx, PurchaseInvoice, DOCSTATUS.submitted, withTransfers ? undefined : q.to);
+    const reserved = withTransfers
       ? await reservedTransfers(
           ctx,
           open.map((inv) => inv.id),
@@ -275,11 +292,13 @@ export async function loadScheduledItems(
     for (const inv of open) {
       const transferDate = reserved.get(inv.id);
       if (transferDate === undefined && !q.included.has('purchase_invoice')) continue;
+      const scheduled = transferDate ?? inv.dueDate ?? inv.date;
+      if (scheduled > q.to) continue; // D-5 (1)
       items.push(
         item({
           source: transferDate === undefined ? 'purchase_invoice' : 'bank_transfer',
           state: 'submitted',
-          dueDate: transferDate ?? inv.dueDate ?? inv.date,
+          dueDate: scheduled,
           documentDueDate: transferDate === undefined ? null : (inv.dueDate ?? inv.date),
           amount: inv.balance,
           number: inv.number,
@@ -335,9 +354,7 @@ async function resolveCashAccounts(ctx: Context) {
   const codes = await loadPaymentAccountCodes(ctx);
   const wanted = [...new Set([codes.cash, codes.bank])];
   const byCode = (await repo(ctx, Account).list({ where: { code: { $in: wanted } }, limit: wanted.length })).items;
-  const bankAccounts = await allPages((offset) =>
-    repo(ctx, BankAccount).list({ orderBy: [{ field: 'id', dir: 'asc' }], limit: PAGE, offset }),
-  );
+  const bankAccounts = await allById((q) => repo(ctx, BankAccount).list(q), {});
   const known = new Set(byCode.map((a) => a.id));
   const extra = await inChunks(
     bankAccounts.map((b) => b.ledgerAccountId).filter((id) => !known.has(id)),
