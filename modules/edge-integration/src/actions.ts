@@ -86,7 +86,8 @@ export const todoAction = defineAction({
   description: label('受信箱: 結果の確認が必要な機器処理の件数', 'Inbox: device jobs whose result needs confirmation'),
   input: todoInput,
   output: todoResult,
-  permission: operator,
+  // Only edge.resolve (manager) clears an uncertain job, so operators get no item they cannot act on (inbox AC-1).
+  permission: manager,
   tx: 'none',
   mutates: false,
   handler: edgeTodo,

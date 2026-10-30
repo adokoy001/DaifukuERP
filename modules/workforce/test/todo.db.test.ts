@@ -11,7 +11,7 @@ import {
   type TodoResult,
 } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WorkforceExpense, WorkforcePayPolicy, WorkforcePayTerms } from '../src/index.ts';
+import { WorkforceAttendance, WorkforceExpense, WorkforcePayPolicy, WorkforcePayTerms } from '../src/index.ts';
 import { at, call, fixture, NOW, type Command, type Fixture } from './helpers.ts';
 
 let f: Fixture;
@@ -88,7 +88,7 @@ describe('workforce.todo (docs/specs/inbox.md)', () => {
     expect(count(await todo(f.hr.params), 'expense_review')).toBe(3);
   });
 
-  it('AC-2: attendance, correction and paid leave reviews; returned records reach only their owner', async () => {
+  it('AC-2: attendance, correction and paid leave reviews; returned records reach only their owner, linked to their month', async () => {
     const punch = (kind: string, version: number, time: string) =>
       call(f.db, f.alice.params, 'punch', { kind, expectedVersion: version, idempotencyKey: newId() }, time);
     const opened = await punch('clock_in', 0, '2026-08-05T09:00:00+09:00');
@@ -147,13 +147,32 @@ describe('workforce.todo (docs/specs/inbox.md)', () => {
           key: 'my_returned',
           label: { ja: '差し戻された自分の勤怠・経費', en: 'My returned attendance and expenses' },
           count: 1,
-          href: '/me',
+          href: '/me?tab=expenses&period=2026-09',
           severity: 'warn',
         },
       ],
     });
+    // The portal shows one month, so the link opens the tab and month of the oldest returned record (here the
+    // attendance day of the previous month, returned after the expense).
+    const day = (
+      await f.db.run(f.alice.params, (ctx) =>
+        repo(ctx, WorkforceAttendance).list({ where: { userId: f.alice.id, status: 'submitted' } }),
+      )
+    ).items[0];
+    if (!day) throw new Error('Expected the submitted attendance');
+    await call(f.db, f.manager.params, 'review_attendance', {
+      attendanceId: day.id,
+      expectedVersion: day.version,
+      decision: 'return',
+      dayKind: 'workday',
+      reason: '退勤時刻を確認してください',
+    });
+    expect(await todo(f.alice.params)).toMatchObject({
+      items: [{ key: 'my_returned', count: 2, href: '/me?tab=attendance&period=2026-08' }],
+    });
     expect(count(await todo(f.bob.params), 'my_returned')).toBe(0);
     expect(count(await todo(f.manager.params), 'expense_review')).toBe(0);
+    expect(count(await todo(f.manager.params), 'attendance_review')).toBe(0);
   });
 
   it('AC-2: approved expenses and draft payroll are counted for the payroll role only', async () => {

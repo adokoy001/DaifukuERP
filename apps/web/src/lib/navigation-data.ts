@@ -62,8 +62,8 @@ export const WORKSPACES: readonly WorkspaceDefinition[] = [
     id: 'other',
     label: { ja: 'その他', en: 'Other workspaces' },
     description: {
-      ja: '追加された業務や、まだ分類していない画面を探します。',
-      en: 'Find additional modules and screens awaiting classification.',
+      ja: 'やること（受信箱）と、追加された業務・まだ分類していない画面を探します。',
+      en: 'Find the to-do inbox, additional modules and screens awaiting classification.',
     },
   },
 ];

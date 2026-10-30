@@ -103,10 +103,32 @@ const QUEUES: readonly Queue[] = [
   },
 ];
 
+/** Oldest first, one row: the total counts every match and the row picks the month a link opens. */
+async function oldest(
+  ctx: Context,
+  entity: EntityDef,
+  where: Domain,
+  dateField: string,
+): Promise<{ total: number; month: string | undefined }> {
+  const page = await repo(ctx, entity).list({
+    where,
+    orderBy: [
+      { field: dateField, dir: 'asc' },
+      { field: 'id', dir: 'asc' },
+    ],
+    limit: 1,
+  });
+  const row = page.items[0] as Record<string, unknown> | undefined;
+  const date = typeof row?.[dateField] === 'string' ? (row[dateField] as string) : undefined;
+  return { total: page.total, month: date?.slice(0, 7) };
+}
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 function href(month: string | undefined, tab?: 'payroll'): string {
   const search = new URLSearchParams();
   if (tab) search.set('tab', tab);
-  if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) search.set('period', month);
+  if (month && MONTH.test(month)) search.set('period', month);
   const query = search.toString();
   return query ? `/workforce?${query}` : '/workforce';
 }
@@ -114,35 +136,36 @@ function href(month: string | undefined, tab?: 'payroll'): string {
 async function queue(ctx: Context, item: Queue, self: string | undefined): Promise<TodoCandidate | null> {
   if (!canRunAction(ctx, item.action)) return null;
   const where: Domain = { ...item.where, ...(self ? { userId: { $ne: self } } : {}) };
-  const page = await repo(ctx, item.entity).list({
-    where,
-    orderBy: [
-      { field: item.dateField, dir: 'asc' },
-      { field: 'id', dir: 'asc' },
-    ],
-    limit: 1,
-  });
-  const oldest = page.items[0] as Record<string, unknown> | undefined;
-  const date = typeof oldest?.[item.dateField] === 'string' ? (oldest[item.dateField] as string) : undefined;
+  const found = await oldest(ctx, item.entity, where, item.dateField);
   return {
     key: item.key,
     label: item.label,
-    count: page.total,
-    href: href(date?.slice(0, 7), item.tab),
+    count: found.total,
+    href: href(found.month, item.tab),
     severity: item.severity,
   };
 }
 
-/** The caller's own returned attendance and expenses, which only the caller can correct and resubmit. */
+/**
+ * The caller's own returned attendance and expenses, which only the caller can correct and resubmit. The link opens
+ * the employee portal (/me) on the tab and month of the oldest returned record, because the portal shows one month.
+ */
 async function returned(ctx: Context, self: string | undefined): Promise<TodoCandidate | null> {
   if (!self) return null;
   const mine = { userId: self, status: 'returned' };
-  const count = (await repo(ctx, WorkforceAttendance).count(mine)) + (await repo(ctx, WorkforceExpense).count(mine));
+  const attendance = await oldest(ctx, WorkforceAttendance, mine, 'workDate');
+  const expenses = await oldest(ctx, WorkforceExpense, mine, 'expenseDate');
+  const first = [
+    { tab: 'attendance', month: attendance.month },
+    { tab: 'expenses', month: expenses.month },
+  ]
+    .filter((item): item is { tab: string; month: string } => !!item.month && MONTH.test(item.month))
+    .sort((a, b) => a.month.localeCompare(b.month))[0];
   return {
     key: 'my_returned',
     label: label('差し戻された自分の勤怠・経費', 'My returned attendance and expenses'),
-    count,
-    href: '/me',
+    count: attendance.total + expenses.total,
+    href: first ? `/me?${new URLSearchParams({ tab: first.tab, period: first.month }).toString()}` : '/me',
     severity: 'warn',
   };
 }

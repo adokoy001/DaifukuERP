@@ -2,7 +2,7 @@
 // parallel with Promise.allSettled, so one failing provider never hides the others. Reads happen when a screen that
 // shows the inbox is mounted and on the manual refresh/retry only: no polling, no refetch on focus or reconnect.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   inboxGroups,
   inboxProviders,
@@ -39,6 +39,19 @@ export async function loadInbox(
   });
 }
 
+/**
+ * AC-7: read when a screen showing the inbox mounts and on the manual refresh/retry only. No polling, no refetch on
+ * focus or reconnect, no automatic retry, and nothing kept for the next mount.
+ */
+export const INBOX_QUERY_OPTIONS = {
+  staleTime: 0,
+  gcTime: 0,
+  retry: false,
+  refetchInterval: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+} as const;
+
 function inboxIdentity(): string {
   const user = getUser();
   return `${user?.tenantId ?? ''}:${user?.id ?? ''}:${getCompanyId() ?? ''}`;
@@ -56,16 +69,15 @@ export function useInbox() {
     queryKey: key,
     queryFn: ({ signal }) => loadInbox(providers, callTodo, signal),
     enabled: providers.length > 0,
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    ...INBOX_QUERY_OPTIONS,
   });
   const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
+  const inFlight = useRef(new Set<string>());
+  /** Reloads one provider; resolves to whether it loaded, or undefined when a retry of it was already running. */
   const retry = useCallback(
-    async (action: string) => {
+    async (action: string): Promise<boolean | undefined> => {
+      if (inFlight.current.has(action)) return undefined;
+      inFlight.current.add(action);
       setRetrying((current) => new Set(current).add(action));
       let outcome: ProviderOutcome;
       try {
@@ -74,16 +86,18 @@ export function useInbox() {
         outcome = { action, ok: false, error };
       }
       qc.setQueryData<ProviderOutcome[]>(key, (current) => replaceOutcome(current, outcome));
+      inFlight.current.delete(action);
       setRetrying((current) => {
         const next = new Set(current);
         next.delete(action);
         return next;
       });
+      return outcome.ok;
     },
     [qc, key],
   );
-  // A manual refresh keeps the previous counts on screen (docs/conventions/ui.md 状態表示); only a retried provider
-  // and providers without any result yet show the loading state.
+  // A manual refresh keeps the previous counts on screen (docs/conventions/ui.md 状態表示); a retried failure stays a
+  // failure (its button keeps focus) until the retry settles, and only providers without any result show loading.
   const groups = inboxGroups(providers, query.data, retrying, catalog);
   return {
     meta,
@@ -92,6 +106,6 @@ export function useInbox() {
     summary: inboxSummary(groups),
     refreshing: query.isFetching,
     refresh: () => void query.refetch(),
-    retry: (action: string) => void retry(action),
+    retry,
   };
 }

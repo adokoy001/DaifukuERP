@@ -3,6 +3,7 @@
 // is applied to the company. Fixture "now" is 2026-09-30 12:00 JST.
 import { appMeta, companies, newId, PermissionDenied, todoResult, type ContextParams } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { restaurantTodo } from '../src/actions/todo.ts';
 import { setup, type Fixture, type Row } from './fixture.ts';
 
 let s: Fixture;
@@ -74,6 +75,12 @@ describe('restaurant_chain.todo (docs/specs/inbox.md)', () => {
     await review(await report('RC-B', '2026-09-27'), 'return');
     await review(await report('RC-B', '2026-09-26'), 'approve'); // awaiting headquarters posting
     await report('RC-B', '2026-09-10'); // older than the missing window, still awaiting review
+    await s.act('restaurant_chain.record_day_status', {
+      storeId: store('RC-A'),
+      date: '2026-09-28',
+      dayStatus: 'no_sales',
+      reason: '受信箱の試験（未提出の下書き）',
+    }); // a draft that was never submitted is still missing
     const result = await todo();
     expect(result.items.map((item) => [item.key, item.count, item.href, item.severity])).toEqual([
       ['missing_reports', 11, '/operations?from=2026-09-23&to=2026-09-29', 'warn'],
@@ -90,6 +97,19 @@ describe('restaurant_chain.todo (docs/specs/inbox.md)', () => {
       missing_reports: 5,
       returned_reports: 1,
       review_reports: 1,
+    });
+  });
+
+  it('AC-2: when the window holds more store-days than the limit, only the missing count is left out', async () => {
+    const result = await s.run((ctx) => restaurantTodo(ctx, { storeDays: 5 }));
+    expect(result.items.map((item) => [item.key, item.count])).toEqual([
+      ['returned_reports', 1],
+      ['review_reports', 2],
+      ['finalize_reports', 1],
+    ]);
+    expect((await s.run((ctx) => restaurantTodo(ctx, { storeDays: 14 }))).items[0]).toMatchObject({
+      key: 'missing_reports',
+      count: 11,
     });
   });
 

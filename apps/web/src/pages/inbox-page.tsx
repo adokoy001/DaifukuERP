@@ -1,7 +1,8 @@
 // /inbox (docs/specs/inbox.md AC-4..AC-9): every runnable provider as its own group with its items, or its failure and
 // a retry that reloads that provider only. Refreshing is manual; the page never polls.
+import { useState } from 'react';
 import { useInbox } from '../api/inbox.ts';
-import { InboxFailure, InboxItemLink, countLabel } from '../components/inbox-card.tsx';
+import { InboxDropped, InboxFailure, InboxItemLink, countLabel } from '../components/inbox-card.tsx';
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
 import type { InboxGroup } from '../lib/inbox.ts';
@@ -10,7 +11,7 @@ import { S } from '../strings.ts';
 import { Badge, Button, Card, EmptyState, PageHeader, SkeletonCard } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
-function GroupBody({ group, retry }: { group: InboxGroup; retry: (action: string) => void }) {
+function GroupBody({ group, retry }: { group: InboxGroup; retry: (group: InboxGroup) => void }) {
   const { t } = useLocale();
   if (group.status === 'loading')
     return (
@@ -20,24 +21,54 @@ function GroupBody({ group, retry }: { group: InboxGroup; retry: (action: string
     );
   if (group.status === 'error')
     return (
-      <InboxFailure name={t(group.provider.label)} error={group.error} onRetry={() => retry(group.provider.action)} />
+      <InboxFailure
+        name={t(group.provider.label)}
+        error={group.error}
+        retrying={group.retrying === true}
+        onRetry={() => retry(group)}
+      />
     );
   if (!group.items.length)
-    return <p className="inbox-none">{t({ ja: '処理待ちはありません。', en: 'Nothing is waiting here.' })}</p>;
+    return group.dropped ? (
+      <InboxDropped count={group.dropped} />
+    ) : (
+      <p className="inbox-none">{t({ ja: '処理待ちはありません。', en: 'Nothing is waiting here.' })}</p>
+    );
   return (
-    <ul className="inbox-list">
-      {group.items.map((item) => (
-        <li key={item.id}>
-          <InboxItemLink item={item} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="inbox-list">
+        {group.items.map((item) => (
+          <li key={item.id}>
+            <InboxItemLink item={item} />
+          </li>
+        ))}
+      </ul>
+      {group.dropped ? <InboxDropped count={group.dropped} /> : null}
+    </>
   );
 }
+
+const headingId = (group: InboxGroup) => `inbox-${group.provider.module}`;
 
 export function InboxPage() {
   const { t, locale } = useLocale();
   const { meta, providers, groups, summary, refreshing, refresh, retry } = useInbox();
+  const [announcement, setAnnouncement] = useState('');
+  // A retry that loads moves focus to the group's heading (the failure and its button are replaced by the items); a
+  // retry that fails again keeps focus on the same retry button. Either way the result is announced politely.
+  const retryGroup = (group: InboxGroup) => {
+    const name = t(group.provider.label);
+    setAnnouncement('');
+    void retry(group.provider.action).then((ok) => {
+      if (ok === undefined) return;
+      setAnnouncement(
+        ok
+          ? t({ ja: `${name}: 取得しました`, en: `${name}: loaded` })
+          : t({ ja: `${name}: 再試行しましたが取得できませんでした`, en: `${name}: still could not be loaded` }),
+      );
+      if (ok) requestAnimationFrame(() => document.getElementById(headingId(group))?.focus());
+    });
+  };
   if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (!meta.data) return <LoadingView />;
   const busy = refreshing || summary.loading;
@@ -63,8 +94,8 @@ export function InboxPage() {
           ) : null
         }
       />
-      <p className="sr-only" aria-live="polite">
-        {busy ? t(S.loading) : ''}
+      <p className="sr-only" aria-live="polite" data-testid="inbox-live">
+        {busy ? t(S.loading) : announcement}
       </p>
       {!providers.length ? (
         <EmptyState
@@ -77,33 +108,36 @@ export function InboxPage() {
         />
       ) : (
         <>
-          {summary.loading ? null : (
+          {summary.loaded ? (
             <p className="inbox-summary" data-testid="inbox-summary">
               {t({ ja: '合計', en: 'Total' })} <strong>{countLabel(summary.total, locale)}</strong>
               {summary.failed.length
                 ? t({
                     ja: `（${summary.failed.length}業務は取得できませんでした）`,
-                    en: ` (${summary.failed.length} could not be loaded)`,
+                    en: ` (${summary.failed.length} source(s) could not be loaded)`,
                   })
                 : null}
+              {summary.loading ? t({ ja: '（取得中あり）', en: ' (some still loading)' }) : null}
             </p>
-          )}
+          ) : null}
           <div className="inbox-groups" aria-busy={refreshing || undefined}>
             {groups.map((group) => (
               <Card
                 key={group.provider.action}
                 className="inbox-group"
-                aria-labelledby={`inbox-${group.provider.module}`}
+                aria-labelledby={headingId(group)}
                 data-testid="inbox-group"
                 data-provider={group.provider.action}
               >
                 <div className="inbox-card-head">
-                  <h2 id={`inbox-${group.provider.module}`}>{t(group.provider.label)}</h2>
+                  <h2 id={headingId(group)} tabIndex={-1}>
+                    {t(group.provider.label)}
+                  </h2>
                   {group.status === 'ok' ? (
                     <Badge tone={group.total ? 'accent' : 'neutral'}>{countLabel(group.total, locale)}</Badge>
                   ) : null}
                 </div>
-                <GroupBody group={group} retry={retry} />
+                <GroupBody group={group} retry={retryGroup} />
               </Card>
             ))}
           </div>

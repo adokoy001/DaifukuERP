@@ -36,7 +36,7 @@ import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
-import { parseWorkforceSearch } from './lib/workforce.ts';
+import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
 
@@ -232,6 +232,7 @@ const accessRoute = createRoute({
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
+  validateSearch: parseEmployeeSearch,
   component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage'),
 });
 const workforceRoute = createRoute({

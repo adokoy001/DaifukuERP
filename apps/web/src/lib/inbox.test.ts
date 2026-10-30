@@ -75,6 +75,12 @@ describe('inbox hrefs (AC-6)', () => {
       search: { period: '2026-08', tab: 'payroll' },
     });
     expect(inboxTarget('/finance/banking', catalog)).toEqual({ pathname: '/finance/banking', search: {} });
+    // Only a leading `//` (protocol-relative) is refused; a `//` inside a query value stays a query value of a
+    // catalog path, and each route's validateSearch drops keys it does not know.
+    expect(inboxTarget('/workforce?next=//evil.example', catalog)).toEqual({
+      pathname: '/workforce',
+      search: { next: '//evil.example' },
+    });
   });
 
   it('AC-6: refuses external, protocol-relative, unknown, unauthorized and malformed hrefs', () => {
@@ -119,6 +125,23 @@ describe('inbox hrefs (AC-6)', () => {
     expect(result.dropped).toBe(6);
     expect(providerItems('workforce.todo', { rows: [] }, catalog)).toEqual({ items: [], dropped: 0 });
   });
+
+  it('AC-6: the summary reports dropped items so an empty inbox is not shown as "nothing waiting"', () => {
+    const groups = inboxGroups(
+      inboxProviders(meta),
+      [
+        { action: 'workforce.todo', ok: true, value: { items: [item('hidden', 2, '/admin/users')] } },
+        { action: 'banking.todo', ok: true, value: { items: [] } },
+      ],
+      new Set(),
+      catalog,
+    );
+    expect(groups.map((group) => [group.items.length, group.dropped])).toEqual([
+      [0, 1],
+      [0, 0],
+    ]);
+    expect(inboxSummary(groups)).toMatchObject({ total: 0, dropped: 1, loading: false, loaded: true });
+  });
 });
 
 describe('inbox groups and summary (AC-4/AC-5)', () => {
@@ -146,22 +169,31 @@ describe('inbox groups and summary (AC-4/AC-5)', () => {
     expect(summary.failed.map((provider) => provider.action)).toEqual(['banking.todo']);
   });
 
-  it('AC-4: providers without a result or being retried are loading; a retry replaces only that outcome', () => {
+  it('AC-4/AC-5: providers without a result are loading; a retried failure stays a failure until the retry settles', () => {
     const first = [ok('workforce.todo', { items: [] }), { action: 'banking.todo', ok: false, error: 'x' } as const];
     expect(inboxGroups(providers, undefined, new Set(), catalog).map((group) => group.status)).toEqual([
       'loading',
       'loading',
     ]);
-    expect(inboxGroups(providers, first, new Set(['banking.todo']), catalog).map((group) => group.status)).toEqual([
-      'ok',
-      'loading',
+    const retrying = inboxGroups(providers, first, new Set(['banking.todo']), catalog);
+    expect(retrying.map((group) => [group.status, group.retrying ?? false])).toEqual([
+      ['ok', false],
+      ['error', true],
     ]);
+    // The summary (and its total line) stays while one provider is retried.
+    expect(inboxSummary(retrying)).toMatchObject({ loading: false, loaded: true });
     const retried = replaceOutcome(first, ok('banking.todo', { items: [item('unmatched', 4, '/finance/banking')] }));
     expect(inboxGroups(providers, retried, new Set(), catalog).map((group) => [group.status, group.total])).toEqual([
       ['ok', 0],
       ['ok', 4],
     ]);
-    expect(inboxSummary(inboxGroups(providers, undefined, new Set(), catalog)).loading).toBe(true);
+    expect(inboxSummary(inboxGroups(providers, undefined, new Set(), catalog))).toMatchObject({
+      loading: true,
+      loaded: false,
+    });
+    expect(
+      inboxSummary(inboxGroups(providers, [ok('workforce.todo', { items: [] })], new Set(), catalog)),
+    ).toMatchObject({ loading: true, loaded: true });
   });
 
   it('AC-4: the home summary totals every item and lists warnings first, then larger counts, up to the limit', () => {

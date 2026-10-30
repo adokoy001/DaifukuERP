@@ -31,6 +31,7 @@ const CONVERTED = [
   'components/list-bulk.tsx',
   'components/list-export.tsx',
   'pages/inbox-page.tsx',
+  'components/error-details.tsx',
   'components/inbox-card.tsx',
   'inbox.css',
 ];

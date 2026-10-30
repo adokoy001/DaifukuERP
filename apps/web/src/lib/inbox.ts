@@ -36,12 +36,19 @@ export interface InboxGroup {
   /** Items left out because their href is not a known in-app screen or their shape is invalid. */
   dropped: number;
   error?: unknown;
+  /** A failed provider being retried: the failure stays on screen (and keeps focus) until the retry settles. */
+  retrying?: boolean;
 }
 export interface InboxSummary {
   total: number;
   top: InboxItem[];
   failed: InboxProvider[];
+  /** Some provider has no outcome yet. */
   loading: boolean;
+  /** At least one provider has an outcome (loaded or failed), so a total can be shown. */
+  loaded: boolean;
+  /** Items of loaded providers that could not be shown (no screen in the caller's catalog, or a bad shape). */
+  dropped: number;
 }
 
 const KEY = /^[a-z][a-z0-9_]*$/;
@@ -106,7 +113,7 @@ export function providerItems(
   return { items, dropped: raw.length - items.length };
 }
 
-/** One group per runnable provider: still loading, failed (with its error) or its validated items. */
+/** One group per runnable provider: still loading, failed (with its error, also while retried) or its validated items. */
 export function inboxGroups(
   providers: readonly InboxProvider[],
   outcomes: readonly ProviderOutcome[] | undefined,
@@ -115,9 +122,18 @@ export function inboxGroups(
 ): InboxGroup[] {
   return providers.map((provider) => {
     const outcome = outcomes?.find((item) => item.action === provider.action);
-    if (!outcome || pending.has(provider.action))
-      return { provider, status: 'loading', items: [], total: 0, dropped: 0 };
-    if (!outcome.ok) return { provider, status: 'error', items: [], total: 0, dropped: 0, error: outcome.error };
+    const retrying = pending.has(provider.action);
+    if (outcome && !outcome.ok)
+      return {
+        provider,
+        status: 'error',
+        items: [],
+        total: 0,
+        dropped: 0,
+        error: outcome.error,
+        ...(retrying ? { retrying } : {}),
+      };
+    if (!outcome || retrying) return { provider, status: 'loading', items: [], total: 0, dropped: 0 };
     const { items, dropped } = providerItems(provider.action, outcome.value, catalog);
     return { provider, status: 'ok', items, total: items.reduce((sum, item) => sum + item.count, 0), dropped };
   });
@@ -140,6 +156,8 @@ export function inboxSummary(groups: readonly InboxGroup[], limit = 5): InboxSum
     top,
     failed: groups.filter((group) => group.status === 'error').map((group) => group.provider),
     loading: groups.some((group) => group.status === 'loading'),
+    loaded: groups.some((group) => group.status !== 'loading'),
+    dropped: groups.reduce((sum, group) => sum + group.dropped, 0),
   };
 }
 

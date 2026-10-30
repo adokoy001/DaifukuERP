@@ -67,7 +67,20 @@
   flex: none;
   color: var(--text-subtle);
 }
+.inbox-urgent {
+  margin-right: 4px;
+  font-weight: 700;
+}
+.inbox-card-head h2:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.inbox-failure .btn[aria-disabled='true'] {
+  cursor: progress;
+  opacity: 0.7;
+}
 .inbox-none,
+.inbox-dropped,
 .inbox-card-failed,
 .inbox-summary {
   margin: 0;

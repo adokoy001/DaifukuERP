@@ -11,6 +11,7 @@ import {
   type ContextParams,
 } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
+import { openFiscalYear } from '@daifuku/mod-accounting';
 import { seedWorkforce, WorkforceSite } from '@daifuku/mod-workforce';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FILING_PROFILE_OVERRIDE, type CountryFilingProfile } from '../src/index.ts';
@@ -37,7 +38,12 @@ const profile: CountryFilingProfile = {
   }),
   export: () => [],
 };
-registry.registerOverride(FILING_PROFILE_OVERRIDE, () => [profile]);
+const accountingProfile: CountryFilingProfile = {
+  ...profile,
+  kind: 'accounting',
+  option: { ...profile.option, code: 'test-inbox-accounting', taxYears: [] },
+};
+registry.registerOverride(FILING_PROFILE_OVERRIDE, () => [profile, accountingProfile]);
 let db: TestDb;
 type Command = { id: string; version: number };
 const NOW = new Date('2027-02-01T00:00:00Z');
@@ -91,6 +97,58 @@ describe('tax_filing.todo (docs/specs/inbox.md)', () => {
     expect(await todo(person(['accounting']))).toEqual({ items: [] }); // payroll kind is not accounting's
     await run('tax_filing.cancel', { kind: 'payroll', id: draft.id, expectedVersion: draft.version, reason: '取消' });
     expect(await todo(reviewer)).toEqual({ items: [] });
+  });
+
+  it('AC-2: a financial statement preparation drafted by another accounting user waits for the other accounting users', async () => {
+    const preparer = person(['accounting']);
+    const other = person(['accounting']);
+    const year = await db.run({ now: () => NOW }, (ctx) => openFiscalYear(ctx, { startDate: '2026-01-01' }));
+    await run(
+      'tax_filing.save_accounting_profile',
+      {
+        expectedVersion: 0,
+        countryProfile: accountingProfile.option.code,
+        entityType: 'corporation',
+        accountingBasis: 'tax_exclusive',
+        consolidation: 'standalone',
+        legalName: '合成試験',
+        mappings: [],
+        basis: '合成の科目分類確認',
+      },
+      preparer,
+    );
+    expect(await todo(other)).toEqual({ items: [] });
+    const draft = await run<Command>(
+      'tax_filing.prepare_accounting',
+      {
+        fiscalYearId: year.fiscalYear.id,
+        idempotencyKey: newId(),
+        incomeTransferNotPostedConfirmed: true,
+        taxClassificationReview: '合成の税区分確認',
+      },
+      preparer,
+    );
+    expect(await todo(other)).toEqual({
+      items: [
+        {
+          key: 'accounting_review',
+          label: { ja: '確認待ちの財務諸表の準備資料', en: 'Financial statement preparations awaiting review' },
+          count: 1,
+          href: '/finance/filing',
+          severity: 'info',
+        },
+      ],
+    });
+    expect(await todo()).toMatchObject({ items: [{ key: 'accounting_review', count: 1 }] }); // admin, not the preparer
+    expect(await todo(preparer)).toEqual({ items: [] }); // the preparer cannot confirm their own version
+    expect(await todo(reviewer)).toEqual({ items: [] }); // accounting kind is not workforce_payroll's
+    await run('tax_filing.cancel', {
+      kind: 'accounting',
+      id: draft.id,
+      expectedVersion: draft.version,
+      reason: '取消',
+    });
+    expect(await todo(other)).toEqual({ items: [] });
   });
 
   it('AC-3: site-limited and unrelated roles are refused and do not see the provider', async () => {

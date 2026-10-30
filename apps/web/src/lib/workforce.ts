@@ -58,6 +58,21 @@ export function parseWorkforceSearch(raw: Record<string, unknown>): WorkforceSea
     out.tab = raw.tab as WorkforceTabId;
   return out;
 }
+export const EMPLOYEE_TABS = ['today', 'shifts', 'attendance', 'leave', 'expenses', 'fiscal', 'payroll'] as const;
+export type EmployeeTabId = (typeof EMPLOYEE_TABS)[number];
+export interface EmployeeSearch {
+  period?: string;
+  tab?: EmployeeTabId;
+}
+/** `/me?period=YYYY-MM&tab=…` (the inbox opens the month of the oldest returned record); bad values are dropped. */
+export function parseEmployeeSearch(raw: Record<string, unknown>): EmployeeSearch {
+  const out: EmployeeSearch = {};
+  const month = parseWorkforceSearch({ period: raw.period }).period;
+  if (month) out.period = month;
+  if (typeof raw.tab === 'string' && (EMPLOYEE_TABS as readonly string[]).includes(raw.tab))
+    out.tab = raw.tab as EmployeeTabId;
+  return out;
+}
 export const leavePortions: Record<string, Label> = {
   full: { ja: '1日', en: 'Full day' },
   morning: { ja: '午前半日', en: 'Morning' },

@@ -101,9 +101,9 @@ describe('edge.todo (docs/specs/inbox.md)', () => {
         },
       ],
     });
-    expect((await todo(person('edge_operator', [east.site.id]))).items[0]?.count).toBe(1);
+    expect((await todo(person('edge_manager', [east.site.id]))).items[0]?.count).toBe(1);
     expect((await todo(person('edge_manager', [west.site.id]))).items[0]?.count).toBe(1);
-    expect(await todo(person('edge_operator', [newId()]))).toEqual({ items: [] });
+    expect(await todo(person('edge_manager', [newId()]))).toEqual({ items: [] });
     expect((await run((ctx) => repo(ctx, EdgeJob).get(west.job.id))).state).toBe('executing');
 
     const uncertain = await run((ctx) => repo(ctx, EdgeJob).get(east.job.id));
@@ -114,16 +114,21 @@ describe('edge.todo (docs/specs/inbox.md)', () => {
       evidence: 'Printed receipt found at the counter',
       resolution: 'succeeded',
     });
-    expect(await todo(person('edge_operator', [east.site.id]))).toEqual({ items: [] });
+    expect(await todo(person('edge_manager', [east.site.id]))).toEqual({ items: [] });
   });
 
-  it('AC-3: roles that may only read device records are refused and do not see the provider', async () => {
-    for (const params of [person('workforce_hr'), person('sales')]) {
+  it('AC-1 AC-3: operators (who cannot run edge.resolve) and read-only roles are refused and do not see the provider', async () => {
+    for (const params of [
+      person('edge_operator', [newId()]),
+      person('edge_operator'),
+      person('workforce_hr'),
+      person('sales'),
+    ]) {
       await expect(todo(params)).rejects.toBeInstanceOf(PermissionDenied);
       expect(await run(async (ctx) => appMeta(ctx).actions.map((a) => a.name), params)).not.toContain('edge.todo');
     }
     expect(
-      await run(async (ctx) => appMeta(ctx).actions.map((a) => a.name), person('edge_operator', [newId()])),
+      await run(async (ctx) => appMeta(ctx).actions.map((a) => a.name), person('edge_manager', [newId()])),
     ).toContain('edge.todo');
   });
 });
