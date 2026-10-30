@@ -88,9 +88,11 @@ export interface CsvTable {
   /** For each entry of `rows`: its 1-based data row number in the file (header not counted; blank records counted). */
   lines: number[];
   /**
-   * Data row numbers (as in `lines`) of records with a non-blank cell past the last header — usually an unquoted comma
-   * that shifted every later cell. RFC 4180 records have as many cells as the header, and `rows` would silently drop
-   * those cells, so the screen refuses such a file. Blank cells past the header (a trailing comma) are not counted.
+   * Data row numbers (as in `lines`) of records that an unquoted comma has probably shifted: a non-blank cell past the
+   * last header, or more cells than the file's usual width. RFC 4180 records have as many cells as the header, and
+   * `rows` would silently drop the extra cells, so the screen refuses such a file. The usual width is the header's, or
+   * the most common record width when that is larger (a file written with a trailing comma on every record), so a
+   * shifted record whose last value is blank is caught unless most records share its width.
    */
   wide: number[];
 }
@@ -102,14 +104,28 @@ export function csvTable(records: readonly string[][]): CsvTable {
   const start = records.findIndex((r) => !blank(r));
   if (start < 0) return { headers: [], rows: [], lines: [], wide: [] };
   const headers = (records[start] ?? []).map((h) => h.trim());
-  const rows: string[][] = [];
-  const lines: number[] = [];
-  const wide: number[] = [];
-  records.slice(start + 1).forEach((record, index) => {
-    if (blank(record)) return;
-    if (!blank(record.slice(headers.length))) wide.push(index + 1);
-    rows.push(headers.map((_, i) => record[i] ?? ''));
-    lines.push(index + 1);
-  });
-  return { headers, rows, lines, wide };
+  const data = records
+    .slice(start + 1)
+    .map((record, index) => ({ record, line: index + 1 }))
+    .filter(({ record }) => !blank(record));
+  const width = Math.max(headers.length, commonWidth(data.map(({ record }) => record.length)));
+  return {
+    headers,
+    rows: data.map(({ record }) => headers.map((_, i) => record[i] ?? '')),
+    lines: data.map(({ line }) => line),
+    wide: data
+      .filter(({ record }) => record.length > width || !blank(record.slice(headers.length)))
+      .map(({ line }) => line),
+  };
+}
+
+/** The most frequent record width (the smaller one on a tie); 0 when there are no records. */
+function commonWidth(widths: readonly number[]): number {
+  const counts = new Map<number, number>();
+  for (const width of widths) counts.set(width, (counts.get(width) ?? 0) + 1);
+  let best = 0;
+  let bestCount = 0;
+  for (const [width, count] of counts)
+    if (count > bestCount || (count === bestCount && width < best)) [best, bestCount] = [width, count];
+  return best;
 }

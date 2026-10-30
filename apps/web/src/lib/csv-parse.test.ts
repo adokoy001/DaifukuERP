@@ -78,4 +78,14 @@ describe('AC-11: RFC 4180 records', () => {
     expect(table.lines).toEqual([1, 2, 4, 5]);
     expect(table.rows[2]).toEqual(['P3', 'ACME, Inc', 'ｱｸﾒ']);
   });
+
+  it('AC-11: a shifted record whose last value is blank is reported when it is wider than the file usually is', () => {
+    // " Inc." would silently land in phone: the record has one blank cell more than the other records.
+    const shifted = csvTable(parseCsv('code,name,phone\r\nP1,Daifuku, Inc.,\r\nP2,Mochi,03-1234\r\nP3,Dango,06-1\r\n'));
+    expect(shifted.wide).toEqual([1]);
+    // Written with a trailing comma on every record: the usual width is one more than the header's.
+    const trailing = csvTable(parseCsv('code,name,phone\r\nP1,Mochi,03,\r\nP2,Dango,06,\r\nP3,Daifuku, Inc.,,\r\n'));
+    expect(trailing.wide).toEqual([3]);
+    expect(trailing.rows[0]).toEqual(['P1', 'Mochi', '03']);
+  });
 });

@@ -378,6 +378,33 @@ describe('db-test-startup schema templates on the real server', () => {
     });
   });
 
+  it('AC-7 restores a missing test database from an own template of another schema and rebuilds it in place', async () => {
+    // The usual case after an interrupted suite: the next suite has another registry, so no template for its key.
+    await ensureTemplate();
+    const base = await schemaBuild();
+    const other = { ...base, ddl: [...base.ddl, 'CREATE TABLE tpl_probe_restore (id int)'] };
+    const key = templateKey(other);
+    const name = templateName(ready().database, key);
+    expect(await oidOf(name)).toBeNull();
+    await withMaintenance((maintenance) => maintenance.sql.unsafe(`DROP DATABASE "${ready().database}"`));
+    const prepared = await prepareFromTemplate(ready(), OWNER_URL, { build: other });
+    try {
+      expect(prepared.outcome).toEqual({ used: 'built', template: name, key, base: 'in-place' });
+      expect(await oidOf(ready().database)).not.toBeNull();
+      const [probe] = await prepared.owner!.sql<
+        { name: string | null }[]
+      >`select to_regclass('public.tpl_probe_restore')::text as name`;
+      expect(probe?.name).toBe('tpl_probe_restore');
+    } finally {
+      await prepared.owner?.close();
+    }
+    const [row] = (await withMaintenance((maintenance) => listTemplates(maintenance, ready().database))).filter(
+      (template) => template.name === name,
+    );
+    expect(parseTemplateComment(row?.comment ?? null)?.key).toBe(key);
+    await withMaintenance((maintenance) => maintenance.sql.unsafe(`DROP DATABASE "${name}"`));
+  }, 60_000);
+
   it('AC-7 reports a missing test database that has no own template and creates nothing', async () => {
     const absent = `${ready().database}_absent`;
     const prepared = await prepareFromTemplate({ ...ready(), database: absent }, databaseUrl(OWNER_URL, absent));

@@ -109,6 +109,7 @@
 - [実測] `pnpm test:db:templates`: 試験 DB `daifuku_test_w1` のテンプレート 59 件・676.1 MB を一覧し、`-- --drop` で 59 件すべてを 9.5 秒で削除した。試験 DB と他の試験 DB（`daifuku_test_w10` など）は残った。変数が無いとき・`daifuku_latest` では終了コード 2 で何もしない。
 - [実測] `pnpm gate:light --base ebc7574`（テンプレートを消した直後の cold 状態）: **894.7 秒で成功**（wall 14 分 55 秒）。format 25.4、docs 0.4、assurance 0.1、typecheck 8.9、typecheck:api 15.7、typecheck:web 20.4、lint 19.4、unit 48.1（132 ファイル / 1,240 試験）、db 739.2（kernel の変更で DB 全件に昇格、117 / 117 ファイル、713 試験）、deploy 17.1。作り直しへの退避の通知は 2 件で、どちらも `test-template.db.test.ts` 自身が余分な schema・既定権限を足した試験のもの。実行後のテンプレートは 59 件・672.7 MB で、試験 DB に既定権限・試験用 schema は残っていない（load average 3.0〜4.8。修正前の最終 light 950.0 秒・db 747.8 秒と同程度で、cold と warm の違いがあるため差は比べない）。
 - [レビュー] 正常経路で増えるのは、試験 DB への確認の接続 1 回と catalog の小さな問い合わせ 1 回である。修正前の全 DB suite・light の時間（上の表）は測り直していない。
+- [実測]（統合時、2026-10-30）検証者の指摘: AC-7 の「試験 DB が無く、今の key のテンプレートも無い」経路（別の key の自分のテンプレートから復元し、その場で作り直してコピー）に試験が無かった（変異: その `CREATE DATABASE … TEMPLATE` を `legacy` に置き換えても既存の試験が通った）。`AC-7 restores a missing test database from an own template of another schema` を追加し、結果が `built`/`in-place`、試験 DB と新しい表があり、新しいテンプレートに印が付くことを確かめた。
 - [未検証] 年齢切れの削除で使用中のテンプレートを飛ばすこと（試験すると試験 DB の他のテンプレートを消すため、コードレビューのみ）。テンプレート作成中に他のクライアントがテンプレートへ接続する場合。locale の違う試験 DB の経路（初回と同じく未実測）。
 
 ### 時間
