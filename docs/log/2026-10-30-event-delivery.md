@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 業務イベントの配送 worker（F1）
 
 - セッション: 完成度向上計画 F1（workflow の作業項目、worktree `wip/event-delivery`、基点 `ffc2f42`）／ 担当: agent（実装担当。spec は spec 担当が書き、spec 批評の指摘をこの記録の担当が反映）／ 対象: [docs/specs/event-delivery.md](../specs/event-delivery.md)
-- 計測: tokens=null（未計測）, agent_minutes=約190, human_minutes=0, rework_lines=約60（試験の想定違いの修正、型の厳しい API パッケージの typecheck への対応、axe の指摘への対応）, gate_failures=2（gate:light の 1 回目が `typecheck:api`、2 回目が DB の更新試験 2 件で失敗。下の「見つけた問題」）
+- 計測: tokens=null（未計測）, agent_minutes=約230（gate:light の待ち時間を含む）, human_minutes=0, rework_lines=約60（試験の想定違いの修正、型の厳しい API パッケージの typecheck への対応、axe の指摘への対応）, gate_failures=2（gate:light の 1 回目が `typecheck:api`、2 回目が DB の更新試験 2 件で失敗。3 回目の失敗は負荷の下の時間依存で、この item の失敗には数えない。4 回目で全段通過）
 
 ## 決めたこと（と理由）
 
@@ -41,7 +41,7 @@
 - [実測] web の単体 `lib/event-deliveries.test.ts` 5 件と、関連の `navigation`・`help`・`token-usage`・`inbox` の試験が通過（計 239 件）。
 - [実測] ブラウザ（slot 21、`e2e-run.sh … --project=chromium --no-deps`）: `e2e/event-delivery.spec.ts` 4 件（fixture スクリプトが本物の kernel の経路で作った `dead` の行と説明、再送の toast と焦点、← で送信待ちタブへ・`?status=` の保持と再読込、送信先カードの鍵の状態、暗号鍵の無いサーバーで発行を押せず理由、worker 無効の案内、390px で横スクロールなし、英語、`judge()` の axe、ロールなしの利用者は項目なし・直接開くと説明、店舗限定の admin は項目ありで説明と API 403、受信箱の切替の 2 つの理由と `page.route` での切替・toast・409 の `toast.error`）。同じ実行で `inbox`・`settings-console`・`setup-health`・`navigation`・`ui-kit` の spec 27 件が通過。`navigation.spec.ts` の「store employee」1 件は業界の飲食店 fixture が要る試験で、`--no-deps` では準備されないため失敗した（この item の変更と無関係。業界 project 付きの実行は未実施）。
 - [実測] 手動の通し確認（spec 検証手順 4。scratchpad のスクリプト、使い捨ての DB）: 本物の API process を `EVENT_WORKER_ENABLED=true EVENT_WORKER_INTERVAL_MS=1000 EVENT_WEBHOOK_ALLOW_LOOPBACK=true` と識別設定（`NODE_ENV=test`。loopback の `PUBLIC_WEB_URL` が test でしか通らないため）で起動し、node の loopback 受信側を立て、REST で送信先の登録 → 鍵の発行 → 売上請求書の確定 → 受信側でマニュアルの検証関数がそのまま `verified: true`。受信側を 500 にすると `pending`・次の試行まで約 56 秒、`next_attempt_at` を早めて 8 回目で `dead`、導入チェックが `warn` と href、管理者の再送で同じ配送 ID が届き `delivered`。API の停止（SIGTERM）は終了コード 0。CLI は API を止めた状態で、識別設定なしなら `skipped: 1`・終了コード 2、識別設定ありなら `sent: 1`・0。API のログに署名鍵の文字列は 0 回。（API が動いている間に CLI を走らせた 1 回目は、行を戻した直後に API の worker が先に送ったため期待どおりにならなかった。手順の問題で、API を止めてやり直した。）
-- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 1 回目は `typecheck:api` で失敗（下記）。2 回目（1055 秒、負荷 3〜9）は format・docs・assurance・typecheck（root・api・web）・lint・unit 169 ファイル 1729 件・deploy が通過、DB は 136 ファイル 918 件のうち 2 件（上の 0016・0017 の更新試験）が失敗。2 件を直してその 2 ファイルだけを再実行し 11 件通過。3 回目の結果は下に追記する。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 1 回目は `typecheck:api` で失敗（下記）。2 回目（1055 秒、負荷 3〜9）は format・docs・assurance・typecheck（root・api・web）・lint・unit 169 ファイル 1729 件・deploy が通過、DB は 136 ファイル 918 件のうち 2 件（上の 0016・0017 の更新試験）が失敗。2 件を直してその 2 ファイルだけを再実行し 11 件通過。3 回目は unit の `scripts/test/gate.test.ts`（SIGTERM で gate を止める時間依存の試験。報告ファイルを書き途中で読んだ JSON の解析エラー）が、同時に走らせたブラウザ試験の負荷の下で 1 件失敗し、DB は中断された。単独で再実行して 129 件通過（この item の変更と無関係の時間依存）。4 回目（ブラウザ試験を同時に走らせない、1096 秒、負荷 4〜5）は **全段通過**: format・docs・assurance・typecheck（root・api・web）・lint・unit 169 ファイル 1729 件・deploy・DB 136 ファイル 918 件（`.runtime/gate/20261030T161647Z-light`）。最終の commit の後に、ブラウザ試験 `event-delivery`・`inbox`・`setup-health` の 11 件も slot 21 で再実行して通過した。
 - [レビュー] 署名鍵がブラウザの保存領域・URL・toast に出ないこと（コンポーネントの state だけに持ち、閉じると消す）はコードを読んで確認した。ブラウザ試験は鍵の発行を通らない（試験の API に暗号鍵が無い）ので、発行ダイアログの表示とコピーは実機で未確認。
 - [未検証] 実際の SMTP でのメール送信（偽の transport でだけ確認）、TLS の検証失敗の分類（`tls`）を実際の証明書で起こすこと、IPv6 での接続、Standard Webhooks との互換、本番相当の負荷（多数の tenant・outbox の行）での tick の時間。
 
