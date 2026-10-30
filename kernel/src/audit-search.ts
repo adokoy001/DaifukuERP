@@ -2,9 +2,9 @@
 // tenant's company-less administration records) filtered by period, user, subject, operation and record id, newest
 // first, keyset-paginated. Read-only: the search writes nothing, never changes audit_log grants or triggers, and reads
 // audit_log like auditTrail/accessAudit do (tenant RLS plus explicit tenant and company conditions). Before/after go
-// through the record audit panel's filter (auditSnapshotFilter), and rows of registry entities the caller cannot read
-// are excluded in SQL so pages stay full.
-import { and, desc, eq, gte, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+// through the record audit panel's filter (auditSnapshotFilter). Only rows of subjects the caller may see are returned
+// (fail closed): registry entities it can read and the kernel audit subjects, chosen in SQL so pages stay full.
+import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { assertAccessAdmin } from './access-admin-common.ts';
 import { auditSnapshotFilter } from './audit.ts';
@@ -21,6 +21,11 @@ import { registry } from './registry.ts';
 export const AUDIT_SEARCH_MAX_DAYS = 366;
 export const AUDIT_SEARCH_DEFAULT_LIMIT = 50;
 export const AUDIT_SEARCH_MAX_LIMIT = 100;
+/**
+ * Earliest searchable business date (AC-15). Daifuku has no audit rows before it, and the bound keeps the +09:00 day
+ * start of `from` inside the years Postgres accepts (0001-01-01 would become an instant in year 0, a 500).
+ */
+export const AUDIT_SEARCH_MIN_DATE = '2000-01-01';
 const NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const DAY_MS = 86_400_000;
 /** Japan has no daylight saving time: a business date is a fixed +09:00 day (todayLocal's Asia/Tokyo). */
@@ -78,7 +83,11 @@ export const AUDIT_OP_LABELS: Readonly<Record<string, Label>> = {
   revoked: label('端末の接続の取消', 'Device connection revoked'),
 };
 
-const localDate = z.string().refine(isLocalDate, { message: 'Use an existing date as YYYY-MM-DD.' });
+const localDate = z.string().superRefine((value, issue) => {
+  if (!isLocalDate(value)) issue.addIssue({ code: 'custom', message: 'Use an existing date as YYYY-MM-DD.' });
+  else if (value < AUDIT_SEARCH_MIN_DATE)
+    issue.addIssue({ code: 'custom', message: `Use a date on or after ${AUDIT_SEARCH_MIN_DATE}.` });
+});
 const limitSchema = z
   .union([
     z.number(),
@@ -109,13 +118,22 @@ export interface AuditCursor {
 export function encodeAuditCursor(cursor: AuditCursor): string {
   return Buffer.from(JSON.stringify([cursor.at, cursor.id]), 'utf8').toString('base64url');
 }
+/**
+ * A cursor instant Postgres accepts as it stands: a real calendar time (JS Date.parse rolls 2026-02-30 over to March,
+ * Postgres refuses it) from year 0001 on (Postgres has no year 0). Microseconds are checked by CURSOR_AT.
+ */
+function isCursorInstant(at: string): boolean {
+  if (at < '0001') return false;
+  const ms = Date.parse(at);
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 23) === at.slice(0, 23);
+}
 export function decodeAuditCursor(raw: string): AuditCursor | null {
   if (!/^[A-Za-z0-9_-]+$/.test(raw)) return null;
   try {
     const value: unknown = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
     if (!Array.isArray(value) || value.length !== 2) return null;
     const [at, id] = value as unknown[];
-    if (typeof at !== 'string' || !CURSOR_AT.test(at) || Number.isNaN(Date.parse(at))) return null;
+    if (typeof at !== 'string' || !CURSOR_AT.test(at) || !isCursorInstant(at)) return null;
     if (typeof id !== 'string' || !isUuid(id)) return null;
     return { at, id };
   } catch {
@@ -137,8 +155,8 @@ export const auditSearchQuery = z
   })
   .strict()
   .superRefine((q, issue) => {
-    // Zod keeps refining after a field issue: compare the period only when both ends are real dates.
-    if (!isLocalDate(q.from) || !isLocalDate(q.to)) {
+    // Zod keeps refining after a field issue: compare the period only when both ends are searchable dates.
+    if (!searchableDate(q.from) || !searchableDate(q.to)) {
       // reported on the field itself
     } else if (q.from > q.to)
       issue.addIssue({ code: 'custom', path: ['to'], message: 'The end date is before the start date.' });
@@ -158,6 +176,9 @@ export const auditSearchQuery = z
       });
   });
 export type AuditSearchQuery = z.output<typeof auditSearchQuery>;
+function searchableDate(value: string): boolean {
+  return isLocalDate(value) && value >= AUDIT_SEARCH_MIN_DATE;
+}
 const optionsQuery = z.object({ scope: z.enum(['company', 'tenant']).default('company') }).strict();
 
 function parseQuery<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
@@ -184,13 +205,18 @@ async function assertScope(ctx: Context, scope: AuditScope): Promise<void> {
     );
 }
 
-/** Registry entities the caller cannot read (e.g. a pack not applied to this company): their rows are left out. */
-export function unreadableEntities(ctx: Context): string[] {
-  return registry
-    .allEntities()
-    .filter((def) => !can(ctx, def, 'read'))
-    .map((def) => def.name)
-    .sort();
+/**
+ * The subjects whose rows the caller may see (AC-13, fail closed): the registry entities it can read and the kernel
+ * audit subjects. Every other name is left out: a registry entity it cannot read (a pack not applied to this company),
+ * and a name this runtime does not know (a pack switched off with DAIFUKU_PACKS, a module it does not load), whose
+ * field groups and outputHidden fields cannot be applied without the definition. Not exported from the package index:
+ * module code reads the audit only through searchAudit, which checks access first.
+ */
+export function visibleAuditSubjects(ctx: Context): string[] {
+  const names = new Set<string>();
+  for (const def of registry.allEntities()) if (can(ctx, def, 'read')) names.add(def.name);
+  for (const subject of AUDIT_SUBJECTS) if (!registry.hasEntity(subject.name)) names.add(subject.name);
+  return [...names].sort();
 }
 
 export interface AuditSearchItem {
@@ -224,8 +250,11 @@ async function userNames(ctx: Context, ids: Iterable<string>): Promise<Map<strin
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-/** The SQL of one search page (exported for the index measurement in the work log, via `.toSQL()`). */
-export function auditSearchStatement(ctx: Context, q: AuditSearchQuery, hidden: readonly string[]) {
+/**
+ * The SQL of one search page. `visible` is visibleAuditSubjects(ctx); searchAudit has already refused an `entity`
+ * outside it. Exported from this file only, for the tests and the index measurement (`.toSQL()`); it checks no access.
+ */
+export function auditSearchStatement(ctx: Context, q: AuditSearchQuery, visible: readonly string[]) {
   const { start, end } = auditPeriod(q.from, q.to);
   const cursor = q.cursor ? decodeAuditCursor(q.cursor) : null;
   const atText = sql<string>`to_char(${auditLog.at} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
@@ -253,10 +282,10 @@ export function auditSearchStatement(ctx: Context, q: AuditSearchQuery, hidden: 
         gte(auditLog.at, start),
         lt(auditLog.at, end),
         q.userId ? or(eq(auditLog.actorId, q.userId), eq(auditLog.onBehalfOf, q.userId)) : undefined,
-        q.entity ? eq(auditLog.entity, q.entity) : undefined,
+        // A chosen subject is already one of `visible`; otherwise the rows are limited to the visible subjects.
+        q.entity ? eq(auditLog.entity, q.entity) : inArray(auditLog.entity, [...visible]),
         q.op ? eq(auditLog.op, q.op) : undefined,
         q.recordId ? eq(auditLog.recordId, q.recordId) : undefined,
-        hidden.length ? notInArray(auditLog.entity, [...hidden]) : undefined,
         cursor ? sql`(${auditLog.at}, ${auditLog.id}) < (${cursor.at}::timestamptz, ${cursor.id}::uuid)` : undefined,
       ),
     )
@@ -269,9 +298,9 @@ export async function searchAudit(ctx: Context, raw: unknown): Promise<AuditSear
   assertAccessInsight(ctx);
   const q = parseQuery(auditSearchQuery, raw);
   await assertScope(ctx, q.scope);
-  const hidden = unreadableEntities(ctx);
-  if (q.entity && hidden.includes(q.entity)) throw new PermissionDenied(q.entity, 'audit', ctx.roles);
-  const rows = await auditSearchStatement(ctx, q, hidden);
+  const visible = visibleAuditSubjects(ctx);
+  if (q.entity && !visible.includes(q.entity)) throw new PermissionDenied(q.entity, 'audit', ctx.roles);
+  const rows = await auditSearchStatement(ctx, q, visible);
   const page = rows.slice(0, q.limit);
   const names = await userNames(
     ctx,

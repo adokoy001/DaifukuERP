@@ -1,9 +1,9 @@
 // docs/specs/access-insight.md AC-9, AC-10, AC-12..AC-17 against Postgres with entities of this file: keyset pages
 // across equal and microsecond-apart timestamps (no duplicates or gaps, a newer row added mid-search does not shift the
 // pages), company / tenant / other-tenant isolation, an old row whose fields became outputHidden after it was written,
-// rows of an unapplied pack entity excluded in SQL (full pages) and refused as a filter, an export_rows audit found
-// with op=export and its masked criteria kept masked, the 409 without a company, nothing written by a search, and a
-// former member offered as a user option and searchable.
+// rows of an unapplied pack entity and of names outside the registry excluded in SQL (full pages, fail closed) and
+// refused as a filter, an export_rows audit found with op=export and its masked criteria kept masked, the 409 without
+// a company, nothing written by a search, and a former member offered as a user option and searchable.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
@@ -48,6 +48,13 @@ const AsdItem = defineEntity({
 // `legacyNote` became outputHidden after old rows were written: modelled by an ext key registered as hidden and a field
 // whose old rows are inserted directly (the definition above is the "current" one for storageKey).
 registry.registerExt(AsdItem.name, { token: f.text({ outputHidden: true }), tag: f.text() });
+// Rows of the page test (inserted directly; only registry entities and kernel subjects are searchable).
+defineEntity({
+  name: 'asd_page',
+  label: label('監査検索のページ', 'Audit search page'),
+  fields: { code: f.text() },
+  permissions: { roles: { asd_clerk: ['read'] } },
+});
 const AsdCrate = defineEntity({
   name: 'asd_crate',
   label: label('監査検索の箱', 'Audit search crate'),
@@ -288,7 +295,7 @@ describe('audit search pages (access-insight AC-9, AC-13)', () => {
     await expect(search({ entity: 'asd_crate' })).rejects.toBeInstanceOf(PermissionDenied);
   });
 
-  it('AC-13: an old row keeps no outputHidden field (ext included); unknown names are returned as stored', async () => {
+  it('AC-13: an old row keeps no outputHidden field (ext included); kernel subjects as stored; unknown names never', async () => {
     await ownerAudit([
       {
         op: 'legacy',
@@ -296,7 +303,10 @@ describe('audit search pages (access-insight AC-9, AC-13)', () => {
         before: { name: 'old', storageKey: 'sk-before', ext: { token: 't-before', tag: 'kept' } },
         after: { name: 'new', storageKey: 'sk-after', secret: 'admin-visible', ext: { token: 't-after' } },
       },
-      { entity: 'not_in_registry', op: 'legacy', at: OCT(19), after: { storageKey: 'kept-as-stored' } },
+      { entity: 'company_settings', op: 'legacy', at: OCT(19), after: { 'sales.terms': 'kept-as-stored' } },
+      // A name this runtime does not know (e.g. a pack switched off with DAIFUKU_PACKS): its field groups and
+      // outputHidden fields cannot be applied, so the row is never returned (fail closed).
+      { entity: 'not_in_registry', op: 'legacy', at: OCT(19), after: { storageKey: 'unknown-subject-value' } },
     ]);
     const { items } = await search({ op: 'legacy' });
     const item = items.find((i) => i.entity === 'asd_item');
@@ -304,7 +314,10 @@ describe('audit search pages (access-insight AC-9, AC-13)', () => {
     // admin has no field-group mask (maskedFields is empty for admin), outputHidden is removed for everyone.
     expect(item?.after).toEqual({ name: 'new', secret: 'admin-visible', ext: {} });
     expect(JSON.stringify(items)).not.toMatch(/sk-before|sk-after|t-before|t-after/);
-    expect(items.find((i) => i.entity === 'not_in_registry')?.after).toEqual({ storageKey: 'kept-as-stored' });
+    expect(items.find((i) => i.entity === 'company_settings')?.after).toEqual({ 'sales.terms': 'kept-as-stored' });
+    expect(items.map((i) => i.entity).sort()).toEqual(['asd_item', 'company_settings']);
+    expect(JSON.stringify(items)).not.toContain('unknown-subject-value');
+    await expect(search({ entity: 'not_in_registry' })).rejects.toBeInstanceOf(PermissionDenied);
   });
 });
 

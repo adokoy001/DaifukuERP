@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { auditSnapshotFilter } from '../src/audit.ts';
 import {
   AUDIT_OP_LABELS,
+  AUDIT_SEARCH_MIN_DATE,
   AUDIT_SUBJECTS,
   auditPeriod,
   auditPeriodDays,
@@ -18,6 +19,7 @@ import {
   decodeAuditCursor,
   encodeAuditCursor,
   searchAudit,
+  visibleAuditSubjects,
 } from '../src/audit-search.ts';
 import type { ContextParams, Db } from '../src/context.ts';
 import { makeContext } from '../src/db/client.ts';
@@ -75,6 +77,16 @@ describe('audit search query (access-insight AC-15)', () => {
     expect(issuesOf({ from: '2026-10-31', to: '2026-10-30' })).toEqual(['to']);
   });
 
+  it('AC-15: dates before AUDIT_SEARCH_MIN_DATE are refused (0001-01-01 would start in year 0, which Postgres rejects)', () => {
+    expect(AUDIT_SEARCH_MIN_DATE).toBe('2000-01-01');
+    expect(issuesOf({ from: '0001-01-01', to: '0001-01-02' })).toEqual(['from', 'to']);
+    expect(issuesOf({ from: '1999-12-31', to: '2000-01-01' })).toEqual(['from']);
+    expect(issuesOf({ from: '2000-01-01', to: '2000-01-01' })).toEqual([]);
+    expect(issuesOf({ from: '9999-12-31', to: '9999-12-31' })).toEqual([]);
+    const parsed = auditSearchQuery.safeParse({ from: '1999-12-31', to: '2000-01-01' });
+    expect(parsed.success ? null : parsed.error.issues[0]?.message).toBe('Use a date on or after 2000-01-01.');
+  });
+
   it('AC-15: at most 366 days counted with both ends: 2024-01-01..2024-12-31 passes, 2024-01-01..2025-01-01 fails', () => {
     expect(auditPeriodDays('2024-01-01', '2024-12-31')).toBe(366);
     expect(auditPeriodDays('2025-01-01', '2026-01-01')).toBe(366);
@@ -124,6 +136,21 @@ describe('audit period and cursor (access-insight AC-8, AC-9)', () => {
     expect(decodeAuditCursor(reencode([cursor.at, cursor.id, 'x']))).toBeNull();
     expect(decodeAuditCursor(`${raw.slice(0, -2)}`)).toBeNull();
     expect(decodeAuditCursor('a+b/c=')).toBeNull();
+    expect(decodeAuditCursor('abc')).toBeNull();
+  });
+
+  it('AC-15: a cursor instant must be one Postgres accepts as it stands (no rolled-over day, no year 0)', () => {
+    const reencode = (at: string) =>
+      Buffer.from(JSON.stringify([at, '00000000-0000-4000-8000-0000000000aa'])).toString('base64url');
+    // Date.parse('2026-02-30…') rolls over to March 2; Postgres answers "date/time field value out of range".
+    expect(Number.isNaN(Date.parse('2026-02-30T00:00:00.000000Z'))).toBe(false);
+    expect(decodeAuditCursor(reencode('2026-02-30T00:00:00.000000Z'))).toBeNull();
+    expect(decodeAuditCursor(reencode('2026-10-30T24:00:00.000000Z'))).toBeNull();
+    expect(decodeAuditCursor(reencode('0000-01-01T00:00:00.000000Z'))).toBeNull();
+    expect(issuesOf({ ...BASE, cursor: reencode('2026-02-30T00:00:00.000000Z') })).toEqual(['cursor']);
+    expect(issuesOf({ ...BASE, cursor: reencode('0000-01-01T00:00:00.000000Z') })).toEqual(['cursor']);
+    for (const at of ['0001-01-01T00:00:00.000000Z', '2024-02-29T23:59:59.999999Z', '9999-12-31T23:59:59.999999Z'])
+      expect(decodeAuditCursor(reencode(at))?.at, at).toBe(at);
   });
 });
 
@@ -148,6 +175,18 @@ describe('audit search access order (access-insight AC-11)', () => {
   });
 });
 
+describe('visible audit subjects (access-insight AC-13, fail closed)', () => {
+  it('AC-13: readable registry entities and the kernel subjects; never an unreadable entity or an unknown name', () => {
+    const asAdmin = visibleAuditSubjects(ctxOf({}));
+    expect(asAdmin).toEqual(expect.arrayContaining([Secretive.name, ...AUDIT_SUBJECTS.map((s) => s.name)]));
+    expect(asAdmin).not.toContain('not_in_registry');
+    expect(asAdmin).toEqual([...asAdmin].sort());
+    const asClerk = visibleAuditSubjects(ctxOf({ roles: ['clerk'] }));
+    expect(asClerk).toContain(Secretive.name);
+    expect(visibleAuditSubjects(ctxOf({ roles: ['nobody'] }))).not.toContain(Secretive.name);
+  });
+});
+
 describe('shared before/after filter (access-insight AC-13)', () => {
   const row = { name: 'A', salary: '100', storageKey: 'secret-key', ext: { token: 'secret-token', tag: 'ok' } };
 
@@ -165,7 +204,7 @@ describe('shared before/after filter (access-insight AC-13)', () => {
     });
   });
 
-  it('AC-13: names outside the registry are returned as stored; null and scalars become null', () => {
+  it('AC-13: kernel audit subjects (names outside the registry) are returned as stored; null and scalars become null', () => {
     const stored = { completed: true, storageKey: 'kept-for-kernel-subjects' };
     expect(auditSnapshotFilter({ roles: ['admin'] }, undefined)(stored)).toEqual(stored);
     expect(auditSnapshotFilter({ roles: ['admin'] }, Secretive)(null)).toBeNull();

@@ -2,8 +2,10 @@
 // API derives (partner x sales), filters and the role view survive a reload, the payment row explains the sales row
 // rule; the audit search narrows to one user's partner changes (made through the API with that user's own token), opens
 // the record, finds the CSV export, explains a date error, pages with Next / Previous / First, and keeps its conditions
-// on reload and Back. Both screens work in English and at 390px without page scroll, pass axe, and are hidden from and
-// explained to users without the admin role. The scope switch is only for tenant administrators.
+// on reload and Back; a new search drops the page cursor, URL cursors (later pages, malformed ones) and refused subjects
+// are explained, and the choices follow the scope in the form. Both screens work in English and at 390px without page
+// scroll, pass axe, and are hidden from and explained to users without the admin role. The scope switch is only for
+// tenant administrators.
 import { existsSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
@@ -216,6 +218,94 @@ test('access-insight AC-19/AC-20: filter by user, open the record, find the CSV 
     await page.waitForLoadState('networkidle');
     await axe(page, 'audit', run.locale, run.width);
   }
+});
+
+test('access-insight AC-19/AC-20: a new search drops the page cursor; URL cursors and refused subjects are explained', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const sales = await companyUser(request, ['sales'], 'cursor');
+  let partner = await api<Row>(request, sales.headers, '/api/partner', {
+    code: 'AC' + crypto.randomUUID().replaceAll('-', '').slice(0, 12),
+    name: `ページの取引先 ${sales.name}`,
+  });
+  for (let i = 1; i <= 55; i += 1)
+    partner = await api<Row>(
+      request,
+      sales.headers,
+      `/api/partner/${partner.id}`,
+      { patch: { name: `ページの取引先 ${i}` }, expectedVersion: partner.version },
+      'PATCH',
+    );
+  // The screen's default period: the last 7 days in Japan, today included.
+  const to = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const from = new Date(Date.parse(`${to}T00:00:00Z`) - 6 * 86_400_000).toISOString().slice(0, 10);
+  type AuditPageResult = { items: { id: string }[]; nextCursor: string | null };
+  const first = await api<AuditPageResult>(
+    request,
+    sales.admin,
+    `/admin/audit?from=${from}&to=${to}&userId=${sales.id}`,
+  );
+  expect(first.nextCursor).toBeTruthy();
+  const rows = page.getByTestId('audit-row');
+
+  // A later page opened from the URL (reload, Back, a shared link) claims no page number; its Next looks unavailable.
+  await signInQuality(page);
+  await page.goto(`/admin/audit?from=${from}&to=${to}&user=${sales.id}&cursor=${first.nextCursor}`);
+  await expect(rows).toHaveCount(6);
+  await expect(page.getByTestId('audit-page-number')).toHaveText('続きのページ');
+  await expect(page.getByTestId('audit-live')).toContainText('続きのページ: 6 件を表示。これで最後です。');
+  await expect(page.getByTestId('audit-next')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('audit-next')).toHaveCSS('opacity', '0.5');
+
+  // Changing a condition and searching starts at the first page of the new search: no cursor stays in the URL.
+  await page.getByTestId('audit-op-filter').selectOption('update');
+  await page.getByTestId('audit-submit').click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('op')).toBe('update');
+  expect(new URL(page.url()).searchParams.get('cursor')).toBeNull();
+  const updates = await api<AuditPageResult>(
+    request,
+    sales.admin,
+    `/admin/audit?from=${from}&to=${to}&userId=${sales.id}&op=update`,
+  );
+  await expect(rows).toHaveCount(50);
+  await expect(rows.first()).toHaveAttribute('data-id', updates.items[0]?.id ?? '');
+  await expect(page.getByTestId('audit-page-number')).toHaveText('1 ページ目');
+
+  // Searching again with the same conditions on the first page fetches again (rows written since).
+  const again = page.waitForRequest((r) => r.url().includes('/admin/audit?') && r.url().includes('op=update'));
+  await page.getByTestId('audit-submit').click();
+  await again;
+
+  // A malformed cursor and a number-like user id are unreadable URL conditions: ignored and said so, no error.
+  await page.goto(`/admin/audit?from=${from}&to=${to}&cursor=abc&user=123`);
+  await expect(page.getByTestId('audit-ignored')).toContainText('ページ');
+  await expect(page.getByTestId('audit-ignored')).toContainText('利用者');
+  await expect(rows.first()).toBeVisible();
+  await expect(page.getByTestId('audit-error')).toHaveCount(0);
+
+  // A subject this company cannot read (an unapplied pack) is refused at the field; the form stays.
+  const matrix = await api<{ entities: { name: string; applied: boolean }[] }>(
+    request,
+    sales.admin,
+    '/admin/permissions',
+  );
+  const unapplied = matrix.entities.find((e) => !e.applied)?.name;
+  expect(unapplied, 'an entity of a pack not applied to the fixture company').toBeTruthy();
+  await page.goto(`/admin/audit?from=${from}&to=${to}&entity=${unapplied}`);
+  await expect(page.getByTestId('audit-error-entity')).toBeVisible();
+  await expect(page.getByTestId('audit-entity-refused')).toBeVisible();
+  await expect(page.getByTestId('audit-forbidden')).toHaveCount(0);
+  await expect(page.getByTestId('audit-form')).toBeVisible();
+
+  // The choices follow the scope selected in the form, before any search.
+  await page.goto(`/admin/audit?from=${from}&to=${to}`);
+  const entity = page.getByTestId('audit-entity');
+  await expect(entity.locator('option[value="partner"]')).toHaveCount(1);
+  await page.getByTestId('audit-scope').selectOption('tenant');
+  await expect(entity.locator('option[value="access_user"]')).toHaveCount(1);
+  await expect(entity.locator('option[value="partner"]')).toHaveCount(0);
 });
 
 test('access-insight AC-21: a sales user gets no entries and an explanation; a company admin has no scope switch', async ({

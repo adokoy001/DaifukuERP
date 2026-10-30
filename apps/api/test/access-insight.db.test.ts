@@ -3,7 +3,9 @@
 // canRunAction() for every action; GET /admin/audit filters by period, user (the person and an AI acting for them),
 // entity, op and record id, pages with a cursor, keeps company A, company B and the tenant scope apart, refuses
 // non-admins, store-limited admins and the tenant scope for a company admin, validates after the access check, shows
-// the partner CSV export audit, hides outputHidden fields of an old row and the rows of an unapplied pack entity;
+// the partner CSV export audit, hides outputHidden fields of an old row and the rows of an unapplied pack entity or of
+// a name the runtime does not know, and answers 400 for values Postgres would refuse; store, site and relay notes
+// equal can() for every entity;
 // GET /admin/audit/options lists a removed member as former without e-mails. Audit rows use the real clock, so the
 // period is today (Asia/Tokyo) and the six days before it.
 import {
@@ -186,6 +188,39 @@ describe('GET /admin/permissions (access-insight AC-1..AC-5)', () => {
     expect(m.kernel.find((c) => c.id === 'company_settings')?.roles).toEqual(['admin', 'settings']);
   });
 
+  it('AC-3(c)/(d): store, site and site-device notes equal can() with that scope or a relay actor, for every entity', async () => {
+    const m = await ok<PermissionMatrix>('GET', '/admin/permissions', adminToken);
+    const mismatches: string[] = [];
+    let compared = 0;
+    for (const e of m.entities) {
+      const def = registry.entity(e.name);
+      const appliedPacks = e.pack ? [e.pack] : [];
+      const cases = (['stores', 'sites'] as const).flatMap((scope) =>
+        m.roles.flatMap((r) => e.ops.map((op) => ({ scope, role: r.name, op }))),
+      );
+      for (const { scope, role, op } of cases) {
+        const note = scope === 'stores' ? e.stores : e.sites;
+        const allowed = can({ roles: [role], accessScope: scope, appliedPacks }, def, op);
+        if ((note.effective[role]?.includes(op) ?? false) !== allowed)
+          mismatches.push(`${e.name} ${scope} ${role} ${op}`);
+      }
+      compared += cases.length;
+      const relayActor = {
+        roles: ['relay'],
+        accessScope: 'all' as const,
+        appliedPacks,
+        actor: { type: 'relay' as const, id: 'gw' },
+      };
+      for (const op of e.ops)
+        if ((e.relay?.effective.includes(op) ?? false) !== can(relayActor, def, op))
+          mismatches.push(`${e.name} relay ${op}`);
+    }
+    expect(mismatches).toEqual([]);
+    expect(compared).toBeGreaterThan(10_000);
+    expect(m.entities.some((e) => e.relay && e.relay.effective.length > 0)).toBe(true);
+    expect(m.entities.some((e) => e.stores.policy?.kind === 'parent' || e.sites.policy?.kind === 'parent')).toBe(true);
+  });
+
   it('AC-4: every exposed non-generic action and role equals canRunAction() with every pack applied', async () => {
     const m = await ok<PermissionMatrix>('GET', '/admin/permissions', adminToken);
     const packs = registry.packs().map((p) => p.name);
@@ -305,6 +340,18 @@ describe('GET /admin/audit (access-insight AC-8..AC-15)', () => {
     expect(paths).toEqual(expect.arrayContaining(['from', 'limit', 'recordId']));
     expect((await send('GET', '/admin/audit?from=2024-01-01&to=2025-01-01', adminToken)).statusCode).toBe(400);
     expect((await send('GET', '/admin/audit?from=2024-01-01&to=2024-12-31', adminToken)).statusCode).toBe(200);
+    // Values Postgres would refuse are 400 before any query: a period starting in year 0001 (its +09:00 start is in
+    // year 0) and forged cursors with a rolled-over day or year 0.
+    const cursorAt = (at: string) => Buffer.from(JSON.stringify([at, newId()])).toString('base64url');
+    for (const url of [
+      '/admin/audit?from=0001-01-01&to=0001-01-02',
+      `/admin/audit?${period}&cursor=${cursorAt('2026-02-30T00:00:00.000000Z')}`,
+      `/admin/audit?${period}&cursor=${cursorAt('0000-01-01T00:00:00.000000Z')}`,
+    ]) {
+      const r = await send('GET', url, adminToken);
+      expect(r.statusCode, `${url}: ${r.body}`).toBe(400);
+    }
+    expect((await send('GET', '/admin/audit?from=9999-12-31&to=9999-12-31', adminToken)).statusCode).toBe(200);
   });
 
   it('AC-13: an old row of a runtime entity keeps no outputHidden field (workforce receipt storageKey)', async () => {
@@ -346,6 +393,27 @@ describe('GET /admin/audit (access-insight AC-8..AC-15)', () => {
     const r = await audit(adminToken, 'limit=100');
     expect(r.body).not.toContain('unapplied-pack-row');
     expect((await audit(adminToken, `entity=${entity}`)).statusCode).toBe(403);
+  });
+
+  it('AC-13: rows of a name this runtime does not know (a pack switched off with DAIFUKU_PACKS) are never returned', async () => {
+    expect(registry.hasEntity('switched_off_pack_item')).toBe(false);
+    await db.owner.drizzle.insert(auditLog).values({
+      id: newId(),
+      tenantId: db.tenantId,
+      companyId: db.companyId,
+      entity: 'switched_off_pack_item',
+      recordId: newId(),
+      op: 'create',
+      actorType: 'user',
+      actorId: db.adminUserId,
+      at: new Date(),
+      after: { storageKey: 'switched-off-pack-secret' },
+    });
+    expect((await audit(adminToken, 'limit=100')).body).not.toContain('switched-off-pack-secret');
+    expect((await audit(adminToken, 'limit=100&op=create')).body).not.toContain('switched-off-pack-secret');
+    expect((await audit(adminToken, 'entity=switched_off_pack_item')).statusCode).toBe(403);
+    // Kernel audit subjects stay visible.
+    expect((await auditOk(adminToken, 'entity=company_membership')).items.length).toBeGreaterThan(0);
   });
 });
 

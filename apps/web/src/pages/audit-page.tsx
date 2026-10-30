@@ -16,9 +16,11 @@ import {
   actorText,
   auditSearchParams,
   conditionsKey,
+  conditionsOf,
   exportSummary,
   opLabel,
   pageAnnouncement,
+  pageLabel,
   parseAuditSearch,
   popTrail,
   pushTrail,
@@ -102,20 +104,30 @@ function AuditRow({
   const detailsId = useId();
   const entity = entities.get(item.entity);
   const href = recordHref(item, new Set(entities.keys()));
+  const time = formatTimestamp(item.at, locale, 'Asia/Tokyo');
+  const subject = t(subjectLabel(item.entity, options, entity?.label));
+  // Each row's link and button name its subject and time, so a list of links or buttons tells the rows apart.
+  const context = (
+    <span className="sr-only">{locale === 'ja' ? `（${subject} ${time}）` : ` (${subject}, ${time})`}</span>
+  );
   return (
     <li
       className="flex flex-col gap-1 border-b border-border-subtle py-3 last:border-b-0"
       data-testid="audit-row"
       data-op={item.op}
+      data-id={item.id}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-        <time dateTime={item.at} className="font-mono text-text-secondary">
-          {formatTimestamp(item.at, locale, 'Asia/Tokyo')}
-        </time>
+        <span className="font-mono text-text-secondary">
+          <time dateTime={item.at}>{time}</time>
+          <abbr className="ml-1 text-xs text-text-muted no-underline" title={t({ ja: '日本時間', en: 'Japan time' })}>
+            JST
+          </abbr>
+        </span>
         <span className="font-semibold text-text" data-testid="audit-actor">
           {t(actorText(item))}
         </span>
-        <span data-testid="audit-subject">{t(subjectLabel(item.entity, options, entity?.label))}</span>
+        <span data-testid="audit-subject">{subject}</span>
         <Badge
           tone={item.op === 'delete' ? 'danger' : item.op === 'export' ? 'warning' : 'neutral'}
           data-testid="audit-op"
@@ -131,6 +143,7 @@ function AuditRow({
         {href ? (
           <Link to={href} className="ui-link" data-testid="audit-record-link">
             {t({ ja: '記録を開く', en: 'Open the record' })}
+            {context}
           </Link>
         ) : null}
         <button
@@ -143,6 +156,7 @@ function AuditRow({
           {open
             ? t({ ja: '詳細を閉じる', en: 'Hide details' })
             : t({ ja: '変更前後をすべて見る', en: 'Show all values' })}
+          {context}
         </button>
       </div>
       <div id={detailsId} hidden={!open} className="grid gap-2 md:grid-cols-2">
@@ -176,30 +190,37 @@ function AuditRow({
 
 function AuditForm({
   state,
-  options,
+  enabled,
   tenantAdmin,
+  refusedEntity,
   onSearch,
 }: {
   state: AuditSearchState;
-  options: AuditOptions | undefined;
+  enabled: boolean;
   tenantAdmin: boolean;
+  /** The subject of the URL that the API refused (403): this company cannot read its audit (an unapplied pack…). */
+  refusedEntity: string | undefined;
   onSearch: (next: AuditConditions) => void;
 }) {
   const { t } = useLocale();
   const ids = useId();
-  const [form, setForm] = useState<AuditConditions>(state);
+  // The form holds conditions only: the page cursor stays in the URL, so a new search starts at the first page.
+  const [form, setForm] = useState<AuditConditions>(() => conditionsOf(state));
   const [errors, setErrors] = useState<FormError[]>([]);
+  // The choices follow the scope selected in the form, not the last searched one.
+  const options = useAuditOptions(form.scope, enabled).data;
   const knownUser = !state.user || options?.users.some((u) => u.id === state.user) !== false;
   const [userMode, setUserMode] = useState<'list' | 'other'>(knownUser ? 'list' : 'other');
   const key = conditionsKey(state);
   useEffect(() => {
     // The URL changed (back, reload, a shared link): the form follows it.
-    setForm(state);
+    setForm(conditionsOf(state));
     setErrors([]);
   }, [key]);
   useEffect(() => {
     if (state.user && options && !options.users.some((u) => u.id === state.user)) setUserMode('other');
   }, [options, state.user]);
+  const entityRefused = refusedEntity !== undefined && form.entity === refusedEntity;
   const set = (patch: Partial<AuditConditions>) => setForm((f) => ({ ...f, ...patch }));
   const errorOf = (field: FormError['field']) => errors.find((e) => e.field === field);
   const submit = (event: FormEvent) => {
@@ -213,6 +234,7 @@ function AuditForm({
     onSearch({ ...form, record: form.entity ? form.record.trim().toLowerCase() : '' });
   };
   const describedBy = (field: FormError['field']) => (errorOf(field) ? `${ids}-${field}-error` : undefined);
+  const entityErrorId = `${ids}-entity-error`;
   const fieldClass = 'flex min-w-0 flex-col gap-1 text-sm font-semibold text-text-secondary';
   const errorText = (field: FormError['field']) => {
     const error = errorOf(field);
@@ -329,6 +351,8 @@ function AuditForm({
             className="input"
             value={form.entity}
             onChange={(e) => set({ entity: e.target.value, ...(e.target.value ? {} : { record: '' }) })}
+            aria-invalid={entityRefused || undefined}
+            aria-describedby={entityRefused ? entityErrorId : undefined}
             data-testid="audit-entity"
           >
             <option value="">{t({ ja: 'すべての対象', en: 'Every subject' })}</option>
@@ -341,6 +365,14 @@ function AuditForm({
               </option>
             ))}
           </select>
+          {entityRefused ? (
+            <span id={entityErrorId} className="ui-field-error" data-testid="audit-error-entity">
+              {t({
+                ja: 'この会社ではこの対象の監査を読めません（未適用のパックなど）。対象を選び直してください。',
+                en: 'This company cannot read the audit of this subject (a pack not applied, for example). Choose another subject.',
+              })}
+            </span>
+          ) : null}
         </label>
         <label className={fieldClass} htmlFor={`${ids}-op`}>
           {t(FIELD_TEXT.op)}
@@ -400,6 +432,7 @@ export function AuditPage() {
   const [now] = useState(() => new Date());
   const { state, ignored } = useMemo(() => parseAuditSearch(raw, now, { tenantAdmin }), [raw, now, tenantAdmin]);
   const allowed = canUseAccessInsight(meta.data?.roles);
+  // Labels of the result rows come from the searched scope's options (the form fetches its own scope's choices).
   const options = useAuditOptions(state.scope, allowed);
   const result = useAuditSearch(allowed && me.data ? state : null);
   const key = conditionsKey(state);
@@ -413,7 +446,8 @@ export function AuditPage() {
   }, [state.cursor, key]);
   const [announcement, setAnnouncement] = useState('');
   const entities = useMemo(() => new Map((meta.data?.entities ?? []).map((e) => [e.name, e])), [meta.data]);
-  const page = cursors.length + 1;
+  // A cursor this screen did not reach itself (reload, Back, a shared link) is a later page of unknown number.
+  const page = state.cursor && !cursors.length ? null : cursors.length + 1;
   useEffect(() => {
     if (result.data && !result.isFetching)
       setAnnouncement(t(pageAnnouncement(result.data.items.length, result.data.nextCursor !== null, page)));
@@ -421,9 +455,11 @@ export function AuditPage() {
   if ((meta.isError && !meta.data) || (me.isError && !me.data))
     return <MetaError error={meta.error ?? me.error} retry={() => void Promise.all([meta.refetch(), me.refetch()])} />;
   if (!meta.data || !me.data) return <LoadingView />;
+  const searchRefused = result.isError && isApiError(result.error) && result.error.status === 403;
+  // A 403 for a chosen subject is about that subject (AC-13), not about the admin role: the form stays.
+  const refusedEntity = searchRefused && state.entity ? state.entity : undefined;
   const refused =
-    (result.isError && isApiError(result.error) && result.error.status === 403) ||
-    (options.isError && isApiError(options.error) && options.error.status === 403);
+    (searchRefused && !state.entity) || (options.isError && isApiError(options.error) && options.error.status === 403);
   if (!allowed || refused)
     return (
       <AdminOnly
@@ -436,8 +472,15 @@ export function AuditPage() {
     void navigate({ to: '/admin/audit', search: auditSearchParams(next), replace });
   };
   const onSearch = (conditions: AuditConditions) => {
-    setTrail({ key: conditionsKey(conditions), cursors: [] });
-    go({ ...conditions });
+    const next = conditionsOf(conditions);
+    if (conditionsKey(next) === key && !state.cursor && !ignored.length) {
+      // The same search on the first page: fetch again (rows written since), the URL would not change.
+      void result.refetch();
+      void options.refetch();
+      return;
+    }
+    setTrail({ key: conditionsKey(next), cursors: [] });
+    go(next);
   };
   const nextPage = () => {
     if (!result.data?.nextCursor) return;
@@ -455,8 +498,9 @@ export function AuditPage() {
     setTrail({ key, cursors: [] });
     go({ ...state, cursor: undefined });
   };
-  const failure = result.isError ? describeError(result.error) : null;
-  const items = result.data?.items ?? [];
+  const failure = result.isError && !refusedEntity ? describeError(result.error) : null;
+  // A refused subject searched nothing: no earlier page is kept on screen under the new conditions.
+  const items = refusedEntity ? [] : (result.data?.items ?? []);
   return (
     <div className="workspace-page flex min-w-0 flex-col gap-4" data-testid="audit-page">
       <PageHeader
@@ -477,11 +521,25 @@ export function AuditPage() {
         </div>
       ) : null}
       <Card>
-        <AuditForm state={state} options={options.data} tenantAdmin={tenantAdmin} onSearch={onSearch} />
+        <AuditForm
+          state={state}
+          enabled={allowed}
+          tenantAdmin={tenantAdmin}
+          refusedEntity={refusedEntity}
+          onSearch={onSearch}
+        />
       </Card>
       <p className="sr-only" aria-live="polite" data-testid="audit-live">
         {result.isFetching ? t({ ja: '検索しています…', en: 'Searching…' }) : announcement}
       </p>
+      {refusedEntity ? (
+        <div className="ui-notice ui-notice-warning" role="status" data-testid="audit-entity-refused">
+          {t({
+            ja: `対象「${refusedEntity}」の監査はこの会社では読めないため、検索していません。対象を変えて検索してください。`,
+            en: `The audit of “${refusedEntity}” cannot be read in this company, so nothing was searched. Choose another subject and search.`,
+          })}
+        </div>
+      ) : null}
       {failure ? (
         <div className="ui-notice ui-notice-danger" data-testid="audit-error">
           <p className="font-semibold">
@@ -507,7 +565,7 @@ export function AuditPage() {
             en: `Times are Japan time. ${state.scope === 'tenant' ? 'Tenant administration' : 'This company’s'} records, newest first, 50 at a time.`,
           })}
         >
-          {result.isPending && !result.data ? (
+          {refusedEntity ? null : result.isPending && !result.data ? (
             <div aria-busy="true">
               <table className="w-full">
                 <tbody>
@@ -553,7 +611,7 @@ export function AuditPage() {
               {t({ ja: '次へ', en: 'Next' })}
             </Button>
             <span className="text-sm text-text-secondary" data-testid="audit-page-number">
-              {t({ ja: `${page} ページ目`, en: `Page ${page}` })}
+              {t(pageLabel(page))}
             </span>
           </nav>
         </FormSection>

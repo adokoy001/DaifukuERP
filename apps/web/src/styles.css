@@ -991,6 +991,21 @@
   padding: 11px 12px;
   font-size: 12px;
 }
+/* Row headers of a kit table (th scope="row": the permission matrix's entity and action names) read like body cells:
+ * not sticky, no header band. Group rows (scope="rowgroup") keep their row's band but scroll with the rows. */
+.page-content .ui-table tbody th[scope='row'],
+.page-content .ui-table tbody th[scope='rowgroup'] {
+  position: static;
+  padding: 11px 12px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+.page-content .ui-table tbody th[scope='row'] {
+  background: transparent;
+  font-weight: 400;
+  border-bottom: 0;
+}
 .page-content tbody tr:nth-child(even) {
   background: var(--row-stripe);
 }

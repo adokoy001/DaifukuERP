@@ -8,10 +8,13 @@ import {
   auditApiQuery,
   auditSearchParams,
   conditionsKey,
+  conditionsOf,
   defaultPeriod,
   exportSummary,
+  isAuditCursor,
   opLabel,
   pageAnnouncement,
+  pageLabel,
   parseAuditSearch,
   periodDays,
   popTrail,
@@ -29,6 +32,13 @@ import {
 /** 2026-10-30 00:30 in Japan = 2026-10-29 15:30 UTC: the Japanese date is already the 30th. */
 const NOW = new Date('2026-10-29T15:30:00Z');
 const RECORD = '00000000-0000-4000-8000-0000000000aa';
+/** A cursor as the API encodes it (kernel encodeAuditCursor): base64url JSON [at with microseconds, id]. */
+const cursorOf = (at: string, id: string = RECORD) =>
+  btoa(JSON.stringify([at, id]))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+const CURSOR = cursorOf('2026-10-30T01:02:03.123456Z');
 const base: AuditConditions = {
   from: '2026-10-24',
   to: '2026-10-30',
@@ -81,7 +91,7 @@ describe('audit search conditions (access-insight AC-19)', () => {
       op: 'export',
       record: RECORD,
       scope: 'tenant',
-      cursor: 'abc_DEF-1',
+      cursor: CURSOR,
     };
     const { state, ignored } = parseAuditSearch(raw, NOW, { tenantAdmin: true });
     expect(ignored).toEqual([]);
@@ -96,7 +106,7 @@ describe('audit search conditions (access-insight AC-19)', () => {
         entity: 'partner',
         op: 'export',
         recordId: RECORD,
-        cursor: 'abc_DEF-1',
+        cursor: CURSOR,
       }),
     );
     expect(auditSearchParams(base)).toEqual({ from: '2026-10-24', to: '2026-10-30' });
@@ -115,6 +125,35 @@ describe('audit search conditions (access-insight AC-19)', () => {
       'to',
     ]);
     expect(parseAuditSearch({ record: RECORD }, NOW, { tenantAdmin: false }).ignored).toEqual(['record']);
+    // The router passes number-like values through as numbers (`?user=123`): they are named, not dropped silently.
+    expect(parseAuditSearch({ user: 123, from: 2026 }, NOW, { tenantAdmin: false }).ignored.sort()).toEqual([
+      'from',
+      'user',
+    ]);
+    // Dates before the API's lower bound are not searchable either.
+    expect(parseAuditSearch({ from: '1999-12-31', to: '2000-01-01' }, NOW, { tenantAdmin: false }).ignored).toEqual([
+      'from',
+      'to',
+    ]);
+  });
+
+  it('AC-19: a cursor the API would refuse is an ignored URL condition, not a failing search', () => {
+    expect(isAuditCursor(CURSOR)).toBe(true);
+    expect(isAuditCursor(cursorOf('9999-12-31T23:59:59.999999Z'))).toBe(true);
+    for (const raw of [
+      'abc',
+      'a b',
+      cursorOf('2026-10-30T01:02:03.123Z'),
+      cursorOf('2026-02-30T00:00:00.000000Z'),
+      cursorOf('0000-01-01T00:00:00.000000Z'),
+      cursorOf('2026-10-30T01:02:03.123456Z', 'not-a-uuid'),
+      btoa(JSON.stringify({ at: '2026-10-30T01:02:03.123456Z', id: RECORD })).replace(/=+$/, ''),
+      'x'.repeat(513),
+    ])
+      expect(isAuditCursor(raw), raw).toBe(false);
+    const parsed = parseAuditSearch({ cursor: 'abc' }, NOW, { tenantAdmin: false });
+    expect(parsed.ignored).toEqual(['cursor']);
+    expect(parsed.state.cursor).toBeUndefined();
   });
 
   it('AC-19: form errors per field in screen order, with the same 366-day examples as the API', () => {
@@ -126,6 +165,9 @@ describe('audit search conditions (access-insight AC-19)', () => {
     expect(validateAuditForm({ ...base, from: '2024-01-01', to: '2024-12-31' })).toEqual([]);
     expect(validateAuditForm({ ...base, from: '2025-01-01', to: '2026-01-01' })).toEqual([]);
     expect(validateAuditForm({ ...base, from: '2024-01-01', to: '2025-01-01' }).map((e) => e.field)).toEqual(['to']);
+    expect(validateAuditForm({ ...base, from: '1999-12-31', to: '2000-01-01' })).toMatchObject([
+      { field: 'from', message: { ja: '2000-01-01 以降の日付を入力してください。' } },
+    ]);
     expect(validateAuditForm({ ...base, record: RECORD }).map((e) => e.message.en)).toEqual([
       'Choose a subject before entering a record id.',
     ]);
@@ -145,6 +187,15 @@ describe('audit search conditions (access-insight AC-19)', () => {
     expect(popTrail(back.trail)).toEqual({ trail: [], cursor: undefined });
     expect(conditionsKey(base)).toBe(conditionsKey({ ...base, cursor: 'c9' } as AuditConditions));
     expect(conditionsKey(base)).not.toBe(conditionsKey({ ...base, op: 'export' }));
+  });
+
+  it('AC-19: a new search starts at the first page — the conditions drop the cursor of the page being shown', () => {
+    const { state } = parseAuditSearch({ ...base, user: 'u1', cursor: CURSOR }, NOW, { tenantAdmin: false });
+    expect(state.cursor).toBe(CURSOR);
+    const next = { ...conditionsOf(state), op: 'export' };
+    expect(next).not.toHaveProperty('cursor');
+    expect(auditSearchParams(next)).toEqual({ from: base.from, to: base.to, user: 'u1', op: 'export' });
+    expect(new URLSearchParams(auditApiQuery(next)).has('cursor')).toBe(false);
   });
 });
 
@@ -208,5 +259,8 @@ describe('audit result rows (access-insight AC-20)', () => {
       'A (inactive) <a@example.com>',
     );
     expect(pageAnnouncement(50, true, 2).ja).toBe('2 ページ目: 50 件を表示。続きがあります。');
+    // A later page reached from the URL (reload, Back, a shared link) claims no number.
+    expect(pageLabel(null)).toEqual({ ja: '続きのページ', en: 'A later page' });
+    expect(pageAnnouncement(6, false, null).en).toBe('A later page: 6 records shown; this is the last page.');
   });
 });

@@ -186,6 +186,11 @@ describe('permission matrix screen (access-insight AC-6)', () => {
     expect(cellText(['read', 'create', 'export'], 'ja')).toEqual({ abbr: '閲作出', full: '閲覧、作成、CSV 出力' });
     expect(cellText(['read', 'create', 'export'], 'en')).toEqual({ abbr: 'R C E', full: 'Read, Create, Export' });
     expect(cellText([], 'ja')).toEqual({ abbr: '—', full: '権限なし' });
+    // AC-3(f): a submit that runs only through a named transition is marked in every view, with the note read out.
+    const via = { ja: 'approve 経由のみ', en: 'only via approve' };
+    expect(cellText(['read', 'submit'], 'ja', via)).toEqual({ abbr: '閲確*', full: '閲覧、確定（approve 経由のみ）' });
+    expect(cellText(['read', 'submit'], 'en', via)).toEqual({ abbr: 'R S*', full: 'Read, Submit (only via approve)' });
+    expect(cellText(['read'], 'ja', via)).toEqual({ abbr: '閲', full: '閲覧' });
     const abbrs = Object.values(OP_TEXT).map((t) => t.abbr.ja);
     expect(new Set(abbrs).size).toBe(abbrs.length);
   });
@@ -195,6 +200,9 @@ describe('permission matrix screen (access-insight AC-6)', () => {
     expect(entityBadges(partner)).toEqual(['self']);
     expect(entityBadges(partner, 'settings')).toEqual([]);
     expect(entityBadges(payment)).toEqual(['conditional', 'fields', 'stores']);
+    // admin is never field-masked (kernel maskedFields), so its view has no "restricted fields" badge.
+    expect(entityBadges(payment, 'admin')).toEqual(['stores']);
+    expect(entityBadges(payment, 'sales')).toEqual(['conditional', 'fields', 'stores']);
     expect(entityBadges(crate)).toEqual(['relay', 'noAudit', 'unapplied', 'tenant']);
     expect(BADGE_TEXT.noAudit.label.ja).toContain('CSV 出力は記録');
     expect(submitNote(payment)).toEqual({ ja: 'approve 経由のみ', en: 'only via approve' });

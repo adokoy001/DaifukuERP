@@ -79,14 +79,19 @@ const Doc = defineDocument({
   },
   storeAccess: { kind: 'parent', field: 'itemId', entity: 'pmx_item' },
   transitions: {
-    approve: { from: 0, to: 1, roles: ['pmx_approver'], guard: 'pmx_ready' },
+    // pmx_approver_lite holds the transition role and `submit` but not `update`: transitionDocument refuses it.
+    approve: { from: 0, to: 1, roles: ['pmx_approver', 'pmx_approver_lite'], guard: 'pmx_ready' },
     void: { from: 1, to: 2, roles: ['pmx_clerk'] },
+    // No `roles`: every role with `update` and `cancel` may run it.
+    retract: { from: 1, to: 2 },
   },
   permissions: {
     roles: {
       pmx_clerk: ['read', 'create', 'update', 'submit', 'cancel', 'amend', 'export'],
       pmx_approver: ['read', 'update', 'submit'],
+      pmx_approver_lite: ['read', 'submit'],
       pmx_submitter: ['read', 'submit'],
+      pmx_canceller: ['read', 'update', 'cancel'],
       pmx_viewer: ['read'],
     },
     rowRules: [{ roles: ['pmx_viewer'], where: { docstatus: 1 } }],
@@ -414,14 +419,22 @@ describe('permission matrix: notes (access-insight AC-3)', () => {
   it('AC-3(f): named transitions follow transitionDocument (role or admin, update, submit/cancel) and submitVia', () => {
     const doc = entityOf(m, 'pmx_doc');
     expect(doc.transitions.map((t) => [t.name, t.from, t.to, t.roles, t.guard])).toEqual([
-      ['approve', 0, 1, ['pmx_approver'], true],
+      ['approve', 0, 1, ['pmx_approver', 'pmx_approver_lite'], true],
       ['void', 1, 2, ['pmx_clerk'], false],
+      ['retract', 1, 2, null, false],
     ]);
     expect(doc.submitVia).toEqual(['approve']);
     // pmx_submitter has `submit` but neither the transition role nor `update`: plain submit (via approve) is refused.
     expect(doc.grants.pmx_submitter).toContain('submit');
-    expect(doc.transitions[0]?.runnableRoles).toEqual(['admin', 'pmx_approver']);
-    expect(doc.transitions[1]?.runnableRoles).toEqual(['admin', 'pmx_clerk']);
+    // pmx_approver_lite holds the transition role and `submit` but lacks `update`: refused (the `update` requirement).
+    expect(doc.grants.pmx_approver_lite).toEqual(['read', 'submit']);
+    const runnable = (name: string) => doc.transitions.find((t) => t.name === name)?.runnableRoles;
+    expect(runnable('approve')).toEqual(['admin', 'pmx_approver']);
+    expect(runnable('void')).toEqual(['admin', 'pmx_clerk']);
+    // A transition without roles is open to every role with `update` and `cancel` (the `!t.roles` branch), while
+    // `void` (roles: pmx_clerk) refuses pmx_canceller although it holds both.
+    expect(runnable('retract')).toEqual(['admin', 'pmx_canceller', 'pmx_clerk']);
+    expect(runnable('void')).not.toContain('pmx_canceller');
     const def = registry.entity('pmx_doc');
     for (const t of doc.transitions) {
       const target: Op = t.to === 1 ? 'submit' : 'cancel';

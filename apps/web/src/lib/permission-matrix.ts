@@ -191,12 +191,26 @@ export function groupByModule<T extends { module: string | null; moduleLabel: La
   return [...groups.values()];
 }
 
-/** A cell: abbreviations for the eye, full names for assistive technology; empty grants say so. */
-export function cellText(ops: readonly Op[], locale: 'ja' | 'en'): { abbr: string; full: string } {
+/**
+ * A cell: abbreviations for the eye, full names for assistive technology; empty grants say so. With `submit` (AC-3(f),
+ * submitNote) a granted submit is marked `*` and its full name carries the note.
+ */
+export function cellText(
+  ops: readonly Op[],
+  locale: 'ja' | 'en',
+  submit: Label | null = null,
+): { abbr: string; full: string } {
   if (!ops.length) return { abbr: '—', full: locale === 'ja' ? '権限なし' : 'No access' };
+  const marked = (op: Op) => op === 'submit' && submit !== null;
   return {
-    abbr: ops.map((op) => OP_TEXT[op].abbr[locale]).join(locale === 'ja' ? '' : ' '),
-    full: ops.map((op) => OP_TEXT[op].name[locale]).join(locale === 'ja' ? '、' : ', '),
+    abbr: ops.map((op) => `${OP_TEXT[op].abbr[locale]}${marked(op) ? '*' : ''}`).join(locale === 'ja' ? '' : ' '),
+    full: ops
+      .map((op) =>
+        marked(op) && submit
+          ? `${OP_TEXT[op].name[locale]}${locale === 'ja' ? `（${submit.ja}）` : ` (${submit.en})`}`
+          : OP_TEXT[op].name[locale],
+      )
+      .join(locale === 'ja' ? '、' : ', '),
   };
 }
 
@@ -217,13 +231,16 @@ export const BADGE_TEXT: Record<BadgeId, { label: Label; tone: 'neutral' | 'acce
   tenant: { label: { ja: 'テナント共通', en: 'Shared by the tenant' }, tone: 'neutral' },
 };
 
-/** Note badges of a row; with a role, row rules count only when they restrict that role. */
+/**
+ * Note badges of a row; with a role, row rules count only when they restrict that role, and field groups only when they
+ * hide fields from it (admin is never field-masked: kernel maskedFields is empty for admin).
+ */
 export function entityBadges(entity: MatrixEntity, role?: string): BadgeId[] {
   const rules = role ? entity.rowRules.filter((r) => r.roles.includes(role)) : entity.rowRules;
   const out: BadgeId[] = [];
   if (rules.some((r) => r.self)) out.push('self');
   if (rules.some((r) => !r.self)) out.push('conditional');
-  if (entity.fieldGroups.some((g) => !role || !g.roles.includes(role))) out.push('fields');
+  if (role !== 'admin' && entity.fieldGroups.some((g) => !role || !g.roles.includes(role))) out.push('fields');
   if (entity.stores.policy) out.push('stores');
   if (entity.sites.policy) out.push('sites');
   if (entity.relay && entity.relay.effective.length) out.push('relay');

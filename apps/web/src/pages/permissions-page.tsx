@@ -95,9 +95,9 @@ function Badges({ ids }: { ids: BadgeId[] }) {
   );
 }
 
-function OpsCell({ ops, testId }: { ops: MatrixEntity['ops']; testId: string }) {
+function OpsCell({ ops, testId, submit }: { ops: MatrixEntity['ops']; testId: string; submit: Label | null }) {
   const { locale } = useLocale();
-  const text = cellText(ops, locale);
+  const text = cellText(ops, locale, submit);
   return (
     <td data-testid={testId} data-ops={ops.join(' ')} className="whitespace-nowrap font-mono">
       <span aria-hidden="true">{text.abbr}</span>
@@ -125,11 +125,12 @@ function EntityRow({
   return (
     <>
       <tr data-testid={`matrix-row-${entity.name}`}>
-        <td className="min-w-48">
+        {/* A row header, so each grant cell is announced with its entity as well as its role column. */}
+        <th scope="row" className="min-w-48">
           <span className="block font-semibold text-text">{t(entity.label)}</span>
           <span className="block font-mono text-xs text-text-muted">{entity.name}</span>
           <Badges ids={entityBadges(entity, role)} />
-        </td>
+        </th>
         {role
           ? matrix.ops.map((op) => {
               const applicable = entity.ops.includes(op);
@@ -152,7 +153,12 @@ function EntityRow({
               );
             })
           : roles.map((r) => (
-              <OpsCell key={r.name} ops={entity.grants[r.name] ?? []} testId={`cell-${entity.name}-${r.name}`} />
+              <OpsCell
+                key={r.name}
+                ops={entity.grants[r.name] ?? []}
+                testId={`cell-${entity.name}-${r.name}`}
+                submit={submit}
+              />
             ))}
         <td>
           <button
@@ -229,9 +235,9 @@ function DataTable({
       {groupByModule(entities).map((group) => (
         <Fragment key={group.module}>
           <tr className="bg-surface-muted" data-testid={`matrix-group-${group.module}`}>
-            <td colSpan={columns} className="font-semibold text-text">
+            <th scope="rowgroup" colSpan={columns} className="font-semibold text-text">
               {t(group.label)}
-            </td>
+            </th>
           </tr>
           {group.items.map((entity) => (
             <EntityRow key={entity.name} entity={entity} roles={roles} role={role} matrix={matrix} />
@@ -276,11 +282,11 @@ function ActionsTable({
     >
       {actions.map((a) => (
         <tr key={a.name} data-testid={`action-row-${a.name}`}>
-          <td className="min-w-48">
+          <th scope="row" className="min-w-48">
             <span className="block font-semibold text-text">{t(a.description)}</span>
             <span className="block font-mono text-xs text-text-muted">{a.name}</span>
             {!a.applied ? <Badges ids={['unapplied']} /> : null}
-          </td>
+          </th>
           <td className="text-sm">
             {t(permissionText(a.permission, matrix.roles))}
             {a.storeAccess || a.siteAccess || a.relayAccess ? (
@@ -326,6 +332,14 @@ function Legend({ matrix, role }: { matrix: PermissionMatrix; role: string | und
           ))}
         </ul>
         <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm text-text-secondary">
+          {matrix.entities.some((e) => e.submitVia.length) ? (
+            <li data-testid="matrix-legend-submit-via">
+              {t({
+                ja: '確* = 確定は名前付きの遷移を経由します（行の「詳細」に遷移名とロールを表示）。',
+                en: 'S* = submitting runs a named transition (the row details name it and its roles).',
+              })}
+            </li>
+          ) : null}
           <li>
             {t({
               ja: '会社単位のデータは、画面上部で選んでいる会社の行だけが対象です。「テナント共通」の札はすべての会社で共有されるデータです。',

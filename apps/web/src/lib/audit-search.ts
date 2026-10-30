@@ -40,11 +40,14 @@ export interface AuditOptions {
 
 /** Same rule as the API (AC-15): days from `from` to `to` with both ends counted, at most 366. */
 export const MAX_DAYS = 366;
+/** Same bound as the API (kernel AUDIT_SEARCH_MIN_DATE): no earlier business date is searchable. */
+export const MIN_DATE = '2000-01-01';
 const DAY_MS = 86_400_000;
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CURSOR = /^[A-Za-z0-9_-]{1,512}$/;
+const CURSOR_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 
 export function isLocalDate(s: string): boolean {
   if (!LOCAL_DATE.test(s)) return false;
@@ -62,6 +65,28 @@ export function defaultPeriod(now: Date): { from: string; to: string } {
   const to = todayInJapan(now);
   const from = new Date(Date.parse(`${to}T00:00:00Z`) - 6 * DAY_MS).toISOString().slice(0, 10);
   return { from, to };
+}
+
+/**
+ * The cursor shape the API accepts (kernel decodeAuditCursor): base64url JSON `[at, id]`, `at` a real UTC instant with
+ * six fractional digits from year 0001 on, `id` a uuid. Anything else is an unreadable URL condition (AC-19), not a
+ * search the API would refuse.
+ */
+export function isAuditCursor(raw: string): boolean {
+  if (!CURSOR.test(raw)) return false;
+  try {
+    const base64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')), (c) => c.charCodeAt(0));
+    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!Array.isArray(value) || value.length !== 2) return false;
+    const [at, id] = value as unknown[];
+    if (typeof at !== 'string' || !CURSOR_AT.test(at) || at < '0001') return false;
+    const ms = Date.parse(at);
+    if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 23) !== at.slice(0, 23)) return false;
+    return typeof id === 'string' && UUID.test(id);
+  } catch {
+    return false;
+  }
 }
 
 export interface AuditConditions {
@@ -104,7 +129,7 @@ export function parseAuditSearch(
   if (from !== undefined || to !== undefined) {
     const f = from ?? period.from;
     const t = to ?? period.to;
-    if (isLocalDate(f) && isLocalDate(t) && f <= t && periodDays(f, t) <= MAX_DAYS)
+    if (isLocalDate(f) && isLocalDate(t) && f >= MIN_DATE && f <= t && periodDays(f, t) <= MAX_DAYS)
       state = { ...state, from: f, to: t };
     else ignored.push(...(['from', 'to'] as const).filter((k) => raw[k] !== undefined));
   }
@@ -131,10 +156,16 @@ export function parseAuditSearch(
   }
   const cursor = text('cursor');
   if (cursor !== undefined) {
-    if (CURSOR.test(cursor)) state.cursor = cursor;
+    if (isAuditCursor(cursor)) state.cursor = cursor;
     else ignored.push('cursor');
   }
   return { state, ignored: [...new Set(ignored)] };
+}
+
+/** The conditions alone: a new search always starts at the first page (AC-19, "条件変更で初期化"). */
+export function conditionsOf(state: AuditConditions): AuditConditions {
+  const { from, to, user, entity, op, record, scope } = state;
+  return { from, to, user, entity, op, record, scope };
 }
 
 /** Conditions -> URL search (empty values left out; the period always present so a shared URL keeps it). */
@@ -171,12 +202,24 @@ export interface FormError {
 /** AC-19: field errors in screen order (the first one gets focus); nothing is searched while any remains. */
 export function validateAuditForm(form: AuditConditions): FormError[] {
   const errors: FormError[] = [];
-  const fromOk = isLocalDate(form.from);
-  const toOk = isLocalDate(form.to);
+  const fromReal = isLocalDate(form.from);
+  const toReal = isLocalDate(form.to);
+  const fromOk = fromReal && form.from >= MIN_DATE;
+  const toOk = toReal && form.to >= MIN_DATE;
+  const tooEarly: Label = {
+    ja: `${MIN_DATE} 以降の日付を入力してください。`,
+    en: `Enter a date on or after ${MIN_DATE}.`,
+  };
   if (!fromOk)
-    errors.push({ field: 'from', message: { ja: '実在する日付を入力してください。', en: 'Enter an existing date.' } });
+    errors.push({
+      field: 'from',
+      message: fromReal ? tooEarly : { ja: '実在する日付を入力してください。', en: 'Enter an existing date.' },
+    });
   if (!toOk)
-    errors.push({ field: 'to', message: { ja: '実在する日付を入力してください。', en: 'Enter an existing date.' } });
+    errors.push({
+      field: 'to',
+      message: toReal ? tooEarly : { ja: '実在する日付を入力してください。', en: 'Enter an existing date.' },
+    });
   if (fromOk && toOk && form.from > form.to)
     errors.push({
       field: 'to',
@@ -288,10 +331,18 @@ export function recordHref(item: AuditItem, readable: ReadonlySet<string>): stri
   if (!readable.has(item.entity) || item.op === 'delete' || item.op === 'export') return null;
   return `/e/${item.entity}/${item.recordId}`;
 }
+/**
+ * AC-20: the page label. `null` is a later page this screen did not reach itself (a reload, Back or a shared link with
+ * a cursor): its number is unknown, so none is claimed.
+ */
+export function pageLabel(page: number | null): Label {
+  return page === null ? { ja: '続きのページ', en: 'A later page' } : { ja: `${page} ページ目`, en: `Page ${page}` };
+}
 /** AC-20: what the live region announces after a page loads. */
-export function pageAnnouncement(count: number, more: boolean, page: number): Label {
+export function pageAnnouncement(count: number, more: boolean, page: number | null): Label {
+  const name = pageLabel(page);
   return {
-    ja: `${page} ページ目: ${count} 件を表示${more ? '。続きがあります' : '。これで最後です'}。`,
-    en: `Page ${page}: ${count} records shown${more ? '; more follow' : '; this is the last page'}.`,
+    ja: `${name.ja}: ${count} 件を表示${more ? '。続きがあります' : '。これで最後です'}。`,
+    en: `${name.en}: ${count} records shown${more ? '; more follow' : '; this is the last page'}.`,
   };
 }

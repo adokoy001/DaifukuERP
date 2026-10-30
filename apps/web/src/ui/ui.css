@@ -247,6 +247,15 @@
     margin-top: var(--spacing);
   }
 
+  /* ---- Button ---- */
+  /* A kit Button kept focusable while unavailable (aria-disabled, e.g. a pager's "Next" on the last page) looks like a
+   * disabled one; its click handler does nothing. */
+  .btn[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
   /* ---- EmptyState ---- */
   .ui-empty {
     display: flex;
