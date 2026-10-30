@@ -16,6 +16,7 @@ import { registerMetaRoutes } from './routes/meta.ts';
 import { registerRestRoutes } from './routes/rest.ts';
 import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
+import { registerAccessInsightRoutes } from './routes/access-insight.ts';
 import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
 import { registerMachineCredentialRoutes } from './routes/machine-credentials.ts';
 import { registerHealthRoutes } from './routes/health.ts';
@@ -85,6 +86,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerAccessAdminRoutes(server, { db: opts.app });
   registerCompanyAdminRoutes(server, { db: opts.app });
   registerMachineCredentialRoutes(server, { db: opts.app });
+  registerAccessInsightRoutes(server, { db: opts.app });
   registerHealthRoutes(server, {
     db: opts.app,
     platform: {
