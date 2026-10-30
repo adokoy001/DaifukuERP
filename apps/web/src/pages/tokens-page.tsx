@@ -2,6 +2,8 @@
 // issue Dialog that confirms the administrator's current password (step-up) and shows the secret exactly once, revoke
 // in a kit Dialog and the per-key history. The secret lives only in the issue Dialog's mutation result: closing the
 // Dialog unmounts it and resets the mutation, and nothing writes it to the URL, storage, toasts, the console or the list.
+// Text inside the dialogs uses <div>: the legacy `.action-dialog p` rule (styles.css) mutes every paragraph to a grey
+// that fails WCAG contrast at 12px, and it outranks the kit's notice and field-error colours.
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getUser, isApiError } from '../api/client.ts';
@@ -50,9 +52,9 @@ const STEP_UP_REUSE_MS = 240_000;
 
 function FieldError({ id, text }: { id: string; text: string | undefined }) {
   return text ? (
-    <p id={id} className="ui-field-error">
+    <div id={id} className="ui-field-error">
       {text}
-    </p>
+    </div>
   ) : null;
 }
 
@@ -130,12 +132,12 @@ function SecretPanel({ token, purpose }: { token: string; purpose: MachinePurpos
       <h3 id={headingId} ref={heading} tabIndex={-1} className="ui-section-title">
         {t({ ja: 'API キーを発行しました', en: 'The API key was issued' })}
       </h3>
-      <p className="ui-notice ui-notice-warning" data-testid="token-secret-warning">
+      <div className="ui-notice ui-notice-warning" data-testid="token-secret-warning">
         {t({
           ja: 'この画面を閉じると二度と表示できません。安全な場所に保存してください。',
           en: 'It cannot be shown again after you close this window. Store it somewhere safe.',
         })}
-      </p>
+      </div>
       <label htmlFor={secretId} className="text-sm font-semibold text-text-secondary">
         {t({ ja: 'API キー（一度だけ表示）', en: 'API key (shown once)' })}
       </label>
@@ -155,11 +157,11 @@ function SecretPanel({ token, purpose }: { token: string; purpose: MachinePurpos
           {t({ ja: 'コピー', en: 'Copy' })}
         </Button>
       </div>
-      <p role="status" aria-live="polite" className="text-sm" data-testid="token-copy-status">
+      <div role="status" aria-live="polite" className="text-sm" data-testid="token-copy-status">
         {copied ? t(copied) : ''}
-      </p>
+      </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm">{t(usage.label)}</p>
+        <div className="text-sm">{t(usage.label)}</div>
         <code className="break-all text-sm">{usage.snippet}</code>
       </div>
     </div>
@@ -409,12 +411,12 @@ function IssueDialog({
             />
             <FieldError id={`${fieldId('roles')}-error`} text={errors.roles} />
             {draft.roles.includes('admin') ? (
-              <p className="ui-notice ui-notice-warning" data-testid="token-admin-warning">
+              <div className="ui-notice ui-notice-warning" data-testid="token-admin-warning">
                 {t({
                   ja: '会社のすべての業務を操作できる鍵になります。必要なロールだけを選ぶことを勧めます。',
                   en: 'This key can operate every business area of the company. Prefer choosing only the roles it needs.',
                 })}
-              </p>
+              </div>
             ) : null}
           </fieldset>
           <TextInput
@@ -516,9 +518,9 @@ function RevokeDialog({
           onChange={(event) => setReason(event.target.value)}
         />
         {failure ? (
-          <p role="alert" className="ui-notice ui-notice-danger">
+          <div role="alert" className="ui-notice ui-notice-danger">
             {failure}
-          </p>
+          </div>
         ) : null}
       </div>
     </Dialog>
@@ -544,9 +546,9 @@ function HistoryDialog({ item, onClose }: { item: MachineCredential; onClose: ()
       }
     >
       {audit.isError ? (
-        <p role="alert" className="ui-notice ui-notice-danger">
+        <div role="alert" className="ui-notice ui-notice-danger">
           {describeError(audit.error).message}
-        </p>
+        </div>
       ) : (
         <DataTableShell
           label={t({ ja: '鍵の履歴', en: 'Key history' })}

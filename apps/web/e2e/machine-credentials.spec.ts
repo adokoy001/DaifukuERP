@@ -27,7 +27,8 @@ test('machine-credentials AC-27/AC-28/AC-3a: the key list explains that issuing 
   await expect(page.getByTestId('tokens-unconfigured')).toContainText('IDENTITY_ENCRYPTION_KEY');
   const issue = page.getByTestId('token-issue');
   await expect(issue).toHaveAttribute('aria-disabled', 'true');
-  await issue.click();
+  // aria-disabled (not disabled) keeps it focusable; a forced click still opens nothing.
+  await issue.click({ force: true });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByTestId('tokens-empty')).toContainText('API キーはまだありません');
   // the help link of the screen trail opens the manual section (help.ts)
@@ -78,7 +79,7 @@ test('machine-credentials AC-31: a company admin who is not a tenant administrat
   await expect(page.locator('main a[data-screen-href="/admin/tokens"]')).toHaveCount(0);
   let calledTokens = false;
   page.on('request', (r) => {
-    if (r.url().includes('/admin/tokens')) calledTokens = true;
+    if (r.url().startsWith(API) && r.url().includes('/admin/tokens')) calledTokens = true;
   });
   await page.goto('/admin/tokens');
   await expect(page.getByTestId('tokens-forbidden')).toContainText('API キーの管理はテナント管理者だけが行えます');

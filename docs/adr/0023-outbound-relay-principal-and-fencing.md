@@ -40,3 +40,27 @@ Job は gateway ごと未完了500件、Device ごと100件。payload は16,000�
 業務 DB 試験と実 HTTP/WebSocket 試験で並行 claim、単回 start、fencing、失効、失われた応答の回復、権限変更、手動解決、非機密出力を確認する。TLS proxy と実 agent の全往復、全 gate、導入受入の結果は別途 feature log に記録する。実機プリンターと現金払出機は未検証である。
 
 通知の送信待ちは4 KiBを上限にし、ping前と非同期DB確認後の送信直前に再検査する。遅い受信側は切断して資源を保護し、仕事の正本はHTTPSの定期取得で回復する。
+
+## 追補: 連携・MCP 用の機械用資格情報（2026-10-30、F2）
+
+仕様: [machine-credentials](../specs/machine-credentials.md)。この項目に予約された ADR-0035 は使わず、この ADR の機械の本人性を一般化する。
+
+### 引き継ぐ性質
+
+LAN 中継機と同じく、外部連携（REST）と AI エージェント（`apps/mcp`）にも人の JWT や `onBehalfOf` を使わない専用の機械 principal を与える。kernel の system table `machine_credentials` に、`dfk_` + 32 byte 乱数（base64url 43 文字）の SHA-256 hash だけを保存し、鍵の一部も保存しない。generic CRUD・REST・MCP ツールに出さない。資格情報は tenant・company に固定し、期限（1〜365 日、必須）を持ち、要求ごとに失効・期限・用途・発行者を照合する。秘密は発行の応答だけに含め、URL・監査・要求ログに出さない。Authorization header 専用で、URL の query からは読まず、ブラウザー Origin を拒否し、会社切替 header は鍵の会社と同じ値だけを受け付ける。発行は pairing と同じく、人のテナント管理者のセッションで `lockIdentity` の下の単回 step-up（`consumeStepUp`）を要する。発行の監査には発行したセッションの `sessionVersion` を残す。
+
+### 中継機と違う点
+
+- actor は新しい種別 `machine`（`id` = 資格情報の id）。権限は専用の `relayAccess` ではなく、発行時に選んだ通常のロール（`availableRoles()`、`relay` を除く）で、人と同じ `Repository` / action の検査を通る。`tenantAdmin` は持たず、常に会社全体（`accessScope = all`）。
+- 用途（`integration` / `mcp`）で入口を限定する。`integration` は REST だけ、`mcp` は `apps/mcp` だけで受け付ける。
+- 有効性を発行者に結び付ける。発行者が無効化・テナント管理者でなくなると `updateManagedUser` の同じ transaction で失効させ（再有効化しても戻らない）、利用のたびに発行者が有効なテナント管理者であることも確かめる。発行者のパスワード変更・全端末ログアウトでは止めない（連携を管理者の個人操作で止めないため。発行に step-up を要するので、盗まれた JWT だけでは鍵を作れない）。
+- 人の本人性を前提とする kernel の port（`lockIdentity`・`assertAccessAdmin`・`authorizedCompanies` / `withAuthorizedCompany`・中継機の pairing / 失効 / operator・会社の作成と編集・本人のパスワード変更とセッション失効）は機械の actor を明示的に拒否する（fail closed）。業務の自己承認・作成者確認・本人の申請に使う利用者 id は kernel の `requireHumanUserId(ctx)` に寄せ、機械には 403 `human-actor-required` を返す（system / relay の戻り値は変えない）。鍵で作成・更新した記録の `created_by` / `updated_by` は `null` で、操作者は監査に残る。
+- 照合の失敗予算は「照合の前に予約し成功時に返す」方式を使わない。未知の鍵だけを IP ごとに数え（5 分 100 件、照合前は読むだけ）、既知の鍵の拒否は資格情報ごとに数える。有効な鍵の要求は予算に書き込まない。共有 NAT の後ろで 1 つの失効済みの連携が他の健全な鍵を止めないためである。
+- 拒否の監査（`use_denied`）は応答と別の transaction で確定し、`last_denied_at` / `last_denied_reason` の条件付き更新で資格情報・理由ごとに 1 時間に 1 件へ間引く。最終使用時刻は 60 秒単位で記録する。失効は `revoked_at IS NULL` の条件付き更新で冪等にし、app role には `DELETE` を与えない（鍵は失効した記録として残す）。
+
+### 帰結
+
+- `IDENTITY_ENCRYPTION_KEY` を設定していない最小構成では step-up が使えず、鍵を発行できない（招待・pairing と同じ。一覧・失効は使える）。
+- 人事・給与の判断（休暇の付与・精算・給与制度の承認・証憑の添付など）は鍵では行えない。人事・給与の連携を鍵に開くかは別の判断とする。
+- `apps/mcp` は従来どおりデータベースの資格情報（owner 接続を含む）で動く。`mcp` 用の鍵は人のパスワードを置き換えて監査の actor とロールを固定するが、MCP ホストの信頼を不要にはしない。
+- 利用者の直接作成・テナント管理者の付与が step-up を要しない点は、この追補の範囲外の既存の判断として残る。

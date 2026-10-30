@@ -169,7 +169,7 @@ test.describe.serial('API keys with account verification', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('この利用者が発行した有効な API キー 1 件も失効します。');
     const saved = page.waitForResponse((r) => r.url().includes('/admin/users/') && r.request().method() === 'PATCH');
-    await dialog.getByRole('button', { name: '利用者を更新', exact: true }).click();
+    await dialog.getByRole('button', { name: '利用者情報を更新', exact: true }).click();
     const response = await saved;
     expect(response.status()).toBe(200);
     expect(((await response.json()) as { revokedMachineCredentials: number }).revokedMachineCredentials).toBe(1);

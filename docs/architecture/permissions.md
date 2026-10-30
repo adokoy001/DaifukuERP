@@ -42,6 +42,8 @@ JWTは利用者を識別する情報です。所属や権限を長期間固定�
 
 テナント管理者は利用者と所属を管理する強い権限を持ちます。通常の店舗運営担当に付けません。自分の権限変更や最後の有効な管理者を失う操作は管理APIが拒否します。
 
+機械用資格情報（API キー、[spec](../specs/machine-credentials.md)、[ADR-0023 の追補](../adr/0023-outbound-relay-principal-and-fencing.md)）は `actor.type = machine`、`actor.id` = 資格情報の id の Context に解決されます。会社・ロールは資格情報の行からだけ決まり、`tenantAdmin` を持たず常に会社全体の範囲で、人と同じ Repository / action の検査を通ります。資格情報と発行者（有効なテナント管理者か）は要求ごとに照合します。`/auth/*`・`/admin/*`・中継機の pairing は人のセッションだけに開き、kernel の人の本人性を要する port（`lockIdentity`・`assertAccessAdmin`・会社横断の `withAuthorizedCompany`・会社の作成と編集など）も機械の actor を明示的に拒否します。行規則の `$ctx.userId` / `$ctx.actorId` は資格情報の id になるので、利用者に結び付いた行（従業員本人の行など）は見えません。
+
 本人のパスワード変更と全端末ログアウトは、会社ではなく認証済み本人を対象にします。現在パスワードの検証、sessionVersion更新、監査記録を同じトランザクションで処理し、並行操作でも失効済みの認証を通しません。[操作とAPI契約](../operations/account-security.md) を参照してください。
 
 ## 各入口の確認項目
@@ -61,4 +63,4 @@ JWTは利用者を識別する情報です。所属や権限を長期間固定�
 
 未宣言の境界は拒否します。所属0件や担当リスト空を全社アクセスへ読み替えません。権限を通すために `systemContext()`、roleの書換え、owner接続による業務readを加えません。systemContextはmigration/seed用です。
 
-承認では申請者と処理者を実ユーザーIDで比較します。MCP代理操作ではactor.onBehalfOfも扱い、AI名へすり替えて自己承認を通しません。給与は下書きと本人公開済み明細を区別し、拠点管理者というだけで金額への閲覧を許可しません。
+承認では申請者と処理者を実ユーザーIDで比較します。MCP代理操作ではactor.onBehalfOfも扱い、AI名へすり替えて自己承認を通しません。比較に使う利用者 ID は kernel の `requireHumanUserId(ctx)` から得ます。API キー（`machine`）は利用者 ID を持たないので 403 `human-actor-required` で拒否し、鍵の id で自己承認・作成者以外の確認の判定をすり抜けることはできません（本人の申請・承認・精算・休暇の付与・給与制度の承認・証憑の添付・申告準備の作成と確認・受信箱の `workforce.todo` / `tax_filing.todo`）。給与は下書きと本人公開済み明細を区別し、拠点管理者というだけで金額への閲覧を許可しません。
