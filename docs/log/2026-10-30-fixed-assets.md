@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 固定資産台帳と減価償却（E1）
 
 - セッション: 完成度向上の計画 E1 の実装（spec 作成セッションの worktree `wip/fixed-assets`、基点 `ffc2f42`。統合担当が中断した実装セッションを再開したもの） ／ 担当: agent ／ 対象: [docs/specs/fixed-assets.md](../specs/fixed-assets.md)
-- 計測: tokens=null, agent_minutes=95, human_minutes=0, rework_lines=60, gate_failures=1
+- 計測: tokens=null, agent_minutes=150（うち gate:light の待ち約 70）, human_minutes=0, rework_lines=90, gate_failures=3（環境要因の 1 回を除く）
 
 ## 決めたこと（と理由）
 
@@ -26,10 +26,10 @@
 - [実測] 単体: `l10n/jp/test/fixed-assets-rules.test.ts`（日本の規則集合が module の schema に通る・JP/JPY だけで使える・`verifiedOn: null`・出典 URL・行の範囲・golden の率が表から引ける）、`apps/runtime/test/chart-codes.test.ts`（日本の科目表とパックの seed の科目コードが重ならない）、`apps/web/src/lib/depreciation.test.ts`（URL・実行の可否・日英の文言・合計・告知・分野と説明の対応）。
 - [実測] DB（`daifuku_test_w61`）: `modules/fixed-assets/test` の asset 12 件・depreciation 18 件・disposal 10 件・reports 5 件・access 5 件・health 5 件・todo 4 件と、`apps/api/test/fixed-assets.db.test.ts` 2 件（全 module の runtime で日本の規則が使われ、照合記録までは `rules_unverified`、記録後は計上できる）、`l10n/jp/test/l10n-jp.db.test.ts`、`apps/api/test/setup-health.db.test.ts`（`STABLE_IDS` に `fixed_assets.depreciation_rules`、`KNOWN_HREFS` に `/finance/depreciation` を追加）がすべて通過。2 トランザクションの同時実行で明細が資産ごとに 1 つ、締め済みの期間・年度・未来の期間・後の年度の計上・途中の期間の取消・年度外の訂正日・除却済み資産を含む取消・汎用作成の拒否、売却の消費税集計表の売上の行（標準 450,000 / 45,000、非課税 450,000）を確認。
 - [実測] ブラウザ（スロット 24、Chromium、`--no-deps`）: `apps/web/e2e/fixed-assets.spec.ts` 2 件通過（画面検索から開く、既定の期間の URL 固定、未照合の帯と実行の無効、率表の表示、汎用フォーム（ラベル付きの節）で資産を登録、設定画面で照合を記録、kit の Dialog で実行・告知・実行の一覧と仕訳リンク、2 回目は `created: false`、除却の確定で資産が disposed、閲覧者に実行ボタンが無い、英語表示、390px で横にはみ出さない、axe の serious / critical なし）。390px の撮影画像を目視で確認。
-- [実測] 関連するブラウザ試験（同じスロット、`--no-deps`）: setup-health 4・settings-console 5・navigation-assist 12・inbox 3・close-guide 4・navigation 4 が通過、navigation の「店舗の従業員」1 件が失敗。この試験は業種（飲食チェーン）の fixture を前提とし、`--no-deps` では業種プロジェクトが走らないため（店舗の画面 `/operations` が無い）。固定資産の変更との関係は見つからず、業種プロジェクト付きでは再実行していない（下の未検証）。
-- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 1 回目は unit で `l10n/jp/test/services.test.ts` の請求書 golden が失敗（下の「見つけた問題」）。2 回目（1,320 秒、負荷 5〜10）は format・docs・assurance・typecheck 3 種・lint・unit（170 ファイル / 1,739 件）・deploy が通過し、DB は 142 ファイル中 3 ファイル（13 件）が失敗: `apps/api/test/scenario.db.test.ts`（module の登録順の期待値に `fixed_assets` が無い）と、`boolean-migration.db.test.ts`・`ext-index-migration.db.test.ts`（移行の前後で public の制約全体が同じことを期待しており、0018 が足す表の制約で差が出る）。いずれも試験側を直し（下の「見つけた問題」）、3 ファイルだけを再実行して 22 件通過。3 回目の結果は末尾に追記する。
+- [実測] 関連するブラウザ試験（同じスロット、`--no-deps`）: setup-health 4・settings-console 5・navigation-assist 12・inbox 3・close-guide 4・navigation 4 が通過、navigation の「店舗の従業員」1 件が失敗。この試験は業種（飲食チェーン）の fixture を前提とし、`--no-deps` では業種プロジェクトが走らない。業種プロジェクト付き（`--no-deps` なし）で navigation と fixed-assets を再実行し、業種 3・fixed-assets 2・navigation 5 の 10 件が通過。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 1 回目は unit で `l10n/jp/test/services.test.ts` の請求書 golden が失敗（下の「見つけた問題」）。2 回目（1,320 秒、負荷 5〜10）は format・docs・assurance・typecheck 3 種・lint・unit（170 ファイル / 1,739 件）・deploy が通過し、DB は 142 ファイル中 3 ファイル（13 件）が失敗: `apps/api/test/scenario.db.test.ts`（module の登録順の期待値に `fixed_assets` が無い）と、`boolean-migration.db.test.ts`・`ext-index-migration.db.test.ts`（移行の前後で public の制約全体が同じことを期待しており、0018 が足す表の制約で差が出る）。いずれも試験側を直し（下の「見つけた問題」）、3 ファイルだけを再実行して 22 件通過。3 回目は API の typecheck が、追加した試験の補助関数の型（driver の行の型）で失敗し、型を直した。4 回目は unit の `apps/api/test/identity-runner.test.ts` が `EADDRINUSE 127.0.0.1:3109`（同じ機械の別の作業の API が固定の port を使っていた。環境要因）で失敗し、単独の再実行で 3 件通過。**5 回目で全段階が通過**（format・docs・assurance・typecheck 3 種・lint・unit 170 ファイル / 1,739 件・deploy・DB 142 ファイル / 944 件、1,821 秒、負荷 10〜15。基点との差分が大きく DB は全件が選ばれた）。
 - [レビュー] modules が drizzle・postgres・fastify・node:fs を import しないこと、`systemContext()` を使っていないこと、すべての読み書きが呼び出し元の Context の Repository であること、serverOwned の書込が `defineWriteCapability` の中だけであることを、差分を読んで確認。lint:boundaries は gate の lint で通過。
-- [未検証] 償却率表・保証率・改定償却率・備忘価額・償却方法の制限・償却資産申告のデータの一次資料との照合（ネットワークの許可外。spec Q1）。spec 検証手順 4 の API の手動確認（`pnpm dev:api` での操作）は行っていない。同じ流れは DB 試験とブラウザ試験で実行した。`pnpm gate:full`（統合担当が実行）。navigation.spec の「店舗の従業員」を業種プロジェクト付きで再実行していない。
+- [未検証] 償却率表・保証率・改定償却率・備忘価額・償却方法の制限・償却資産申告のデータの一次資料との照合（ネットワークの許可外。spec Q1）。spec 検証手順 4 の API の手動確認（`pnpm dev:api` での操作）は行っていない。同じ流れは DB 試験とブラウザ試験で実行した。`pnpm gate:full`（統合担当が実行）。ブラウザの全 182 件は流していない（変更に関係する spec だけ）。
 
 ## 見つけた問題と修正（発見経路つき）
 
