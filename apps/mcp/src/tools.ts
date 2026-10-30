@@ -77,7 +77,7 @@ export async function callTool(
   }
   const requestId = newId();
   try {
-    const params = await refreshAgentContext(rt.owner, rt.params);
+    const params = await refreshAgentContext(rt.owner, rt.app, rt.params);
     const result = await withContext(rt.app, { ...params, requestId }, (ctx) =>
       runAction(ctx, action.name, args ?? {}),
     );

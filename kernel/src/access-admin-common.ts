@@ -52,9 +52,20 @@ export function publicManagedUser(user: typeof users.$inferSelect) {
 export function actorUser(ctx: Context): string {
   return ctx.actor.type === 'agent' ? (ctx.actor.onBehalfOf ?? '') : ctx.actor.id;
 }
+/**
+ * The user id of the person behind this context, for business rules that need a human (self-service, approval by
+ * another person, preparer/confirmer). A machine credential (API key) is refused with 403 `human-actor-required`
+ * (docs/specs/machine-credentials.md AC-22). system / relay keep returning actor.id. Not to be confused with
+ * Repository's private actorUserId(), which returns null for anything but user / agent (created_by / updated_by).
+ */
+export function requireHumanUserId(ctx: Context): string {
+  if (ctx.actor.type === 'machine') throw new PermissionDenied('human_actor', 'human-actor-required', ctx.roles);
+  return actorUser(ctx);
+}
 
 /** Recheck after lock: concurrent administrator demotions are serialized, including caller revocation. */
 export async function assertAccessAdmin(ctx: Context, lock = false): Promise<void> {
+  if (ctx.actor.type === 'machine') throw new PermissionDenied('access_admin', 'manage', ctx.roles);
   if (lock)
     await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`access-admin:${ctx.tenantId}`}, 0))`);
   const [actor] = await ctx.db

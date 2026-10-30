@@ -149,7 +149,12 @@ export function AccessPage() {
         <div className="access-details">
           {user ? (
             <>
-              <AccessUserProfile key={'profile/' + user.id} user={user} onStatus={profileStatus} />
+              <AccessUserProfile
+                key={'profile/' + user.id}
+                user={user}
+                activeApiKeys={data.activeApiKeys?.[user.id] ?? 0}
+                onStatus={profileStatus}
+              />
               <AccessMemberships key={'membership/' + user.id} user={user} catalog={data} onStatus={membershipStatus} />
               <AccessAuditPanel key={'audit/' + user.id} userId={user.id} catalog={data} />
             </>

@@ -40,6 +40,8 @@ const CONVERTED = [
   'components/navigation-assist.css',
   // company-admin (docs/specs/company-admin.md)
   'pages/companies-page.tsx',
+  // machine-credentials (docs/specs/machine-credentials.md)
+  'pages/tokens-page.tsx',
   // setup-health (docs/specs/setup-health.md)
   'pages/health-page.tsx',
   // form-ergonomics (docs/specs/form-ergonomics.md)

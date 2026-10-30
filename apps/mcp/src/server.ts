@@ -38,20 +38,20 @@ export function buildMcpServer(opts: McpServerOptions): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () =>
     withProtocolErrors(log, 'tools/list', async () => {
-      const params = await refreshAgentContext(opts.owner, opts.params);
+      const params = await refreshAgentContext(opts.owner, opts.app, opts.params);
       return withContext(opts.app, params, async (ctx) => ({ tools: listTools(log, ctx) }));
     }),
   );
   server.setRequestHandler(CallToolRequestSchema, async (req) => callTool(rt, req.params.name, req.params.arguments));
   server.setRequestHandler(ListResourcesRequestSchema, async () =>
     withProtocolErrors(log, 'resources/list', async () => {
-      const params = await refreshAgentContext(opts.owner, opts.params);
+      const params = await refreshAgentContext(opts.owner, opts.app, opts.params);
       return withContext(opts.app, params, async (ctx) => ({ resources: listResources(ctx) }));
     }),
   );
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () =>
     withProtocolErrors(log, 'resources/templates/list', async () => {
-      await refreshAgentContext(opts.owner, opts.params);
+      await refreshAgentContext(opts.owner, opts.app, opts.params);
       return { resourceTemplates: listResourceTemplates() };
     }),
   );

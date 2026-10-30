@@ -75,7 +75,7 @@ function jsonContents(uri: string, value: unknown): ReadResourceResult {
 }
 
 export async function readResource(rt: ResourceRuntime, uri: string): Promise<ReadResourceResult> {
-  const params = await refreshAgentContext(rt.owner, rt.params);
+  const params = await refreshAgentContext(rt.owner, rt.app, rt.params);
   if (uri === META_URI) {
     return jsonContents(uri, await withContext(rt.app, params, async (ctx) => appMeta(ctx, await metaOptions(ctx))));
   }

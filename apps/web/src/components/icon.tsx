@@ -23,7 +23,8 @@ export type IconName =
   | 'leaf'
   | 'dining'
   | 'star'
-  | 'help';
+  | 'help'
+  | 'key';
 // Standard shapes: Feather 4.29.2 (MIT), copyright Cole Bemis. See vendor/feather/LICENSE.
 // SVG geometry is preserved; the shared wrapper supplies our stroke width, size and accessibility.
 const SHAPES: Record<IconName, ReactNode> = {
@@ -144,6 +145,9 @@ const SHAPES: Record<IconName, ReactNode> = {
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
     </>
+  ),
+  key: (
+    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
   ),
 };
 

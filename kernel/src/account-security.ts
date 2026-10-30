@@ -24,7 +24,7 @@ function expiredSession(): DaifukuError {
 
 /** Row locking orders this operation with administrator resets, deactivation and concurrent sessions. */
 async function lockedSelf(ctx: Context, sessionVersion: number) {
-  if (ctx.actor.type === 'system') throw expiredSession();
+  if (ctx.actor.type === 'system' || ctx.actor.type === 'machine') throw expiredSession();
   const [user] = await ctx.db
     .select()
     .from(users)

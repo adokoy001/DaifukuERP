@@ -1,4 +1,12 @@
-import { bootstrapTenant, connect, type Database } from '@daifuku/kernel';
+import {
+  bootstrapTenant,
+  companyMemberships,
+  connect,
+  hashPassword,
+  newId,
+  users,
+  type Database,
+} from '@daifuku/kernel';
 import { createSchemaFromScratch } from '@daifuku/kernel/schema-tooling';
 import { loadRuntime } from '@daifuku/runtime';
 const fail = (): never => {
@@ -57,6 +65,31 @@ export async function identityFixtureDatabase() {
       adminName: 'Synthetic Admin',
       adminPassword: 'identity-test-password',
     });
+    // machine-credentials-identity.spec.ts: two tenant administrators of its own, so the API key flows never depend
+    // on the password / MFA state that enterprise-identity.spec.ts gives the bootstrap administrator.
+    for (const [email, name] of [
+      ['keys-admin@example.com', 'Keys Admin'],
+      ['keys-issuer@example.com', 'Keys Issuer'],
+    ] as const) {
+      const id = newId();
+      await owner.drizzle.insert(users).values({
+        id,
+        tenantId: boot.tenantId,
+        email,
+        name,
+        passwordHash: await hashPassword('identity-keys-password'),
+        tenantAdmin: true,
+        defaultCompanyId: boot.companyId,
+      });
+      await owner.drizzle.insert(companyMemberships).values({
+        tenantId: boot.tenantId,
+        companyId: boot.companyId,
+        userId: id,
+        roles: ['admin'],
+        accessScope: 'all',
+        siteIds: [],
+      });
+    }
     return {
       owner,
       app,

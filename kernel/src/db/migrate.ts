@@ -52,6 +52,7 @@ function grantsFor(name: string): string {
     case 'audit_log':
       return 'SELECT, INSERT';
     case 'sequences':
+    case 'machine_credentials': // machine-credentials AC-19: keys are revoked, never deleted
       return 'SELECT, INSERT, UPDATE';
     default:
       return 'SELECT, INSERT, UPDATE, DELETE';

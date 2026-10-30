@@ -1,6 +1,9 @@
 // AC-1: log the configured user in (owner connection, login only) and derive the agent's ContextParams.
 import {
   authenticate,
+  authenticateMachineCredential,
+  machineContextParams,
+  refreshMachineCredential,
   identityDenied,
   withIdentityAttempt,
   lockIdentity,
@@ -46,8 +49,24 @@ async function checkCompany(owner: Database, principal: Principal, companyId: st
   return resolveCompanyAccess(owner, principal, companyId);
 }
 
-/** The session stores identity; current authorization is resolved for every operation. */
-export async function refreshAgentContext(owner: Database, params: ContextParams): Promise<ContextParams> {
+/**
+ * The session stores identity; current authorization is resolved for every operation. A machine credential is
+ * re-validated (revocation, expiry, issuer) on the app connection, and a refusal is audited (machine-credentials AC-26).
+ */
+export async function refreshAgentContext(
+  owner: Database,
+  app: Database,
+  params: ContextParams,
+): Promise<ContextParams> {
+  if (params.actor.type === 'machine') {
+    if (!params.companyId) throw inactiveSession();
+    const principal = await refreshMachineCredential(
+      app,
+      { credentialId: params.actor.id, tenantId: params.tenantId, companyId: params.companyId },
+      'mcp',
+    );
+    return { ...params, ...machineContextParams(principal) };
+  }
   const userId = params.actor.type === 'agent' ? params.actor.onBehalfOf : params.actor.id;
   if (!userId || params.actor.type === 'system') throw inactiveSession();
   const principal = await loadPrincipal(owner, userId);
@@ -126,4 +145,41 @@ export async function openAgentSession(owner: Database, login: AgentLogin, log: 
     },
     user: { id: principal.userId, name: principal.name, email: principal.email },
   };
+}
+
+export interface MachineSession {
+  params: ContextParams;
+  credential: { id: string; name: string; companyId: string; roles: string[] };
+}
+
+/**
+ * machine-credentials AC-24 / AC-25: authenticates an `mcp` API key. Returns null when the key is refused (unknown,
+ * revoked, expired, an `integration` key, inactive issuer, or DAIFUKU_COMPANY_ID of another company); a refusal of a
+ * known key is audited by the kernel. The secret is never logged.
+ */
+export async function openMachineSession(
+  owner: Database,
+  app: Database,
+  apiKey: string,
+  companyId: string | undefined,
+  log: Logger,
+): Promise<MachineSession | null> {
+  try {
+    const principal = await authenticateMachineCredential(owner, app, apiKey, {
+      purpose: 'mcp',
+      companyHeader: companyId,
+    });
+    return {
+      params: { ...machineContextParams(principal), log },
+      credential: {
+        id: principal.credentialId,
+        name: principal.name,
+        companyId: principal.companyId,
+        roles: principal.roles,
+      },
+    };
+  } catch (error) {
+    if (error instanceof DaifukuError && [401, 403, 429].includes(error.httpStatus)) return null;
+    throw error;
+  }
 }

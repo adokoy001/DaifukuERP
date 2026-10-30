@@ -31,6 +31,7 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/templates': INDUSTRY,
   '/admin/users': topic('08-admin.md'),
   '/admin/companies': topic('08-admin.md', '会社の追加と編集'),
+  '/admin/tokens': topic('08-admin.md', 'api-キーの発行と失効'),
   '/admin/health': topic('08-admin.md', '導入チェック'),
   // docs/specs/setup-wizard.md AC-28: the wizard is the main path of the setup chapter.
   '/setup': topic('03-setup.md', 'セットアップウィザード'),

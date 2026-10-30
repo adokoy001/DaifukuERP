@@ -4,6 +4,7 @@ import {
   StateError,
   contentHash,
   repo,
+  requireHumanUserId,
   type Context,
   type Domain,
   type EntityDef,
@@ -13,8 +14,8 @@ import type { FilingPack } from './entities.ts';
 import type { FilingSource, FilingPrepared } from './profile.ts';
 import type { FilingKind, FilingIssue } from './contract.ts';
 import { FilingAccountingPack, FilingAccountingProfile, FilingPayrollPack, FilingPayrollProfile } from './entities.ts';
-export const actorId = (ctx: Context): string =>
-  ctx.actor.type === 'agent' ? (ctx.actor.onBehalfOf ?? '') : ctx.actor.id;
+/** Preparer / confirmer; an API key (machine actor) is refused (machine-credentials AC-22). */
+export const actorId = (ctx: Context): string => requireHumanUserId(ctx);
 export function requireKind(ctx: Context, kind: FilingKind) {
   if (
     !ctx.companyId ||

@@ -17,6 +17,7 @@ import { registerRestRoutes } from './routes/rest.ts';
 import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
 import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
+import { registerMachineCredentialRoutes } from './routes/machine-credentials.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerSetupStatusRoutes } from './routes/setup-status.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
@@ -83,6 +84,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerAttachmentRoutes(server, { db: opts.app });
   registerAccessAdminRoutes(server, { db: opts.app });
   registerCompanyAdminRoutes(server, { db: opts.app });
+  registerMachineCredentialRoutes(server, { db: opts.app });
   registerHealthRoutes(server, {
     db: opts.app,
     platform: {

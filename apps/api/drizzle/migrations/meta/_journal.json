@@ -141,6 +141,13 @@
       "when": 1793368696628,
       "tag": "0019_recurring_journals",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793388877672,
+      "tag": "0020_machine_credentials",
+      "breakpoints": true
     }
   ]
 }

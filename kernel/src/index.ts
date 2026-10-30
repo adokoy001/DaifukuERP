@@ -329,4 +329,6 @@ export * from './identity/index.ts';
 export { authorizedCompanies, withAuthorizedCompany, type AuthorizedCompany } from './authorized-companies.ts';
 
 export * from './relay-auth.ts';
+export * from './machine-credentials.ts';
+export { requireHumanUserId } from './access-admin-common.ts';
 export { contentHash, contentHashBytes } from './content-hash.ts';

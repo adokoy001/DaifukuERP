@@ -285,6 +285,12 @@ const companiesRoute = createRoute({
   path: '/admin/companies',
   component: lazyRouteComponent(() => import('./pages/companies-page.tsx'), 'CompaniesPage'),
 });
+// machine-credentials AC-27..AC-31: tenant administrators issue and revoke API keys.
+const tokensRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/tokens',
+  component: lazyRouteComponent(() => import('./pages/tokens-page.tsx'), 'TokensPage'),
+});
 // setup-health AC-9/AC-10: the setup check for admin or settings.
 const healthRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -447,6 +453,7 @@ const routeTree = rootRoute.addChildren([
     reportsRoute,
     accessRoute,
     companiesRoute,
+    tokensRoute,
     healthRoute,
     setupRoute,
     employeeRoute,

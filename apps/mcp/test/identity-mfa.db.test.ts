@@ -35,13 +35,15 @@ describe('MCP honors MFA before issuing an agent context', () => {
     expect(
       await openAgentSession(db.owner, { ...login, mfaCode: codes[0], identityEncryptionKey: key }, log),
     ).toBeNull();
-    await expect(refreshAgentContext(db.owner, { ...session.params, mfaVerified: false })).rejects.toMatchObject({
+    await expect(
+      refreshAgentContext(db.owner, db.app, { ...session.params, mfaVerified: false }),
+    ).rejects.toMatchObject({
       httpStatus: 401,
     });
-    await expect(refreshAgentContext(db.owner, session.params)).resolves.toHaveProperty('mfaVerified', true);
+    await expect(refreshAgentContext(db.owner, db.app, session.params)).resolves.toHaveProperty('mfaVerified', true);
     const step = await db.run({ companyId: null }, (ctx) => stepUpIdentity(ctx, 2, 'password', codes[1], key));
     await db.run({ companyId: null }, (ctx) => changeMfa(ctx, 2, step.stepUpToken, 'disable'));
-    await expect(refreshAgentContext(db.owner, session.params)).rejects.toMatchObject({ httpStatus: 401 });
+    await expect(refreshAgentContext(db.owner, db.app, session.params)).rejects.toMatchObject({ httpStatus: 401 });
   });
   it('does not exhaust login capacity when a client successfully reconnects repeatedly', async () => {
     for (let attempt = 0; attempt < 15; attempt++) {

@@ -401,6 +401,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/admin/tokens',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'tenant-admin',
+    label: { ja: 'API キー', en: 'API keys' },
+    description: {
+      ja: '外部連携や AI エージェント用の鍵を、期限・会社・ロールを決めて発行・失効します。',
+      en: 'Issue and revoke keys for integrations and AI agents with an expiry, a company and roles.',
+    },
+  },
+  {
     href: '/account',
     workspace: 'admin',
     kind: 'setting',

@@ -102,6 +102,11 @@ describe('authorized navigation catalog', () => {
     expect(hrefs(meta(), true)).toContain('/admin/users');
     expect(hrefs(meta(), true)).not.toContain('/settings');
   });
+  it('machine-credentials AC-31 shows API keys to tenant administrators only', () => {
+    expect(hrefs(meta([], [], [], ['admin']))).not.toContain('/admin/tokens');
+    expect(hrefs(meta([], [], [], ['settings']))).not.toContain('/admin/tokens');
+    expect(hrefs(meta(), true)).toContain('/admin/tokens');
+  });
   it('includes every readable non-line entity and excludes declared child entities and unreadable records', () => {
     const data = meta([
       entity('invoice', 'sales', { kind: 'document', lines: [{ entity: 'details', parentField: 'invoiceId' }] }),
