@@ -27,7 +27,7 @@ interface Matrix {
   }[];
 }
 
-async function axe(page: Page, screen: string, locale: 'ja' | 'en', width: number) {
+async function axe(page: Page, screen: string, locale: A11yRun['locale'], width: A11yRun['width']) {
   const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
   const run: A11yRun = { screen, locale, width };
   const judgement = judge(results.violations, exceptions, run, results.incomplete);

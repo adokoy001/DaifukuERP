@@ -4,6 +4,7 @@
 - 出典: research/01 §4-4、research/02 §6（Odoo 3層、Frappe 5層と default-allow、Cerbos query plan）
 
 ## 決定
+
 - 操作: `read / create / update / delete / submit / cancel / amend / export`。定義に無いロールは拒否。
 - 行ルール: `rowRules: [{ roles, where }]` の `where` はドメイン式（`{ field: value }`, `$or`, `$in`, `$ctx.userId` 等）で、Repository が SQL WHERE に変換する。一覧・取得・更新・削除すべてに適用。
 - フィールド群: `fieldGroups: { sensitive: { fields: [...], roles: [...] } }`。読み出しではマスク、書き込みでは拒否。
@@ -12,4 +13,17 @@
 - 機械用資格情報（API キー）による操作は `actor.type='machine'`・`actor.id` = 資格情報の id（`onBehalfOf` なし）を監査に残す。鍵は通常のロールで同じ Repository の検査を通り、人の本人性を要する port と業務判断（`requireHumanUserId`）は拒否する（[ADR-0023](0023-outbound-relay-principal-and-fencing.md) の追補「連携・MCP 用の機械用資格情報」、2026-10-30）。
 
 ## 最強の反論
+
 一覧の権限フィルタは最も複雑な横断関心事で、自作すると「ルールが増えるほど遅くなる」。Zanzibar 型（OpenFGA）に統一する方が委任・共有を一元化できる。→ Phase 3 で委任・共有要件が出た時点で再評価。
+
+## 追補（2026-10-30、access-insight F3）: 権限表の導出と監査の検索
+
+[access-insight](../specs/access-insight.md) で、権限の可視化と監査の横断検索を足した。新しい仕組み（DSL・port）は無く、この ADR の範囲の読取規則なので追補にした（予約の ADR-0038 は使わない）。
+
+- **権限表は宣言から導出し、手書きの一覧を持たない。** `kernel/src/permission-matrix.ts` の `derivePermissionMatrix` が entity の `permissions.roles`・`rowRules`・`fieldGroups`、`storeAccess`・`siteAccess`（`registerStoreAccess` を含む）・`relayAccess`、document の `transitions`、action の `permission` から entity × ロール × 操作の表を作る。各セルは `can()`、店舗・拠点・店舗端末の注記は同じ `can()` に所属の範囲や actor を与えた結果、action は `canRunAction()`、名前付き遷移は `transitionDocument` の判定（遷移のロールか admin、`update`、確定なら `submit`・取消なら `cancel`）と一致することを単体試験と全 runtime の DB 試験がセルごとに確かめる。行ルールの `self` は最上位の AND の等号（または token だけの `$in`）に限り、行ルールが作成を制限しないことを `restrictedOps`（`create` を除く）と凡例で示す。
+- **kernel の機能のロールは定数にする。** 会社設定・導入チェック・権限表と監査の検索の判定は `kernel-capabilities.ts` の `SETTINGS_ROLES`・`HEALTH_ROLES`・`ACCESS_INSIGHT_ROLES` を使い、権限表の凡例も同じ定数から作る。
+- **監査の検索は 1 会社（またはテナントの会社なしの記録）、admin（会社全体の所属）の人か、その人の代理 AI だけ。** `actor.type` が `user`、または `onBehalfOf` を持つ `agent` に限り、`relay`・`system`・機械用資格情報は拒む。判定の順序は (1) ロール・範囲・actor の 403、(2) 検索条件の 400、(3) テナント範囲のテナント管理者の 403、(4) 会社なしの 409。
+- **変更前後は読取時に絞る。** 記録画面の監査パネルと検索が共通の `auditSnapshotFilter` を使い、呼出し元の項目マスクと現在の `outputHidden`（ext を含む）を当てる。記録後に隠すことにした項目も出ない。呼出し元が `read` できない registry の entity（未適用のパックなど）の行は SQL の WHERE で除き、ページの件数を保つ。
+- **ページ送りは `(at, id)` の keyset。** cursor は `at` をマイクロ秒まで残した文字列（`to_char`）と `id`。合計件数は返さない。
+- **索引を 3 本足した。** `audit_log_company_at_idx (tenant_id, company_id, at, id)`、`audit_log_actor_at_idx (tenant_id, actor_id, at)`、`audit_log_on_behalf_at_idx (tenant_id, on_behalf_of, at) WHERE on_behalf_of IS NOT NULL`（migration `0018_audit_search_indexes`）。80 万行での計測と書込の費用は [作業記録](../log/2026-10-30-access-insight.md)。既存の `audit_log_at_idx` を使う検索は計測した範囲に残っていないが、削除は別に決める。
+- 監査表の権限（app role は `SELECT`・`INSERT` のみ）と追記専用の trigger は変えない。検索自体は監査にも業務データにも書かない（読取専用のトランザクション）。

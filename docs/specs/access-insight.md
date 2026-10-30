@@ -1,6 +1,6 @@
 # Spec: access-insight（権限マトリクスと監査の横断検索）
 
-- 状態: draft
+- 状態: implemented（2026-10-30。実装時の確認と変更は末尾の節）
 - モジュール: `kernel`（権限表の導出 `permission-matrix.ts`、監査の検索 `audit-search.ts`、監査表の索引）、`apps/api`（`GET /admin/permissions`、`GET /admin/audit`、`GET /admin/audit/options`）、`apps/web`（`/admin/permissions`、`/admin/audit`） ／ 依存: [ui-kit](ui-kit.md)、[list-workbench](list-workbench.md)（一覧の CSV 出力の監査 `export_rows`）、[company-admin](company-admin.md)（テナント管理者の判定 `assertAccessAdmin` の再利用）、[setup-health](setup-health.md)（管理画面の権限表示の先例）、[navigation-assist](navigation-assist.md)（`help.ts`）
 - ADR: 新規 ADR は作らない。[ADR-0007](../adr/0007-authorization.md) に追補（権限表の導出、監査の検索の範囲と読取時のマスク、索引）。この項目に予約された ADR-0038 は使わない。DSL・port の拡張なし（kernel に読取関数と監査表の索引 3 本、kernel の機能のロール定数を足すだけ）
 - 作成: 2026-10-30 ／ 作成者: agent（F3 spec 作成セッション、`wip/access-insight`）。設計の元は [完成度向上の実装計画](../completion-plan.md) F3
@@ -143,3 +143,24 @@
 5. 既存の `audit_log_at_idx (tenant_id, at)` を消して書込の費用を減らすか。推奨: 初版は残す（使う検索を確かめてから）。
 6. settings ロールにも監査の検索を許すか。推奨: 許さない（設定の履歴は設定画面で見られる）。
 7. レポート（`export_rows` 以外の表 action）の CSV 出力も監査に記録するか。推奨: 別項目にする（この画面は記録されたものを表示するだけ）。
+
+## 実装時の確認と変更（2026-10-30）
+
+- 実装は spec のとおり。追加・変更した点: (1) kernel の機能のロール定数と `assertAccessInsight` を `kernel/src/kernel-capabilities.ts` に置き、`settings.ts`・`health.ts` の判定をその定数に置き換えた（振る舞いは同じ。既存の settings・health の試験で確認）。(2) 計測と試験のために、検索の SQL を作る `auditSearchStatement(ctx, query, hidden)` と、読めない entity の一覧 `unreadableEntities(ctx)` を export した。(3) route は querystring を検証せずに kernel へ渡し、kernel が 403 → 400 → 403 → 409 の順に判定する（AC-11）。(4) 権限表の画面の「管理者だけ」の説明と判定（`canUseAccessInsight`・`AdminOnly`）は `permissions-page.tsx` に置き、監査の画面も使う。(5) 監査の画面の利用者の候補は選択式で、候補に無い id は「ID を直接入力」で入れる。
+- AC-15 の例: 批評の例「2025-01-01〜2026-01-01 は 367 日」は数え違い（2025 年は 365 日なので両端を含めて 366 日）。2024-01-01〜2025-01-01（367 日）を拒否の例にし、kernel・Web の単体試験と API の DB 試験で同じ例を確かめた。
+- ブラウザ試験の手順 5 の差: 取引先の作成・55 回の更新は第 2 の利用者の資格情報で API から行い（画面の操作を 56 回繰り返さないため）、CSV 出力は一覧の CSV と同じ action `partner.export_rows` を管理者の API 呼出しで行った。監査の画面の操作（利用者で絞る、記録へのリンク、`op=export`、日付の誤り、次へ・前へ・最初へ、再読込・戻る、英語、390px、axe）は画面で行った。
+- 索引の計測（AC-18、検証手順 4）: 自分で作った使い捨ての DB に migration（0000〜0018）で schema を作り、owner で 80 万行（予備計測と同じ構成の分布）を入れて `ANALYZE`。全 runtime を読み込み、app role の読取専用トランザクションの中で `auditSearchStatement` の SQL（未適用のパックの entity 33 個の `NOT IN` を含む）を `EXPLAIN (ANALYZE, BUFFERS)` で 3 回ずつ計った（負荷平均 2.0〜2.4）。中央値:
+
+| 形                                    | 新しい索引なし                             | 3 本を足した後                                          |
+| ------------------------------------- | ------------------------------------------ | ------------------------------------------------------- |
+| S1 会社範囲・直近 7 日                | 0.22 ms（`audit_log_at_idx`）              | 0.37 ms（`audit_log_company_at_idx`）                   |
+| S2 366 日・cursor の続き              | 0.24 ms（`audit_log_at_idx`）              | 0.14 ms（`audit_log_company_at_idx`）                   |
+| S3 低頻度の利用者・366 日             | 8.5 ms（`audit_log_at_idx`、9,320 行除外） | 4.5 ms（actor と on_behalf の BitmapOr）                |
+| S4 低頻度の entity・366 日            | 1.9 ms（`audit_log_record_idx`）           | 2.2 ms（同じ）                                          |
+| S5 `op=export`・366 日                | 4.9 ms（`audit_log_at_idx`、6,534 行除外） | 5.0 ms（`audit_log_company_at_idx`）                    |
+| S6 entity と記録 id                   | 0.06 ms（`audit_log_record_idx`）          | 0.06 ms（同じ）                                         |
+| S7 テナント範囲・366 日               | 3.5 ms（`audit_log_at_idx`）               | 4.3 ms（`audit_log_company_at_idx`）                    |
+| S8 一致 0 件の操作・366 日            | 87 ms（Parallel Seq Scan）                 | 192 ms（`audit_log_company_at_idx` の Parallel Bitmap） |
+| S9 頻出 entity と `op=export`・366 日 | 96 ms（`audit_log_at_idx`、35,069 行除外） | 42 ms（`audit_log_company_at_idx`）                     |
+
+S1〜S7 は索引を足した後どれも Seq Scan を使わず 5.1 ms 以下、S8・S9 は 500 ms 以下で AC-18 の基準を満たした。S8 は索引を足すと計画が Parallel Seq Scan から company_at の Bitmap に変わって遅くなった（基準内なので索引は足さない）。索引の大きさは company_at 59 MB、actor_at 65 MB、on_behalf（部分）3.4 MB（表本体 447 MB）、3 本の作成と `ANALYZE` は 3.3 秒・3.0 秒。書込の費用（監査の行 1 万件を 1 行ずつ挿入、ロールバック）は索引なし 1.35・1.54・1.17・1.24 秒、3 本あり 1.65・1.74・1.43・1.32 秒（中央値でおよそ 1.30 秒 → 1.54 秒、約 2 割増）。索引を足した後、S1〜S9 と既存の読取（`auditTrail`・`accessAudit`・`settingHistory` は `audit_log_record_idx`）に `audit_log_at_idx` を使うものは無い（未決事項 5 の材料。削除はしていない）。今回の分布は予備計測と同じ構成の別の乱数で、予備計測より会社 a0 の割合が効き S1・S5 は索引なしでも速かった。1 台・1 回の計測で、本番の分布や同時実行の負荷での時間は保証しない。
