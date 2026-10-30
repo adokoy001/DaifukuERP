@@ -107,6 +107,17 @@ async function issue(person: Person = admin, patch: Record<string, unknown> = {}
 const auth = (token: string, options: Partial<Parameters<typeof authenticateMachineCredential>[3]> = {}) =>
   authenticateMachineCredential(db.owner, db.app, token, { purpose: 'integration', now, ...options });
 
+/** Drizzle wraps PostgreSQL errors; the useful message is on `cause`. */
+async function pgError(p: Promise<unknown>): Promise<string> {
+  try {
+    await p;
+    return 'no error';
+  } catch (e) {
+    const err = e as Error & { cause?: Error };
+    return `${err.message} ${err.cause?.message ?? ''}`;
+  }
+}
+
 async function credentialRow(id: string) {
   const [row] = await db.owner.drizzle.select().from(machineCredentials).where(eq(machineCredentials.id, id));
   if (!row) throw new Error('missing credential');
@@ -226,6 +237,13 @@ describe('issue (AC-1..AC-6)', () => {
       issueMachineCredential(ctx, { ...input({ roles: ['viewer', 'relay'] }), stepUpToken }),
     ).catch((e: unknown) => e);
     expect(unknownRole).toMatchObject({ details: { issues: [{ path: 'roles.1' }] } });
+    // unknown items are named one by one in details.issues[].path (AC-3)
+    const unknownItems = await as(admin, (ctx) =>
+      issueMachineCredential(ctx, { ...input(), stepUpToken, accessScope: 'stores', tenantAdmin: true, storeIds: [] }),
+    ).catch((e: unknown) => e);
+    expect(
+      (unknownItems as { details: { issues: { path: string }[] } }).details.issues.map((i) => i.path).sort(),
+    ).toEqual(['accessScope', 'storeIds', 'tenantAdmin']);
     expect((await db.owner.drizzle.select().from(machineCredentials)).length).toBe(before);
     expect((await db.owner.drizzle.select().from(auditLog).where(eq(auditLog.op, 'issue'))).length).toBe(auditsBefore);
   });
@@ -406,11 +424,29 @@ describe('authentication, refusals and audits (AC-7..AC-15)', () => {
     expect((await credentialRow(credential.id)).lastDeniedAt?.getTime()).toBe(now.getTime());
   });
 
+  it('AC-14 records each different reason within the hour, and a repeated reason only once', async () => {
+    const { token, credential } = await issue();
+    const reasons = async () =>
+      (await audits(credential.id, 'use_denied')).map((a) => (a.after as { reason: string }).reason).sort();
+    await expect(auth(token, { purpose: 'mcp' })).rejects.toMatchObject({ httpStatus: 401 });
+    advance(5 * MIN);
+    await expect(auth(token, { companyHeader: other.companyId })).rejects.toMatchObject({ httpStatus: 403 });
+    expect(await reasons()).toEqual(['company_mismatch', 'purpose_mismatch']);
+    advance(5 * MIN);
+    await expect(auth(token, { companyHeader: other.companyId })).rejects.toMatchObject({ httpStatus: 403 });
+    expect(await reasons()).toEqual(['company_mismatch', 'purpose_mismatch']);
+  });
+
   it('AC-10 refuses another company with 403 and an audit, and accepts the key company', async () => {
     const { token, credential } = await issue();
     await expect(auth(token, { companyHeader: other.companyId })).rejects.toMatchObject({ httpStatus: 403 });
     await expect(auth(token, { companyHeader: 'not-a-uuid' })).rejects.toMatchObject({ httpStatus: 403 });
     await expect(auth(token, { companyHeader: db.companyId })).resolves.toHaveProperty('companyId', db.companyId);
+    // the same uuid in upper case is the same company, as for a person's header
+    await expect(auth(token, { companyHeader: db.companyId.toUpperCase() })).resolves.toHaveProperty(
+      'companyId',
+      db.companyId,
+    );
     expect((await audits(credential.id, 'use_denied')).map((a) => (a.after as { reason: string }).reason)).toEqual([
       'company_mismatch',
     ]);
@@ -558,9 +594,52 @@ describe('revoke, issuer coupling and immutability (AC-17..AC-19)', () => {
   it('AC-19 the app role cannot delete machine credentials', async () => {
     const [grant] = await db.owner.drizzle.execute(
       sql`select has_table_privilege('daifuku_app', 'machine_credentials', 'DELETE') as del,
-                 has_table_privilege('daifuku_app', 'machine_credentials', 'UPDATE') as upd`,
+                 has_table_privilege('daifuku_app', 'machine_credentials', 'UPDATE') as upd,
+                 has_column_privilege('daifuku_app', 'machine_credentials', 'revoked_at', 'UPDATE') as revoke,
+                 has_column_privilege('daifuku_app', 'machine_credentials', 'last_used_at', 'UPDATE') as used,
+                 has_column_privilege('daifuku_app', 'machine_credentials', 'roles', 'UPDATE') as roles`,
     );
-    expect(grant).toMatchObject({ del: false, upd: true });
+    // UPDATE only on the revocation and usage columns (column privileges), never on the whole row
+    expect(grant).toMatchObject({ del: false, upd: false, revoke: true, used: true, roles: false });
+  });
+
+  it('AC-18 AC-19 the app role cannot edit a key or bring a revoked key back; the owner cannot un-revoke either', async () => {
+    const { credential } = await issue();
+    const id = credential.id;
+    const asApp = (statement: ReturnType<typeof sql>) =>
+      withContext(
+        db.app,
+        { tenantId: db.tenantId, companyId: null, actor: { type: 'system', id: 'test' }, roles: [] },
+        (ctx) => ctx.db.execute(statement),
+      );
+    for (const statement of [
+      sql`update machine_credentials set roles = '["admin"]'::jsonb where id = ${id}`,
+      sql`update machine_credentials set expires_at = now() + interval '10 years' where id = ${id}`,
+      sql`update machine_credentials set company_id = ${other.companyId} where id = ${id}`,
+      sql`update machine_credentials set secret_hash = ${tokenHash('dfk_replaced')} where id = ${id}`,
+      sql`update machine_credentials set name = 'renamed', purpose = 'mcp' where id = ${id}`,
+    ])
+      expect(await pgError(asApp(statement))).toMatch(/permission denied/);
+    await as(admin, (ctx) => revokeMachineCredential(ctx, id, { reason: 'final' }));
+    expect(await pgError(asApp(sql`update machine_credentials set revoked_at = null where id = ${id}`))).toMatch(
+      /revocation is final/,
+    );
+    for (const statement of [
+      sql`update machine_credentials set revoked_at = null, revoked_by = null where id = ${id}`,
+      sql`update machine_credentials set revoke_reason = 'other' where id = ${id}`,
+    ])
+      expect(await pgError(db.owner.drizzle.execute(statement))).toMatch(/revocation is final/);
+    const row = await credentialRow(id);
+    expect(row).toMatchObject({ revokeReason: 'final', roles: ['viewer'], companyId: db.companyId });
+    expect(row.revokedAt).not.toBeNull();
+    // usage columns stay writable on a revoked key (refusal audit throttle, AC-14)
+    expect(
+      await pgError(
+        asApp(
+          sql`update machine_credentials set last_denied_at = now(), last_denied_reason = 'revoked' where id = ${id}`,
+        ),
+      ),
+    ).toBe('no error');
   });
 });
 

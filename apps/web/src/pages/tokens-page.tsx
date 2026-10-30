@@ -20,18 +20,22 @@ import { AccessRoleOptions, accessRoleLabel } from '../components/access-role-op
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
 import { describeError } from '../lib/error-view.ts';
-import { formatTimestamp } from '../lib/format.ts';
+import { formatTimestamp, shortId } from '../lib/format.ts';
 import {
   auditOpLabel,
   draftErrors,
   emptyDraft,
   EXPIRY_CHOICES,
   expiryNote,
+  failureDetail,
   firstErrorField,
+  INTERRUPTED_ISSUE,
+  issueFailureText,
   issueField,
   outcomeUnknown,
   PURPOSE_LABEL,
   reasonText,
+  serverFieldText,
   STATUS_LABEL,
   STATUS_TONE,
   UNUSED,
@@ -49,6 +53,22 @@ import { LoadingView, MetaError } from './status-views.tsx';
 const ISSUE_LABEL: Label = { ja: 'API キーを発行', en: 'Issue API key' };
 /** A step-up token lives 5 minutes on the server; reuse it for a retry only well within that time. */
 const STEP_UP_REUSE_MS = 240_000;
+
+/** A failure explained in both languages, with the technical detail (code, HTTP status, server text) after it. */
+interface Failure {
+  text: Label;
+  detail?: string;
+}
+
+function FailureNotice({ failure, testId }: { failure: Failure; testId?: string }) {
+  const { t } = useLocale();
+  return (
+    <div role="alert" className="ui-notice ui-notice-danger" data-testid={testId}>
+      <div>{t(failure.text)}</div>
+      {failure.detail ? <div className="mt-1 text-xs break-words">{failure.detail}</div> : null}
+    </div>
+  );
+}
 
 function FieldError({ id, text }: { id: string; text: string | undefined }) {
   return text ? (
@@ -168,6 +188,53 @@ function SecretPanel({ token, purpose }: { token: string; purpose: MachinePurpos
   );
 }
 
+/** How a failed issue request is shown (AC-28): field errors and the first one to focus, a notice, or both. */
+function issueFailure(
+  error: unknown,
+  t: (label: Label) => string,
+): { errors: Partial<Record<TokenField, string>>; focus?: TokenField; failure: Failure | null; unknown: boolean } {
+  const view = describeError(error);
+  if (isApiError(error) && error.code === 'VALIDATION') {
+    const errors: Partial<Record<TokenField, string>> = {};
+    const rest: string[] = [];
+    for (const item of error.issues()) {
+      const field = issueField(item.path);
+      if (field && !errors[field]) errors[field] = t(serverFieldText(field, item.message));
+      else if (!field) rest.push(item.message);
+    }
+    const focus = firstErrorField(errors);
+    const failure =
+      rest.length || !focus
+        ? {
+            text: { ja: '入力内容を確認してください。', en: 'Check the entered values.' },
+            detail: rest.join(' ') || failureDetail(view),
+          }
+        : null;
+    return { errors, ...(focus ? { focus } : {}), failure, unknown: false };
+  }
+  if (outcomeUnknown(isApiError(error) ? error.status : undefined))
+    return {
+      errors: {},
+      unknown: true,
+      failure: {
+        text: {
+          ja: '発行されたか確認できません。一覧で「未使用」の鍵を確認し、心当たりのない鍵は失効させてください。',
+          en: 'It is not known whether the key was issued. Check the list for an "Unused" key you do not recognize and revoke it.',
+        },
+        detail: failureDetail(view),
+      },
+    };
+  return {
+    errors: {},
+    unknown: false,
+    failure: {
+      text: issueFailureText(view.code, view.status) ??
+        view.explanation ?? { ja: '発行できませんでした。', en: 'The key could not be issued.' },
+      detail: failureDetail(view),
+    },
+  };
+}
+
 function IssueDialog({
   list,
   defaultCompanyId,
@@ -177,17 +244,27 @@ function IssueDialog({
   list: MachineCredentialList;
   defaultCompanyId: string;
   mfaEnabled: boolean;
-  onClose: () => void;
+  /** `interrupted`: closed while the issue request was in flight, so whether a key exists is unknown (AC-28). */
+  onClose: (interrupted: boolean) => void;
 }) {
   const { t } = useLocale();
   const idPrefix = useId();
   const issue = useIssueMachineCredential();
   const [draft, setDraft] = useState<TokenDraft>(() => emptyDraft(defaultCompanyId));
   const [errors, setErrors] = useState<Partial<Record<TokenField, string>>>({});
-  const [failure, setFailure] = useState<Label | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [focusField, setFocusField] = useState<TokenField | null>(null);
   const stepUpToken = useRef<{ token: string; at: number } | null>(null);
+  // Closed (Esc, ×, Cancel) while the step-up was still running: never send the issue request afterwards.
+  const closed = useRef(false);
+  useEffect(() => {
+    // Reset on (re)mount: StrictMode runs this cleanup once before the real mount.
+    closed.current = false;
+    return () => {
+      closed.current = true;
+    };
+  }, []);
   const busy = verifying || issue.isPending;
   const fieldId = (field: TokenField) => `${idPrefix}-${field}`;
   useEffect(() => {
@@ -196,10 +273,12 @@ function IssueDialog({
     setFocusField(null);
   }, [focusField, busy, idPrefix]);
   const close = () => {
+    const interrupted = issue.isPending;
+    closed.current = true;
     // AC-29: drop the secret from React Query and from this component before it unmounts.
     issue.reset();
     stepUpToken.current = null;
-    onClose();
+    onClose(interrupted);
   };
   const set = <K extends keyof TokenDraft>(key: K, value: TokenDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -224,21 +303,33 @@ function IssueDialog({
       setVerifying(true);
       try {
         token = (await stepUp(draft.password, draft.code.trim() || undefined)).stepUpToken;
+        if (closed.current) return;
         stepUpToken.current = { token, at: Date.now() };
         setDraft((d) => ({ ...d, password: '', code: '' }));
       } catch (error) {
+        if (closed.current) return;
         const wrong = isApiError(error) && error.code === 'VALIDATION';
+        // AC-28: the error goes on the field that is wrong, and focus with it.
+        const field: TokenField =
+          mfaEnabled && wrong && error.issues().some((i) => i.path === 'code') ? 'code' : 'password';
+        const limited = isApiError(error) && error.status === 429;
         setErrors({
-          [mfaEnabled && wrong && error.issues().some((i) => i.path === 'code') ? 'code' : 'password']: wrong
+          [field]: wrong
             ? t({ ja: 'パスワードまたは認証コードが正しくありません。', en: 'The password or code is incorrect.' })
-            : t({ ja: '本人確認できませんでした。', en: 'Your identity could not be confirmed.' }),
+            : limited
+              ? t({
+                  ja: '本人確認の試行が多すぎます。しばらく待ってから再試行してください。',
+                  en: 'Too many verification attempts. Wait a while and try again.',
+                })
+              : t({ ja: '本人確認できませんでした。', en: 'Your identity could not be confirmed.' }),
         });
-        setFocusField('password');
+        setFocusField(field);
         return;
       } finally {
-        setVerifying(false);
+        if (!closed.current) setVerifying(false);
       }
     }
+    if (closed.current) return;
     issue.mutate(
       {
         name: draft.name.trim(),
@@ -254,31 +345,13 @@ function IssueDialog({
           setDraft((d) => ({ ...d, password: '', code: '' }));
         },
         onError: (error) => {
-          if (isApiError(error) && error.code === 'VALIDATION') {
-            const mapped: Partial<Record<TokenField, string>> = {};
-            const rest: string[] = [];
-            for (const issueItem of error.issues()) {
-              const field = issueField(issueItem.path);
-              if (field && !mapped[field]) mapped[field] = issueItem.message;
-              else if (!field) rest.push(issueItem.message);
-            }
-            setErrors(mapped);
-            const first = firstErrorField(mapped);
-            if (first) setFocusField(first);
-            if (rest.length || !first)
-              setFailure({
-                ja: `入力内容を確認してください。${rest.join(' ')}`,
-                en: `Check the entered values. ${rest.join(' ')}`,
-              });
-          } else if (outcomeUnknown(isApiError(error) ? error.status : undefined)) {
-            setFailure({
-              ja: '発行されたか確認できません。一覧で「未使用」の鍵を確認し、心当たりのない鍵は失効させてください。',
-              en: 'It is not known whether the key was issued. Check the list for an "Unused" key you do not recognize and revoke it.',
-            });
-          } else {
-            const view = describeError(error);
-            setFailure({ ja: view.message, en: view.message });
-          }
+          const outcome = issueFailure(error, t);
+          // The request may have committed and spent the step-up token: a retry asks for the password again
+          // instead of replaying it (a spent token answers 401, which would end the session).
+          if (outcome.unknown) stepUpToken.current = null;
+          setErrors(outcome.errors);
+          if (outcome.focus) setFocusField(outcome.focus);
+          setFailure(outcome.failure);
         },
       },
     );
@@ -299,7 +372,6 @@ function IssueDialog({
       icon={<Icon name="key" />}
       onClose={close}
       closeLabel={t(S.close)}
-      className="token-dialog"
       {...(issued ? {} : { onSubmit: (event: FormEvent<HTMLFormElement>) => void submit(event) })}
       actions={
         issued ? (
@@ -441,11 +513,7 @@ function IssueDialog({
               onChange={(value) => set('code', value)}
             />
           ) : null}
-          {failure ? (
-            <div role="alert" className="ui-notice ui-notice-danger" data-testid="token-issue-error">
-              {t(failure)}
-            </div>
-          ) : null}
+          {failure ? <FailureNotice failure={failure} testId="token-issue-error" /> : null}
         </div>
       )}
     </Dialog>
@@ -465,7 +533,7 @@ function RevokeDialog({
   const reasonId = useId();
   const revoke = useRevokeMachineCredential();
   const [reason, setReason] = useState('');
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (revoke.isPending) return;
@@ -474,7 +542,13 @@ function RevokeDialog({
       { id: item.id, ...(reason.trim() ? { reason: reason.trim() } : {}) },
       {
         onSuccess: (result) => onRevoked(result.credential),
-        onError: (error) => setFailure(describeError(error).message),
+        onError: (error) => {
+          const view = describeError(error);
+          setFailure({
+            text: view.explanation ?? { ja: '失効できませんでした。', en: 'The key could not be revoked.' },
+            detail: failureDetail(view),
+          });
+        },
       },
     );
   };
@@ -516,15 +590,13 @@ function RevokeDialog({
           readOnly={revoke.isPending}
           onChange={(event) => setReason(event.target.value)}
         />
-        {failure ? (
-          <div role="alert" className="ui-notice ui-notice-danger">
-            {failure}
-          </div>
-        ) : null}
+        {failure ? <FailureNotice failure={failure} /> : null}
       </div>
     </Dialog>
   );
 }
+
+const HISTORY_CELL = 'whitespace-normal [overflow-wrap:anywhere]';
 
 function HistoryDialog({ item, onClose }: { item: MachineCredential; onClose: () => void }) {
   const { t, locale } = useLocale();
@@ -545,9 +617,15 @@ function HistoryDialog({ item, onClose }: { item: MachineCredential; onClose: ()
       }
     >
       {audit.isError ? (
-        <div role="alert" className="ui-notice ui-notice-danger">
-          {describeError(audit.error).message}
-        </div>
+        <FailureNotice
+          failure={{
+            text: describeError(audit.error).explanation ?? {
+              ja: '履歴を読み込めませんでした。',
+              en: 'The history could not be loaded.',
+            },
+            detail: failureDetail(describeError(audit.error)),
+          }}
+        />
       ) : (
         <DataTableShell
           label={t({ ja: '鍵の履歴', en: 'Key history' })}
@@ -567,18 +645,20 @@ function HistoryDialog({ item, onClose }: { item: MachineCredential; onClose: ()
         >
           {(audit.data?.items ?? []).map((entry) => {
             const reason = reasonText(entry.reason);
+            // AC-32: the cells wrap so the four columns fit the 440px dialog at every width; a table frame that
+            // scrolled sideways would hold nothing focusable (axe scrollable-region-focusable).
             return (
               <tr key={entry.id} data-testid={`token-history-${entry.op}`}>
-                <td>{formatTimestamp(entry.at, locale)}</td>
-                <td>{t(auditOpLabel(entry.op))}</td>
-                <td>
+                <td className={HISTORY_CELL}>{formatTimestamp(entry.at, locale)}</td>
+                <td className={HISTORY_CELL}>{t(auditOpLabel(entry.op))}</td>
+                <td className={HISTORY_CELL}>
                   {entry.actorType === 'user'
                     ? (entry.actorName ?? entry.actorId)
                     : entry.actorType === 'machine'
                       ? t({ ja: 'この API キー', en: 'This API key' })
                       : entry.actorType}
                 </td>
-                <td>{reason ? t(reason) : '—'}</td>
+                <td className={HISTORY_CELL}>{reason ? t(reason) : '—'}</td>
               </tr>
             );
           })}
@@ -634,12 +714,18 @@ function TokenTable({
         const note = expiryNote(item, now);
         return (
           <tr key={item.id} data-testid={`token-row-${item.id}`}>
-            <td>{item.name}</td>
+            <td>
+              <div>{item.name}</div>
+              {/* The per-record audit panel shows a key as machine:<first 8 characters of its id>… (manual 08). */}
+              <div className="text-xs text-text-secondary">
+                ID <code>{shortId(item.id)}</code>
+              </div>
+            </td>
             <td>{t(PURPOSE_LABEL[item.purpose])}</td>
             <td>
               <code>{item.companyCode}</code> {item.companyName}
             </td>
-            <td>{item.roles.map((role) => t(accessRoleLabel(role))).join('、')}</td>
+            <td>{item.roles.map((role) => t(accessRoleLabel(role))).join(locale === 'ja' ? '、' : ', ')}</td>
             <td>{item.issuedBy.name}</td>
             <td>{formatTimestamp(item.createdAt, locale)}</td>
             <td>
@@ -700,16 +786,26 @@ export function TokensPage() {
     retry: false,
   });
   const [issuing, setIssuing] = useState(false);
+  const [interrupted, setInterrupted] = useState(false);
+  const [focusIssue, setFocusIssue] = useState(false);
   const [revoking, setRevoking] = useState<MachineCredential | null>(null);
   const [history, setHistory] = useState<MachineCredential | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [focusHistory, setFocusHistory] = useState<string | null>(null);
   const noticeId = useId();
+  const issueButtonId = useId();
   useEffect(() => {
     if (!focusHistory || revoking) return;
     document.getElementById(`token-history-${focusHistory}`)?.focus();
     setFocusHistory(null);
   }, [focusHistory, revoking]);
+  // AC-29: focus returns to the header "Issue API key" when the Dialog closes. The kit Dialog returns focus to its
+  // opener, but the empty state's button (the usual way to the first key) is gone once the list refetches.
+  useEffect(() => {
+    if (!focusIssue || issuing) return;
+    document.getElementById(issueButtonId)?.focus();
+    setFocusIssue(false);
+  }, [focusIssue, issuing, issueButtonId]);
   if (me.isError && !me.data) return <MetaError error={me.error} retry={() => void me.refetch()} />;
   if (!me.data) return <LoadingView />;
   // AC-31: the navigation hides the screen; a direct URL explains instead of calling the API.
@@ -733,17 +829,22 @@ export function TokensPage() {
   if (list.isError && !list.data) return <MetaError error={list.error} retry={() => void list.refetch()} />;
   const configured = security.data?.configured === true;
   const canIssue = configured && Boolean(list.data);
+  // The issue button explains why it is unavailable: verification not configured, or its status unreadable.
+  const securityFailed = security.isError && !security.data;
+  const blockedReason = (security.data && !configured) || securityFailed ? noticeId : undefined;
   const openIssue = () => {
     if (!canIssue) return;
     setAnnouncement('');
+    setInterrupted(false);
     setIssuing(true);
   };
-  const issueButton = (testId: string) => (
+  const issueButton = (testId: string, id?: string) => (
     <Button
       variant="primary"
+      id={id}
       onClick={openIssue}
       aria-disabled={!canIssue || undefined}
-      aria-describedby={security.data && !configured ? noticeId : undefined}
+      aria-describedby={blockedReason}
       data-testid={testId}
     >
       {t(ISSUE_LABEL)}
@@ -760,7 +861,7 @@ export function TokensPage() {
           en: 'Issue and revoke keys for integrations and AI agents (MCP) with an expiry, a company and roles. Keys pass the same permission checks as people.',
         })}
         icon={<Icon name="key" size={24} />}
-        actions={issueButton('token-issue')}
+        actions={issueButton('token-issue', issueButtonId)}
       />
       {security.data && !configured ? (
         <p id={noticeId} className="ui-notice ui-notice-info" data-testid="tokens-unconfigured">
@@ -769,6 +870,27 @@ export function TokensPage() {
             en: 'Issuing API keys needs account verification (password re-confirmation). Ask the operator to configure IDENTITY_ENCRYPTION_KEY. Listing, revoking and the history work without it.',
           })}
         </p>
+      ) : null}
+      {securityFailed ? (
+        <div id={noticeId} role="alert" className="ui-notice ui-notice-danger" data-testid="tokens-security-error">
+          <div>
+            {t({
+              ja: '本人確認の設定状況を読み込めなかったため、API キーを発行できません。一覧・失効・履歴はこのまま使えます。',
+              en: 'The account verification status could not be loaded, so API keys cannot be issued. Listing, revoking and the history still work.',
+            })}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs break-words">{failureDetail(describeError(security.error))}</span>
+            <Button size="sm" onClick={() => void security.refetch()} data-testid="tokens-security-retry">
+              {t(S.retry)}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {interrupted ? (
+        <div role="status" className="ui-notice ui-notice-warning" data-testid="tokens-issue-interrupted">
+          {t(INTERRUPTED_ISSUE)}
+        </div>
       ) : null}
       <p className="sr-only" aria-live="polite" data-testid="tokens-announcement">
         {announcement}
@@ -816,7 +938,11 @@ export function TokensPage() {
           list={list.data}
           defaultCompanyId={defaultCompanyId}
           mfaEnabled={security.data?.mfaEnabled === true}
-          onClose={() => setIssuing(false)}
+          onClose={(wasInterrupted) => {
+            setIssuing(false);
+            setInterrupted(wasInterrupted);
+            setFocusIssue(true);
+          }}
         />
       ) : null}
       {revoking ? (

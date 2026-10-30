@@ -124,13 +124,18 @@ export async function directoryStores(ctx: Context, companyId?: string, kind: 's
   }
   return items;
 }
+/** Zod issues as `details.issues`; an unknown item gets one issue each, with the item as its path. */
+function accessIssues(error: z.ZodError): { path: string; message: string }[] {
+  return error.issues.flatMap((i) =>
+    i.code === 'unrecognized_keys'
+      ? i.keys.map((key) => ({ path: [...i.path, key].join('.'), message: `Unrecognized key: "${key}"` }))
+      : [{ path: i.path.join('.'), message: i.message }],
+  );
+}
+
 export function parseAccess<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
   const parsed = schema.safeParse(raw);
-  if (!parsed.success)
-    throw new ValidationError(
-      'Invalid access settings',
-      parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-    );
+  if (!parsed.success) throw new ValidationError('Invalid access settings', accessIssues(parsed.error));
   return parsed.data;
 }
 

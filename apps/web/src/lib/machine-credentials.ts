@@ -202,3 +202,57 @@ export function deactivationWarning(activeKeys: number): Label | null {
 export function outcomeUnknown(status: number | undefined): boolean {
   return status === undefined || status === 0 || status >= 500;
 }
+
+/** AC-28: the warning shown on the list when the issue Dialog was closed while the request was still being sent. */
+export const INTERRUPTED_ISSUE: Label = {
+  ja: '発行の処理中に閉じたため、発行されたか確認できません。秘密はもう表示できません。一覧で「未使用」の鍵を確認し、心当たりのない鍵は失効させてください。',
+  en: 'The window was closed while the key was being issued, so it is not known whether it was issued, and its secret cannot be shown. Check the list for an "Unused" key you do not recognize and revoke it.',
+};
+
+/** AC-28: expected issue failures explained in both languages (the server's text stays as the detail line). */
+export function issueFailureText(code: string | undefined, status: number | undefined): Label | null {
+  if (status === 409 || code === 'CONFLICT')
+    return {
+      ja: '有効な API キーが上限（100 件）に達しています。使っていない鍵を失効させてから発行してください。',
+      en: 'The tenant has reached 100 active API keys. Revoke keys that are no longer used, then issue the new one.',
+    };
+  if (status === 429)
+    return {
+      ja: '試行が多すぎます。しばらく待ってから再試行してください。',
+      en: 'Too many attempts. Wait a while and try again.',
+    };
+  if (status === 404)
+    return {
+      ja: '選んだ会社が見つかりません。画面を再読込して会社を選び直してください。',
+      en: 'The chosen company was not found. Reload the screen and choose the company again.',
+    };
+  if (status === 403 || code === 'PERMISSION_DENIED')
+    return {
+      ja: 'API キーを発行できるのはテナント管理者だけです。',
+      en: 'Only tenant administrators can issue API keys.',
+    };
+  return null;
+}
+
+const SERVER_FIELD_TEXT: Partial<Record<TokenField, Label>> = {
+  name: { ja: '名前は 1〜100 文字で入力してください。', en: 'Enter a name of 1 to 100 characters.' },
+  purpose: { ja: '用途を選び直してください。', en: 'Choose the purpose again.' },
+  companyId: { ja: '会社を選び直してください。', en: 'Choose the company again.' },
+  roles: {
+    ja: 'API キーに付けられないロールが含まれています。選び直してください。',
+    en: 'A chosen role cannot be granted to an API key. Choose again.',
+  },
+  expiresInDays: { ja: '有効期間を選び直してください。', en: 'Choose the validity period again.' },
+};
+
+/** A server validation message for a dialog field: the explanation in both languages, the server's text after it. */
+export function serverFieldText(field: TokenField, message: string): Label {
+  const text = SERVER_FIELD_TEXT[field];
+  if (!text) return { ja: message, en: message };
+  return { ja: `${text.ja}（${message}）`, en: `${text.en} (${message})` };
+}
+
+/** Technical detail for a failure notice: code, HTTP status and the server's message, as available. */
+export function failureDetail(view: { code?: string; status?: number; message: string }): string {
+  return [view.code, view.status ? `HTTP ${view.status}` : undefined, view.message].filter(Boolean).join(' · ');
+}

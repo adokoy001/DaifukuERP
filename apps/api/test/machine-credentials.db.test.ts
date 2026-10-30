@@ -339,6 +339,13 @@ describe('using a key on business routes (AC-7..AC-12, AC-16)', () => {
     expect((await call('GET', '/api/partner', token, undefined, { 'x-company-id': db.companyId })).statusCode).toBe(
       200,
     );
+    // the key's own company in upper case is accepted like a person's header; a malformed header is a 400, not audited
+    expect(
+      (await call('GET', '/api/partner', token, undefined, { 'x-company-id': db.companyId.toUpperCase() })).statusCode,
+    ).toBe(200);
+    const malformed = await call('GET', '/api/partner', token, undefined, { 'x-company-id': 'not-a-uuid' });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json<{ error: { code: string } }>().error.code).toBe('VALIDATION');
     // x-agent-id is ignored: the actor stays the credential
     const write = await call(
       'POST',
@@ -359,6 +366,12 @@ describe('using a key on business routes (AC-7..AC-12, AC-16)', () => {
     expect((await call('GET', `/api/partner?access_token=${token}`, '')).statusCode).toBe(401);
     const fromBrowser = await call('GET', '/api/partner', token, undefined, { origin: 'https://evil.example.com' });
     expect(fromBrowser.statusCode).toBe(401);
+    // a same-origin GET from a browser has no Origin, but always Sec-Fetch-Site
+    const sameOrigin = await call('GET', '/api/partner', token, undefined, { 'sec-fetch-site': 'same-origin' });
+    expect(sameOrigin.statusCode).toBe(401);
+    expect(sameOrigin.body).toBe(fromBrowser.body);
+    // Node's fetch sends Sec-Fetch-Mode: cors from a server; that alone is not a browser
+    expect((await call('GET', '/api/partner', token, undefined, { 'sec-fetch-mode': 'cors' })).statusCode).toBe(200);
   });
 
   it('AC-12 answers 403 on routes that need a person, even for admin and edge_manager keys', async () => {
@@ -382,6 +395,40 @@ describe('using a key on business routes (AC-7..AC-12, AC-16)', () => {
       const response = await call(method, url, token, payload);
       expect(response.statusCode, `${method} ${url}`).toBe(403);
     }
+  });
+
+  it('AC-12 matches the routed path, so encoded or doubled-slash spellings get the same 403 without a lookup', async () => {
+    const { token, credential } = await issue({ roles: ['admin', 'edge_manager'] });
+    const lastUsed = async () =>
+      (
+        await db.owner.drizzle
+          .select({ at: machineCredentials.lastUsedAt })
+          .from(machineCredentials)
+          .where(eq(machineCredentials.id, credential.id))
+      )[0]?.at ?? null;
+    for (const [method, url, payload] of [
+      ['GET', '/%61dmin/tokens', undefined],
+      ['GET', '/%61dmin/access', undefined],
+      ['POST', `/%61dmin/tokens/${credential.id}/revoke`, {}],
+      ['GET', '/%61uth/me', undefined],
+      ['GET', '/%61uth/companies', undefined],
+      ['GET', '/%61uth/security', undefined],
+      ['POST', '/%65dge/pairings', { gatewayId: newId(), expectedVersion: 1, stepUpToken: 'x'.repeat(43) }],
+      [
+        'POST',
+        '/edge/credentials/%72evoke',
+        { gatewayId: newId(), expectedVersion: 1, stepUpToken: 'x'.repeat(43), reason: 'r' },
+      ],
+    ] as const) {
+      const response = await call(method, url, token, payload);
+      expect(response.statusCode, `${method} ${url}`).toBe(403);
+      expect(response.json<{ error: { details?: { op?: string } } }>().error.details?.op, url).toBe(
+        'human-session-required',
+      );
+    }
+    expect(await lastUsed()).toBeNull();
+    expect((await call('GET', '/api/partner', token)).statusCode).toBe(200);
+    expect(await lastUsed()).not.toBeNull();
   });
 
   it('AC-2 AC-16 logs the machine actor and never the key', async () => {

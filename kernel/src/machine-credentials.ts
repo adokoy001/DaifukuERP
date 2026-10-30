@@ -141,7 +141,9 @@ export function machineDenialReason(
   if (row.expiresAt.getTime() <= now.getTime()) return 'expired';
   if (row.purpose !== purpose) return 'purpose_mismatch';
   if (!issuer || !issuer.active || !issuer.tenantAdmin) return 'issuer_inactive';
-  if (companyHeader !== undefined && companyHeader !== row.companyId) return 'company_mismatch';
+  // uuids are compared case-insensitively, as PostgreSQL does for a person's x-company-id (AC-10)
+  if (companyHeader !== undefined && companyHeader.toLowerCase() !== row.companyId.toLowerCase())
+    return 'company_mismatch';
   return null;
 }
 

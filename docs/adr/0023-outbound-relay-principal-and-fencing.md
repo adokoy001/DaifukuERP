@@ -56,7 +56,8 @@ LAN 中継機と同じく、外部連携（REST）と AI エージェント（`a
 - 有効性を発行者に結び付ける。発行者が無効化・テナント管理者でなくなると `updateManagedUser` の同じ transaction で失効させ（再有効化しても戻らない）、利用のたびに発行者が有効なテナント管理者であることも確かめる。発行者のパスワード変更・全端末ログアウトでは止めない（連携を管理者の個人操作で止めないため。発行に step-up を要するので、盗まれた JWT だけでは鍵を作れない）。
 - 人の本人性を前提とする kernel の port（`lockIdentity`・`assertAccessAdmin`・`authorizedCompanies` / `withAuthorizedCompany`・中継機の pairing / 失効 / operator・会社の作成と編集・本人のパスワード変更とセッション失効）は機械の actor を明示的に拒否する（fail closed）。業務の自己承認・作成者確認・本人の申請に使う利用者 id は kernel の `requireHumanUserId(ctx)` に寄せ、機械には 403 `human-actor-required` を返す（system / relay の戻り値は変えない）。鍵で作成・更新した記録の `created_by` / `updated_by` は `null` で、操作者は監査に残る。
 - 照合の失敗予算は「照合の前に予約し成功時に返す」方式を使わない。未知の鍵だけを IP ごとに数え（5 分 100 件、照合前は読むだけ）、既知の鍵の拒否は資格情報ごとに数える。有効な鍵の要求は予算に書き込まない。共有 NAT の後ろで 1 つの失効済みの連携が他の健全な鍵を止めないためである。
-- 拒否の監査（`use_denied`）は応答と別の transaction で確定し、`last_denied_at` / `last_denied_reason` の条件付き更新で資格情報・理由ごとに 1 時間に 1 件へ間引く。最終使用時刻は 60 秒単位で記録する。失効は `revoked_at IS NULL` の条件付き更新で冪等にし、app role には `DELETE` を与えない（鍵は失効した記録として残す）。
+- 拒否の監査（`use_denied`）は応答と別の transaction で確定し、`last_denied_at` / `last_denied_reason` の条件付き更新で資格情報・理由ごとに 1 時間に 1 件へ間引く。最終使用時刻は 60 秒単位で記録する。失効は `revoked_at IS NULL` の条件付き更新で冪等にし、app role には `DELETE` を与えず、`UPDATE` は失効と利用の記録の 6 列だけに与える（列の権限。鍵の会社・ロール・期限・hash は発行後に変えられない）。一度設定した失効は trigger で戻せない（owner も同じ。鍵は失効した記録として残す）。
+- ブラウザーからの使用は `Origin` に加えて `Sec-Fetch-Site` でも拒否する（同一 origin の GET には `Origin` が付かないため）。人だけの経路（`/auth/*`・`/admin/*`・pairing）の判定は、router が復号した後の経路（Fastify の `routeOptions.url`）で行う。
 
 ### 帰結
 

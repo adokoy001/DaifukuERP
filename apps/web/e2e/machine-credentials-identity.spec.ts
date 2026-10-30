@@ -15,6 +15,19 @@ const exceptions = parseExceptions(
   { documentExists: (path) => existsSync(new URL(path, repoRoot)) },
 ).exceptions;
 
+/** AC-32: no page overflow and no serious / critical axe violation for this screen state. */
+async function checkScreen(page: Page, screen: string, locale: 'ja' | 'en', width: 390 | 1280) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow, `${screen} ${locale} ${width}px overflow`).toBeLessThanOrEqual(0);
+  const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
+  const run: A11yRun = { screen, locale, width };
+  const judgement = judge(results.violations, exceptions, run, results.incomplete);
+  expect(judgement.failures, formatJudgement(run, judgement)).toEqual([]);
+}
+
+/** A typed revoke reason long enough to wrap, with an unbroken token (the history cells must not scroll sideways). */
+const LONG_REASON = `e2e の終了 rotated-by-the-integration-team-${'x'.repeat(40)} 連携先のサーバーを入れ替えたため古い鍵を止める`;
+
 async function signIn(page: Page, email: string) {
   await page.goto('/login');
   await page.locator('#email').fill(email);
@@ -62,8 +75,16 @@ test.describe.serial('API keys with account verification', () => {
     await expect(page.getByTestId('tokens-unconfigured')).toHaveCount(0);
     const issueButton = page.getByTestId('token-issue');
     await expect(issueButton).not.toHaveAttribute('aria-disabled', 'true');
-    await issueButton.click();
     const dialog = page.getByRole('dialog');
+    // Esc from the header button returns focus to it.
+    await issueButton.click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(issueButton).toBeFocused();
+    // The first key is issued from the empty state's button, which the refetched list removes (AC-29 below).
+    await expect(page.getByTestId('tokens-empty')).toBeVisible();
+    await page.getByTestId('token-issue-empty').click();
     // AC-28: missing name and roles are shown on their fields before anything is sent.
     await page.getByTestId('token-issue-submit').click();
     await expect(dialog.getByText('名前を入力してください。')).toBeVisible();
@@ -104,7 +125,9 @@ test.describe.serial('API keys with account verification', () => {
     expect(judgement.failures, formatJudgement(a11yRun, judgement)).toEqual([]);
     await page.setViewportSize({ width: 1280, height: 900 });
 
-    // AC-29: closing drops the secret everywhere; focus returns to "Issue API key".
+    // AC-29: closing drops the secret everywhere; focus returns to "Issue API key" (the header button, since the
+    // empty state that opened the dialog is gone once the list shows the new key).
+    await expect(page.getByTestId('tokens-empty')).toHaveCount(0);
     await page.getByTestId('token-secret-close').click();
     await expect(dialog).toHaveCount(0);
     await expect(issueButton).toBeFocused();
@@ -128,16 +151,23 @@ test.describe.serial('API keys with account verification', () => {
     await page.reload();
     await expect(row).not.toContainText('未使用');
 
+    // AC-32: the populated list and the revoke Dialog at 390px.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(row.getByTestId('token-status')).toHaveText('有効');
+    await checkScreen(page, 'tokens-list', 'ja', 390);
+
     // AC-30: Esc cancels and returns focus to "Revoke"; revoking updates the row, announces and focuses "History".
     const revoke = row.getByTestId('token-revoke');
     await revoke.click();
     await expect(dialog).toContainText('「EC 連携 e2e」を失効');
     await expect(dialog).toContainText('次の要求から拒否（401）');
+    await checkScreen(page, 'tokens-revoke', 'ja', 390);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(revoke).toBeFocused();
+    await page.setViewportSize({ width: 1280, height: 900 });
     await revoke.click();
-    await dialog.getByLabel('理由（任意、200 文字まで）').fill('e2e の終了');
+    await dialog.getByLabel('理由（任意、200 文字まで）').fill(LONG_REASON);
     await page.getByTestId('token-revoke-confirm').click();
     await expect(dialog).toHaveCount(0);
     await expect(row.getByTestId('token-status')).toHaveText('失効');
@@ -153,7 +183,24 @@ test.describe.serial('API keys with account verification', () => {
     await expect(history.getByTestId('token-history-issue')).toContainText('Keys Admin');
     await expect(history.getByTestId('token-history-revoke')).toContainText('e2e の終了');
     await expect(history.getByTestId('token-history-use_denied')).toContainText('失効済みの鍵');
+    // AC-32: the history Dialog with a long typed reason, at 390px and 1280px, in Japanese and English.
+    await checkScreen(page, 'tokens-history', 'ja', 1280);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await checkScreen(page, 'tokens-history', 'ja', 390);
     await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await page.evaluate(() => localStorage.setItem('daifuku.locale', 'en'));
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'API keys', level: 1 })).toBeVisible();
+    await expect(row.getByTestId('token-status')).toHaveText('Revoked');
+    await checkScreen(page, 'tokens-list', 'en', 390);
+    await row.getByRole('button', { name: 'History of EC 連携 e2e' }).click();
+    await expect(history.getByTestId('token-history-use_denied')).toContainText('Revoked key');
+    await checkScreen(page, 'tokens-history', 'en', 390);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await checkScreen(page, 'tokens-history', 'en', 1280);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => localStorage.setItem('daifuku.locale', 'ja'));
   });
 
   test('machine-credentials AC-18 AC-33: removing tenant administration warns with the key count and revokes it', async ({

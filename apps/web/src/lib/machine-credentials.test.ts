@@ -7,10 +7,14 @@ import {
   draftErrors,
   emptyDraft,
   expiryNote,
+  failureDetail,
   firstErrorField,
+  INTERRUPTED_ISSUE,
+  issueFailureText,
   issueField,
   outcomeUnknown,
   reasonText,
+  serverFieldText,
   STATUS_LABEL,
   usageText,
 } from './machine-credentials.ts';
@@ -86,5 +90,30 @@ describe('deactivation warning (AC-33)', () => {
       en: '1 active API key issued by this user will be revoked.',
     });
     expect(deactivationWarning(3)?.en).toBe('3 active API keys issued by this user will be revoked.');
+  });
+});
+
+describe('issue failures in both languages (AC-28)', () => {
+  it('AC-28 explains the 100-key limit, the attempt limit, a missing company and a refusal in Japanese and English', () => {
+    expect(issueFailureText('CONFLICT', 409)?.ja).toContain('上限（100 件）');
+    expect(issueFailureText('CONFLICT', 409)?.en).toContain('Revoke keys that are no longer used');
+    expect(issueFailureText(undefined, 429)?.ja).toContain('しばらく待って');
+    expect(issueFailureText('NOT_FOUND', 404)?.en).toContain('company');
+    expect(issueFailureText('PERMISSION_DENIED', 403)?.ja).toContain('テナント管理者');
+    expect(issueFailureText('INTERNAL', 500)).toBeNull();
+  });
+  it('AC-28 puts a translated sentence before the server text on a field, and keeps unknown fields as sent', () => {
+    expect(serverFieldText('roles', 'role "x" cannot be granted to an API key')).toEqual({
+      ja: 'API キーに付けられないロールが含まれています。選び直してください。（role "x" cannot be granted to an API key）',
+      en: 'A chosen role cannot be granted to an API key. Choose again. (role "x" cannot be granted to an API key)',
+    });
+    expect(serverFieldText('password', 'boom')).toEqual({ ja: 'boom', en: 'boom' });
+  });
+  it('AC-28 keeps the code, HTTP status and server text as the detail line, and words the interrupted issue', () => {
+    expect(
+      failureDetail({ code: 'CONFLICT', status: 409, message: 'The tenant already has 100 active API keys' }),
+    ).toBe('CONFLICT · HTTP 409 · The tenant already has 100 active API keys');
+    expect(failureDetail({ message: 'Failed to fetch' })).toBe('Failed to fetch');
+    expect(INTERRUPTED_ISSUE.ja).toContain('「未使用」の鍵');
   });
 });

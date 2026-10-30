@@ -1,7 +1,7 @@
 # Spec: machine-credentials（機械用資格情報: API キー）
 
 - 状態: implemented
-- モジュール: `kernel`（`machine_credentials` 表、`kernel/src/machine-credentials.ts`、`Actor.type = 'machine'`、`actorUserId`）、`apps/api`（認証 plugin、`/admin/tokens`）、`apps/mcp`（`DAIFUKU_API_KEY`）、`apps/web`（`/admin/tokens`）、`modules/workforce`・`modules/tax-filing`・`modules/workforce-evidence`（人の利用者を要する業務の判定だけ） ／ 依存: [access-management](access-management.md)、[enterprise-identity](enterprise-identity.md)、[mcp-app](mcp-app.md)、[ui-kit](ui-kit.md)、[navigation-assist](navigation-assist.md)（`help.ts`）
+- モジュール: `kernel`（`machine_credentials` 表、`kernel/src/machine-credentials.ts`、`Actor.type = 'machine'`、`requireHumanUserId`）、`apps/api`（認証 plugin、`/admin/tokens`）、`apps/mcp`（`DAIFUKU_API_KEY`）、`apps/web`（`/admin/tokens`）、`modules/workforce`・`modules/tax-filing`・`modules/workforce-evidence`（人の利用者を要する業務の判定だけ） ／ 依存: [access-management](access-management.md)、[enterprise-identity](enterprise-identity.md)、[mcp-app](mcp-app.md)、[ui-kit](ui-kit.md)、[navigation-assist](navigation-assist.md)（`help.ts`）
 - ADR: [ADR-0023](../adr/0023-outbound-relay-principal-and-fencing.md) に追補（機械の本人性を LAN 中継機から連携・MCP へ一般化する。発行時の単回 step-up も引き継ぐ）。[ADR-0007](../adr/0007-authorization.md) に actor 種別を 1 行追記。[ADR-0021](../adr/0021-enterprise-authorization-and-integration.md) は変更しない（会社横断 port は機械を拒否する現行の動作を AC-23 で固定する）。この項目に予約された ADR-0035 は使わない
 - 作成: 2026-10-30 ／ 作成者: agent（F2 spec writer、workflow wf_2b353e03-822、base `ffc2f42`）。設計の元は [完成度向上の実装計画](../completion-plan.md) F2
 
@@ -36,9 +36,9 @@
 - AC-7 WHEN `Authorization: Bearer dfk_<43 文字>` の要求が `/auth/*`・`/admin/*` 以外の認証を要する経路に届き、資格情報が有効（失効していない、`now < expiresAt`、用途が `integration`、発行者が同じテナントの有効なテナント管理者）である THE SYSTEM SHALL その要求を `{ tenantId, companyId: 資格情報の会社, actor: { type: 'machine', id: 資格情報の id }, roles: 資格情報のロール, tenantAdmin: false, accessScope: 'all', storeIds: [], siteIds: [], mfaVerified: false }`（`sessionVersion` なし）の `ContextParams` で処理する。`tenantId` と `companyId` は資格情報の行からだけ決まる。読取・書込・アクション・CSV・集計・関連記録・`/meta` は人の JWT と同じ `withRequestContext` → `Repository` / `runAction` の経路を通り、同じロールの会社全体の所属を持つ人と同じ結果（同じ行、同じ 403）になる。ただし AC-22 の人の判断を要する業務と、`$ctx.userId` / `$ctx.actorId` を使う行規則（資格情報の id には一致する行が無い）は除く。鍵で作成・更新した記録の `created_by` / `updated_by` は `null`（relay / system と同じ）で、操作者は監査に残る。適用済み pack は人と同じく会社の設定から読む。業務の書込の監査は `actor_type = 'machine'`、`actor_id` = 資格情報の id で残る。
 - AC-8 IF 資格情報が失効済み・期限切れ・用途違い（`mcp` の鍵を REST で使った）・発行者が無効またはテナント管理者でない THEN THE SYSTEM SHALL 401 PERMISSION_DENIED を返す。本文は理由によらず同じ（`API key is invalid, expired or revoked.` と、テナント管理者に発行し直しを頼む hint）で、理由は監査だけに残す（AC-14）。`dfk_` で始まるが形式に合わない値、一致する hash が無い値も同じ 401 にする。
 - AC-9 WHEN 失効が確定した後、または期限を過ぎた後に始まった要求 THE SYSTEM SHALL 401 を返す。失効より前に認証を終えた実行中の要求は中断しない（人のセッション失効と同じ扱い。[access-management](access-management.md) の範囲外の記述）。
-- AC-10 IF 機械用資格情報の要求に `x-company-id` があり資格情報の会社と異なる THEN THE SYSTEM SHALL 何も読まず書かずに 403 を返す。同じ値なら受け入れる。`x-agent-id` は使わず、actor は常に資格情報とする。
-- AC-11 IF `dfk_` の値が URL の query にある THEN THE SYSTEM SHALL それを資格情報として読まない（`Authorization` が無ければ未認証の 401）。IF `dfk_` の Bearer を持つ要求に `Origin` header がある THEN THE SYSTEM SHALL 照合せずに 401 を返す（ブラウザーから API キーを使わせない。ADR-0023 の中継機と同じ）。
-- AC-12 IF 機械用資格情報で人の操作者のセッションを要する経路（認証を要する `/auth/*`（本人の認証設定・`/auth/me`・会社一覧を含む）、`/admin/*`（利用者・会社・API キーの管理）、中継機の `/edge/pairings`・`/edge/credentials/revoke`）を呼んだ THEN THE SYSTEM SHALL 照合をせずに 403 を返す。経路の一覧は `apps/api/src/plugins/auth.ts` の `HUMAN_ONLY`（前方一致 `/auth/`・`/admin/` と完全一致の 2 経路）に明示する。
+- AC-10 IF 機械用資格情報の要求に `x-company-id` があり資格情報の会社と異なる THEN THE SYSTEM SHALL 何も読まず書かずに 403 を返す。同じ値なら受け入れる（uuid の英字の大文字・小文字は区別しない。人の要求と同じ）。uuid の形でない値は、人の要求と同じく照合の前に 400 VALIDATION（`headers.x-company-id`）とし、監査しない。`x-agent-id` は使わず、actor は常に資格情報とする。
+- AC-11 IF `dfk_` の値が URL の query にある THEN THE SYSTEM SHALL それを資格情報として読まない（`Authorization` が無ければ未認証の 401）。IF `dfk_` の Bearer を持つ要求に `Origin` header または `Sec-Fetch-Site` header がある THEN THE SYSTEM SHALL 照合せずに 401 を返す（ブラウザーから API キーを使わせない。ADR-0023 の中継機と同じ）。ブラウザーは同一 origin の GET に `Origin` を付けないが、`Sec-Fetch-Site` はすべての要求に付ける。`Sec-Fetch-Mode` は Node.js の `fetch` もサーバーから `cors` を送るので判定に使わない。
+- AC-12 IF 機械用資格情報で人の操作者のセッションを要する経路（認証を要する `/auth/*`（本人の認証設定・`/auth/me`・会社一覧を含む）、`/admin/*`（利用者・会社・API キーの管理）、中継機の `/edge/pairings`・`/edge/credentials/revoke`）を呼んだ THEN THE SYSTEM SHALL 照合をせずに 403 を返す。経路の一覧は `apps/api/src/plugins/auth.ts` の `HUMAN_ONLY`（前方一致 `/auth/`・`/admin/` と完全一致の 2 経路）に明示する。判定は生の URL ではなく Fastify が選んだ経路（`req.routeOptions.url`）で行う（router は `%61dmin` を `admin` に復号し、重複した `/` を無視するため、`/%61dmin/tokens` も同じ 403 になる。一致する経路の無い URL は復号した path で判定し、その後 404）。
 - AC-13 IF 同じ IP からの、一致する hash の無い値（未知の鍵・形式違い）による照合が 5 分間で 100 件に達した THEN THE SYSTEM SHALL その IP の以後の照合を 429 で拒否する（key `machine-auth:<ip>`）。照合の前は読むだけで予算が尽きていないかを確かめ（`assertIdentityBudget`）、数えるのは hash が一致しなかったときだけにする。有効な鍵の要求は予算を使わず、予算の行に書き込まない。IF 既知の鍵が失効済み・期限切れ・用途違い・発行者の無効・会社違いで拒否された THEN THE SYSTEM SHALL IP ではなくその資格情報ごとの予算（key `machine-denied:<credentialId>`、5 分 100 件）に数え、尽きたらその鍵だけを 429 にする（同じ IP の他の鍵は影響を受けない）。
 
 ### 最終使用と監査
@@ -51,7 +51,7 @@
 
 - AC-17 WHEN テナント管理者が `POST /admin/tokens/:id/revoke { reason? }` を呼んだ THE SYSTEM SHALL `revoked_at`・`revoked_by`・`revoke_reason`（任意、200 文字まで）を保存し、監査（op `revoke`、`before` = `{ revokedAt: null }`、`after` = `{ revokedAt, reason }`）を書き、更新後の行（AC-20 の形）を返す。更新は `UPDATE machine_credentials SET revoked_at, revoked_by, revoke_reason WHERE tenant_id = $t AND id = $id AND revoked_at IS NULL RETURNING *` の条件付き更新で行い、行が返ったときだけ監査を書く。行が返らなければ現在の行を読み直してそのまま返す（既に失効済みなら何も変えず監査も書かない。結果不明時の再試行と、同時の失効・AC-18 の自動失効との競合で安全。どちらの呼出しも 200 と同じ `revokedBy` を受け取る）。別テナントの id と存在しない id は 404。発行者以外のテナント管理者も失効できる。
 - AC-18 WHEN `updateManagedUser` が利用者を無効化した、またはテナント管理者の属性を外した THE SYSTEM SHALL 同じトランザクションで、その利用者が発行した未失効の資格情報をすべて失効させ（`revoke_reason` = `issuer_deactivated` / `issuer_demoted`、`revoked_by` = 操作したテナント管理者）、それぞれ op `revoke` で監査する（AC-17 と同じ条件付き更新。対象は失効しておらず期限前の鍵）。`updateManagedUser` は失効させた件数を `revokedMachineCredentials` として応答と `access_user` の `update` 監査の `after` に含める。その利用者を再び有効化・昇格しても、失効した資格情報は戻らない。
-- AC-19 THE SYSTEM SHALL 発行後の資格情報の名前・用途・会社・ロール・期限を変える手段と、物理削除の手段を持たない（`PATCH` / `PUT` / `DELETE /admin/tokens/:id` は経路が無く 404）。app role には `machine_credentials` の `DELETE` 権限を与えない（`enforcePolicies` の `grantsFor` で `SELECT, INSERT, UPDATE`）。変えるときは新しく発行し、古いものを失効させる。
+- AC-19 THE SYSTEM SHALL 発行後の資格情報の名前・用途・会社・ロール・期限を変える手段と、物理削除の手段を持たない（`PATCH` / `PUT` / `DELETE /admin/tokens/:id` は経路が無く 404）。app role には `machine_credentials` の `DELETE` 権限を与えず、`UPDATE` は失効と利用の記録の列（`revoked_at`・`revoked_by`・`revoke_reason`・`last_used_at`・`last_denied_at`・`last_denied_reason`）だけに与える（`enforcePolicies` の `grantsFor` で `SELECT, INSERT, UPDATE (…)`、列の権限）。失効は戻せない: `enforcePolicies` が置く trigger（`machine_credentials_revocation_final`）が、一度設定した `revoked_at`・`revoked_by`・`revoke_reason` の変更を owner を含めて拒否する（AC-18 の「戻らない」を DB でも守る）。変えるときは新しく発行し、古いものを失効させる。
 
 ### 一覧と履歴
 
@@ -71,12 +71,12 @@
 
 ### 画面 `/admin/tokens`
 
-- AC-27 WHEN テナント管理者が `/admin/tokens` を開いた THE SYSTEM SHALL UI キット（`PageHeader`・`DataTableShell`・`Badge`・`Button`・`Dialog`・`EmptyState`）で一覧（名前・用途・会社・ロール・発行者・発行日時・期限・最終使用・状態）を表示する。状態は色だけでなく文字（有効 / 期限切れ / 失効 / 停止中）で示し、30 日以内に期限が来る有効な鍵には「期限まで N 日」を出す。最終使用が無い鍵は「未使用」。鍵が 1 件も無いときは発行の案内つきの空状態を出す。初回の読込は表の骨格行、読込の失敗は `MetaError`。
-- AC-28 WHEN 「API キーを発行」の `Dialog` で名前・用途・会社（既定は選択中の会社）・ロール（`AccessRoleOptions` と `accessRoleLabel`）・有効期間（30 / 90 / 180 / 365 日、既定 90 日）と本人確認の現在のパスワード（MFA 登録済みなら認証コードも）を入れて「発行」を押した THE SYSTEM SHALL 名前・ロール・パスワードの未入力を送信前にその欄に示し、`/auth/step-up`（`api/identity.ts` の `stepUp`、`IdentityStepUp` と同じ API）で step-up を得てから発行を送る。パスワードの誤りはパスワード欄に示す。要求の処理中は「発行」を `aria-disabled` にして進行中の文言にし、二重送信をしない。応答を受け取れなかった（通信の失敗）ときは「発行されたか確認できません。一覧で『未使用』の鍵を確認し、心当たりのない鍵は失効させてください」と示す。本人確認が設定されていない API（`/auth/security` の `configured: false`）では「発行」を無効にし、運用管理者に `IDENTITY_ENCRYPTION_KEY` の設定を頼むよう案内する。サーバーの検証エラーは最初の誤りの欄へ焦点を移して示す。`admin` ロールを選んだときは「会社のすべての業務を操作できる鍵になります」の注意を出す。発行に成功したら、秘密を読取専用の欄に一度だけ表示し、「コピー」ボタン（結果を `aria-live` で知らせ、クリップボードが使えないときは欄を選択して手動コピーを案内）、「この画面を閉じると二度と表示できません。安全な場所に保存してください」の警告、用途に応じた使い方（連携: `Authorization: Bearer <鍵>`、MCP: `DAIFUKU_API_KEY=<鍵>`）を出し、枠の見出し（`tabIndex=-1`）へ焦点を移す。
-- AC-29 WHEN 秘密を表示した枠を閉じた THE SYSTEM SHALL 秘密を画面の状態と React Query の mutation の結果から消す。秘密は URL・`localStorage`・`sessionStorage`・toast・console・一覧の cache に一度も書かない。再読込・画面の移動・一覧の再取得のあとも秘密は表示されない。焦点は「API キーを発行」へ戻す。
+- AC-27 WHEN テナント管理者が `/admin/tokens` を開いた THE SYSTEM SHALL UI キット（`PageHeader`・`DataTableShell`・`Badge`・`Button`・`Dialog`・`EmptyState`）で一覧（名前と鍵の ID の先頭 8 文字・用途・会社・ロール・発行者・発行日時・期限・最終使用・状態）を表示する。ID の先頭 8 文字は、各記録の履歴に `machine:<先頭 8 文字>…` と出る操作者を鍵に照合するため。状態は色だけでなく文字（有効 / 期限切れ / 失効 / 停止中）で示し、30 日以内に期限が来る有効な鍵には「期限まで N 日」を出す。最終使用が無い鍵は「未使用」。鍵が 1 件も無いときは発行の案内つきの空状態を出す。初回の読込は表の骨格行、読込の失敗は `MetaError`。
+- AC-28 WHEN 「API キーを発行」の `Dialog` で名前・用途・会社（既定は選択中の会社）・ロール（`AccessRoleOptions` と `accessRoleLabel`）・有効期間（30 / 90 / 180 / 365 日、既定 90 日）と本人確認の現在のパスワード（MFA 登録済みなら認証コードも）を入れて「発行」を押した THE SYSTEM SHALL 名前・ロール・パスワードの未入力を送信前にその欄に示し、`/auth/step-up`（`api/identity.ts` の `stepUp`、`IdentityStepUp` と同じ API）で step-up を得てから発行を送る。パスワードの誤りはパスワード欄に、認証コードの誤り（step-up の検証エラーの path が `code`）は認証コード欄に示し、焦点もその欄へ移す。要求の処理中は「発行」を `aria-disabled` にして進行中の文言にし、二重送信をしない。応答を受け取れなかった（通信の失敗）ときは「発行されたか確認できません。一覧で『未使用』の鍵を確認し、心当たりのない鍵は失効させてください」と示し、保持していた step-up の token を捨てる（再試行はパスワードを聞き直す。使用済みかもしれない token を再送すると 401 でセッションが終わるため）。発行の要求の処理中に Esc・× で閉じたときは、一覧に同じ趣旨の警告（`tokens-issue-interrupted`）を出す。step-up の処理中に閉じたときは発行を送らない。本人確認が設定されていない API（`/auth/security` の `configured: false`）では「発行」を無効にし、運用管理者に `IDENTITY_ENCRYPTION_KEY` の設定を頼むよう案内する。`/auth/security` を読めなかったときは、読めなかったことと再試行のボタンを示し（`tokens-security-error`）、「発行」は無効にしてその説明を `aria-describedby` で結ぶ。サーバーの検証エラーは最初の誤りの欄へ焦点を移して示す。想定される失敗（有効な鍵の上限の 409、試行の上限の 429、会社が無い 404、権限の 403、欄ごとの検証エラー）は日英の文で示し、サーバーの文・コード・HTTP status は補助の行に残す。`admin` ロールを選んだときは「会社のすべての業務を操作できる鍵になります」の注意を出す。発行に成功したら、秘密を読取専用の欄に一度だけ表示し、「コピー」ボタン（結果を `aria-live` で知らせ、クリップボードが使えないときは欄を選択して手動コピーを案内）、「この画面を閉じると二度と表示できません。安全な場所に保存してください」の警告、用途に応じた使い方（連携: `Authorization: Bearer <鍵>`、MCP: `DAIFUKU_API_KEY=<鍵>`）を出し、枠の見出し（`tabIndex=-1`）へ焦点を移す。
+- AC-29 WHEN 秘密を表示した枠を閉じた THE SYSTEM SHALL 秘密を画面の状態と React Query の mutation の結果から消す。秘密は URL・`localStorage`・`sessionStorage`・toast・console・一覧の cache に一度も書かない。再読込・画面の移動・一覧の再取得のあとも秘密は表示されない。焦点は見出しの「API キーを発行」へ戻す（空状態のボタンから開いた最初の鍵の発行でも。空状態は一覧の再取得で消えるため、kit の `Dialog` の焦点の戻し先が無くなる）。
 - AC-30 WHEN 行の「失効」を押した THE SYSTEM SHALL kit の `Dialog` で鍵の名前と影響（この鍵を使う連携・エージェントは次の要求から 401 になる）を示し、任意の理由を入力させる。実行後は行の状態を「失効」に更新し、結果を `aria-live` で知らせ、焦点を行の「履歴」へ移す。Esc・取消では何もせず「失効」ボタンへ焦点を戻す。失効済み・期限切れの行に「失効」は出さない。行の「履歴」は AC-21 の結果を `Dialog` に時刻・操作・操作者・理由で表示する。
 - AC-31 IF テナント管理者でない利用者が使っている THEN THE SYSTEM SHALL サイドバー・業務分野の画面・コマンドパレットに `/admin/tokens` を出さず（`navigation-data.ts` の `condition: 'tenant-admin'`）、URL を直接開いても「API キーの管理はテナント管理者だけが行えます」と表示して API を呼ばない（API も 403。AC-4）。
-- AC-32 THE SYSTEM SHALL 画面の文言を日本語と英語で持ち、390px 幅でページの横方向のはみ出しなく一覧・発行・秘密の表示・失効・履歴を操作でき、axe の serious / critical 違反を持たない（`apps/web/e2e/a11y-policy.ts` の `judge` を画面の試験で適用）。画面の手引きリンクは manual 08 の「API キーの発行と失効」を開く（`help.ts`）。
+- AC-32 THE SYSTEM SHALL 画面の文言を日本語と英語で持ち、390px 幅でページの横方向のはみ出しなく一覧・発行・秘密の表示・失効・履歴を操作でき（履歴の表は 440px の Dialog に収まるよう各欄を折り返し、枠を横にスクロールさせない）、axe の serious / critical 違反を持たない（`apps/web/e2e/a11y-policy.ts` の `judge` を画面の試験で適用）。画面の手引きリンクは manual 08 の「API キーの発行と失効」を開く（`help.ts`）。
 - AC-33 WHEN テナント管理者が `/admin/users` で、有効な API キー（失効しておらず期限前）を発行した利用者を無効化する、またはテナント管理者の属性を外す変更を確認しようとした THE SYSTEM SHALL 確認の文に「この利用者が発行した有効な API キー N 件も失効します / N active API keys issued by this user will be revoked」を出す。件数は `GET /admin/access` の `activeApiKeys`（発行者の id → 件数）から読む。
 
 ## HTTP 契約
@@ -105,7 +105,7 @@
 9. **鍵の有効性を発行者に結び付ける**。発行者が無効化・テナント管理者でなくなったら、`updateManagedUser` の同じトランザクションで鍵を失効させる（AC-18。人のセッションが「再有効化しても復活しない」のと同じ考え方）。加えて利用のたびに発行者が有効なテナント管理者であることを確かめ、AC-18 を通らない変更（owner 接続での直接の更新など）も 401 にする（`suspended`）。発行者のパスワード変更・全端末ログアウト（`sessionVersion`）では鍵を止めない（連携が管理者の個人操作で止まらないように。緊急時は画面で失効する）。セッションの盗難が疑われるときは、パスワードの再設定・全端末ログアウトに加えて、その利用者が発行した鍵を一覧で確認し、心当たりのないものを失効させる（manual 08）。発行には step-up が要るので、盗まれた JWT だけでは鍵を作れない（判断 5）。退職者が控えた鍵が使え続ける危険を、運用の手順に頼らず閉じる。
 10. **照合の接続を分ける**: hash による照合だけ owner 接続（テナントが未確定のため。`authenticate` / `authenticateRelay` と同じ）、発行者の確認・`last_used_at` の更新・拒否の監査は資格情報のテナントを設定した app 接続のトランザクション（RLS が効く）で行う。拒否の監査は応答とは独立に確定する。
 11. **最終使用は 60 秒単位、拒否の監査は資格情報・理由ごとに 1 時間に 1 件**（`last_denied_at` / `last_denied_reason` への条件付き更新で、同時の拒否でも 1 件）。毎要求の書込と、忘れられた連携の連打による追記専用の監査の膨張を抑える（`audit_log` は削除できないので、1 日最大 24 件 × 理由の数に抑える）。成功した使用は 1 件ずつ監査しない（業務の書込は各記録の監査に `machine` として残る）。
-12. **人の判断を要する業務は機械を拒否する**（AC-22）。承認・確認は人の決定であり（manual 09「人間の確認を取ってから」）、鍵の id は利用者 id と一致しないので、既存の自己承認・作成者確認の判定をすり抜けてしまう。module ごとの判定の写しを直さずに済むよう、kernel の `actorUserId` に寄せる。system / relay の戻り値は変えない（seed・worker・中継機の既存動作を変えないため）。
+12. **人の判断を要する業務は機械を拒否する**（AC-22）。承認・確認は人の決定であり（manual 09「人間の確認を取ってから」）、鍵の id は利用者 id と一致しないので、既存の自己承認・作成者確認の判定をすり抜けてしまう。module ごとの判定の写しを直さずに済むよう、kernel の `requireHumanUserId` に寄せる。system / relay の戻り値は変えない（seed・worker・中継機の既存動作を変えないため）。
 13. **失効は冪等（条件付き更新）、鍵は不変、物理削除なし**。結果不明時の再試行・同時の失効で二重の監査や 409 を出さない。履歴を残すため削除しない（保存期間の整理はスコープ外）。
 14. **`x-agent-id` は無視、`x-company-id` は一致時だけ受理、`Origin` は拒否、`/auth/*`・`/admin/*` は人だけ**。汎用の HTTP クライアントが会社 header を常に付ける運用を妨げず、別会社への切替だけを止める。
 15. **未知の鍵の照合予算は IP ごとに 5 分 100 件、既知の鍵の拒否は鍵ごとに 5 分 100 件**（中継機の `relay-auth:<ip>` と同じ値）。中継機の `withIdentityAttempt` のような「照合の前に予約し成功時に返す」方式は使わない: 共有の NAT や iPaaS の出口の後ろで、失効を忘れた 1 つの連携の再試行が同じ IP の健全な鍵（別テナントのものを含む）をすべて 429 にし、有効な要求も同時に 100 件を超えると返却前に上限に達し、要求ごとに owner 接続で 2 回書き込むからである。有効な鍵の要求は予算を読むだけで書かない。テナント内の有効な鍵は 100 件まで（AC-6）。成功した要求の数の上限は設けない（未決事項 3）。
@@ -132,6 +132,31 @@
 | 13 | mcp 用の鍵がホストの信頼を減らすように読める | 受入。目的と manual 09 に 1 文 | 目的、HTTP 契約 |
 | 14 | 発行の二重送信で見えない鍵ができる | 受入。処理中の無効化と、応答喪失時の案内 | AC-28 |
 
+## 実装レビューの指摘への対応（2026-10-30、fixer）
+
+| 指摘 | 判断 | 反映先 |
+| --- | --- | --- |
+| `HUMAN_ONLY` が生の URL を見るため `/%61dmin/…`・`/%61uth/…` が照合と handler に届く | 受入。`req.routeOptions.url`（一致しない URL は復号した path）で判定 | AC-12、API 試験 |
+| 空状態のボタンから発行すると、閉じた後の焦点が `<body>` に落ちる | 受入。閉じたら見出しの「API キーを発行」へ焦点を移す | AC-29、identity 試験 |
+| 履歴の表が Dialog の中で横にスクロールし、axe の scrollable-region-focusable | 受入。履歴の各欄を折り返して枠に収める（kit の `DataTableShell` は変えない） | AC-32、identity 試験（日英 × 390 / 1280px） |
+| 未知の項目が path `''` の 1 件の issue になる | 受入。`parseAccess` が `unrecognized_keys` を項目ごとの issue（path = 項目名）に展開（利用者管理の他の入口も同じ） | AC-3、kernel 試験 |
+| 結果不明の失敗の後の再試行が使用済みかもしれない step-up を再送する | 受入。結果不明なら token を捨てる | AC-28、ブラウザー試験 |
+| 理由ごとの拒否の記録を確かめる試験が無い | 受入。同じ鍵を 2 つの理由で拒否する試験を追加（条件から理由を外す変更で失敗することを確認） | AC-14、kernel 試験 |
+| `x-company-id` の大文字の uuid を別会社として拒否・監査する | 受入。大文字・小文字を区別しない。uuid の形でない値は照合前に 400 | AC-10、kernel・API 試験 |
+| app role が `machine_credentials` の全列を更新できる（失効の取消し・ロールの拡大） | 受入。`UPDATE` を 6 列に限り、失効を戻させない trigger を追加 | AC-19、kernel 試験 |
+| `Origin` の無い同一 origin の GET をブラウザーと判定できない | 一部受入。`Sec-Fetch-Site` も拒否する。`Sec-Fetch-Mode` は Node.js の `fetch` が送るので使わない（2026-10-30 に Node 22 で実測） | AC-11、API 試験 |
+| restaurant-chain の確認・提出が鍵を受け入れることが spec に無い | 受入（spec に明記）。動作は変えない | スコープ外 |
+| 認証コードの誤りで焦点がパスワード欄へ行く | 受入 | AC-28、ブラウザー試験 |
+| 発行の処理中に Esc・× で閉じると黙って秘密が失われる | 受入。一覧に警告を出す。step-up の処理中に閉じたら発行を送らない | AC-28、ブラウザー試験 |
+| `/auth/security` の読込失敗で理由の無い無効ボタンになる | 受入。失敗の表示と再試行 | AC-28、ブラウザー試験 |
+| 想定される失敗が日本語の画面で英語の文になる | 受入。409・429・404・403・欄ごとの検証エラーを日英の文にし、サーバーの文は補助の行へ | AC-28、web 単体・ブラウザー試験 |
+| manual 08 の「鍵の名前を一覧で確かめる」が画面ではできない | 受入。一覧の名前の下に鍵の ID の先頭 8 文字を出し、manual に照合の方法を書く | AC-27、manual 08 |
+| 英語の画面でロールが「、」で区切られる | 受入 | 画面 |
+| 使われない `token-dialog` の class | 受入（削除） | 画面 |
+| spec の `actorUserId`、log の重複した行 | 受入 | spec、log |
+| manual 09 の「下の 2 行」の曖昧さと API キーの検証の記録 | 受入 | manual 09 |
+| AC-32 の一覧（鍵あり）・失効・履歴の Dialog に axe と 390px の試験が無い | 受入 | identity 試験 |
+
 ## 関係するファイル・インターフェース（名指し）
 
 - kernel:
@@ -140,7 +165,7 @@
   - `kernel/src/machine-credentials.ts`（新規）: `MACHINE_TOKEN_PREFIX = 'dfk_'`、`isMachineTokenFormat(value)`、`issueMachineCredentialSchema`、`revokeMachineCredentialSchema`、`MachinePurpose = 'mcp' | 'integration'`、`MachinePrincipal { credentialId, tenantId, companyId, name, purpose, roles, expiresAt }`、`listMachineCredentials(ctx)`、`issueMachineCredential(ctx, raw)`、`revokeMachineCredential(ctx, id, raw)`、`machineCredentialAudit(ctx, id)`、`authenticateMachineCredential(owner, app, token, { purpose, companyHeader?, budgetKey?, now? })`（拒否時は AC-14 の監査を確定し、AC-13 の予算を数えてから 401 / 403 / 429 を投げる）、`refreshMachineCredential(app, principal, purpose, now?)`、`machineContextParams(principal)`、`revokeIssuedMachineCredentials(ctx, userId, reason)`（AC-18、`updateManagedUser` から呼ぶ）
   - `kernel/src/access-users.ts`（`updateManagedUser` が無効化・降格で `revokeIssuedMachineCredentials` を呼び、件数を返す）、`kernel/src/access-directory.ts`（`activeApiKeys`）
   - `kernel/src/identity/rate-limit.ts`（読むだけの予算確認 `assertIdentityBudget`）、`kernel/src/identity/common.ts`（`lockIdentity` が machine を明示的に拒否）、`kernel/src/account-security.ts`（同じ）
-  - `kernel/src/db/migrate.ts`（`grantsFor('machine_credentials')` = `SELECT, INSERT, UPDATE`）
+  - `kernel/src/db/migrate.ts`（`grantsFor('machine_credentials')` = `SELECT, INSERT, UPDATE (失効と利用の記録の 6 列)`、失効を戻させない trigger）
   - `kernel/src/access-admin-common.ts`（`requireHumanUserId` を追加し、`assertAccessAdmin` が machine を明示的に拒否する。既存の `actorUser` は変えない）
   - `kernel/src/index.ts`（上記の export）。`kernel/src/identity/crypto.ts` の `opaqueToken` / `tokenHash` は変更せずに使う
 - apps/api:
@@ -182,6 +207,7 @@
 - 失効の step-up（判断 5）
 - 人事・給与の連携を鍵で行うこと（休暇の付与・精算・給与制度の承認・従業員の証憑の添付など。AC-22、判断 17）
 - B4 のセットアップウィザード・C6 の役割別ホームからの導線（未統合のため。統合後に追加するなら `navigation-data.ts` の項目を参照する）
+- pack `restaurant-chain` の締めの提出・店長確認（`restaurant_chain.submit_for_review`・`restaurant_chain.review`・`before_submit` の hook）を鍵に対して拒否すること（AC-22 の対象外）。この pack は提出者と確認者を比べる判定を持たず、人でも同じ人が提出と確認をできるので、鍵が職務分離をすり抜ける余地が無い。`submittedBy` / `reviewedBy` には資格情報の id が残る（代理 AI でエージェントの id が残るのと同じ）。`requireHumanUserId` に替えると代理 AI の記録が利用者の id に変わるため、pack の判断として別項目で扱う
 
 ## 検証手順（E2E、実行して記録する）
 
@@ -197,8 +223,8 @@
 | 単体 | `apps/mcp/test/config.test.ts` | `DAIFUKU_API_KEY` だけで設定が通り、パスワード・`DAIFUKU_TENANT_ID` 等との同時設定が設定エラー（AC-24、AC-25） |
 | 単体 | `apps/web/src/lib/machine-credentials.test.ts` | 下書きの検証、状態と「期限まで N 日」・「未使用」の文、使い方の文、無効化の確認に足す文（ja / en）（AC-27、AC-28、AC-33） |
 | 単体 | `apps/web/src/lib/help.test.ts`、`apps/web/src/lib/navigation.test.ts` | `/admin/tokens` の手引きの節が manual 08 にあり、`tenant-admin` 条件で非管理者に出ない（AC-31、AC-32） |
-| ブラウザ（通常の試験群、本人確認なし） | `apps/web/e2e/machine-credentials.spec.ts` | 画面の見出し・空状態・発行ボタンの無効と設定の案内（AC-3a、AC-27、AC-28）、非管理者には画面もナビゲーションも出ない（AC-31）、英語表示、390px のはみ出しなし、`judge` による axe（AC-32） |
-| ブラウザ（identity 試験群、本人確認あり） | `apps/web/e2e/machine-credentials-identity.spec.ts` | 発行（未入力の欄の表示、`admin` の注意、パスワードでの step-up）→ 秘密を一度だけ表示・コピーの通知・閉じた後と再読込後に画面のどこにも無い・一覧の応答にも無い → Playwright の `request` で鍵を使って `GET /api/partner` が 200 → 失効（Esc で取りやめ、実行、焦点）→ 同じ鍵が 401 → 履歴に発行・失効・拒否、別のテナント管理者が発行した鍵を持つ利用者の管理者属性を外すと確認に件数が出て鍵が失効、390px と axe（AC-8、AC-18、AC-27〜AC-30、AC-32、AC-33） |
+| ブラウザ（通常の試験群、本人確認なし） | `apps/web/e2e/machine-credentials.spec.ts` | 画面の見出し・空状態・発行ボタンの無効と設定の案内（AC-3a、AC-27、AC-28）、非管理者には画面もナビゲーションも出ない（AC-31）、英語表示、390px のはみ出しなし、`judge` による axe（AC-32）。`page.route` で step-up と発行の応答を差し替えて、`/auth/security` の読込失敗、認証コードの誤りの欄と焦点、処理中に閉じたときの一覧の警告、結果不明の後の再送で step-up を聞き直すこと、409 の日英の文（AC-28、AC-29） |
+| ブラウザ（identity 試験群、本人確認あり） | `apps/web/e2e/machine-credentials-identity.spec.ts` | 発行（未入力の欄の表示、`admin` の注意、パスワードでの step-up）→ 秘密を一度だけ表示・コピーの通知・閉じた後と再読込後に画面のどこにも無い・一覧の応答にも無い → Playwright の `request` で鍵を使って `GET /api/partner` が 200 → 失効（Esc で取りやめ、実行、焦点）→ 同じ鍵が 401 → 履歴に発行・失効・拒否、別のテナント管理者が発行した鍵を持つ利用者の管理者属性を外すと確認に件数が出て鍵が失効、390px と axe（秘密の表示、鍵がある一覧、失効の Dialog、長い理由を持つ履歴の Dialog を日英 × 390 / 1280px）、空状態のボタンから発行した後の焦点（AC-8、AC-18、AC-27〜AC-30、AC-32、AC-33） |
 
 3. ブラウザ試験: `/tmp/claude-0/-home-user-DaifukuERP/8a7541e3-ab40-5f9c-ac08-5679d2bd0af8/scratchpad/tools/e2e-run.sh <worktree> <slot 19〜30> e2e/machine-credentials.spec.ts e2e/navigation.spec.ts e2e/access-management.spec.ts --project=chromium --no-deps`。identity 試験群は新しい空の DB `daifuku_e2e_test_enterprise_<suffix>` を `TEST_DATABASE_URL_*` に渡して `E2E_IDENTITY_PREPARE=1 pnpm test:identity:e2e`（固定の port 3109 / 3110 / 5189 が空いていることを確かめてから）
 4. 手動の確認（log に記録）: `IDENTITY_ENCRYPTION_KEY` を設定して `pnpm dev:api` を起動し、テナント管理者の JWT で `POST /auth/step-up` → `POST /admin/tokens` → 返った鍵で `curl -H "authorization: Bearer <鍵>" /api/partner`（200）→ `x-company-id` に別会社（403）→ `POST /admin/tokens/:id/revoke` → 同じ curl が 401 → `GET /admin/tokens/:id/audit` に `issue` / `use_denied` / `revoke`。用途 `mcp` の鍵で `DAIFUKU_API_KEY=<鍵> pnpm -s -C <repo> --filter @daifuku/mcp start` を SDK クライアント（`apps/mcp/test/stdio.db.test.ts` と同じ方法）で接続して `partner_list` を呼ぶ。

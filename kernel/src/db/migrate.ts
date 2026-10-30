@@ -44,16 +44,42 @@ export function policyStatements(): string[] {
     `DROP TRIGGER IF EXISTS audit_log_immutable_trg ON audit_log`,
     `CREATE TRIGGER audit_log_immutable_trg BEFORE UPDATE OR DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_immutable()`,
   );
+  // machine-credentials AC-18 / AC-19: a revocation is final, for the owner too (the app role may only update the
+  // revocation and usage columns, grantsFor).
+  if (registry.tables().machine_credentials)
+    statements.push(
+      `CREATE OR REPLACE FUNCTION machine_credentials_revocation_final() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.revoked_at IS NOT NULL AND (NEW.revoked_at IS DISTINCT FROM OLD.revoked_at
+          OR NEW.revoked_by IS DISTINCT FROM OLD.revoked_by OR NEW.revoke_reason IS DISTINCT FROM OLD.revoke_reason) THEN
+          RAISE EXCEPTION 'machine credential revocation is final';
+        END IF;
+        RETURN NEW;
+      END $$`,
+      `DROP TRIGGER IF EXISTS machine_credentials_revocation_final_trg ON machine_credentials`,
+      `CREATE TRIGGER machine_credentials_revocation_final_trg BEFORE UPDATE ON machine_credentials FOR EACH ROW EXECUTE FUNCTION machine_credentials_revocation_final()`,
+    );
   return statements;
 }
+
+/** machine-credentials AC-19: the only columns the app role may change after issue (revoke and usage records). */
+const MACHINE_CREDENTIAL_UPDATABLE = [
+  'revoked_at',
+  'revoked_by',
+  'revoke_reason',
+  'last_used_at',
+  'last_denied_at',
+  'last_denied_reason',
+];
 
 function grantsFor(name: string): string {
   switch (name) {
     case 'audit_log':
       return 'SELECT, INSERT';
     case 'sequences':
-    case 'machine_credentials': // machine-credentials AC-19: keys are revoked, never deleted
       return 'SELECT, INSERT, UPDATE';
+    case 'machine_credentials': // machine-credentials AC-19: keys are revoked, never deleted or edited
+      return `SELECT, INSERT, UPDATE (${MACHINE_CREDENTIAL_UPDATABLE.join(', ')})`;
     default:
       return 'SELECT, INSERT, UPDATE, DELETE';
   }

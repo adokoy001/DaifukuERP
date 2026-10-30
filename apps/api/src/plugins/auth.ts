@@ -91,7 +91,8 @@ const PUBLIC_IDENTITY = new Set([
 
 /**
  * machine-credentials AC-12: routes that need a person's operator session (account security, user / company / key
- * administration, relay pairing). An API key gets 403 here before any lookup.
+ * administration, relay pairing). An API key gets 403 here before any lookup. Matched against the route Fastify picked
+ * (`req.routeOptions.url`), not the raw URL: the router decodes `%61dmin` to `admin` and ignores duplicate slashes.
  */
 const HUMAN_ONLY_PREFIXES = ['/auth/', '/admin/'];
 const HUMAN_ONLY_PATHS = new Set(['/edge/pairings', '/edge/credentials/revoke']);
@@ -131,6 +132,26 @@ function isPublic(url: string): boolean {
 }
 
 const pathOf = (url: string): string => url.split('?')[0] ?? url;
+
+/** The matched route pattern (e.g. `/admin/tokens/:id/revoke`); for an unmatched URL, its decoded path (404 follows). */
+function routedPath(req: FastifyRequest): string {
+  const routed = req.routeOptions.url;
+  if (routed) return routed;
+  const raw = pathOf(req.url);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * AC-11: a browser request. `Origin` is left off same-origin GETs, but browsers send `Sec-Fetch-Site` on every request
+ * and server-side clients do not (Node's fetch sends `Sec-Fetch-Mode: cors`, so that header is not a browser signal).
+ */
+function fromBrowser(req: FastifyRequest): boolean {
+  return req.headers.origin !== undefined || req.headers['sec-fetch-site'] !== undefined;
+}
 
 /** `Authorization: Bearer dfk_…` (case-insensitive scheme). Query strings are never read as credentials (AC-11). */
 function machineBearer(req: FastifyRequest): string | null {
@@ -256,12 +277,21 @@ export async function registerAuth(
     if (isPublic(req.url)) return;
     const machineToken = machineBearer(req);
     if (machineToken !== null) {
-      if (isHumanOnlyPath(pathOf(req.url))) throw humanOnly();
+      if (isHumanOnlyPath(routedPath(req))) throw humanOnly();
       // AC-11: never from a browser (same rule as the relay credential, ADR-0023).
-      if (req.headers.origin !== undefined) throw machineDenied();
+      if (fromBrowser(req)) throw machineDenied();
+      // AC-10: a malformed company header is a 400 like a person's (no lookup, no audit); a key's own company in any
+      // letter case is accepted (the kernel compares case-insensitively).
+      const companyHeader = headerString(req, 'x-company-id');
+      if (companyHeader !== undefined && !isUuid(companyHeader))
+        throw new ValidationError(
+          'x-company-id must be a uuid',
+          [{ path: 'headers.x-company-id', message: 'invalid uuid' }],
+          'Omit x-company-id or send the company of the API key.',
+        );
       req.machine = await authenticateMachineCredential(opts.owner, opts.db, machineToken, {
         purpose: 'integration',
-        companyHeader: headerString(req, 'x-company-id'),
+        companyHeader,
         budgetKey: `machine-auth:${req.ip}`,
       });
       req.companyId = req.machine.companyId;

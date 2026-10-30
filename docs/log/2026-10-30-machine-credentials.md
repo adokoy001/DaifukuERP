@@ -46,13 +46,34 @@
 
 ## 見つけた問題と修正（発見経路つき）
 
-- 共有の `.action-dialog p`（`styles.css`）の文字色 `#6d7890` が 12px で 4.43:1 しかなく、kit の `Dialog` の説明文が WCAG AA を満たさなかった — 発見: identity 試験の axe（発行フォーム）、修正: `--text-muted`（4.5:1）に変更。Dialog 内の自分の文は `<div>` にした（notice・欄のエラーの色がこの規則に上書きされないように）。
-
+- 共有の `.action-dialog p`（`styles.css`）の文字色 `#6d7890` が 12px で 4.43:1 しかなく、kit の `Dialog` の説明文と、発行の Dialog の確認文・コピーの結果の文字が WCAG AA を満たさなかった — 発見: identity 試験の axe（発行フォーム）、修正: `--text-muted`（4.5:1）に変更し、Dialog 内の自分の文は `<div>` にした（notice・欄のエラーの色がこの規則に上書きされないように）。
 - kernel DB 試験で kernel 単体の登録に無いロール（`sales`、`edge_manager`）を使っていた — 発見: 実測（400）、修正: kernel 試験は `settings` / `admin` にした。
-- 発行の Dialog の確認文・コピーの結果の文字が `.action-dialog p` の灰色（コントラスト 4.43）になった — 発見: identity 試験の axe、修正: Dialog 内の文を `<div>` に。
 - 非管理者の試験が画面の遷移そのもの（Web の URL）を API 呼出しと数えていた、`aria-disabled` のボタンを Playwright が押せなかった — 発見: ブラウザー試験、修正: 試験側で API の URL に限定・`force` クリック。
 - `apps/api/test/boolean-migration.db.test.ts` と `ext-index-migration.db.test.ts` が、旧版からの更新の前後で public の全制約を比較していたため、後の migration が表を足す（`0018_machine_credentials`）だけで失敗した — 発見: gate:light の DB lane、修正: 更新前に存在した relation の制約だけを比較するよう試験を直した（試験の誤りの修正で、既存の relation の制約は引き続き完全一致を要求する）。E2（recurring-journals）が自分の branch で同じ修正（commit `8083d57`）をしていたので、統合で衝突しないよう同一の hunk を当てた（`8374d96`）。
 - identity 試験群の 1 回目は別の workflow の identity 試験と port 3109 で衝突し、相手の fixture に接続して失敗した — 発見: 実測（fixture の起動失敗の表示）、対処: 相手の終了を待ち、port が空いていることを確かめてから再実行。相手の試験へ数回のログイン要求が届いた可能性がある。
+
+## 実装レビューの指摘への対応（2026-10-30、fixer）
+
+- セッション: workflow wf_2b353e03-822 の F2 fixer（同じ branch・worktree、自分の DB `daifuku_test_w41`、ブラウザー slot 19）。計測: tokens=null, agent_minutes=約 75, human_minutes=0, rework_lines=約 600（試験の追加を含む）, gate_failures=1（gate:quick の unit 2 件が load average 約 20 での時間切れ。単独で再実行して通過）。
+- 指摘 25 件（重複 3 組を含む）を照合した。spec の「実装レビューの指摘への対応」の表のとおり、`Sec-Fetch-Mode` の部分だけを退け、ほかはすべて受け入れた。
+  - 人だけの経路の判定を `req.routeOptions.url`（一致しない URL は復号した path）に替えた。修正前に `/%61dmin/tokens` などが照合され、`last_used_at` が書かれることはレビューの実測で示されていた。修正後の API 試験で、8 通りの符号化した綴りが 403 `human-session-required` になり、`last_used_at` が `null` のままであることを確かめた。
+  - ブラウザーの判定に `Sec-Fetch-Site` を加えた。`Sec-Fetch-Mode` は退けた。Node 22 の `fetch` がサーバー間でも `sec-fetch-mode: cors` を送ることを、このコンテナで実測したため（2026-10-30。受信した header は `{"authorization":…,"accept":"*/*","accept-language":"*","sec-fetch-mode":"cors","user-agent":"node",…}`）。これで拒否すると、Node で書いた連携がすべて止まる。
+  - `machine_credentials` の app role の `UPDATE` を、失効と利用の記録の 6 列に限った（列の権限）。あわせて、一度設定した失効を owner でも戻せない trigger を `enforcePolicies` に足した（`audit_log` の trigger と同じ場所なので、migration と schema-sync の両方に効く）。drizzle の migration は増やしていない。既存の AC-19 試験は表全体の `UPDATE` 権限が `true` であることを確かめていた。これを「表全体の `UPDATE` は `false`、`revoked_at`・`last_used_at` の列は `true`、`roles` は `false`」に改めた。権限を狭めたことに合わせて試験の期待を変えたもので、確認する内容は増えている。
+  - `x-company-id` は大文字・小文字を区別せずに比べる。API では uuid の形でない値を照合の前に 400 にした（人の要求と同じ）。kernel を直接呼んだときに形の違う値が 403・監査になることは変えず、既存の kernel 試験のとおり。
+  - 履歴の表は、各欄を折り返して Dialog の幅に収めた（`whitespace-normal [overflow-wrap:anywhere]`）。kit の `DataTableShell` に焦点を受ける枠の prop を足す案は採らなかった。共有の kit を変えずに、横のスクロールそのものを無くせるため。
+  - 発行の Dialog: 結果不明なら step-up の token を捨てる。認証コードの誤りは認証コード欄に示し、焦点も移す。発行の処理中に閉じたら一覧に警告を出す。step-up の処理中に閉じたら発行を送らない（レビューの指摘には無く、同じ経路を読んでいて見つけた。見えない鍵ができる）。`/auth/security` の読込失敗を表示する。想定される失敗は日英の文にした。閉じたら見出しの「API キーを発行」へ焦点を移す。
+  - restaurant-chain の確認・提出は動作を変えず、spec のスコープ外に理由とともに明記した（提出者と確認者を比べる判定が無く、鍵が職務分離をすり抜ける余地が無い）。`requireHumanUserId` に替えると、代理 AI の記録がエージェントの id から利用者の id に変わってしまうため。
+  - manual 08 は、監査パネルに出る `machine:<先頭 8 文字>…` と一覧の ID（新たに名前の下に表示）を照らし合わせる方法に書き換えた。manual 09 は対象の変数を名指しにし、API キーの検証の記録（前段の手動確認と DB 試験、未検証の `POST /actions` の例）を加えた。
+
+### fixer の検証
+
+- [実測] kernel・API の DB 試験 `kernel/test/machine-credentials.db.test.ts`・`apps/api/test/machine-credentials.db.test.ts`: 36 件が通過（18:03、自分の DB）。追加・変更した試験は次のとおり。AC-3 の未知の項目ごとの path。AC-10 の大文字の uuid（kernel）と 400（API）。AC-11 の `Sec-Fetch-Site` の 401、`Sec-Fetch-Mode` だけなら 200。AC-12 の符号化した綴りと `last_used_at`。AC-14 の 2 つの理由。AC-19 の列の権限、app role による 5 種の更新の `permission denied`、失効の取消しが app role・owner とも trigger で拒否されること。
+- [実測] 変異の確認: `recordDenial` の条件から `ne(lastDeniedReason, reason)` を外すと、新しい AC-14 試験が失敗する（18:04。確認後に元へ戻し、`git diff` で戻ったことを確認）。
+- [実測] web 単体 `apps/web/src/lib/machine-credentials.test.ts` 12 件（日英の失敗文・欄の文・補助の行・中断の文）。
+- [実測] ブラウザー（通常の試験群、slot 19、`--no-deps`）: `machine-credentials.spec.ts` 4 件が通過（18:31、57 秒）。新しい試験は `page.route` で `/auth/security`・`/auth/step-up`・`POST /admin/tokens` を差し替え、次を確かめる。読込失敗の表示と再試行・`aria-describedby`。認証コードの誤りで認証コード欄に焦点と `aria-invalid`。処理中の Esc で一覧に警告が出て「API キーを発行」に焦点が戻ること。通信の失敗の後の再送でパスワードを聞き直し、発行の要求が増えないこと。409 の日英の文と補助の行。3 回の発行要求がすべて別の step-up の token だったこと。1 回目の実行は失敗した。`useEffect` の cleanup で立てた「閉じた」印が StrictMode の模擬の unmount で立ったままになり、step-up の後に何も起きなかった。mount のたびに印を戻すよう直して通過した（自分の変更の誤りを試験が捕えた）。
+- [実測] ブラウザー（identity 試験群、`pnpm test:identity:e2e`、専用 DB `daifuku_e2e_test_enterprise_w41`、毎回削除）: 3 回目（18:39、load average 約 12〜16）で 5 件すべてが通過（2.0 分）。`machine-credentials-identity.spec.ts` の 2 件は 3 回とも通過した。この 2 件では次を確かめている。空状態のボタンから最初の鍵を発行し、閉じた後に見出しの「API キーを発行」へ焦点が戻ること。見出しのボタンから開いて Esc で戻ること。鍵がある一覧と失効の Dialog の 390px。長い理由（途切れない 60 文字の英数字を含む）を持つ履歴の Dialog を日英 × 390 / 1280px で開き、はみ出しなし・axe の serious / critical なし。1・2 回目（load average 約 18）は `enterprise-identity.spec.ts` の最初の試験が失敗した。1 回目は最初のログインが 10 秒以内に終わらず、2 回目は回復コードの一覧を描画前に読んだ（`allTextContents` は待たない）。F2 の変更が触れない経路で、負荷が下がった 3 回目に通過した。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`（自分の DB `daifuku_test_w41`、18:40 開始、1,972.7 秒）: **通過**。static lane の全段（format・docs・assurance・typecheck 3 種・lint・unit 164 files / 1,736 tests・deploy）と、DB lane（kernel を変えたので全件へ昇格）の 137 files / 922 tests。開始後に変えたのは spec の検証の表とこの記録だけで、コードは変えていない。その前の `pnpm gate:quick`（18:22）では、unit の `password-hash.test.ts` と `apps/runtime/test/runtime.test.ts` が load average 約 20 で時間切れになった。2 つを単独で再実行すると通過した（8 tests、37 秒）。終了後に `pnpm test:db:templates -- --drop` で自分の DB の template を削除した。
+- [未検証] `pnpm gate:full`（統合担当が実行）。CI。restaurant-chain の鍵による確認の動作は変えておらず、試験も足していない（spec のスコープ外）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
