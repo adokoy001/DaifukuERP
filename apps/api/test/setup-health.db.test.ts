@@ -305,16 +305,41 @@ describe('setup-health AC-5: inventory settings', () => {
 });
 
 describe('setup-health AC-6: operations (booleans and counts only)', () => {
-  it('AC-6: outbox backlog is a count; delivery failures warn', async () => {
+  it('AC-6 (event-delivery AC-24): retrying rows are a count; dead events and dead deliveries warn', async () => {
     const before = item(await report(), 'system.outbox');
     expect(before.status).toBe('ok');
+    expect(before.href).toBeUndefined();
+    // A row that failed once and waits for its retry is not a warning any more (event-delivery AC-24).
     await owner(
-      `insert into outbox (id, tenant_id, company_id, topic, payload, attempts, last_error) values (gen_random_uuid(), '${db.tenantId}', '${db.companyId}', 'health.probe', '{}', 1, 'connect ECONNREFUSED 10.0.0.1:5432')`,
+      `insert into outbox (id, tenant_id, company_id, topic, payload, attempts, last_error, next_attempt_at) values (gen_random_uuid(), '${db.tenantId}', '${db.companyId}', 'health.probe', '{}', 1, 'connect ECONNREFUSED 10.0.0.1:5432', now() + interval '1 minute')`,
     );
+    const retrying = item(await report(), 'system.outbox');
+    expect(retrying.status).toBe('ok');
+    expect(retrying.detail.en).toContain('Undelivered events: 1');
+    // The same row at the retry limit (dead) warns; an administrator gets the link to the delivery screen.
+    await owner(`update outbox set dead_at = now(), attempts = 8 where topic = 'health.probe'`);
     const failed = item(await report(), 'system.outbox');
     expect(failed.status).toBe('warn');
+    expect(failed.href).toBe('/admin/event-deliveries?status=dead');
     expect(JSON.stringify(failed)).not.toContain('ECONNREFUSED');
+    expect(item(await report({ roles: ['settings'] }), 'system.outbox')).toMatchObject({ status: 'warn' });
+    expect(item(await report({ roles: ['settings'] }), 'system.outbox').href).toBeUndefined();
     await owner(`delete from outbox where topic = 'health.probe'`);
+    expect(item(await report(), 'system.outbox').status).toBe('ok');
+    // A dead webhook delivery row warns too; a pending one is only counted.
+    const event = '0190d0a8-0000-7000-8000-00000000a024';
+    await owner(
+      `insert into event_deliveries (id, tenant_id, company_id, event_id, topic, channel, target, payload, event_created_at, status, attempts, next_attempt_at, created_at, last_error, dead_at) values (gen_random_uuid(), '${db.tenantId}', '${db.companyId}', '${event}', 'health.probe', 'webhook', 'probe', '{}', now(), 'pending', 1, now(), now(), 'http_status', null)`,
+    );
+    const waiting = item(await report(), 'system.outbox');
+    expect(waiting.status).toBe('ok');
+    expect(waiting.detail.en).toContain('deliveries waiting to be sent: 1');
+    await owner(`update event_deliveries set status = 'dead', dead_at = now() where event_id = '${event}'`);
+    const dead = item(await report(), 'system.outbox');
+    expect(dead.status).toBe('warn');
+    expect(dead.detail.en).toContain('1 event deliveries failed');
+    expect(JSON.stringify(dead)).not.toContain('probe');
+    await owner(`delete from event_deliveries where event_id = '${event}'`);
   });
 
   it('AC-6: mail and SSO report only whether they are configured; no secret, URL or key appears', async () => {

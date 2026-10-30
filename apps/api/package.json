@@ -14,7 +14,8 @@
     "db:reset": "tsx src/db/cli.ts reset",
     "pack:apply": "tsx src/db/pack-cli.ts",
     "demo:industries": "tsx src/db/industry-demo-cli.ts",
-    "mail:deliver": "tsx src/identity/mail-cli.ts"
+    "mail:deliver": "tsx src/identity/mail-cli.ts",
+    "events:deliver": "tsx src/events/cli.ts"
   },
   "dependencies": {
     "@daifuku/kernel": "workspace:*",

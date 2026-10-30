@@ -19,6 +19,7 @@ import { registerAccessAdminRoutes } from './routes/access-admin.ts';
 import { registerAccessInsightRoutes } from './routes/access-insight.ts';
 import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
 import { registerMachineCredentialRoutes } from './routes/machine-credentials.ts';
+import { registerEventDeliveryRoutes } from './routes/event-deliveries.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerSetupStatusRoutes } from './routes/setup-status.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
@@ -40,6 +41,8 @@ export interface ServerOptions {
   storageDirectory?: string;
   /** Release migration catalog for the setup health report; defaults to the API's drizzle/migrations. */
   migrationsDirectory?: string;
+  /** Whether this process runs the event delivery worker (EVENT_WORKER_ENABLED); shown on /admin/webhooks. */
+  eventWorker?: { enabledHere: boolean };
   /** Exact browser origins. Omitted means same-origin only; main passes validated environment policy. */
   corsOrigins?: readonly string[];
   logger?: FastifyServerOptions['logger'];
@@ -87,6 +90,12 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerCompanyAdminRoutes(server, { db: opts.app });
   registerMachineCredentialRoutes(server, { db: opts.app });
   registerAccessInsightRoutes(server, { db: opts.app });
+  registerEventDeliveryRoutes(server, {
+    db: opts.app,
+    ...(opts.identity ? { encryptionKey: opts.identity.encryptionKey } : {}),
+    mailConfigured: Boolean(opts.identity?.mailTransport),
+    workerEnabled: opts.eventWorker?.enabledHere ?? false,
+  });
   registerHealthRoutes(server, {
     db: opts.app,
     platform: {
