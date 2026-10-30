@@ -1,4 +1,4 @@
-// Test rule set for the fixed-assets module (docs/specs/fixed-assets.md golden G1..G9). The rates are the candidate
+// Test rule set for the fixed-assets module (docs/specs/fixed-assets.md golden G1..G11). The rates are the candidate
 // values of docs/domain/japan-fixed-assets.md#rate-tables (unverified); unit and DB tests pass them as arguments to
 // check the arithmetic, independently of the l10n/jp data (which l10n/jp's own tests check against the schema).
 import { Decimal, label } from '@daifuku/kernel';
@@ -106,7 +106,7 @@ export const rate = (r: string, revised: string | null = null, guarantee: string
 });
 
 export const SL5 = rate('0.200', null, null, 5);
-/** G10: 3 years (0.334), whose amounts are not whole yen before truncation. */
+/** G10, G11: 3 years (0.334), whose amounts are not whole yen before truncation. */
 export const SL3 = rate('0.334', null, null, 3);
 export const DB10 = rate('0.200', '0.250', '0.06552', 10);
 export const DB5 = rate('0.400', '0.500', '0.10800', 5);

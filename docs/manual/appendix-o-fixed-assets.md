@@ -88,4 +88,4 @@
 
 ---
 
-検証: 2026-10-30 単体試験（golden G1〜G10・D1〜D8・R1・PT1、fast-check の性質）、DB 試験（`modules/fixed-assets/test/*.db.test.ts`、`apps/api/test/fixed-assets.db.test.ts`）、ブラウザ試験（`apps/web/e2e/fixed-assets.spec.ts`、Chromium、合成会社）で確認。画面の撮影画像はこの章に追加していない。償却率表の一次資料との照合は未実施（上記）。
+検証: 2026-10-30 単体試験（golden G1〜G11・D1〜D8・R1・PT1、fast-check の性質）、DB 試験（`modules/fixed-assets/test/*.db.test.ts`、`apps/api/test/fixed-assets.db.test.ts`）、ブラウザ試験（`apps/web/e2e/fixed-assets.spec.ts`、Chromium、合成会社）で確認。画面の撮影画像はこの章に追加していない。償却率表の一次資料との照合は未実施（上記）。

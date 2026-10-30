@@ -1,5 +1,5 @@
 // Golden hand calculations and properties of the depreciation arithmetic (docs/specs/fixed-assets.md AC-3, AC-6..AC-9,
-// AC-18; golden G1..G9, D4..D6). Rates are arguments (fixture-rules.ts), never the l10n data.
+// AC-18; golden G1..G11, D4..D6, D8). Rates are arguments (fixture-rules.ts), never the l10n data.
 import { Decimal } from '@daifuku/kernel';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
@@ -94,6 +94,16 @@ describe('straight line (AC-6, AC-8, AC-9)', () => {
     expect([first[0], first[6]]).toEqual(['27833', '27835']);
     const { booked } = runMonths(g10, fy, fy.slice(0, 4).flatMap(monthsOf));
     expect([...booked.values()].map(String)).toEqual(['194833', '334000', '334000', '137166']);
+  });
+
+  it('AC-6 AC-8 golden G11: a fraction of at least one half is cut too (222,666.67 → 222,666), never rounded half up', () => {
+    const fy = fiscalYears(2026, 1, 5);
+    const g11 = asset({ cost: D(1_000_000), rate: SL3, inServiceDate: '2026-05-01' });
+    expect(yearlyAmounts(g11, fy)).toEqual(['222666', '334000', '334000', '109333', '0']);
+    const first = allocate(D(222_666), 8).map(String);
+    expect([first[0], first[7]]).toEqual(['27833', '27835']);
+    const { booked } = runMonths(g11, fy, fy.slice(0, 4).flatMap(monthsOf));
+    expect([...booked.values()].map(String)).toEqual(['222666', '334000', '334000', '109333']);
   });
 
   it('AC-3 AC-9 golden G8: opening in July with 60,000 booked this year; skipping August books 20,000 in September', () => {
