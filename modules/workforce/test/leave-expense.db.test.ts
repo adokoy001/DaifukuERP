@@ -1,6 +1,12 @@
 import { Decimal, newId, repo, runAction, type ContextParams } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { reopenExpensesForSource, WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
+import {
+  reopenExpensesForSource,
+  settleExpensesForSource,
+  WorkforceExpense,
+  WorkforceLeaveRequest,
+  WorkforceLeaveUsage,
+} from '../src/index.ts';
 import { leaveBalance } from '../src/leave-balance.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
 let f: Fixture;
@@ -356,6 +362,35 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
       paymentReference: null,
       settledBy: null,
     });
+  });
+  it('machine-credentials AC-22 an API key neither settles nor reopens expenses for a settling document', async () => {
+    // Round 7 integration: the settling document's own checks are not the only guard; workforce refuses the key itself.
+    const w = await worker();
+    const saved = await expense(w);
+    const approved = await approveExpense(w, saved.row);
+    const key: Partial<ContextParams> = {
+      actor: { type: 'machine', id: newId() },
+      roles: ['admin', 'workforce_payroll'],
+      accessScope: 'all',
+      siteIds: [],
+    };
+    const human = { code: 'PERMISSION_DENIED', details: { op: 'human-actor-required' } };
+    const ids = { employeeId: w.employeeId, expenseIds: [approved.id], reference: 'EXP-2026-KEY001' };
+    const settle = (params: Partial<ContextParams>) =>
+      f.db.run(params, (ctx) => settleExpensesForSource(ctx, { ...ids, paidOn: '2026-09-12' }));
+    const reopen = (params: Partial<ContextParams>) => f.db.run(params, (ctx) => reopenExpensesForSource(ctx, ids));
+    await expect(settle(key)).rejects.toMatchObject(human);
+    expect((await expenseRow(approved.id)).status).toBe('approved');
+    await settle(f.payroll.params);
+    await expect(reopen(key)).rejects.toMatchObject(human);
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'settled',
+      paidOn: '2026-09-12',
+      paymentReference: 'EXP-2026-KEY001',
+      settledBy: f.payroll.id,
+    });
+    await reopen(f.payroll.params);
+    expect((await expenseRow(approved.id)).status).toBe('approved');
   });
   it('requires headquarters and a real settlement date; cancelled submissions cannot be approved', async () => {
     const w = await worker();

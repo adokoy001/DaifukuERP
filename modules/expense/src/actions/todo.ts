@@ -1,6 +1,8 @@
 // expense.todo inbox provider (spec AC-18, docs/specs/inbox.md AC-1): draft settlements waiting for confirmation by
 // someone other than their employee, and open advances, counted with Repository.count in the caller's Context. Only
 // callers who can submit a settlement (accounting + workforce_payroll, or admin) get items: the others could not act.
+// An API key is refused with `human-actor-required` before the role check, as `workforce.todo` refuses it
+// (docs/specs/machine-credentials.md AC-22): the inbox is the work queue of a person.
 import {
   defineAction,
   DOCSTATUS,
@@ -16,8 +18,8 @@ import { actorUserId, canSettle } from '../access.ts';
 import { ExpenseAdvance, ExpenseSettlement } from '../entities/index.ts';
 
 async function todo(ctx: Context) {
-  if (!canSettle(ctx)) return { items: [] };
   const me = actorUserId(ctx);
+  if (!canSettle(ctx)) return { items: [] };
   const drafts = await repo(ctx, ExpenseSettlement).count({
     docstatus: DOCSTATUS.draft,
     ...(isUuid(me) ? { userId: { $ne: me } } : {}),

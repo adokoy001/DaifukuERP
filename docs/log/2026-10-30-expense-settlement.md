@@ -100,3 +100,25 @@
 ## 次のセッションへ
 
 - 統合時: migration の番号（0018。統合ブランチでは 0018・0019 が使用済み）、移行試験 3 ファイルの `upgradedFacts` と `commerce-finance-migration` の期待値（統合ブランチにも 0018 opening_balance の同種の変更がある）、`scenario.db.test.ts` の module 一覧、`apps/api/test/setup-health.db.test.ts` の `STABLE_IDS` / `KNOWN_HREFS`（E1 も同じ一覧に id を足す）、`docs/specs/l10n-jp.md` AC-1 と `l10n-jp.db.test.ts` の種類別件数（E1 も資産を足す）、`apps/web/src/router.tsx`・`navigation-data.ts`・`help.ts`・`token-usage.test.ts` の追加の合流。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- 発見経路: 第7波の統合レビュー（F2 の API キーとの突合せで確定した major）。E5 は F2 より前に作られ、`modules/expense/src/access.ts` の `actorUserId` が独自に `agent ? onBehalfOf : actor.id` を返していた。F2 の機械の actor（`{ type: 'machine', id: 資格情報の id }`）には資格情報の id を返すので、`refuseSelfSettlement` が発行者本人の従業員に一致しない。admin（または accounting と workforce_payroll）の鍵で、発行者本人の従業員の仮払を作成・確定でき（`after_submit` の `createClearingPayment` で支払まで進む）、任意の確定済みの精算書を取り消せた（`before_cancel` の本人の検査を通り、workforce の `reopenExpensesForSource` はロールしか見ない）。`expense.draft_settlement`・`expense.settlement_candidates`・`expense.todo` も同じ helper を使っていた。精算書の確定だけは、仕訳の計上の後に `after_submit` → `settleExpensesForSource` → `requireOther` → `requireHumanUserId` で間接に拒否され、巻き戻っていた。[machine-credentials](../specs/machine-credentials.md) AC-22（精算などの人の判断を要する業務は kernel の `requireHumanUserId` で 403 `human-actor-required`）に反する。
+- 修正:
+  - `actorUserId` を `@daifuku/kernel` の `requireHumanUserId` に委ねた。`requireSettlementRoles` はロールの検査の前に `requireHumanUserId(ctx)` を呼ぶ。精算書・明細・仮払の利用者が呼ぶ hook（作成・更新・明細の保存と削除・削除・確定・取消。訂正は kernel の作成を通る）と `expense.draft_settlement`・`expense.settlement_candidates` が、どれも最初にこれを呼ぶことをコードを読んで確かめた（呼出しの追加は不要だった）。呼ばないのは module 内部の書込（write capability）と、確定済みの記録の allowOnSubmit の欄の更新だけ（欄はすべて server-owned で、外からは変えられない）。
+  - `expense.todo` は `workforce.todo` に合わせ、ロールの判定（`canSettle`）より前に `actorUserId` を呼ぶ。action の権限を通った鍵は、ロールによらず 403 `human-actor-required` になる（accounting だけの鍵も。人なら AC-18 のとおり `{ items: [] }`）。
+  - workforce の `requireSettler`（`settleExpensesForSource` / `reopenExpensesForSource` が呼ぶ）も、ロールの検査の前に module の `userId`（`requireHumanUserId`）で鍵を拒否する。精算書の取消は expense の hook と独立にも守られる。
+  - 仕様: [expense-settlement](../specs/expense-settlement.md) AC-15 に鍵の拒否の 1 文、machine-credentials AC-22 の一覧に expense module と日付つきの追記、同 spec の関係するファイルと試験の表。
+- 試験（どれも修正前に失敗することを下の変異の確認で確かめた）:
+  - `apps/api/test/machine-credentials.db.test.ts` に AC-22 の 1 件を追加した。既存の `workforce.settle_expense` の鍵の試験と同じ組み方（HTTP、`issue` で発行した鍵、`human-actor-required` の検査）。l10n/jp の勘定科目・税率・会計年度を入れ、発行者（テナント管理者）を従業員に登録し、admin の鍵と accounting + workforce_payroll の鍵で次を確かめる。(a) 発行者本人の従業員への仮払の作成が 403 で、仮払は 0 件のまま。(b) 精算担当の人が用意した下書きの仮払の確定が 403 で、下書き・状態なし・支払なしのまま。(c) 人が確定した精算書の取消が 403 で、確定済みのまま・経費は精算済みのまま。(d) `expense.draft_settlement`・`expense.settlement_candidates` が 403 で、発行者の精算書は 0 件。(e) `expense.todo` が `workforce.todo` と同じく 403（accounting だけの鍵も）。同じロールの人（精算担当）は (b) の仮払を確定でき、受信箱の未精算の仮払に 1 件出る。
+  - `modules/expense/test/access.db.test.ts` に、機械の actor（admin、accounting + workforce_payroll）で全 hook・action を通す 1 件を追加した。候補・下書き・受信箱、汎用の作成、ヘッダと明細の更新、明細の更新と削除、削除、確定、仮払の作成・更新・削除・確定、確定後の精算書と仮払の取消、取消後の訂正。版・状態・件数・経費の状態が変わらないことも確かめる。
+  - `modules/workforce/test/leave-expense.db.test.ts` に、鍵での `settleExpensesForSource` / `reopenExpensesForSource` が 403 で経費の状態が変わらず、給与担当の人なら精算・差戻しできる 1 件を追加した。
+  - 1 回目の API の実行で、精算担当の受信箱が空でないことを期待した検査が失敗した。下書きの仮払は数えないので空が正しく、試験の組立ての誤り。人が仮払を確定してから `open_advances` が 1 件になることを確かめる形に直した。
+- 変異の確認 [実測、22:00〜22:04。確認後は退避した版へ戻し、`diff` で一致を確かめた]:
+  - `access.ts` を統合前の版に戻す: API の新しい試験が (a) で失敗（鍵による仮払の作成が 200 で作られた）、expense の新しい試験も失敗（鍵に候補が返った）。
+  - `actions/todo.ts` だけを戻す: API の新しい試験が (e) で失敗（accounting だけの鍵に `{ items: [] }` の 200）。admin・精算のロールの鍵では、委ねた `actorUserId` が拒否するので失敗しない（二重の防御）。
+  - workforce の `expense-settlement.ts` だけを戻す: workforce の新しい試験が失敗（鍵の差戻しが成功した）。API の取消の試験は expense の hook が拒否するので通る（二重の防御）。
+  - 3 つの変更をすべて戻し、API の新しい試験から (c) の取消だけを残した一時ファイル（実行後に削除）を実行: 鍵の取消が 200 になり、精算書が取消済み（docstatus 2）になった。指摘の欠陥が実在したことと、(c) がそれを捕えることの確認。修正を戻すと同じ一時ファイルは通過した。
+  - 実行していない変異: `requireSettlementRoles` の `requireHumanUserId` だけを外す変更。コードを読む限り、委ねた `actorUserId`（`refuseSelfSettlement`）が少し後で同じ 403 にするので、新しい試験は失敗しない（従業員の読取が先に起きるが書込は無い）。「読む前に拒否する」ことは試験で観測しておらず、コードレビューで確かめた。
+- 検証 [実測]: 変更した TS 6 ファイルの `npx prettier --write` と `--check`、`pnpm typecheck`、`pnpm --filter @daifuku/api typecheck`、`npx eslint`（6 ファイル、0 件）。関係する unit（`modules/expense/test/posting.test.ts`・`tax.test.ts`、`kernel/test/machine-credentials.test.ts`）3 files / 44 tests が通過。DB（専用 DB `daifuku_test_i7k`、`TEST_DATABASE_TEMPLATE=off`）: `apps/api/test/machine-credentials.db.test.ts`・`modules/expense/test/*.db.test.ts`（6 files）・`modules/workforce/test/leave-expense.db.test.ts` の 8 files / 89 tests が通過（22:05）。`node scripts/check-doc-links.mjs` 通過。
+- [未検証] `pnpm gate` / `pnpm gate:full`（統合担当の通しの実行に含める）。MCP の鍵での経費精算（同じ `runAction` を通るので同じ 403 になるはずだが、MCP 経由の試験はしていない）。画面は変えていない（API キーはブラウザーから使えない。machine-credentials AC-11）。

@@ -89,3 +89,7 @@
 
 - 統合時: migration の番号（`0018_machine_credentials`）は round 5・6 の migration と衝突しうるので、統合順に振り直し `pnpm db:generate` の snapshot を作り直す。`router.tsx`・`navigation-data.ts`・`help.ts`・`help.test.ts`・`token-usage.test.ts` の CONVERTED・`playwright.config.ts` / `playwright.identity.config.ts` の `testIgnore` / `testMatch` の追加を統合する。
 - `.action-dialog p`（`styles.css`）の色はこの項目で `--text-muted` に直したが、規則そのものが layer の外にあり kit の notice・欄のエラーより優先される。kit の Dialog の段落の扱いを整理するなら別項目で（統合時に他の branch が同じ行を変えていないか確認する）。
+
+## 統合時の修正（2026-10-30、統合担当）
+
+- E5（経費精算）は F2 より前に作られ、module 独自の `actorUserId` が鍵には資格情報の id を返していたため、AC-22 の対象から漏れていた。admin（または accounting と workforce_payroll）の鍵で発行者本人の従業員の仮払を作成・確定（支払）でき、任意の精算書を取り消せた。発見経路: 統合レビュー。`modules/expense/src/access.ts` の `actorUserId`・`requireSettlementRoles` と workforce の `requireSettler` を `requireHumanUserId` に委ね、`expense.todo` も `workforce.todo` と同じく鍵を 403 にした。AC-22 の一覧に expense module を日付つきで追記し、`apps/api/test/machine-credentials.db.test.ts` に仮払の作成・確定、精算書の取消、下書きの作成・候補、受信箱の鍵による 403 `human-actor-required` を足した（module の DB 試験と変異の確認を含む詳細は [経費精算の作業記録](2026-10-30-expense-settlement.md) 末尾の「統合時の修正」）。

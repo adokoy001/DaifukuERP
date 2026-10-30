@@ -16,7 +16,11 @@ import {
   repo,
 } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
+import { seedChartOfAccounts } from '@daifuku/l10n-jp';
+import { openFiscalYear } from '@daifuku/mod-accounting';
+import { ExpenseAdvance, ExpenseSettlement } from '@daifuku/mod-expense';
 import { Partner } from '@daifuku/mod-partner';
+import { seedTaxRates } from '@daifuku/mod-tax';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { mkdtemp } from 'node:fs/promises';
@@ -608,6 +612,191 @@ describe('operations that need a person refuse keys (AC-22, AC-23)', () => {
     );
     expectHuman(await call('POST', '/actions/workforce.todo', key, {}), 'workforce.todo');
     expectHuman(await call('POST', '/actions/tax_filing.todo', key, {}), 'tax_filing.todo');
+  });
+
+  it('AC-22 refuses expense advances and settlements to a key: create, submit, cancel, draft, candidates, inbox', async () => {
+    // Round 7 integration: the expense module (E5) predates API keys and compared the key's id with the employee's
+    // user, so a key could pay an advance to its issuer and cancel any settlement. What setup seeds for a Japanese
+    // company: the chart (仮払金 1800, 未払金 2150, 雑費 6900, cash and bank), the tax rates and the fiscal year.
+    await withContext(db.app, systemParams(db.tenantId, db.companyId), async (ctx) => {
+      await seedChartOfAccounts(ctx);
+      await seedTaxRates(ctx);
+      await openFiscalYear(ctx, { startDate: '2026-01-01' });
+    });
+    const ok = <T = Record<string, unknown>>(response: LightMyRequestResponse): T => {
+      expect(response.statusCode, response.body).toBe(200);
+      return response.json<T>();
+    };
+    const expectHuman = (response: LightMyRequestResponse, what: string) => {
+      expect(response.statusCode, `${what}: ${response.body}`).toBe(403);
+      expect(response.json<{ error: { details: { op: string } } }>().error.details.op, what).toBe(
+        'human-actor-required',
+      );
+    };
+    const count = (entity: typeof ExpenseAdvance | typeof ExpenseSettlement, employeeId: string) =>
+      withContext(db.app, systemParams(db.tenantId, db.companyId), (ctx) => repo(ctx, entity).count({ employeeId }));
+    const siteId = ok<{ id: string }>(
+      await call('POST', '/api/workforce_site', admin, { code: 'EX', name: '精算の拠点' }),
+    ).id;
+    const partnerId = ok<{ id: string }>(
+      await call('POST', '/api/partner', admin, { code: 'E-MC', name: '従業員 精算', isSupplier: true }),
+    ).id;
+    const settler = await person('settler@example.com', ['accounting', 'workforce_payroll']);
+    const approver = await person('expense-manager@example.com', ['workforce_manager']);
+    const staff = await person('expense-staff@example.com', ['workforce_employee'], false, [siteId]);
+    const register = async (userId: string, code: string) =>
+      ok<{ id: string }>(
+        await call('POST', '/actions/workforce.register_employee', admin, {
+          userId,
+          siteId,
+          code,
+          name: code,
+          hiredOn: '2026-01-01',
+        }),
+      ).id;
+    // The issuer of the keys (the tenant administrator) is an employee too: the keys must not pay or settle them.
+    const issuerEmployee = await register(db.adminUserId, 'EX-ISSUER');
+    const staffEmployee = await register(staff.id, 'EX-STAFF');
+    const adminKey = (await issue({ name: '経費の鍵 admin', roles: ['admin'] })).token;
+    const settlerKey = (await issue({ name: '経費の鍵 精算', roles: ['accounting', 'workforce_payroll'] })).token;
+    const accountingKey = (await issue({ name: '経費の鍵 経理', roles: ['accounting'] })).token;
+
+    // (a) an advance for the issuer's own employee: refused before anything is written.
+    for (const key of [adminKey, settlerKey])
+      expectHuman(
+        await call('POST', '/api/expense_advance', key, {
+          employeeId: issuerEmployee,
+          partnerId,
+          date: '2026-09-01',
+          amount: '50000',
+          purpose: '鍵からの仮払',
+        }),
+        'expense_advance create',
+      );
+    expect(await count(ExpenseAdvance, issuerEmployee)).toBe(0);
+
+    // (b) a draft advance a person prepared for the issuer: the key cannot submit (= pay out) it.
+    const advance = ok<{ id: string }>(
+      await call('POST', '/api/expense_advance', settler.token, {
+        employeeId: issuerEmployee,
+        partnerId,
+        date: '2026-09-01',
+        amount: '50000',
+        purpose: '人が用意した仮払',
+      }),
+    );
+    expectHuman(
+      await call('POST', `/api/expense_advance/${advance.id}/submit`, adminKey, {}),
+      'expense_advance submit',
+    );
+    expect(
+      ok<{ docstatus: number; status: string | null; paymentId: string | null }>(
+        await call('GET', `/api/expense_advance/${advance.id}`, settler.token),
+      ),
+    ).toMatchObject({ docstatus: 0, status: null, paymentId: null });
+
+    // (c) a settlement a person submitted: the key cannot cancel it (the expense would reopen for a second payout).
+    const saved = ok<{ id: string; version: number }>(
+      await call('POST', '/actions/workforce.save_expense', staff.token, {
+        expectedVersion: 0,
+        idempotencyKey: newId(),
+        expenseDate: '2026-09-01',
+        category: '交通費',
+        description: '精算の試験',
+        amount: '1100',
+        evidence: '領収書あり',
+      }),
+    );
+    const submitted = ok<{ version: number }>(
+      await call('POST', '/actions/workforce.submit_expense', staff.token, {
+        expenseId: saved.id,
+        expectedVersion: saved.version,
+      }),
+    );
+    ok(
+      await call('POST', '/actions/workforce.review_expense', approver.token, {
+        expenseId: saved.id,
+        expectedVersion: submitted.version,
+        decision: 'approve',
+        reason: '証憑と用務を確認',
+      }),
+    );
+    const drafted = ok<{ id: string }>(
+      await call('POST', '/actions/expense.draft_settlement', settler.token, {
+        employeeId: staffEmployee,
+        kind: 'reimbursement',
+        expenseIds: [saved.id],
+        partnerId,
+        date: '2026-09-02',
+      }),
+    );
+    type Line = Record<string, unknown> & { id: string };
+    const stored = ok<{ version: number; lines: { expense_settlement_line: Line[] } }>(
+      await call('GET', `/api/expense_settlement/${drafted.id}`, settler.token),
+    );
+    const line = stored.lines.expense_settlement_line[0];
+    expect(line).toBeDefined();
+    ok(
+      await call('PATCH', `/api/expense_settlement/${drafted.id}`, settler.token, {
+        expectedVersion: stored.version,
+        patch: {
+          lines: {
+            expense_settlement_line: [
+              {
+                id: line?.id,
+                expenseId: line?.expenseId,
+                accountId: line?.accountId,
+                taxCategory: line?.taxCategory,
+                amount: line?.amount,
+                invoiceKind: 'small_amount',
+                payeeName: '駅',
+              },
+            ],
+          },
+        },
+      }),
+    );
+    ok(await call('POST', `/api/expense_settlement/${drafted.id}/submit`, settler.token, {}));
+    expectHuman(
+      await call('POST', `/api/expense_settlement/${drafted.id}/cancel`, adminKey, {}),
+      'expense_settlement cancel',
+    );
+    expect(
+      ok<{ docstatus: number }>(await call('GET', `/api/expense_settlement/${drafted.id}`, settler.token)).docstatus,
+    ).toBe(1);
+    expect(ok<{ status: string }>(await call('GET', `/api/workforce_expense/${saved.id}`, admin)).status).toBe(
+      'settled',
+    );
+
+    // (d) drafting a settlement for the issuer and listing the candidates are refused before any read.
+    for (const key of [adminKey, settlerKey]) {
+      expectHuman(
+        await call('POST', '/actions/expense.draft_settlement', key, {
+          employeeId: issuerEmployee,
+          kind: 'reimbursement',
+        }),
+        'expense.draft_settlement',
+      );
+      expectHuman(
+        await call('POST', '/actions/expense.settlement_candidates', key, {}),
+        'expense.settlement_candidates',
+      );
+    }
+    expect(await count(ExpenseSettlement, issuerEmployee)).toBe(0);
+
+    // (e) the inbox provider refuses a key as workforce.todo does: human-actor-required once the action's permission
+    // passes, also for accounting without workforce_payroll (a person with those roles gets `{ items: [] }`, AC-18).
+    for (const key of [adminKey, settlerKey]) {
+      expectHuman(await call('POST', '/actions/workforce.todo', key, {}), 'workforce.todo');
+      expectHuman(await call('POST', '/actions/expense.todo', key, {}), 'expense.todo');
+    }
+    expectHuman(await call('POST', '/actions/expense.todo', accountingKey, {}), 'expense.todo (accounting key)');
+    // A person holding the same roles is served: the settler pays out the advance the key could not, and sees it.
+    ok(await call('POST', `/api/expense_advance/${advance.id}/submit`, settler.token, {}));
+    expect(
+      ok<{ items: { key: string; count: number }[] }>(await call('POST', '/actions/expense.todo', settler.token, {}))
+        .items,
+    ).toContainEqual(expect.objectContaining({ key: 'open_advances', count: 1 }));
   });
 
   it('AC-23 refuses the cross-company port to a key', async () => {

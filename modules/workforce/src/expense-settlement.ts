@@ -2,7 +2,9 @@
 // AC-11, D28). workforce does not know that document: the caller passes its number as `reference`, and reopening only
 // touches expenses that carry that same reference. Both run in the caller's Context under the employee lock that the
 // manual `workforce.settle_expense` also takes, so a manual settlement and a settlement document cannot both win.
-// Authority is the same as the manual settlement: workforce_payroll (or admin), never the employee themself.
+// Authority is the same as the manual settlement: workforce_payroll (or admin), never the employee themself, and never
+// an API key (machine actor): settling and reopening are refused up front with `human-actor-required`
+// (docs/specs/machine-credentials.md AC-22), so a cancellation is covered even without the caller's own checks.
 import { PermissionDenied, StateError, ValidationError, repo, type Context, type Infer } from '@daifuku/kernel';
 import { employeeLock, requireOther, userId } from './common.ts';
 import { WorkforceExpense } from './entities/index.ts';
@@ -28,6 +30,7 @@ export interface ReopenExpensesInput {
 }
 
 function requireSettler(ctx: Context): void {
+  userId(ctx); // an API key is refused before anything is locked or read
   if (!ctx.roles.includes('admin') && !ctx.roles.includes('workforce_payroll'))
     throw new PermissionDenied(WorkforceExpense.name, 'settle:requires-workforce_payroll', ctx.roles);
 }

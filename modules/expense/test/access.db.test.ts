@@ -227,6 +227,100 @@ describe('two roles are required (AC-15, D26)', () => {
   });
 });
 
+describe('API keys are refused (machine-credentials AC-22, round 7 integration)', () => {
+  const key = (roles: string[]): Partial<ContextParams> => ({
+    actor: { type: 'machine', id: newId() },
+    roles,
+    accessScope: 'all',
+    siteIds: [],
+  });
+  const human = denied('human-actor-required');
+  it('AC-15 AC-22 a machine actor with admin or accounting + workforce_payroll is refused in every hook and action before any write', async () => {
+    const w = await f.worker();
+    const r = await ready(w);
+    const before = await f.getSettlement(r.id);
+    const lineId = before.lines.expense_settlement_line[0]?.id ?? '';
+    const adv = await f.act<Row & { id: string; version: number }>(f.settler.params, 'expense_advance.create', {
+      employeeId: w.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    const advances = async () => (await f.act<List>(f.settler.params, 'expense_advance.list', { limit: 500 })).total;
+    const settlements = async () =>
+      (await f.act<List>(f.settler.params, 'expense_settlement.list', { limit: 500 })).total;
+    const counts = { advances: await advances(), settlements: await settlements() };
+    for (const k of [key(['admin']), key(['accounting', 'workforce_payroll'])]) {
+      expect(await caught(f.act(k, 'expense.settlement_candidates', {}))).toMatchObject(human);
+      expect(await caught(f.draft({ employeeId: w.employeeId, kind: 'reimbursement' }, k))).toMatchObject(human);
+      expect(await caught(f.act(k, 'expense.todo', {}))).toMatchObject(human);
+      expect(
+        await caught(f.act(k, 'expense_settlement.create', { employeeId: w.employeeId, kind: 'reimbursement' })),
+      ).toMatchObject(human);
+      expect(await caught(f.edit(r.id, { note: 'x' }, undefined, k))).toMatchObject(human);
+      expect(await caught(f.edit(r.id, {}, [{ payeeName: 'x' }], k))).toMatchObject(human);
+      expect(
+        await caught(f.run(k, (ctx) => repo(ctx, ExpenseSettlementLine).update(lineId, { payeeName: '別の店' }))),
+      ).toMatchObject(human);
+      expect(await caught(f.run(k, (ctx) => repo(ctx, ExpenseSettlementLine).delete(lineId)))).toMatchObject(human);
+      expect(
+        await caught(f.act(k, 'expense_settlement.delete', { id: r.id, expectedVersion: before.version })),
+      ).toMatchObject(human);
+      expect(await caught(f.submit(r.id, k))).toMatchObject(human);
+      expect(
+        await caught(
+          f.act(k, 'expense_advance.create', {
+            employeeId: w.employeeId,
+            partnerId: f.partners.alice,
+            amount: '1000',
+            purpose: 'x',
+          }),
+        ),
+      ).toMatchObject(human);
+      expect(
+        await caught(
+          f.act(k, 'expense_advance.update', { id: adv.id, expectedVersion: adv.version, patch: { amount: '9000' } }),
+        ),
+      ).toMatchObject(human);
+      expect(
+        await caught(f.act(k, 'expense_advance.delete', { id: adv.id, expectedVersion: adv.version })),
+      ).toMatchObject(human);
+      expect(await caught(f.act(k, 'expense_advance.submit', { id: adv.id }))).toMatchObject(human);
+    }
+    const after = await f.getSettlement(r.id);
+    expect(after).toMatchObject({ version: before.version, docstatus: DOCSTATUS.draft, note: before.note });
+    expect(after.lines.expense_settlement_line.map((l) => [l.id, l.payeeName])).toEqual([[lineId, '店']]);
+    expect(await f.act(f.settler.params, 'expense_advance.get', { id: adv.id })).toMatchObject({
+      amount: '1000',
+      version: adv.version,
+      docstatus: DOCSTATUS.draft,
+      paymentId: null,
+    });
+    expect({ advances: await advances(), settlements: await settlements() }).toEqual(counts);
+
+    // submitted documents: a key neither cancels nor amends them
+    await f.submit(r.id);
+    await f.act(f.settler.params, 'expense_advance.submit', { id: adv.id });
+    for (const k of [key(['admin']), key(['accounting', 'workforce_payroll'])]) {
+      expect(await caught(f.cancel(r.id, undefined, k))).toMatchObject(human);
+      expect(await caught(f.act(k, 'expense_advance.cancel', { id: adv.id }))).toMatchObject(human);
+    }
+    expect((await f.getSettlement(r.id)).docstatus).toBe(DOCSTATUS.submitted);
+    expect((await f.run({}, (ctx) => repo(ctx, WorkforceExpense).get(r.expenseId))).status).toBe('settled');
+    expect(await f.act(f.settler.params, 'expense_advance.get', { id: adv.id })).toMatchObject({
+      docstatus: DOCSTATUS.submitted,
+      status: 'open',
+    });
+    await f.cancel(r.id);
+    const cancelled = await f.getSettlement(r.id);
+    expect(
+      await caught(f.act(key(['admin']), 'expense_settlement.amend', { id: r.id, expectedVersion: cancelled.version })),
+    ).toMatchObject(human);
+    expect(await settlements()).toBe(counts.settlements);
+  });
+});
+
 describe('employee and site boundaries (AC-16, D25)', () => {
   it('AC-16 an employee reads only their own settlements, lines and advances; others are NOT_FOUND; no export', async () => {
     const alice = await f.worker();
