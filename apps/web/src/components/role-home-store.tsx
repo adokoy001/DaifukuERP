@@ -25,7 +25,7 @@ import {
 } from '../lib/role-home.ts';
 import { Badge } from '../ui/index.ts';
 import { InboxDropped, InboxItemLink } from './inbox-card.tsx';
-import { Amount, cardStateOf, HomeCard, useHomeCardEnv, type CardState } from './role-home-card.tsx';
+import { Amount, cardStateOf, HomeCard, Unreadable, useHomeCardEnv, type CardState } from './role-home-card.tsx';
 
 type Query<T> = ReturnType<typeof useHomeRead<T>>;
 
@@ -47,7 +47,7 @@ function SalesCard({ today }: { today: string }) {
     >
       {() => {
         const overview = read.data?.overview;
-        if (!overview) return null;
+        if (!overview) return <Unreadable />;
         const stores = (count: number) => (locale === 'ja' ? `${count}店舗` : `${count}`);
         return (
           <>
@@ -108,7 +108,11 @@ function missingState(group: InboxGroup | undefined, retry: (action: string) => 
         failure: 'failed',
         error: summary.error,
         retrying: summary.retrying,
-        retry: () => retry(HOME_ACTIONS.restaurantTodo),
+        // The inbox retry tells only loaded or not; a provider failure there is always a plain failure with a retry.
+        retry: async () => {
+          const ok = await retry(HOME_ACTIONS.restaurantTodo);
+          return ok === undefined ? undefined : ok ? 'ok' : 'failed';
+        },
       } satisfies CardState as CardState,
     };
   return { summary, state: { kind: summary.kind === 'ok' ? 'ready' : 'loading' } satisfies CardState as CardState };

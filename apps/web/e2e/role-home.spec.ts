@@ -42,7 +42,13 @@ async function fixture(request: APIRequestContext) {
     code: `RH-${suffix}`,
     name: `役割別ホーム拠点 ${suffix}`,
   });
-  const member = async (key: string, name: string, roles: string[], accessScope: 'sites' | 'all') => {
+  const member = async (
+    key: string,
+    name: string,
+    roles: string[],
+    accessScope: 'sites' | 'all',
+    siteId: string = site.id,
+  ) => {
     const email = `rolehome.${key}.${suffix}@example.com`;
     const user = await api(request, admin.headers, '/admin/users', {
       name: `${name} ${suffix}`,
@@ -53,7 +59,7 @@ async function fixture(request: APIRequestContext) {
       request,
       admin.headers,
       `/admin/users/${user.id}/companies/${admin.companyId}`,
-      { expectedVersion: 0, roles, accessScope, storeIds: [], siteIds: accessScope === 'sites' ? [site.id] : [] },
+      { expectedVersion: 0, roles, accessScope, storeIds: [], siteIds: accessScope === 'sites' ? [siteId] : [] },
       'PUT',
     );
     return { ...user, name: `${name} ${suffix}`, email };
@@ -70,7 +76,7 @@ async function fixture(request: APIRequestContext) {
     name: worker.name,
     hiredOn: `${TODAY.slice(0, 7)}-01`,
   });
-  return { admin, site, suffix, accountant, manager, worker, multi, employee };
+  return { admin, site, suffix, accountant, manager, worker, multi, employee, member };
 }
 
 /**
@@ -157,11 +163,30 @@ async function axe(page: Page, screen: string, locale: 'ja' | 'en', width: 390 |
   expect(judgement.failures, report).toEqual([]);
 }
 
+/**
+ * AC-18: no horizontal scrolling. The app scrolls inside #screen-content (the layout itself is overflow: hidden), so
+ * the document check alone cannot fail; the content area is checked as csv-import.spec.ts does.
+ */
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await page.locator('#screen-content').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 }
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: test.info().outputPath(name), fullPage: true });
+}
+/**
+ * A 390px screenshot of the whole home. `fullPage` cannot reach inside #screen-content, so the viewport is made as
+ * tall as the content for the shot (and checked for overflow at that size too), then put back.
+ */
+async function fullShot(page: Page, name: string) {
+  const { width, height } = page.viewportSize() ?? { width: 390, height: 844 };
+  const needed = await page
+    .locator('#screen-content')
+    .evaluate((el) => Math.ceil(el.getBoundingClientRect().top + el.scrollHeight));
+  await page.setViewportSize({ width, height: Math.min(Math.max(needed, height), 6000) });
+  await noOverflow(page);
+  await shot(page, name);
+  await page.setViewportSize({ width, height });
 }
 async function settled(page: Page) {
   await page.waitForLoadState('networkidle');
@@ -172,7 +197,7 @@ async function layoutChecks(page: Page, screen: string) {
   await page.setViewportSize({ width: 390, height: 844 });
   await settled(page);
   await noOverflow(page);
-  await shot(page, `role-home-${screen}-390.png`);
+  await fullShot(page, `role-home-${screen}-390.png`);
   await axe(page, screen, 'ja', 390);
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'en'));
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -276,11 +301,23 @@ test('role-home AC-1/2/3/4/7/9/14/15/18: an accounting user gets receivables, pa
   await expect.poll(() => log.actions('sales.ar_aging').length).toBe(before + 1);
   await settled(page);
 
+  // AC-4: showing the default view stores nothing; a stored view that is not available falls back to the default and
+  // the stored value is left as it was.
+  const key = `daifuku.home.v1.${JSON.stringify([own.user.tenantId, own.user.id, own.companyId])}`;
+  const stored = () => page.evaluate((k) => localStorage.getItem(k), key);
+  expect(await stored()).toBeNull();
+  const unavailable = '{"version":1,"items":["store"]}';
+  await page.evaluate(([k, v]) => localStorage.setItem(k, v), [key, unavailable] as const);
+  await page.reload();
+  await expect(tablist(page).getByRole('tab', { name: '経理' })).toHaveAttribute('aria-selected', 'true');
+  await expect(card(page, 'ar_aging')).toBeVisible();
+  await settled(page);
+  expect(await stored()).toBe(unavailable);
+
   // AC-3/AC-4: picking 全体 shows the general home and is remembered per tenant/user/company, across a reload.
   await tablist(page).getByRole('tab', { name: '全体' }).click();
   await expect(page.getByRole('heading', { name: '業務分野から始める' })).toBeVisible();
-  const key = `daifuku.home.v1.${JSON.stringify([own.user.tenantId, own.user.id, own.companyId])}`;
-  expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBe('{"version":1,"items":["general"]}');
+  expect(await stored()).toBe('{"version":1,"items":["general"]}');
   await page.reload();
   await expect(tablist(page).getByRole('tab', { name: '全体' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: '業務分野から始める' })).toBeVisible();
@@ -295,27 +332,24 @@ test('role-home AC-1/2/3/4/7/9/14/15/18: an accounting user gets receivables, pa
   await layoutChecks(page, 'home-accounting');
 });
 
-test('role-home AC-16/AC-17: one failing card keeps the others; a refused card re-reads /meta once', async ({
+const FAILURE = { error: { code: 'INTERNAL', message: 'E2E injected failure', hint: 'Retry later.' } };
+const DENIED = { error: { code: 'PERMISSION_DENIED', message: 'E2E denied', hint: 'Ask an admin.' } };
+const reply = (status: number, body: unknown) => ({
+  status,
+  contentType: 'application/json',
+  body: JSON.stringify(body),
+});
+
+test('role-home AC-1/AC-16/AC-17: one failing card keeps the others; a refused card re-reads /meta once; no /meta, no view', async ({
   page,
   request,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const f = await fixture(request);
   const log = networkLog(page);
-  await page.route('**/actions/purchase.ap_aging', (route) =>
-    route.fulfill({
-      status: 500,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'INTERNAL', message: 'E2E injected failure', hint: 'Retry later.' } }),
-    }),
-  );
-  await page.route('**/actions/accounting.trial_balance', (route) =>
-    route.fulfill({
-      status: 403,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'PERMISSION_DENIED', message: 'E2E denied', hint: 'Ask an admin.' } }),
-    }),
-  );
+  await page.route('**/actions/purchase.ap_aging', (route) => route.fulfill(reply(500, FAILURE)));
+  await page.route('**/actions/accounting.trial_balance', (route) => route.fulfill(reply(403, DENIED)));
+  await page.route('**/actions/accounting.close_readiness', (route) => route.fulfill(reply(500, FAILURE)));
   await login(page, f.accountant.email, PASSWORD);
   const ap = card(page, 'ap_aging');
   await expect(ap.getByTestId('home-card-failure')).toContainText('E2E injected failure');
@@ -323,7 +357,7 @@ test('role-home AC-16/AC-17: one failing card keeps the others; a refused card r
   await expect(card(page, 'cash').getByTestId('home-card-denied')).toHaveText('この情報を表示する権限がありません。');
   await expect(card(page, 'cash').getByRole('button')).toHaveCount(0);
   await expect(value(page, 'ar_aging', 'home-aging-balance')).toBeVisible();
-  await expect(card(page, 'close').getByTestId('home-close-period')).toBeVisible();
+  await expect(card(page, 'close').getByTestId('home-card-failure')).toBeVisible();
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
   await settled(page);
   await shot(page, 'role-home-failures.png');
@@ -349,6 +383,40 @@ test('role-home AC-16/AC-17: one failing card keeps the others; a refused card r
   await expect(ap.getByRole('heading', { name: '買掛金', level: 3 })).toBeFocused();
   await expect(page.getByTestId('role-home-live')).toHaveText('買掛金: 取得しました');
   expect(log.actions('sales.ar_aging')).toHaveLength(arCalls);
+
+  // AC-16/AC-17: a retry answered with 403 leaves a notice without a retry button; focus goes to the card heading (not
+  // to <body>), the notice is announced, and /meta is not read a second time while this home stays open.
+  const close = card(page, 'close');
+  await page.unroute('**/actions/accounting.close_readiness');
+  await page.route('**/actions/accounting.close_readiness', (route) => route.fulfill(reply(403, DENIED)));
+  await close.getByRole('button', { name: '月次締めを再試行' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(close.getByTestId('home-card-denied')).toBeVisible();
+  await expect(close.getByRole('button')).toHaveCount(0);
+  await expect(close.getByRole('heading', { name: '月次締め', level: 3 })).toBeFocused();
+  await expect(page.getByTestId('role-home-live')).toHaveText('月次締め: この情報を表示する権限がありません。');
+  const refusedCloses = log.actions('accounting.close_readiness').length;
+  await page.waitForTimeout(1_000);
+  expect(log.entries.slice(first).filter((entry) => entry.method === 'GET' && entry.path === '/meta')).toHaveLength(1);
+  expect(log.actions('accounting.close_readiness')).toHaveLength(refusedCloses);
+
+  // AC-1: when /meta cannot be read the existing MetaError (with its retry) shows, no view is decided and neither the
+  // inbox nor any card reads.
+  await page.route('**/meta', (route) =>
+    route.fulfill(reply(500, { error: { ...FAILURE.error, message: 'E2E meta' } })),
+  );
+  const reloaded = log.entries.length;
+  await page.reload();
+  const metaError = page.getByTestId('meta-error');
+  await expect(metaError).toBeVisible();
+  await expect(metaError.getByRole('button', { name: '再試行', exact: true })).toBeVisible();
+  await expect(tablist(page)).toHaveCount(0);
+  await expect(page.getByTestId('role-home-view')).toHaveCount(0);
+  await expect(page.getByTestId('inbox-card')).toHaveCount(0);
+  await page.waitForTimeout(1_500);
+  const after = log.entries.slice(reloaded);
+  expect(after.some((entry) => entry.method === 'GET' && entry.path === '/meta')).toBe(true);
+  expect(after.filter((entry) => /^\/(actions|api|analytics)\//.test(entry.path))).toEqual([]);
 });
 
 test('role-home AC-1/7/8/10/18: a site manager gets today’s attendance and this week’s shifts', async ({
@@ -389,16 +457,54 @@ test('role-home AC-1/7/8/10/18: a site manager gets today’s attendance and thi
     ],
     assignments: [],
   });
+  // AC-8: a second site outside the manager's membership, whose own employee also clocks in today. The company-wide
+  // answer (admin) has that punch, so a card that lost the site filter would count it.
+  const otherSite = await api(request, f.admin.headers, '/api/workforce_site', {
+    code: `RH2-${f.suffix}`,
+    name: `役割別ホーム別拠点 ${f.suffix}`,
+  });
+  const otherUser = await f.member('other', '別拠点従業員', ['workforce_employee'], 'sites', otherSite.id);
+  await api(request, f.admin.headers, '/actions/workforce.register_employee', {
+    userId: otherUser.id,
+    siteId: otherSite.id,
+    code: `RH2-${f.suffix}`,
+    name: otherUser.name,
+    hiredOn: `${TODAY.slice(0, 7)}-01`,
+  });
+  const otherWorker = await session(request, otherUser.email, PASSWORD);
+  await api(request, otherWorker.headers, '/actions/workforce.punch', {
+    kind: 'clock_in',
+    expectedVersion: 0,
+    idempotencyKey: crypto.randomUUID(),
+  });
+  const everyone = await api<{ rows: { siteId: unknown }[] }>(request, f.admin.headers, '/analytics/snapshot', {
+    dataset: 'workforce_attendance',
+    from: TODAY,
+    to: TODAY,
+    state: 'all',
+  });
+  // The snapshot labels the site column (id or display name); either way the other site's row is there.
+  expect(
+    everyone.rows.some(
+      (row) => String(row.siteId) === otherSite.id || String(row.siteId).includes(String(otherSite.name)),
+    ),
+  ).toBe(true);
 
   const log = networkLog(page);
   await login(page, f.manager.email, PASSWORD);
   await expect(tablist(page).getByRole('tab')).toHaveText(['店舗・拠点', '全体']);
   await expect(page.getByRole('heading', { name: '店舗・拠点の今日', level: 2 })).toBeVisible();
   await settled(page);
-  // AC-8: the site membership is named on the cards; the values are the server's site-scoped answers.
+  // AC-8: the site membership is named on the cards; the values are the server's site-scoped answers (the other
+  // site's punch and plan stay out).
   await expect(card(page, 'attendance').getByTestId('home-card-scope')).toHaveText('担当拠点');
-  await expect(card(page, 'attendance').getByTestId('home-attendance-total')).toContainText('1人');
+  await expect(card(page, 'attendance').getByTestId('home-attendance-total').locator('.role-home-amount')).toHaveText(
+    '1人',
+  );
   await expect(card(page, 'attendance').locator('[data-status="working"]')).toHaveText('勤務中 1人');
+  await expect(card(page, 'shift').getByTestId('home-card-scope')).toHaveText('担当拠点');
+  await expect(card(page, 'shift').getByTestId('home-shift-site')).toHaveCount(1);
+  await expect(card(page, 'shift')).not.toContainText(String(otherSite.name));
   const site = card(page, 'shift')
     .getByTestId('home-shift-site')
     .filter({ hasText: String(f.site.name) });
@@ -496,7 +602,7 @@ test('role-home AC-12: an admin gets the setup card above the general home and n
   expect(log.entries.filter((entry) => entry.status === 403)).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
   await noOverflow(page);
-  await shot(page, 'role-home-home-admin-390.png');
+  await fullShot(page, 'role-home-home-admin-390.png');
 });
 
 /** The company picker reloads the page (a fresh query cache); wait for that load before moving on. */
@@ -547,6 +653,48 @@ test('role-home AC-6: switching company decides the view again and keeps each co
   await expect(card(page, 'ar_aging')).toHaveCount(0);
 });
 
+/**
+ * A daily closing dated today, submitted (posted) by headquarters for one store, through the existing stock entry and
+ * closing endpoints (as operations-refresh.spec.ts does): its sales count in today's operations board.
+ */
+async function postTodaysClosing(request: APIRequestContext, headers: Headers, store: Row) {
+  const products = await api<{ items: Row[] }>(request, headers, '/api/product?limit=500');
+  const rice = products.items.find((row) => row.code === 'RC-RICE');
+  const chicken = products.items.find((row) => row.code === 'RC-CHICKEN');
+  const recipes = await api<{ items: Row[] }>(request, headers, '/api/restaurant_chain_recipe?limit=500');
+  const recipe = recipes.items.find((row) => row.code === 'RC-CURRY-V1' && row.docstatus === 1);
+  expect(rice && chicken && recipe, 'the restaurant sample has its curry recipe and ingredients').toBeTruthy();
+  const stock = await api(request, headers, '/api/stock_entry', {
+    type: 'receipt',
+    date: TODAY,
+    warehouseId: store.warehouseId,
+    lines: {
+      stock_entry_line: [
+        { productId: rice?.id, quantity: '1', unitCost: '500' },
+        { productId: chicken?.id, quantity: '1', unitCost: '1000' },
+      ],
+    },
+  });
+  await api(request, headers, `/api/stock_entry/${stock.id}/submit`, {});
+  const draft = await api(request, headers, '/api/restaurant_chain_closing', {
+    storeId: store.id,
+    date: TODAY,
+    cashAmount: '0',
+    cardAmount: '1100',
+    qrAmount: '0',
+    cashSalesCounted: '0',
+    lines: {
+      restaurant_chain_closing_line: [
+        { recipeId: recipe?.id, serviceMode: 'dine_in', quantity: '1', unitPrice: '1100' },
+      ],
+    },
+  });
+  const closing = await api(request, headers, `/api/restaurant_chain_closing/${draft.id}/submit`, {
+    expectedVersion: draft.version,
+  });
+  expect(closing).toMatchObject({ docstatus: 1, total: '1100' });
+}
+
 test('role-home AC-8/AC-10/AC-14: a restaurant store manager sees today’s sales and the missing reports of the inbox read', async ({
   browser,
   request,
@@ -560,6 +708,16 @@ test('role-home AC-8/AC-10/AC-14: a restaurant store manager sees today’s sale
   const store = await newStore(request, headers, '役割別ホーム新店');
   const manager = await storeMember(request, headers, restaurant?.id ?? '', store.id, 'chain_manager');
   const own = await session(request, manager.email, PASSWORD, restaurant?.id);
+  // AC-8: another store has posted sales today, so headquarters' board for today is not 0; the manager's must be.
+  const neighbour = await newStore(request, headers, '役割別ホーム隣店');
+  await postTodaysClosing(request, headers, neighbour);
+  const hq = await api<{ overview: { grossSales: string } }>(
+    request,
+    headers,
+    '/actions/restaurant_chain.operations_snapshot',
+    { from: TODAY, to: TODAY },
+  );
+  expect(scaled(hq.overview.grossSales)).toBeGreaterThanOrEqual(scaled('1100'));
   const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
   const page = await context.newPage();
   try {
@@ -568,7 +726,8 @@ test('role-home AC-8/AC-10/AC-14: a restaurant store manager sees today’s sale
     await expect(page.getByRole('heading', { name: '店舗・拠点の今日', level: 2 })).toBeVisible();
     await settled(page);
     const sales = card(page, 'sales_today');
-    // AC-8: a manager of a new store only: the server scopes the board to that store (no posted sales yet).
+    // AC-8: a manager of the new store only: the server scopes the board to that store, so the neighbour's posted
+    // sales (in headquarters' total above) are not in it.
     await expect(sales.getByTestId('home-card-scope')).toHaveText('担当店舗');
     await expect(sales.getByTestId('home-sales-gross').locator('[data-value]')).toHaveAttribute('data-value', '0');
     const snapshot = await api<{ overview: { grossSales: string; expectedOpenDays: number } }>(

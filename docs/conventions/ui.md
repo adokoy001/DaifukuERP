@@ -91,7 +91,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 新しい集計を作らない | カードは既存の action（`POST /actions/<name>`）・REST の一覧（`GET /api/<entity>`）・分析スナップショットだけを呼び、値はその応答から画面で計算する（金額は `lib/decimal.ts`）。ホームのための action・API・閲覧経路・`systemContext()` を足さない。カードを増やすときも同じ |
 | 呼べるものだけ呼ぶ | action は `/meta` の `actions` にあるもの、REST は `ops` に `read` がある entity、分析は `GET /analytics/catalog` が返したデータセットだけ（`plannedHomeReads`）。範囲を広げる入力（`storeId`、他人・他拠点の id）を送らない。権限と会社・店舗・拠点の境界はサーバーの既存の検査に任せる |
 | 読取の時機 | ビューを表示したときと「更新」のときだけ（`HOME_READ_OPTIONS`: 定期取得・フォーカス・再接続での再取得・自動再試行なし、`gcTime: 0`）。切替で選んだビューは選択が 300 ms 変わらなかったときに読み（`SWITCH_SETTLE_MS`）、離れたビューの読取は `signal` で中止する。query key は `['role-home', tenant:user:company, ...]` |
-| 失敗 | カードごとに「取得できませんでした」・メッセージ・閉じた技術情報・「再試行」。`role="alert"` にしない。再試行の後はカードの見出し（`tabIndex=-1`）へ焦点を移し、polite で結果を知らせる。403 は「権限がありません」（再試行なし）とし、`/meta` を 1 回だけ読み直す。帳票の `meta.truncated` と `sales.ar_aging` の件数超過（`INVALID_STATE`）は合計として出さず「帳票で確認」 |
+| 失敗 | カードごとに「取得できませんでした」・メッセージ・閉じた技術情報・「再試行」。`role="alert"` にしない。再試行の結果は polite で知らせ、再試行ボタンが消える場合（取得できた、または再試行のない説明に変わった）はカードの見出し（`tabIndex=-1`）へ焦点を移し、再び失敗したときは焦点をボタンに残す（受信箱と同じ）。403 は「権限がありません」（再試行なし）とし、`/meta` を 1 回だけ読み直す。1 枚のカードの読取のどれかが 403 なら、順序にかかわらずそのカードは権限なしで、403 の読取を送り直さない。帳票の `meta.truncated` と `sales.ar_aging` の件数超過（`INVALID_STATE`）は合計として出さず「帳票で確認」 |
 | 0 と言い切らない | 提供元が返さなかった項目（例: `restaurant_chain.todo` の `missing_reports`）を 0 件と表示しない。受信箱の検査で落ちた項目は「開ける画面がない項目」として示す |
 | 保存 | 選んだビューの id だけを `assist-storage.ts` の種類 `home`（利用者・tenant・会社ごと）に保存する。選んだときだけ書き、既定で表示しただけでは書かない。保存できないときはその画面の間だけ切り替える |
 | 差込口 | 導入管理ビューの「導入・管理」カードが B3（setup-health、`/admin/health`）と B4（setup-wizard、`/setup`）の差込口。カタログに入口があるときだけリンクを出し、それらのコードを import しない |

@@ -17,7 +17,15 @@ import {
   type HomeSource,
 } from '../lib/role-home.ts';
 import { Badge } from '../ui/index.ts';
-import { Amount, cardStateOf, HomeCard, TooLargeNotice, useHomeCardEnv } from './role-home-card.tsx';
+import {
+  Amount,
+  cardStateOf,
+  HOME_NOTICES,
+  HomeCard,
+  TooLargeNotice,
+  Unreadable,
+  useHomeCardEnv,
+} from './role-home-card.tsx';
 
 function Figure({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
   return (
@@ -25,15 +33,6 @@ function Figure({ label, children, testId }: { label: string; children: ReactNod
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
-  );
-}
-
-function Unreadable() {
-  const { t } = useLocale();
-  return (
-    <p className="role-home-notice">
-      {t({ ja: '応答の形式を読み取れませんでした。', en: 'The response could not be read.' })}
-    </p>
   );
 }
 
@@ -70,7 +69,7 @@ function AgingCard({ kind }: { kind: 'ar' | 'ap' }) {
                 <Amount value={overdue} />
                 {decimalSign(overdue) === 1 ? (
                   <Badge tone="warning" className="role-home-flag">
-                    {t({ ja: '期日超過あり', en: 'Overdue' })}
+                    {t({ ja: '期日超過あり', en: 'Has overdue items' })}
                   </Badge>
                 ) : null}
               </Figure>
@@ -170,7 +169,7 @@ function CloseCard() {
       special={{
         no_fiscal_period: (
           <p className="role-home-notice" data-testid="home-close-no-year">
-            {t({ ja: '会計年度がまだありません。', en: 'There is no fiscal year yet.' })}
+            {t(HOME_NOTICES.no_fiscal_period)}
           </p>
         ),
       }}

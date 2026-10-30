@@ -20,7 +20,6 @@ import {
   emptyViewLinks,
   HOME_ACTIONS,
   HOME_LAYOUT_LABELS,
-  homeScopeNote,
   homeSwitcher,
   metaRecheckOnce,
   plannedHomeReads,
@@ -45,8 +44,19 @@ const VIEW_TITLES: Record<'accounting' | 'store' | 'employee', { ja: string; en:
   employee: { ja: '自分の仕事', en: 'Your work' },
 };
 
-/** AC-15: the view heading with the manual refresh of its cards and the inbox (previous values stay meanwhile). */
-function ViewHead({ layout, inbox }: { layout: 'accounting' | 'store'; inbox: Inbox }) {
+/**
+ * AC-15: the view heading with the manual refresh of its cards and the inbox (previous values stay meanwhile).
+ * `beforeRefresh` lets the store view move "today" to the current business date first (a home left open overnight).
+ */
+function ViewHead({
+  layout,
+  inbox,
+  beforeRefresh,
+}: {
+  layout: 'accounting' | 'store';
+  inbox: Inbox;
+  beforeRefresh?: () => void;
+}) {
   const { t } = useLocale();
   const refreshCards = useHomeRefresh();
   const refreshing = useIsFetching({ queryKey: homeQueryRoot() }) > 0 || inbox.refreshing;
@@ -56,6 +66,7 @@ function ViewHead({ layout, inbox }: { layout: 'accounting' | 'store'; inbox: In
       <Button
         size="sm"
         onClick={() => {
+          beforeRefresh?.();
           void refreshCards();
           if (inbox.providers.length) inbox.refresh();
         }}
@@ -68,18 +79,28 @@ function ViewHead({ layout, inbox }: { layout: 'accounting' | 'store'; inbox: In
   );
 }
 
-/** AC-19: no card can be shown in this view; point to its screens and to the overview tab. */
+/**
+ * AC-19: no card can be shown in this view; point to its screens and to the tab with the business areas: 全体, or
+ * 導入・管理 for a user who holds admin as well (they get no separate 全体 tab).
+ */
 function EmptyView({ layout, catalog }: { layout: HomeLayout; catalog: NavigationCatalog }) {
   const { t } = useLocale();
+  const { available } = useHomeCardEnv();
   const links = emptyViewLinks(layout, catalog);
+  const areas = available.includes('general') ? 'general' : available.includes('admin') ? 'admin' : undefined;
+  const tab = areas ? HOME_LAYOUT_LABELS[areas] : undefined;
   return (
     <EmptyState
       testId="home-empty-view"
       title={t({ ja: 'このビューに表示できる情報がありません', en: 'Nothing can be shown in this view' })}
-      description={t({
-        ja: '関係する画面で確認するか、「全体」タブで業務分野を選んでください。',
-        en: 'Check the related screens, or pick a business area on the Overview tab.',
-      })}
+      description={t(
+        tab
+          ? {
+              ja: `関係する画面で確認するか、「${tab.ja}」タブで業務分野を選んでください。`,
+              en: `Check the related screens, or pick a business area on the ${tab.en} tab.`,
+            }
+          : { ja: '関係する画面で確認してください。', en: 'Check the related screens.' },
+      )}
       action={
         links.length ? (
           <ul className="role-home-links">
@@ -111,7 +132,8 @@ function AccountingView({ meta, inbox }: { meta: AppMeta; inbox: Inbox }) {
 
 function StoreView({ meta, inbox }: { meta: AppMeta; inbox: Inbox }) {
   const { catalog, enabled } = useHomeCardEnv();
-  const [today] = useState(() => businessToday());
+  // "Today" is fixed while the view is shown and moves on with "Refresh" (new keys then read the new day).
+  const [today, setToday] = useState(() => businessToday());
   const planned = plannedHomeReads('store', meta);
   // The analytics catalog decides whether the attendance card exists (AC-10/AC-19), so it is read at the view level.
   const analytics = useHomeRead<AnalyticsCatalog>(
@@ -126,7 +148,7 @@ function StoreView({ meta, inbox }: { meta: AppMeta; inbox: Inbox }) {
   const group = inbox.groups.find((item) => item.provider.action === HOME_ACTIONS.restaurantTodo);
   return (
     <>
-      <ViewHead layout="store" inbox={inbox} />
+      <ViewHead layout="store" inbox={inbox} beforeRefresh={() => setToday(businessToday())} />
       {cards.length ? (
         <StoreCards
           cards={cards}
@@ -210,11 +232,12 @@ export function RoleHome({
     () => ({
       enabled: armed === layout,
       catalog,
-      scopeNote: layout === 'store' ? homeScopeNote(accessScope) : undefined,
+      available,
+      accessScope: layout === 'store' ? accessScope : undefined,
       announce: setAnnouncement,
       onDenied,
     }),
-    [armed, layout, catalog, accessScope, onDenied],
+    [armed, layout, catalog, available, accessScope, onDenied],
   );
   const view = <HomeView key={layout} layout={layout} meta={meta} inbox={inbox} general={general} />;
   const tabs = homeSwitcher(available);

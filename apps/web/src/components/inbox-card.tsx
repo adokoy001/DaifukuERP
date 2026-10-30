@@ -1,7 +1,8 @@
 // To-do inbox presentation shared by the home card and /inbox (docs/specs/inbox.md AC-4/AC-5/AC-9). Items link only
-// to targets that lib/inbox.ts already resolved against the screen catalog; failures stay per provider.
+// to targets that lib/inbox.ts already resolved against the screen catalog; failures stay per provider. Nothing here
+// reads: the home passes its single `useInbox()` result (role-home AC-14) and /inbox calls `useInbox()` itself.
 import { Link } from '@tanstack/react-router';
-import { useInbox } from '../api/inbox.ts';
+import type { useInbox } from '../api/inbox.ts';
 import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { describeError } from '../lib/error-view.ts';
@@ -111,14 +112,11 @@ export function InboxFailure({
 /** What the home card needs of one `useInbox()` read; the home passes its single read (role-home AC-14). */
 export type InboxCardState = Pick<ReturnType<typeof useInbox>, 'providers' | 'groups' | 'summary'>;
 
-/** Home card: the total, the most urgent items, and a pointer to /inbox when a provider failed. */
-export function InboxCard() {
-  return <InboxCardView inbox={useInbox()} />;
-}
-
 /**
- * The home card drawn from a read made elsewhere. The role-based home calls `useInbox()` once and shares the result
- * with this card, the store view's missing-report card and its Refresh button, so no second observer reads again.
+ * Home card: the total, the most urgent items, and a pointer to /inbox when a provider failed, drawn from a read made
+ * elsewhere. The role-based home calls `useInbox()` once and shares the result with this card, the store view's
+ * missing-report card and its Refresh button; there is deliberately no self-reading wrapper, because a second
+ * observer mounted later would read every provider again.
  */
 export function InboxCardView({ inbox }: { inbox: InboxCardState }) {
   const { t, locale } = useLocale();

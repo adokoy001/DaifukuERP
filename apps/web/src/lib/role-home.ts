@@ -48,6 +48,13 @@ export const HOME_ACTIONS = {
   siteList: 'workforce_site.list',
 } as const;
 export const ATTENDANCE_DATASET = 'workforce_attendance';
+/**
+ * AC-10: roles whose workforce_attendance read is not cut down to their own rows. The entity limits a reader whose
+ * granting roles are all `workforce_employee` to `userId = $ctx.userId` (modules/workforce personPermissions; the
+ * kernel applies a row rule only when every granting role is restricted), and an admin is never row-limited. A store
+ * manager who also clocks in (chain_manager + workforce_employee) would otherwise see a site total of one: their own.
+ */
+export const ATTENDANCE_ALL_ROWS_ROLES = ['workforce_manager', 'workforce_hr', 'workforce_payroll', 'admin'] as const;
 /** The 現金預金 subtype of the default Japanese chart of accounts (l10n/jp seeds; spec データ・業務ルール). */
 export const CASH_SUBTYPE = '現金預金';
 /** AC-10: the shift card reads at most this many sites (open question 5). */
@@ -65,7 +72,10 @@ const canRead = (meta: AppMeta, entity: string) =>
   meta.entities.some((item) => item.name === entity && item.ops.includes('read'));
 const hasRole = (meta: AppMeta, roles: readonly string[]) => meta.roles.some((role) => roles.includes(role));
 
-/** AC-1 / AC-7 "呼べる": the action is in /meta, the entity is readable, or (attendance) its entity is readable. */
+/**
+ * AC-1 / AC-7 "呼べる": the action is in /meta or the entity is readable. Attendance also needs a role whose read covers
+ * the site, not only the caller's own row (ATTENDANCE_ALL_ROWS_ROLES), so a self-only count is never shown as the site's.
+ */
 export function sourceCallable(source: HomeSource, meta: AppMeta): boolean {
   switch (source) {
     case 'ar_aging':
@@ -82,7 +92,7 @@ export function sourceCallable(source: HomeSource, meta: AppMeta): boolean {
       // The card shows the inbox's result for this provider, so it needs exactly what the inbox needs.
       return meta.actions.some((action) => action.name === HOME_ACTIONS.restaurantTodo && isTodoProvider(action));
     case 'attendance':
-      return canRead(meta, ATTENDANCE_DATASET);
+      return canRead(meta, ATTENDANCE_DATASET) && hasRole(meta, ATTENDANCE_ALL_ROWS_ROLES);
     case 'shift':
       return canRun(meta, HOME_ACTIONS.shiftBoard) && canRun(meta, HOME_ACTIONS.siteList);
   }
@@ -161,10 +171,19 @@ export function metaRecheckOnce(recheck: () => void): () => void {
   };
 }
 
-/** AC-8: the scope note of the store view's cards; the server applies the store/site boundary itself. */
-export function homeScopeNote(accessScope: unknown): Label | undefined {
-  if (accessScope === 'stores') return { ja: '担当店舗', en: 'Your stores' };
-  if (accessScope === 'sites') return { ja: '担当拠点', en: 'Your sites' };
+const SITE_BASED_SOURCES: readonly HomeSource[] = ['attendance', 'shift'];
+
+/**
+ * AC-8: the scope note of one store-view card; the server applies the store/site boundary itself. The kernel limits
+ * entities with a site boundary (attendance, shifts) by `siteIds` under a `sites` membership and every other
+ * store-bound entity (daily reports, sales) by `storeIds` (kernel/src/store-access.ts scopeIds), so the note follows
+ * the card: a sites-scoped chain manager's sales card is still "your stores".
+ */
+export function homeScopeNote(accessScope: unknown, source: HomeSource): Label | undefined {
+  const stores = { ja: '担当店舗', en: 'Your stores' };
+  if (accessScope === 'stores') return stores;
+  if (accessScope === 'sites')
+    return SITE_BASED_SOURCES.includes(source) ? { ja: '担当拠点', en: 'Your sites' } : stores;
   return undefined;
 }
 

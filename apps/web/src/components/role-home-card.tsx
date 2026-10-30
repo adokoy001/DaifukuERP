@@ -7,7 +7,14 @@ import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { describeError } from '../lib/error-view.ts';
 import { formatDecimal } from '../lib/format.ts';
-import { hasScreen, homeReadFailure, type HomeReadFailure, type HomeSource } from '../lib/role-home.ts';
+import {
+  hasScreen,
+  homeReadFailure,
+  homeScopeNote,
+  type HomeLayout,
+  type HomeReadFailure,
+  type HomeSource,
+} from '../lib/role-home.ts';
 import type { NavigationCatalog } from '../lib/navigation.ts';
 import { S } from '../strings.ts';
 import { Button, Card, SkeletonCard } from '../ui/index.ts';
@@ -19,8 +26,10 @@ export interface HomeCardEnv {
   /** AC-15: false while a view picked in the switcher has not settled yet; no read starts then. */
   enabled: boolean;
   catalog: NavigationCatalog;
-  /** AC-8: "担当店舗" / "担当拠点" for the store view's cards. */
-  scopeNote?: Label | undefined;
+  /** AC-3 / AC-19: the views of the switcher (the empty view names the tab with the business areas). */
+  available: readonly HomeLayout[];
+  /** AC-8: `/auth/me` accessScope while the store view is shown (undefined elsewhere); each card names its scope. */
+  accessScope?: unknown;
   /** AC-16: the home's polite live region. */
   announce: (text: string) => void;
   /** AC-17: a 403 re-reads /meta once per home mount. */
@@ -30,6 +39,7 @@ export interface HomeCardEnv {
 const HomeCardContext = createContext<HomeCardEnv>({
   enabled: false,
   catalog: { entries: [], workspaces: [] },
+  available: [],
   announce: () => undefined,
   onDenied: () => undefined,
 });
@@ -43,8 +53,11 @@ export interface CardRead {
   status: 'pending' | 'error' | 'success';
   error: unknown;
   isFetching: boolean;
-  refetch: () => Promise<{ status: 'pending' | 'error' | 'success' }>;
+  refetch: () => Promise<{ status: 'pending' | 'error' | 'success'; error?: unknown }>;
 }
+
+/** What a finished retry left on the card: loaded (`ok`) or the failure class it now shows. */
+export type RetryOutcome = 'ok' | HomeReadFailure;
 
 export type CardState =
   | { kind: 'loading' }
@@ -54,25 +67,44 @@ export type CardState =
       failure: HomeReadFailure;
       error: unknown;
       retrying: boolean;
-      /** Resolves to whether the card loaded; undefined when a retry was already running. */
-      retry: () => Promise<boolean | undefined>;
+      /** Resolves to what the card shows after the retry; undefined when a retry was already running. */
+      retry: () => Promise<RetryOutcome | undefined>;
     };
 
-/** A card's state from its reads: any failure first (retry re-reads the failed ones), then loading, then ready. */
+/**
+ * The failure a card shows when several of its reads failed: a refusal wins whatever the order (AC-17: the permission
+ * notice, no retry, /meta re-read once), otherwise the first failed read's class.
+ */
+function worstFailure(source: HomeSource, errors: readonly unknown[]): { failure: HomeReadFailure; error: unknown } {
+  const classified = errors.map((error) => ({ failure: homeReadFailure(error, source), error }));
+  return classified.find((item) => item.failure === 'denied') ?? classified[0] ?? { failure: 'failed', error: null };
+}
+
+/**
+ * A card's state from its reads: any failure first, then loading, then ready. A refused read makes the card denied
+ * with nothing to retry; otherwise retry re-reads the failed reads only (never a refused one, AC-17).
+ */
 export function cardStateOf(source: HomeSource, reads: readonly CardRead[], enabled: boolean): CardState {
   const failed = reads.filter((read) => read.status === 'error');
-  const first = failed[0];
-  if (first) {
+  if (failed.length) {
+    const { failure, error } = worstFailure(
+      source,
+      failed.map((read) => read.error),
+    );
     const retrying = failed.some((read) => read.isFetching);
     return {
       kind: 'failure',
-      failure: homeReadFailure(first.error, source),
-      error: first.error,
+      failure,
+      error,
       retrying,
       retry: async () => {
+        if (failure === 'denied') return 'denied';
         if (retrying) return undefined;
         const results = await Promise.all(failed.map((read) => read.refetch()));
-        return results.every((result) => result.status === 'success');
+        // A read cancelled on the way (its view was left) settles nothing to announce.
+        if (results.some((result) => result.status === 'pending')) return undefined;
+        const errors = results.filter((result) => result.status === 'error').map((result) => result.error);
+        return errors.length ? worstFailure(source, errors).failure : 'ok';
       },
     };
   }
@@ -80,22 +112,52 @@ export function cardStateOf(source: HomeSource, reads: readonly CardRead[], enab
   return { kind: 'ready' };
 }
 
+/** AC-17 / AC-9: the explanations a card shows instead of a failure; none of them offers a retry. */
+export const HOME_NOTICES: Readonly<Record<Exclude<HomeReadFailure, 'failed'>, Label>> = {
+  denied: { ja: 'この情報を表示する権限がありません。', en: 'You do not have permission to view this information.' },
+  too_large: {
+    ja: '件数が多いため帳票で確認してください。',
+    en: 'There are too many records to total here. Open the report instead.',
+  },
+  no_fiscal_period: { ja: '会計年度がまだありません。', en: 'There is no fiscal year yet.' },
+};
+
+/**
+ * AC-16: what to announce after a retry and whether focus moves to the card heading. Focus moves whenever the retry
+ * button is gone (loaded, or a notice without a retry replaced it); a repeated failure keeps focus on the button.
+ */
+export function retryFeedback(name: string, outcome: RetryOutcome): { message: Label; focusHeading: boolean } {
+  if (outcome === 'ok') return { message: { ja: `${name}: 取得しました`, en: `${name}: loaded` }, focusHeading: true };
+  if (outcome === 'failed')
+    return {
+      message: { ja: `${name}: 再試行しましたが取得できませんでした`, en: `${name}: still could not be loaded` },
+      focusHeading: false,
+    };
+  const notice = HOME_NOTICES[outcome];
+  return { message: { ja: `${name}: ${notice.ja}`, en: `${name}: ${notice.en}` }, focusHeading: true };
+}
+
 export interface HomeCardLink {
   href: string;
   label: Label;
 }
-
-const TOO_LARGE: Label = {
-  ja: '件数が多いため帳票で確認してください。',
-  en: 'There are too many records to total here. Open the report instead.',
-};
 
 /** AC-9: a cut-off or refused report is not shown as a total; the report link carries the user on. */
 export function TooLargeNotice() {
   const { t } = useLocale();
   return (
     <p className="role-home-notice" data-testid="home-card-too-large">
-      {t(TOO_LARGE)}
+      {t(HOME_NOTICES.too_large)}
+    </p>
+  );
+}
+
+/** A response without the fields a card needs: said in words, never drawn as an empty card or a 0. */
+export function Unreadable() {
+  const { t } = useLocale();
+  return (
+    <p className="role-home-notice" data-testid="home-card-unreadable">
+      {t({ ja: '応答の形式を読み取れませんでした。', en: 'The response could not be read.' })}
     </p>
   );
 }
@@ -159,16 +221,15 @@ export function HomeCard({
   }, [denied, env]);
   const retry = (current: Extract<CardState, { kind: 'failure' }>) => {
     env.announce('');
-    void current.retry().then((ok) => {
-      if (ok === undefined) return;
-      env.announce(
-        ok
-          ? t({ ja: `${name}: 取得しました`, en: `${name}: loaded` })
-          : t({ ja: `${name}: 再試行しましたが取得できませんでした`, en: `${name}: still could not be loaded` }),
-      );
-      if (ok) requestAnimationFrame(() => document.getElementById(headingId)?.focus());
+    void current.retry().then((outcome) => {
+      if (outcome === undefined) return;
+      const feedback = retryFeedback(name, outcome);
+      env.announce(t(feedback.message));
+      // The retry button unmounts unless the read failed again; focus then goes to the heading, not to <body>.
+      if (feedback.focusHeading) requestAnimationFrame(() => document.getElementById(headingId)?.focus());
     });
   };
+  const scopeNote = homeScopeNote(env.accessScope, source);
   const showLink = link && hasScreen(env.catalog, link.href);
   const target = link ? new URL(link.href, 'https://home.invalid') : undefined;
   let body: ReactNode;
@@ -188,7 +249,7 @@ export function HomeCard({
   else if (state.failure === 'denied')
     body = (
       <p className="role-home-notice" data-testid="home-card-denied">
-        {t({ ja: 'この情報を表示する権限がありません。', en: 'You do not have permission to view this information.' })}
+        {t(HOME_NOTICES.denied)}
       </p>
     );
   else if (state.failure === 'too_large') body = <TooLargeNotice />;
@@ -219,9 +280,9 @@ export function HomeCard({
         <h3 id={headingId} tabIndex={-1}>
           {name}
         </h3>
-        {env.scopeNote ? (
+        {scopeNote ? (
           <span className="role-home-scope" data-testid="home-card-scope">
-            {t(env.scopeNote)}
+            {t(scopeNote)}
           </span>
         ) : null}
       </div>

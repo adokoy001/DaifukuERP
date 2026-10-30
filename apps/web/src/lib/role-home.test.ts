@@ -4,10 +4,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '../api/client.ts';
-import { HOME_READ_OPTIONS, homeQueryRoot, SWITCH_SETTLE_MS } from '../api/role-home.ts';
+import { ApiError, isApiError } from '../api/client.ts';
+import { HOME_READ_OPTIONS, homeQueryRoot, SWITCH_SETTLE_MS, useHomeLayout } from '../api/role-home.ts';
 import type { ActionMeta, AppMeta, EntityMeta, TableResult } from '../api/types.ts';
-import { cardStateOf, HomeCard, type CardRead } from '../components/role-home-card.tsx';
+import { cardStateOf, HomeCard, retryFeedback, type CardRead } from '../components/role-home-card.tsx';
 import { MissingReportsCard } from '../components/role-home-store.tsx';
 import { LocaleProvider } from '../i18n.tsx';
 import type { InboxGroup, InboxItem } from './inbox.ts';
@@ -39,6 +39,7 @@ import {
   shiftTodaySummary,
   visibleHomeCards,
   writeHomeLayout,
+  type HomeLayout,
 } from './role-home.ts';
 
 const action = (name: string, extra: Partial<ActionMeta> = {}): ActionMeta => ({
@@ -182,6 +183,36 @@ describe('stored choice (AC-4/AC-5)', () => {
     expect(parseHomeLayout(null)).toBeUndefined();
   });
 
+  it('AC-4: useHomeLayout shows the default for an unavailable stored view and writes nothing on render', () => {
+    const local = new MemoryStorage();
+    const session = new MemoryStorage();
+    session.data.set(
+      'daifuku.user',
+      JSON.stringify({ id: 'user-a', tenantId: 'tenant-a', defaultCompanyId: 'company-a' }),
+    );
+    vi.stubGlobal('localStorage', local);
+    vi.stubGlobal('sessionStorage', session);
+    try {
+      const key = homeLayoutKey(scope) ?? '';
+      function Probe({ available }: { available: readonly HomeLayout[] }) {
+        return h('output', null, useHomeLayout(available).layout);
+      }
+      const render = (available: readonly HomeLayout[]) => renderToStaticMarkup(h(Probe, { available }));
+      // Nothing stored: the first available view, and the default is not stored.
+      expect(render(['accounting', 'general'])).toBe('<output>accounting</output>');
+      expect(local.writes).toBe(0);
+      expect(local.data.has(key)).toBe(false);
+      // A stored view that is not available now: the default shows and the stored value stays as it was.
+      local.data.set(key, serializeHomeLayout('store'));
+      expect(render(['accounting', 'general'])).toBe('<output>accounting</output>');
+      expect(local.data.get(key)).toBe(serializeHomeLayout('store'));
+      expect(render(['accounting', 'store', 'general'])).toBe('<output>store</output>');
+      expect(local.writes).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('AC-4: reading and falling back to the default never writes; only a pick does', () => {
     const storage = new MemoryStorage();
     const key = homeLayoutKey(scope);
@@ -264,11 +295,37 @@ describe('read plan (AC-7/AC-8)', () => {
       expect(plannedHomeReads(layout, storeManager)).toEqual([]);
   });
 
-  it('AC-8: store and site memberships get a scope note; the whole company gets none', () => {
-    expect(homeScopeNote('stores')).toEqual({ ja: '担当店舗', en: 'Your stores' });
-    expect(homeScopeNote('sites')).toEqual({ ja: '担当拠点', en: 'Your sites' });
-    expect(homeScopeNote('all')).toBeUndefined();
-    expect(homeScopeNote(undefined)).toBeUndefined();
+  it('AC-8: store and site memberships get a scope note per card; the whole company gets none', () => {
+    const stores = { ja: '担当店舗', en: 'Your stores' };
+    const sites = { ja: '担当拠点', en: 'Your sites' };
+    for (const source of ['sales_today', 'missing_reports', 'attendance', 'shift'] as const)
+      expect(homeScopeNote('stores', source)).toEqual(stores);
+    // Under a sites membership the kernel limits site-bound entities by siteIds and store-bound ones by storeIds.
+    expect(homeScopeNote('sites', 'attendance')).toEqual(sites);
+    expect(homeScopeNote('sites', 'shift')).toEqual(sites);
+    expect(homeScopeNote('sites', 'sales_today')).toEqual(stores);
+    expect(homeScopeNote('sites', 'missing_reports')).toEqual(stores);
+    expect(homeScopeNote('all', 'shift')).toBeUndefined();
+    expect(homeScopeNote(undefined, 'sales_today')).toBeUndefined();
+  });
+
+  it('AC-10/AC-1: attendance needs a role that reads the whole site, not only the caller’s own row', () => {
+    const attendance = [entity('workforce_attendance')];
+    // A store manager who also clocks in reads workforce_attendance only as an employee (own row): no card.
+    const clocking = meta(['chain_manager', 'workforce_employee'], [], attendance);
+    expect(plannedHomeReads('store', clocking)).toEqual([]);
+    expect(views(clocking)).toEqual(['general']);
+    // With another store source the view stays, still without the attendance card.
+    const withSales = meta(
+      ['chain_manager', 'workforce_employee'],
+      [action('restaurant_chain.operations_snapshot')],
+      attendance,
+    );
+    expect(plannedHomeReads('store', withSales)).toEqual(['sales_today']);
+    expect(views(withSales)).toEqual(['store', 'general']);
+    // A workforce manager, HR, payroll or admin reads every row of the site (the employee row rule does not apply).
+    for (const role of ['workforce_manager', 'workforce_hr', 'workforce_payroll', 'admin'])
+      expect(plannedHomeReads('store', meta([role, 'workforce_employee'], [], attendance))).toEqual(['attendance']);
   });
 });
 
@@ -392,7 +449,7 @@ describe('failures (AC-9/AC-16/AC-17)', () => {
     if (state.kind !== 'failure') return;
     expect(state.failure).toBe('failed');
     expect(state.retrying).toBe(false);
-    expect(await state.retry()).toBe(true);
+    expect(await state.retry()).toBe('ok');
     // Retry re-reads the failed read only.
     expect(failed.refetch).toHaveBeenCalledTimes(1);
     expect(ok.refetch).not.toHaveBeenCalled();
@@ -400,6 +457,68 @@ describe('failures (AC-9/AC-16/AC-17)', () => {
     expect(cardStateOf('cash', [ok, read('pending')], true)).toEqual({ kind: 'loading' });
     expect(cardStateOf('cash', [ok], false)).toEqual({ kind: 'loading' });
     expect(cardStateOf('cash', [ok, ok], true)).toEqual({ kind: 'ready' });
+  });
+
+  it('AC-17: a refused read makes the card denied whatever the order of its reads, and is never retried', async () => {
+    for (const order of ['500-403', '403-500'] as const) {
+      const broken = read('error');
+      const refused = read('error', { error: err(403, 'PERMISSION_DENIED') });
+      const reads = order === '500-403' ? [broken, refused] : [refused, broken];
+      const state = cardStateOf('cash', reads, true);
+      expect(state).toMatchObject({ kind: 'failure', failure: 'denied' });
+      if (state.kind !== 'failure') continue;
+      expect(isApiError(state.error) && state.error.status).toBe(403);
+      // Nothing is sent again: the card keeps the permission notice (no retry button is drawn for it either).
+      expect(await state.retry()).toBe('denied');
+      expect(broken.refetch).not.toHaveBeenCalled();
+      expect(refused.refetch).not.toHaveBeenCalled();
+    }
+  });
+
+  it('AC-16/AC-17: a retry reports what the card shows next; focus moves to the heading unless it failed again', async () => {
+    const outcome = async (next: { status: 'success' | 'error'; error?: unknown }) => {
+      const state = cardStateOf('ap_aging', [read('error', { refetch: vi.fn(async () => next) })], true);
+      return state.kind === 'failure' ? state.retry() : undefined;
+    };
+    expect(await outcome({ status: 'success' })).toBe('ok');
+    expect(await outcome({ status: 'error', error: err(500, 'INTERNAL') })).toBe('failed');
+    expect(await outcome({ status: 'error', error: err(403, 'PERMISSION_DENIED') })).toBe('denied');
+    // A retry cancelled on the way (the view was left) has nothing to announce.
+    const cancelled = cardStateOf(
+      'ap_aging',
+      [read('error', { refetch: vi.fn(async () => ({ status: 'pending' as const })) })],
+      true,
+    );
+    expect(cancelled.kind === 'failure' ? await cancelled.retry() : 'not a failure').toBeUndefined();
+    const two = cardStateOf(
+      'cash',
+      [
+        read('error', { refetch: vi.fn(async () => ({ status: 'error' as const, error: err(500, 'INTERNAL') })) }),
+        read('error', {
+          refetch: vi.fn(async () => ({ status: 'error' as const, error: err(403, 'PERMISSION_DENIED') })),
+        }),
+      ],
+      true,
+    );
+    expect(two.kind === 'failure' ? await two.retry() : undefined).toBe('denied');
+    expect(retryFeedback('買掛金', 'ok')).toEqual({
+      message: { ja: '買掛金: 取得しました', en: '買掛金: loaded' },
+      focusHeading: true,
+    });
+    expect(retryFeedback('買掛金', 'failed')).toEqual({
+      message: { ja: '買掛金: 再試行しましたが取得できませんでした', en: '買掛金: still could not be loaded' },
+      focusHeading: false,
+    });
+    // The retry button unmounts for a notice, so focus goes to the heading and the notice itself is announced.
+    expect(retryFeedback('現金預金', 'denied')).toEqual({
+      message: {
+        ja: '現金預金: この情報を表示する権限がありません。',
+        en: '現金預金: You do not have permission to view this information.',
+      },
+      focusHeading: true,
+    });
+    expect(retryFeedback('月次締め', 'no_fiscal_period').message.ja).toBe('月次締め: 会計年度がまだありません。');
+    expect(retryFeedback('売掛金', 'too_large')).toMatchObject({ focusHeading: true });
   });
 });
 
@@ -419,7 +538,7 @@ describe('card presentation (AC-16/AC-17/AC-18)', () => {
         failure,
         error: new ApiError(500, { code: 'INTERNAL', message: 'boom', hint: 'retry later' }),
         retrying,
-        retry: async () => true,
+        retry: async () => 'ok' as const,
       },
       children: () => 'BODY',
     });
@@ -568,6 +687,12 @@ describe('shared inbox read (AC-14)', () => {
     const parts = readdirSync(SRC + 'components').filter((name) => name.startsWith('role-home'));
     expect(parts.length).toBeGreaterThanOrEqual(5);
     for (const name of parts) expect(readFileSync(SRC + 'components/' + name, 'utf8')).not.toMatch(/useInbox\(/);
+    // The inbox card has no self-reading wrapper that could be mounted as a second observer.
+    const inboxCard = readFileSync(SRC + 'components/inbox-card.tsx', 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+    expect(inboxCard).not.toMatch(/useInbox\(/);
+    expect(inboxCard).not.toMatch(/export function InboxCard\b/);
   });
 
   it('AC-14/AC-10: the missing-report card is drawn from the shared group and sends no request', () => {

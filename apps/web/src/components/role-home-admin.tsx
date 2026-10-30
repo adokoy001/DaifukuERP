@@ -4,7 +4,7 @@
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useLocale } from '../i18n.tsx';
-import { adminLinks } from '../lib/role-home.ts';
+import { adminLinks, HOME_LAYOUT_LABELS } from '../lib/role-home.ts';
 import { Card } from '../ui/index.ts';
 import { Icon } from './icon.tsx';
 import { useHomeCardEnv } from './role-home-card.tsx';
@@ -18,7 +18,7 @@ export function AdminHome({ general }: { general: ReactNode }) {
       <Card className="role-home-card role-home-admin" aria-labelledby="home-admin-title" data-testid="home-admin">
         <h2 id="home-admin-title">
           <Icon name="settings" size={18} />
-          {t({ ja: '導入・管理', en: 'Setup and administration' })}
+          {t(HOME_LAYOUT_LABELS.admin)}
         </h2>
         <p className="role-home-caption">
           {t({
