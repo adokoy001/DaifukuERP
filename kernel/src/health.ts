@@ -7,7 +7,7 @@ import { and, count, eq, isNotNull, isNull } from 'drizzle-orm';
 import { isAdmin, type Context } from './context.ts';
 import { companyProfileOf, companyProfileSchema, COMPANY_PROFILE_KEY } from './company-profile.ts';
 import { outbox } from './db/system-tables.ts';
-import { DaifukuError, PermissionDenied } from './errors.ts';
+import { DaifukuError, PermissionDenied, safeErrorDiagnostics } from './errors.ts';
 import { label, type Label } from './i18n.ts';
 import { registry, type HealthCheckDef, type HealthOutcome, type HealthStatus } from './registry.ts';
 import { getCompany } from './settings.ts';
@@ -167,8 +167,8 @@ export function healthChecks(extra: readonly HealthCheckDef[] = []): HealthCheck
 
 /**
  * Runs every check for the context's company (AC-1, AC-7). Admin or `settings` with company-wide access only. A check
- * that throws, or returns something that is not an outcome, becomes a `warn` item; its error text is logged, not
- * returned (it may hold internal details).
+ * that throws, or returns something that is not an outcome, becomes a `warn` item. Nothing of the error is returned;
+ * the log gets the error code and, for a non-Daifuku error, only safeErrorDiagnostics (SQLSTATE), never its message.
  */
 export async function runHealthChecks(ctx: Context, extra: readonly HealthCheckDef[] = []): Promise<HealthReport> {
   assertHealthAccess(ctx);
@@ -178,10 +178,14 @@ export async function runHealthChecks(ctx: Context, extra: readonly HealthCheckD
       const outcome = await withSavepoint(ctx, (inner) => def.run(inner));
       items.push(itemOf(def, outcome) ?? failedCheck(def, new Error('invalid outcome')));
     } catch (error) {
+      // Diagnostics only (docs/conventions/errors.md): a raw message may carry SQL and bound values, so a non-Daifuku
+      // error is logged by its SQLSTATE; a DaifukuError's message is safe by convention.
       ctx.log.warn('health check failed', {
         id: def.id,
-        code: error instanceof DaifukuError ? error.code : 'INTERNAL',
-        message: error instanceof Error ? error.message : String(error),
+        requestId: ctx.requestId,
+        ...(error instanceof DaifukuError
+          ? { code: error.code, message: error.message }
+          : { code: 'INTERNAL', ...safeErrorDiagnostics(error) }),
       });
       items.push(failedCheck(def, error));
     }

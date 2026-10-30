@@ -5,13 +5,20 @@
 import { constants } from 'node:fs';
 import { access, lstat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { label, type Database, type HealthCheckDef } from '@daifuku/kernel';
-import { expectedMigrations, DEFAULT_MIGRATIONS_DIRECTORY } from './deployment/readiness.ts';
+import { label, type HealthCheckDef } from '@daifuku/kernel';
+import {
+  expectedMigrations,
+  DEFAULT_MIGRATIONS_DIRECTORY,
+  type AppliedMigrationRecord,
+} from './deployment/readiness.ts';
 import type { IdentityOptions } from './identity/config.ts';
 
 export interface PlatformHealthOptions {
-  /** Owner connection: reads drizzle.__drizzle_migrations, as the readiness probe does. */
-  owner: Database;
+  /**
+   * Applied migration rows, or null when the record table does not exist (deployment/readiness.ts
+   * appliedMigrationsReader). Only this fixed owner read reaches the request path; never an owner Database handle.
+   */
+  appliedMigrations: () => Promise<readonly AppliedMigrationRecord[] | null>;
   identity?: IdentityOptions;
   /** DAIFUKU_STORAGE_DIR of the running API; unset means "not configured". */
   storageDirectory?: string;
@@ -97,10 +104,8 @@ export function platformHealthChecks(opts: PlatformHealthOptions): HealthCheckDe
       order: 70,
       run: async () => {
         const catalog = await expectedMigrations(opts.migrationsDirectory ?? DEFAULT_MIGRATIONS_DIRECTORY);
-        const [table] = await opts.owner.sql<
-          { name: string | null }[]
-        >`select to_regclass('drizzle.__drizzle_migrations')::text as name`;
-        if (!table?.name)
+        const applied = await opts.appliedMigrations();
+        if (!applied)
           return {
             status: 'warn',
             detail: label(
@@ -108,9 +113,6 @@ export function platformHealthChecks(opts: PlatformHealthOptions): HealthCheckDe
               'The database has no migration record (it was not created by setup).',
             ),
           };
-        const applied = await opts.owner.sql<
-          { hash: string; created_at: string }[]
-        >`select hash, created_at::text from drizzle.__drizzle_migrations order by created_at, id`;
         const counts = migrationCounts(catalog, applied);
         if (counts.pending > 0 || counts.unknown > 0)
           return {

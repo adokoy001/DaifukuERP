@@ -1,7 +1,9 @@
-// company-admin (docs/specs/company-admin.md AC-7..AC-11): a tenant administrator creates a second company on
-// /admin/companies, switches to it, fills the company profile (first card of the company tab), and the printed invoice
-// carries it; a user who is not a tenant administrator gets no entry and a refusal; 390px and axe on the new screen.
-// Each run creates a company with a fresh code (companies cannot be deleted) in the isolated E2E database.
+// company-admin (docs/specs/company-admin.md AC-2, AC-3, AC-7..AC-9, AC-11): a tenant administrator creates a second
+// company on /admin/companies, switches to it, fills the company profile (first card of the company tab), and the
+// printed invoice carries it; the keyboard flow keeps focus, a duplicate code is explained on its field, and the company
+// picker re-fetches after create and rename; a user who is not a tenant administrator gets no entry and a refusal; 390px
+// and axe on the new screen. AC-10 (seed rollback) is covered by kernel/test/company-admin.db.test.ts. Each run creates
+// companies with fresh codes (companies cannot be deleted) in the isolated E2E database.
 import { existsSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
@@ -46,6 +48,9 @@ test('company-admin AC-9/AC-8/AC-7: create a second company, switch to it, fill 
   expect(company.code).toBe(code); // upper-cased before sending
   expect(company.seededModules).toEqual(expect.arrayContaining(['accounting', 'tax', 'l10n_jp']));
   await expect(page.getByTestId('company-created')).toContainText(`${name} を作成しました`);
+  // The form is gone; focus is on the result's heading (AC-11).
+  await expect(page.getByTestId('company-created').getByRole('heading', { level: 2 })).toBeFocused();
+  await expect(page.getByTestId('company-switch-setup')).toHaveText('切り替えて会社プロフィールを入力');
   await expect(page.getByTestId(`company-row-${code}`)).toContainText('管理者として所属');
   await page.screenshot({ path: test.info().outputPath('company-created-desktop.png'), fullPage: true });
 
@@ -144,7 +149,80 @@ test('company-admin AC-4/AC-11: rename in the dialog; 390px without horizontal s
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'ja'));
 });
 
-test('company-admin AC-2/AC-10: a company admin who is not a tenant administrator gets no entry and is refused', async ({
+test('company-admin AC-3/AC-9/AC-11: the keyboard flow keeps focus, a duplicate code is explained, and the picker re-fetches', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const { headers } = await qualitySession(request);
+  const suffix = Date.now().toString(36).toUpperCase().slice(-6);
+  const taken = await api<{ code: string; name: string }>(request, headers, '/admin/companies', {
+    code: `E2E-T${suffix}`,
+    name: `使用済み ${suffix}`,
+  });
+  const code = `E2E-K${suffix}`;
+  const name = `E2Eキーボード ${suffix}`;
+  await signInQuality(page);
+  // Fill the company picker's cache first (staleTime 60 s): only the invalidation can make it show a new company.
+  await openScreen(page, '/templates');
+  const picker = page.locator('select#template-company');
+  await expect(picker.locator('option', { hasText: taken.name })).toHaveCount(1);
+
+  await openScreen(page, '/admin/companies');
+  const add = page.getByTestId('company-add');
+  await add.focus();
+  await page.keyboard.press('Enter');
+  const form = page.getByTestId('company-create-form');
+  const codeInput = form.getByLabel('会社コード', { exact: true });
+  await expect(codeInput).toBeFocused();
+  // Cancel returns focus to "Add company"; opening again starts in the code field.
+  await page.getByTestId('company-create-cancel').focus();
+  await page.keyboard.press('Enter');
+  await expect(form).toHaveCount(0);
+  await expect(add).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(codeInput).toBeFocused();
+  // Only JPY until multi-currency business exists: the field is read-only.
+  const currency = form.getByLabel('通貨（ISO 3 文字）', { exact: true });
+  await expect(currency).toHaveValue('JPY');
+  await expect(currency).toHaveAttribute('readonly', '');
+
+  // AC-3: the API refuses a duplicate code; the form explains it in Japanese on the field and focuses it.
+  await page.keyboard.type(taken.code);
+  await form.getByLabel('会社名', { exact: true }).fill(name);
+  await page.getByTestId('company-create-submit').focus();
+  await page.keyboard.press('Enter');
+  await expect(form.getByText('このコードはテナント内の別の会社で使われています')).toBeVisible();
+  await expect(codeInput).toBeFocused();
+  await codeInput.fill(code);
+  await page.getByTestId('company-create-submit').focus();
+  await page.keyboard.press('Enter');
+  const panel = page.getByTestId('company-created');
+  await expect(panel).toContainText(`${name} を作成しました`);
+  await expect(panel.getByRole('heading', { level: 2 })).toBeFocused();
+  // "Stay on the list" returns focus to "Add company".
+  await page.getByTestId('company-created-dismiss').focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toHaveCount(0);
+  await expect(add).toBeFocused();
+
+  // AC-9: back on the template screen without a reload, the picker lists the new company, and then its new name.
+  await openScreen(page, '/templates');
+  await expect(picker.locator('option', { hasText: name })).toHaveCount(1);
+  await openScreen(page, '/admin/companies');
+  await page
+    .getByTestId(`company-row-${code}`)
+    .getByRole('button', { name: `${name} を編集` })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('会社名', { exact: true }).fill(`${name} 改`);
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await openScreen(page, '/templates');
+  await expect(picker.locator('option', { hasText: `${name} 改` })).toHaveCount(1);
+});
+
+test('company-admin AC-2/AC-11: a company admin who is not a tenant administrator gets no entry and is refused', async ({
   page,
   request,
 }) => {

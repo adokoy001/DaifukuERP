@@ -7,6 +7,7 @@ import {
   COMPANY_FIELDS,
   draftErrors,
   EMPTY_DRAFT,
+  firstErrorField,
   issuesByField,
   normalizeDraft,
   SETUP_DESTINATIONS,
@@ -38,18 +39,35 @@ describe('company-admin AC-3: create form rules', () => {
       'currency',
       'name',
     ]);
+    // Only JPY until multi-currency business exists (the kernel's SUPPORTED_COMPANY_CURRENCIES).
+    expect(Object.keys(draftErrors({ code: 'OK', name: 'x', country: 'US', currency: 'USD' }))).toEqual(['currency']);
     // The edit dialog checks only its own fields.
     expect(draftErrors({ code: '', name: 'x', country: 'US', currency: '' }, ['name', 'country'])).toEqual({});
   });
 
-  it('AC-3: API issues go to their field; others to the form', () => {
-    expect(
-      issuesByField([
-        { path: 'code', message: 'already used' },
-        { path: 'name', message: 'too long' },
-        { path: '', message: 'Unrecognized key: "extra"' },
-      ]),
-    ).toEqual({ fields: { code: 'already used', name: 'too long' }, form: ['Unrecognized key: "extra"'] });
+  it('AC-3/AC-11: API issues go to their field, localized when known; others to the form', () => {
+    const issues = [
+      { path: 'code', message: 'already used' },
+      { path: 'name', message: 'too long' },
+      { path: 'currency', message: 'immutable after creation' },
+      { path: '', message: 'Unrecognized key: "extra"' },
+    ];
+    expect(issuesByField(issues, (label) => label.ja)).toEqual({
+      fields: {
+        code: 'このコードはテナント内の別の会社で使われています',
+        name: 'too long',
+        currency: '作成後は変更できません',
+      },
+      form: ['Unrecognized key: "extra"'],
+    });
+    expect(issuesByField(issues, (label) => label.en).fields.code).toBe(
+      'This code is already used by another company of the tenant',
+    );
+  });
+
+  it('AC-3: focus goes to the first field with an error, in form order', () => {
+    expect(firstErrorField({ currency: 'x', name: 'y' })).toBe('name');
+    expect(firstErrorField({})).toBeUndefined();
   });
 });
 
@@ -64,6 +82,13 @@ describe('company-admin AC-9/AC-11: setup links, labels and navigation', () => {
       expect(COMPANY_FIELD_LABEL[field].en).not.toBe('');
     }
     for (const d of SETUP_DESTINATIONS) expect(d.label.ja && d.label.en).toBeTruthy();
+  });
+
+  it('AC-11: each switch button has one whole phrase per language (no joined fragments)', () => {
+    expect(SETUP_DESTINATIONS.map((d) => d.switchLabel)).toEqual([
+      { ja: '切り替えて会社プロフィールを入力', en: 'Switch and fill in the company profile' },
+      { ja: '切り替えて会計年度を確認', en: 'Switch and check the fiscal year' },
+    ]);
   });
 
   it('AC-9: the screen is a tenant-admin entry of the settings and administration workspace', () => {

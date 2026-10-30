@@ -94,6 +94,45 @@ test('setup-health AC-9: a fail is listed first, its link fixes it, and "Check a
   await expect(page.getByTestId('health-live')).not.toHaveText('');
 });
 
+test('setup-health AC-9: a failed "Check again" says so, keeps the previous result and keeps focus', async ({
+  page,
+}) => {
+  await signInQuality(page);
+  await openScreen(page, '/admin/health');
+  const items = page.getByTestId('health-items').locator('li');
+  await expect(items.first()).toBeVisible();
+  const before = await items.count();
+  await page.route('**/meta/health', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      // The API's error envelope (apps/api/src/plugins/errors.ts).
+      body: JSON.stringify({
+        error: {
+          code: 'INTERNAL',
+          message: 'An unexpected server error occurred.',
+          hint: 'Report the request id to the operator so they can investigate.',
+        },
+      }),
+    }),
+  );
+  const recheck = page.getByTestId('health-recheck');
+  await recheck.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('health-live')).toHaveText('再点検できませんでした。前回の結果を表示しています。');
+  const notice = page.getByTestId('health-recheck-error');
+  await expect(notice).toContainText('再点検できませんでした');
+  await expect(notice).toContainText('An unexpected server error occurred.');
+  await expect(items).toHaveCount(before);
+  // aria-disabled while checking: the pressed button keeps focus.
+  await expect(recheck).toBeFocused();
+  await page.unroute('**/meta/health');
+  await page.keyboard.press('Enter');
+  await expect(notice).toHaveCount(0);
+  await expect(page.getByTestId('health-live')).not.toHaveText(/再点検できませんでした/);
+  await expect(recheck).toBeFocused();
+});
+
 test('setup-health AC-10: 390px without horizontal scroll, English, and axe finds no serious issue', async ({
   page,
 }) => {

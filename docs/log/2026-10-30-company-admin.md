@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 会社の追加・編集と会社プロフィール（B2）
 
 - セッション: 完成度向上計画 B2（workflow の作業項目、worktree `wip/company-admin`、基点 `ff65a6c`。同じブランチで続けて B3）／ 担当: agent ／ 対象: [docs/specs/company-admin.md](../specs/company-admin.md)
-- 計測: tokens=null（未計測）, agent_minutes=約75, human_minutes=0, rework_lines=約15（試験の期待値 3 か所: module 名 `l10n_jp`、`YEN` が有効な通貨コードだった、設定の「未設定」表示。型 1 か所）, gate_failures=1（gate:light の unit で `scripts/test/gate.test.ts` の AC-9 が 1 回失敗。今回の変更と無関係の競合で、単独再実行と gate:light の再実行で成功）
+- 計測: tokens=null（未計測）, agent_minutes=約75（＋レビュー修正 約30。B3 と分けた概算）, human_minutes=0, rework_lines=約15（＋レビュー修正で約60。下の「レビュー指摘への対応」）（試験の期待値 3 か所: module 名 `l10n_jp`、`YEN` が有効な通貨コードだった、設定の「未設定」表示。型 1 か所）, gate_failures=1（gate:light の unit で `scripts/test/gate.test.ts` の AC-9 が 1 回失敗。今回の変更と無関係の競合で、単独再実行と gate:light の再実行で成功）
 
 ## 決めたこと（と理由）
 
@@ -39,6 +39,30 @@
 ## 見つけた問題と修正（発見経路つき）
 
 - 試験の期待値の誤り 3 件（module 名は `jp` ではなく `l10n_jp`、`YEN` は形式上有効な通貨コード、既定値の宣言が無い設定の表示は「既定値を使用中」ではなく「未設定」）— 発見: 実測（DB・単体・ブラウザ試験の初回）、修正: 試験の期待値を直した（製品コードの不具合ではない）。
+
+## レビュー指摘への対応（2026-10-30、修正担当 agent。B3 の指摘も同じコミットで対応し、B3 の分は [B3 の作業記録](2026-10-30-setup-health.md) に書いた）
+
+B2 に関わる指摘 9 件をコードで確かめ、8 件を直し、1 件は一部を直した（下）。
+
+- **通貨を JPY だけにした（major）。** 確認: `createCompanySchema` は英大文字 3 文字なら何でも通し、`assertJpySettlement`（`modules/accounting/src/money-contract.ts`）は売上・仕入・入出金の確定で JPY 以外の会社を拒否する。通貨は作成後に変えられず会社も削除できないので、`YEN` などの誤入力で伝票を確定できない会社が残る。spec の「業務は JPY のまま」とも食い違っていた。修正: kernel に `SUPPORTED_COMPANY_CURRENCIES = ['JPY']` を置き、`currency` を `z.enum` にした。画面の通貨欄は読取専用（`JPY`）、説明文は「現在は JPY の会社だけを作成できます（売上・仕入・入出金の伝票の確定が JPY だけに対応しているため）」。AC-3・スコープ外・マニュアル 08・ADR-0029 を合わせて直した。初版の作業記録の「`YEN` は形式上有効な通貨コード」は、この変更で再び無効になった（試験の期待値を `USD`・`YEN` の拒否に変え、`US_1` の作成は `currency: 'JPY'` にした）。
+- **seed の失敗で生の例外の文を返さない（major。重複する minor 1 件も同じ）。** 確認: `seedCompany` が `error.message` を `StateError` の本文に入れており、drizzle の `DrizzleQueryError` の文（`Failed query: … params: …`）がそのまま API の 409 と画面に出る。初版の AC-10 の試験はこの文の存在を確かめていた。修正: 本文は module 名だけの固定の文、`details` は `module` と、kernel のエラーなら `cause`（その本文）、それ以外は `safeErrorDiagnostics`（`category`・`sqlState`）だけ。ログも同じ診断と request id だけ。AC-10 の文言を「失敗した module を返す（SQL・束縛値・生の例外の文は返さない）」に直した。
+- **作成後に会社ピッカーが取り直すことの試験（minor）。** 確認: ブラウザ試験はサーバーの `/auth/companies` を直接呼んでいて、画面の無効化（`['companies']`）を消しても通る作りだった。修正: 新しいブラウザ試験で、先に `/templates` を開いてピッカーの取得結果を持たせ、画面内の移動（再読込なし）で会社を作成・改名してから `/templates` に戻り、`select#template-company` に新しい名前の選択肢があることを確かめる。
+- **作成の流れでフォーカスを失わない（minor と major の 2 件）。** 確認: 「会社を追加」・取消・作成・「このまま一覧に戻る」のたびに、押した要素が消えて焦点が `<body>` に落ちていた。送信ボタンは `disabled` で焦点を失い、作成の知らせは文字を持ったまま現れる `role="status"`（UI 規約は `role="status"` を使わないとしている）。修正: フォームを開いたら会社コードの欄、取消と「一覧に戻る」で「会社を追加」、作成後は結果の枠の見出し（`tabIndex=-1`）へ焦点を移す。見出しへの移動で作成を知らせるので `role="status"` の段落は外した。送信中のボタンは `aria-disabled`（編集のダイアログの保存も同じ）。
+- **サーバーの検証エラーの日英化と焦点（minor）。** 確認: 重複コードの issue（`already used`）が英語のまま欄に出て、焦点も移らず、それ以外の失敗はサーバーの英文と hint だけだった。修正: 既知の issue（`already used`、`immutable after creation`）を日英の文にし（`issuesByField(issues, t)`）、最初の誤りの欄へ焦点を移す（応答が届いた時点では入力欄が送信中で無効なので、次の描画で移す `useFieldFocus`）。それ以外の失敗は「会社を作成できませんでした。何も保存されていません。」→ 説明 → サーバーの文 → 閉じた技術情報（`ErrorDetails`）の順。編集のダイアログも同じ焦点の扱いで、欄に当たらない issue はトースト。
+- **一覧の初回読込を骨格行にした（minor）。** `DataTableShell` の `skeleton` と `loadingLabel` を使い、文字だけの「読み込み中…」を外した。
+- **AC の番号の付け違い（nit）。** 非テナント管理者の試験と画面のコメントを AC-2/AC-11 にし、spec の検証手順 2・4 の AC の範囲を直した（AC-10 は kernel の DB 試験だけで確かめる）。
+- **切替ボタンの英文（nit）。** `SETUP_DESTINATIONS` に言語ごとの完全な文 `switchLabel`（「切り替えて会社プロフィールを入力」／ "Switch and fill in the company profile"）を持たせ、2 つの文字列の連結をやめた。
+- **作業記録の計測行（minor、metrics）。** `docs/metrics/features.jsonl` の 2 行に `tokens: null` と `gateFailures`（B2 は 1、B3 は 0）を足した。
+
+修正の検証（すべて `daifuku_test_w1`・スロット 1）:
+
+- [実測] kernel の DB 試験 `kernel/test/company-admin.db.test.ts`: `USD`・`YEN` の拒否（AC-3）、plain Error の seed の文が応答に出ないこと、SQL エラー（`select $1::text, 1 / 0`）の seed で応答の本文とログに `Failed query`・束縛値・SQL の断片が無く、`details` が `{ module, category: 'database', sqlState: '22012' }` で、会社が残らないこと（AC-10）。API の DB 試験 2 本と合わせ 3 ファイル 60 件成功（23.1 秒）。
+- [実測] 単体 `apps/web/src/lib/companies.test.ts`（issue の日英化、最初の誤りの欄、JPY 以外の拒否、切替ボタンの文）ほか 4 ファイル 39 件成功。
+- [実測] ブラウザ: `company-admin.spec.ts` 4 件と `setup-health.spec.ts` 4 件、計 8 件成功（1.1 分）。新しい試験はキーボードで開く → 取消 → 開く → 重複コード（欄に日本語の説明と焦点）→ 作成（見出しに焦点）→ 一覧に戻る（「会社を追加」に焦点）、通貨欄が読取専用の `JPY`、ピッカーの作成後・改名後の取り直し。作成の試験は見出しの焦点と切替ボタンの文も確かめる。
+- [実測] 試験が無効化を捉えることの確認: `apps/web/src/api/companies.ts` からピッカーの無効化の 1 行を一時的に消して新しい試験だけを実行し、`/templates` の選択肢の確認（`toHaveCount(1)` に対し 0）で失敗することを見てから元に戻した。
+- [実測] `pnpm gate:light`: 成功（1,293 秒＝21.6 分。kernel の変更で DB を全件に昇格: 134 ファイル 882 件 1,052.5 秒、unit 159 ファイル 1,597 件 80.7 秒、format:check・docs・assurance・typecheck（root / api / web）・lint（警告 5 件は既存ファイルの関数行数で、今回の変更のファイルではない）・test:deploy 25.5 秒も成功。負荷 3〜7 の共有コンテナ）
+- [レビュー] `apps/web/src/router.tsx` の AppLayout は `/meta` の失敗で `MetaError` を出すので、導入チェック画面が読込中のまま止まる指摘（B3）は実際には起きない。設定画面と同じ防御として画面にも分岐を足した（B3 の記録）。
+- [未検証] `pnpm gate:full`（統合担当）。スクリーンリーダーの実機での読み上げ（焦点の移動はブラウザ試験で確かめたが、読み上げそのものは確かめていない）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 導入チェック（B3）
 
 - セッション: 完成度向上計画 B3（workflow の作業項目、worktree `wip/company-admin`、B2 のコミット `26d212f` の上）／ 担当: agent ／ 対象: [docs/specs/setup-health.md](../specs/setup-health.md)
-- 計測: tokens=null（未計測）, agent_minutes=約70, human_minutes=0, rework_lines=約10（試験の id 一覧の作り直し、SQL の probe の書き方、表示の微調整）, gate_failures=0
+- 計測: tokens=null（未計測）, agent_minutes=約70（＋レビュー修正 約25）, human_minutes=0, rework_lines=約10（＋レビュー修正で約40。下の「レビュー指摘への対応」）（試験の id 一覧の作り直し、SQL の probe の書き方、表示の微調整）, gate_failures=0
 
 ## 決めたこと（と理由）
 
@@ -38,6 +38,26 @@
 ## 見つけた問題と修正（発見経路つき）
 
 - なし（試験は初回から成功。表示の微調整はスクリーンショットの目視で決めた）。
+
+## レビュー指摘への対応（2026-10-30、修正担当 agent。B2 の指摘と同じコミット）
+
+B3 に関わる指摘 10 件をコードで確かめ、9 件を直し、1 件は前提が違っていた（下）。
+
+- **再点検の失敗を前回の結果として読み上げない（major）。** 確認: TanStack Query の `refetch` は失敗しても前回の `data` を持って解決するので、`result.data` を見て要約を読み上げていた初版は、失敗時に古い要約を新しい結果として読んでいた。修正: `result.isError` で分け、失敗なら「再点検できませんでした。前回の結果を表示しています。」を読み上げ領域に出し、項目の上に同じ文・説明・サーバーの文・閉じた技術情報の通知を出す（前回の項目は残す）。ブラウザ試験で 2 回目の `/meta/health` を 500 にして確かめる。
+- **「再点検」でフォーカスを失わない（minor）。** `disabled` を `aria-disabled` に替え、取得中は押しても何もしない。ブラウザ試験で Enter 後も焦点がボタンにあることを確かめる。
+- **点検の失敗のログに SQL・束縛値を書かない（minor）。** 確認: `runHealthChecks` が `error.message` をログに書いており、DB エラーでは SQL と束縛値（個人情報を含みうる）が残る。修正: ログは点検 id・request id・コードと、kernel のエラーならその文、それ以外は `safeErrorDiagnostics`（SQLSTATE）だけ。spec の「例外の文はログにだけ」と ADR-0027 §7 を直した。DB 試験で、`select $1::text, 1 / 0` の点検のログに `Failed query`・メールアドレス・SQL の断片が無く `sqlState: '22012'` があることを確かめる。
+- **点検に owner の `Database` を渡さない（minor）。** 確認: `system.migrations` の点検が要求の処理の中で owner 接続（BYPASSRLS）を直接使っており、ADR-0004 と、同じブランチの ADR-0029 の文（「owner 接続はログイン照会・移行・setup に限る」）と食い違い、ADR-0027 §7 にも例外として書かれていなかった。修正: `apps/api/src/deployment/readiness.ts` に固定の 2 文だけを実行する `appliedMigrationsReader(owner)` を置き、点検（`PlatformHealthOptions.appliedMigrations`）にはその関数だけを渡す。例外として ADR-0027 §7 に記録し、ADR-0029 の文を会社作成に限る形に直した。app role に表の権限を与える案は、drizzle の移行表の権限管理を変えるため採らなかった。
+- **点検を読取専用のトランザクションで実行する（nit）。** `withRequestContext` の options に `readOnlySnapshot` を足し、`GET /meta/health` で使う。書こうとした点検は DB に拒否されてその項目だけ `warn` になることを DB 試験で確かめる。ADR-0027 §7 に記録した。
+- **`/meta` の失敗の扱い（minor）。** 指摘は「読込中のまま止まる」だったが、AppLayout（`router.tsx`）が `/meta` の失敗で `MetaError` を出し画面を描かないので、実際には止まらない（レビューで確認）。設定画面と同じ防御として、画面にも `MetaError` の分岐を足した（ブラウザ試験は持たない）。
+- **spec の並びの文（nit）。** 「`order` の昇順（表の順）。同じ `order` なら kernel・module・API の順」に直した。
+- **区切りと札の中央寄せ（nit）。** 要約と点検日時の区切りを言語ごと（` ／ `・` · `）にし、札の `justify-center`（効かない）を `text-center` にした。
+
+修正の検証（`daifuku_test_w1`・スロット 1）:
+
+- [実測] API の DB 試験 `apps/api/test/setup-health.db.test.ts`（ログの秘匿、読取専用で書く点検が `warn`・後の点検は ok、`appliedMigrationsReader` を使う移行の点検）を含む 3 ファイル 60 件成功（23.1 秒）。
+- [実測] ブラウザ: `setup-health.spec.ts` 4 件（新しい再点検の失敗の試験を含む）と `company-admin.spec.ts` 4 件、計 8 件成功（1.1 分）。新しい試験の初回は、偽の 500 応答の本文を API の封筒（`{ error: { … } }`）にしていなかった試験側の誤りで失敗し、直して成功した。
+- [実測] `pnpm gate:light`: B2 の記録と同じ実行で成功（1,293 秒＝21.6 分。kernel の変更で DB を全件に昇格: 134 ファイル 882 件 1,052.5 秒、unit 159 ファイル 1,597 件 80.7 秒、format:check・docs・assurance・typecheck（root / api / web）・lint（警告 5 件は既存ファイルの関数行数で、今回の変更のファイルではない）・test:deploy 25.5 秒も成功。負荷 3〜7 の共有コンテナ）。
+- [未検証] `pnpm gate:full`（統合担当）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

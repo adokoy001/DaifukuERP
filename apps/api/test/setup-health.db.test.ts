@@ -33,6 +33,7 @@ import { SALES_ISSUER_KEY, salesIssuerSchema } from '@daifuku/mod-sales';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { appliedMigrationsReader } from '../src/deployment/readiness.ts';
 import { platformHealthChecks, type PlatformHealthOptions } from '../src/health.ts';
 import { modules } from '../src/modules.ts';
 import { buildServer } from '../src/server.ts';
@@ -89,7 +90,12 @@ const status = async (id: string, params: Partial<ContextParams> = {}, extra: re
   item(await report(params, extra), id).status;
 const owner = (query: string) => db.owner.sql.unsafe(query);
 const platform = (opts: Partial<PlatformHealthOptions> = {}) =>
-  platformHealthChecks({ owner: db.owner, storageDirectory: storage, migrationsDirectory: migrations, ...opts });
+  platformHealthChecks({
+    appliedMigrations: appliedMigrationsReader(db.owner),
+    storageDirectory: storage,
+    migrationsDirectory: migrations,
+    ...opts,
+  });
 
 async function writeMigrations(tags: string[]): Promise<{ hash: string; when: string }[]> {
   await mkdir(join(migrations, 'meta'), { recursive: true });
@@ -377,7 +383,10 @@ describe('setup-health AC-6: operations (booleans and counts only)', () => {
     const broken = item(await report({}, platform({ storageDirectory: file })), 'system.storage');
     expect(broken.status).toBe('fail');
     expect(JSON.stringify(broken)).not.toContain(dir);
-    const { storageDirectory: _unset, ...withoutStorage } = { owner: db.owner, storageDirectory: storage };
+    const { storageDirectory: _unset, ...withoutStorage } = {
+      appliedMigrations: appliedMigrationsReader(db.owner),
+      storageDirectory: storage,
+    };
     expect(await status('system.storage', {}, platformHealthChecks(withoutStorage))).toBe('warn');
   });
 });
@@ -409,6 +418,60 @@ describe('setup-health AC-7/AC-8: providers', () => {
     expect(item(r, 'probe.sql').status).toBe('warn');
     expect(item(r, 'probe.after').status).toBe('ok');
     expect(r.items.map((i) => i.id).slice(0, MODULE_IDS.length)).toEqual(MODULE_IDS);
+  });
+
+  it('AC-7: the log of a failing check carries the SQLSTATE only, never the SQL text or its bound values', async () => {
+    const logged: unknown[] = [];
+    const log = {
+      info: () => undefined,
+      warn: (msg: string, data?: Record<string, unknown>) => logged.push({ msg, ...data }),
+      error: (msg: string, data?: Record<string, unknown>) => logged.push({ msg, ...data }),
+    };
+    const email = 'health-person@example.com';
+    const r = await report({ log }, [
+      probe('probe.sql_value', async (ctx) => {
+        await ctx.db.execute(sql`select ${email}::text as who, 1 / 0 as boom`);
+        return { status: 'ok', detail: label('x', 'x') };
+      }),
+    ]);
+    expect(item(r, 'probe.sql_value').status).toBe('warn');
+    expect(logged).toEqual([
+      expect.objectContaining({
+        msg: 'health check failed',
+        id: 'probe.sql_value',
+        code: 'INTERNAL',
+        sqlState: '22012',
+      }),
+    ]);
+    const text = JSON.stringify(logged);
+    for (const leak of ['Failed query', email, '1 / 0']) expect(text).not.toContain(leak);
+    expect(JSON.stringify(r)).not.toContain(email);
+  });
+
+  it('AC-7: in the read-only transaction of GET /meta/health a check that writes fails alone (warn)', async () => {
+    const params: ContextParams = {
+      tenantId: db.tenantId,
+      companyId: db.companyId,
+      actor: { type: 'user', id: db.adminUserId },
+      roles: ['admin'],
+      now: () => OCT,
+    };
+    const r = await withContext(
+      db.app,
+      params,
+      (ctx) =>
+        runHealthChecks(ctx, [
+          probe('probe.writes', async (ctx) => {
+            await ctx.db.execute(sql`update companies set name = name where id = ${ctx.companyId}`);
+            return { status: 'ok', detail: label('書いた', 'Wrote') };
+          }),
+          probe('probe.after_write', async () => ({ status: 'ok', detail: label('動く', 'Works') })),
+        ]),
+      { readOnlySnapshot: true },
+    );
+    expect(item(r, 'probe.writes').status).toBe('warn');
+    expect(item(r, 'probe.after_write').status).toBe('ok');
+    expect(item(r, 'tax.standard_rate').status).toBe('ok');
   });
 
   it('AC-7: a check the caller may not read says so (settings role on fiscal periods)', async () => {

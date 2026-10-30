@@ -1,7 +1,7 @@
 // docs/specs/company-admin.md AC-1..AC-6, AC-10: createCompany / updateCompany / listCompanies on the app-role
 // connection (RLS enforced) with probe modules whose seeds record the Context they ran in.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   auditLog,
   bootstrapTenant,
@@ -26,6 +26,7 @@ import {
   setSetting,
   settingShape,
   StateError,
+  toErrorBody,
   updateCompany,
   users,
   ValidationError,
@@ -62,6 +63,18 @@ const failing: ModuleDef = {
   entities: [],
   seed: async () => {
     throw new Error('synthetic seed failure');
+  },
+};
+// A seed whose database error carries SQL text and a bound value (DrizzleQueryError: "Failed query: ... params: ...").
+const SECRET_PARAM = 'seed-secret-param@example.com';
+const failingSql: ModuleDef = {
+  kind: 'module',
+  name: 'company_admin_failing_sql',
+  label: label('SQL 失敗', 'Failing SQL'),
+  depends: [],
+  entities: [],
+  seed: async (ctx: Context) => {
+    await ctx.db.execute(sql`select ${SECRET_PARAM}::text as email, 1 / 0 as boom`);
   },
 };
 
@@ -145,9 +158,9 @@ describe('company-admin AC-1: createCompany', () => {
   it('AC-1: country and currency can be given; the default seed list is every registered module', async () => {
     seedRuns.length = 0;
     const created = await db.run({}, (ctx) =>
-      createCompany(ctx, { code: 'US_1', name: 'US Branch', country: 'US', currency: 'USD' }),
+      createCompany(ctx, { code: 'US_1', name: 'US Branch', country: 'US', currency: 'JPY' }),
     );
-    expect(created).toMatchObject({ country: 'US', currency: 'USD' });
+    expect(created).toMatchObject({ country: 'US', currency: 'JPY' });
     expect(created.seededModules).toEqual(
       registry
         .allModules()
@@ -185,6 +198,9 @@ describe('company-admin AC-3: code validation', () => {
     [{ code: 'OK', name: '  ' }, 'name'],
     [{ code: 'OK', name: 'x', country: 'jpn' }, 'country'],
     [{ code: 'OK', name: 'x', currency: 'yen' }, 'currency'],
+    // Only JPY until multi-currency business exists: posting refuses other currencies and the currency is immutable.
+    [{ code: 'OK', name: 'x', currency: 'USD' }, 'currency'],
+    [{ code: 'OK', name: 'x', currency: 'YEN' }, 'currency'],
     [{ code: 'OK', name: 'x', extra: true }, ''],
   ])('AC-3: %j is refused with a validation issue on %j and nothing is created', async (input, path) => {
     const before = await companyCount();
@@ -247,13 +263,43 @@ describe('company-admin AC-10: a failing seed rolls everything back', () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(StateError);
     expect((error as StateError).message).toContain('company_admin_failing');
-    expect((error as StateError).message).toContain('synthetic seed failure');
-    expect((error as StateError).details).toMatchObject({ module: 'company_admin_failing' });
+    // The raw text of a plain Error is not public (it may carry internal details).
+    expect(JSON.stringify(toErrorBody(error).body)).not.toContain('synthetic seed failure');
+    expect((error as StateError).details).toMatchObject({ module: 'company_admin_failing', category: 'unexpected' });
     expect(await companyCount()).toBe(before);
     expect((await db.owner.drizzle.select().from(auditLog)).length).toBe(auditBefore);
     expect((await db.owner.sql`select count(*)::int as n from company_admin_item`)[0]?.n).toBe(itemsBefore);
     const rows = await db.owner.drizzle.select().from(companies).where(eq(companies.code, 'ROLLBACK'));
     expect(rows).toEqual([]);
+  });
+
+  it('AC-10: a database error in a seed returns only the module and SQLSTATE, never the SQL or its values', async () => {
+    const before = await companyCount();
+    const logged: unknown[] = [];
+    const log = {
+      info: () => undefined,
+      warn: (msg: string, data?: Record<string, unknown>) => logged.push({ msg, ...data }),
+      error: (msg: string, data?: Record<string, unknown>) => logged.push({ msg, ...data }),
+    };
+    const error = await db
+      .run({ log }, (ctx) =>
+        createCompany(ctx, { code: 'ROLLBACK-SQL', name: '失敗' }, { modules: [probe, failingSql] }),
+      )
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(StateError);
+    const { status, body } = toErrorBody(error);
+    expect(status).toBe(409);
+    expect(body).toMatchObject({
+      code: 'INVALID_STATE',
+      details: { module: 'company_admin_failing_sql', category: 'database', sqlState: '22012' },
+    });
+    for (const text of [JSON.stringify(body), JSON.stringify(logged)]) {
+      expect(text).not.toContain('Failed query');
+      expect(text).not.toContain(SECRET_PARAM);
+      expect(text).not.toContain('1 / 0');
+    }
+    expect(logged).toEqual([expect.objectContaining({ module: 'company_admin_failing_sql', sqlState: '22012' })]);
+    expect(await companyCount()).toBe(before);
   });
 });
 

@@ -89,10 +89,12 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 
 - `registry.registerHealthCheck({ id, label, order?, run })`（`kernel/src/registry.ts`）。`id` は `<module>.<name>` で一意かつ安定（B4 のウィザードが完了条件に使う）。ラベルは日英必須、`order` は整数。module は `defineModule` の `hooks` で登録する（accounting・tax・sales・inventory）。`registry.reset()` で消える。
 - `run(ctx)` は `{ status: 'ok' | 'warn' | 'fail', detail: Label, href? }` を返す。`runHealthChecks(ctx, extra)`（`kernel/src/health.ts`）が、kernel の点検（`company.profile`、`system.outbox`）・登録された点検・呼出し元が渡す `extra`（API の運用点検: メール・OIDC・移行・保存先）を `order` 順に、**呼出し元の Context のまま**それぞれ savepoint の中で実行する。権限のバイパスは作らない。読めない entity の点検は「点検する権限がありません」の `warn` になる。
-- 例外・不正な結果は `warn`（「点検できませんでした」）。例外の文はログにだけ出し、応答には出さない。`href` はアプリ内の相対パス（先頭が `/` 1 つ、`//`・`..`・スキームなし、200 文字以内）だけを残す（`isHealthHref`）。
+- 例外・不正な結果は `warn`（「点検できませんでした」）。応答には例外の何も出さない。ログには点検 id・request id・エラーコードと、kernel のエラー（`DaifukuError`、規約上安全）ならその文、それ以外は `safeErrorDiagnostics`（`category` と `sqlState`）だけを書く。生の例外の文（DB エラーなら SQL と束縛値を含む）はログにも書かない（[エラー規約](../conventions/errors.md)）。`href` はアプリ内の相対パス（先頭が `/` 1 つ、`//`・`..`・スキームなし、200 文字以内）だけを残す（`isHealthHref`）。
 - 呼出しは admin か `settings` ロール、かつ所属が店舗・拠点限定でないこと（`assertHealthAccess`。会社設定と同じ境界）。
 - 規約: 点検の結果には接続先・秘密値・ファイルパス・例外の文を入れない。運用の点検は真偽と件数だけを返す（メール・OIDC は設定の有無、移行は件数、保存先は書込み可否）。
 - API の運用点検を registry に登録せず `extra` で渡すのは、サーバーごとの設定（識別情報・保存先）を process 全体の registry に持ち込まないため（試験で複数のサーバーを作っても重複しない）。
+- **読取専用**: `GET /meta/health` は点検全体を読取専用のトランザクション（`withContext` の `readOnlySnapshot`。repeatable read、read only）で実行する。点検は読むだけ（直すのは各画面）で、書こうとした点検は DB が拒否し、その項目だけが `warn` になる（DB 試験で確認）。
+- **owner 接続の例外（ADR-0004）**: `system.migrations` の件数は readiness と同じく `drizzle.__drizzle_migrations` を読むが、app role にはこの表の権限が無い。そこで要求の処理の中で owner 接続を使う唯一の例外として、`apps/api/src/deployment/readiness.ts` の `appliedMigrationsReader(owner)` が作る関数（固定の 2 文: 表の有無と、適用記録の hash と時刻）だけを運用点検に渡す。点検は owner の `Database` を受け取らず、返すのは件数だけ。app role に権限を与える案は、移行の仕組み（drizzle の表）の権限管理を変えることになるため採らなかった（2026-10-30 レビュー指摘で、owner の `Database` を渡していた初版から変更）。
 
 ## 却下した案
 

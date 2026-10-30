@@ -7,8 +7,10 @@ import { isApiError } from '../api/client.ts';
 import { useHealth } from '../api/health.ts';
 import { useMeta } from '../api/queries.ts';
 import { canEditSettings } from '../api/settings.ts';
+import { ErrorDetails } from '../components/error-details.tsx';
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
+import { describeError } from '../lib/error-view.ts';
 import { formatTimestamp } from '../lib/format.ts';
 import { helpUrl, manualBaseUrl } from '../lib/help.ts';
 import {
@@ -25,6 +27,10 @@ import { Badge, Button, buttonClass, Card, EmptyState, FormSection, PageHeader, 
 import { LoadingView, MetaError } from './status-views.tsx';
 
 const MANUAL_BASE = manualBaseUrl(import.meta.env.VITE_MANUAL_URL);
+const RECHECK_FAILED = {
+  ja: '再点検できませんでした。前回の結果を表示しています。',
+  en: 'Could not check again; showing the previous result.',
+};
 
 function HealthRow({ item }: { item: HealthItem }) {
   const { t } = useLocale();
@@ -35,7 +41,7 @@ function HealthRow({ item }: { item: HealthItem }) {
       data-status={item.status}
       className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-border-subtle py-3 last:border-b-0"
     >
-      <Badge tone={STATUS_TONE[item.status]} className="min-w-16 shrink-0 justify-center" data-testid="health-status">
+      <Badge tone={STATUS_TONE[item.status]} className="min-w-16 shrink-0 text-center" data-testid="health-status">
         {t(STATUS_TEXT[item.status])}
       </Badge>
       <span className="min-w-0 flex-1 basis-56">
@@ -65,6 +71,7 @@ export function HealthPage() {
   const allowed = canEditSettings(meta.data?.roles);
   const health = useHealth(allowed);
   const [announcement, setAnnouncement] = useState('');
+  if (meta.isError && !meta.data) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (!meta.data) return <LoadingView />;
   // AC-10: the navigation hides the screen; a direct URL explains instead of failing. A store- or site-scoped
   // membership has the role but the API refuses it (403): the same explanation.
@@ -85,12 +92,16 @@ export function HealthPage() {
     );
   if (health.isError && !health.data) return <MetaError error={health.error} retry={() => void health.refetch()} />;
   const items = health.data ? sortHealthItems(health.data.items) : [];
+  // A failed refetch resolves with the previous data: announce the failure, never the old summary as a new result.
   const recheck = () => {
+    if (health.isFetching) return;
     setAnnouncement('');
     void health.refetch().then((result) => {
-      if (result.data) setAnnouncement(t(summaryText(result.data.items)));
+      if (result.isError) setAnnouncement(t(RECHECK_FAILED));
+      else if (result.data) setAnnouncement(t(summaryText(result.data.items)));
     });
   };
+  const staleFailure = health.isError && health.data ? describeError(health.error) : null;
   return (
     <div className="workspace-page flex flex-col gap-4" data-testid="health-page">
       <PageHeader
@@ -102,7 +113,8 @@ export function HealthPage() {
         })}
         icon={<Icon name="check" size={24} />}
         actions={
-          <Button onClick={recheck} disabled={health.isFetching} data-testid="health-recheck">
+          // aria-disabled, not disabled, while checking: a natively disabled button drops keyboard focus to <body>.
+          <Button onClick={recheck} aria-disabled={health.isFetching || undefined} data-testid="health-recheck">
             {health.isFetching ? t({ ja: '点検中…', en: 'Checking…' }) : t({ ja: '再点検', en: 'Check again' })}
           </Button>
         }
@@ -110,13 +122,21 @@ export function HealthPage() {
       <p className="sr-only" aria-live="polite" data-testid="health-live">
         {health.isFetching ? t(S.loading) : announcement}
       </p>
+      {staleFailure ? (
+        <div className="ui-notice ui-notice-danger" data-testid="health-recheck-error">
+          <p className="font-semibold">{t(RECHECK_FAILED)}</p>
+          {staleFailure.explanation ? <p>{t(staleFailure.explanation)}</p> : null}
+          <p>{staleFailure.message}</p>
+          <ErrorDetails view={staleFailure} />
+        </div>
+      ) : null}
       <Card>
         <FormSection
           landmark
           title={t({ ja: '点検結果', en: 'Results' })}
           description={
             health.data
-              ? `${t(summaryText(health.data.items))} ／ ${t({ ja: '点検日時', en: 'Checked at' })} ${formatTimestamp(health.data.checkedAt, locale)}`
+              ? `${t(summaryText(health.data.items))}${t({ ja: ' ／ ', en: ' · ' })}${t({ ja: '点検日時', en: 'Checked at' })} ${formatTimestamp(health.data.checkedAt, locale)}`
               : undefined
           }
         >

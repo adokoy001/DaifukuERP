@@ -5,7 +5,11 @@ import type { Label } from '../api/types.ts';
 
 export const COMPANY_CODE = /^[A-Z0-9_-]{1,20}$/;
 const COUNTRY = /^[A-Z]{2}$/;
-const CURRENCY = /^[A-Z]{3}$/;
+/**
+ * The kernel's SUPPORTED_COMPANY_CURRENCIES: posting refuses a company whose currency is not JPY and the currency is
+ * immutable, so the form offers JPY only (read-only field) until multi-currency business exists.
+ */
+export const SUPPORTED_CURRENCIES: readonly string[] = ['JPY'];
 
 export interface CompanyDraft {
   code: string;
@@ -29,7 +33,7 @@ const MESSAGES: Record<CompanyField, Label> = {
   code: { ja: '英大文字・数字・_・- で 1〜20 文字にしてください', en: 'Use 1–20 of A–Z, 0–9, _ and -' },
   name: { ja: '会社名を入力してください', en: 'Enter the company name' },
   country: { ja: '国は英大文字 2 文字（例: JP）です', en: 'Country is 2 capital letters (e.g. JP)' },
-  currency: { ja: '通貨は英大文字 3 文字（例: JPY）です', en: 'Currency is 3 capital letters (e.g. JPY)' },
+  currency: { ja: '通貨は現在 JPY だけを選べます', en: 'Only JPY is available for now' },
 };
 
 /** Trims every field and upper-cases the code, country and currency (the API stores them upper-case). */
@@ -52,14 +56,31 @@ export function draftErrors(
     code: COMPANY_CODE.test(draft.code),
     name: draft.name.length > 0 && draft.name.length <= 200,
     country: COUNTRY.test(draft.country),
-    currency: CURRENCY.test(draft.currency),
+    currency: SUPPORTED_CURRENCIES.includes(draft.currency),
   };
   for (const field of fields) if (!ok[field]) errors[field] = MESSAGES[field];
   return errors;
 }
 
-/** The API's validation issues by form field; an issue on another path (or none) goes to the form-level list. */
-export function issuesByField(issues: readonly { path: string; message: string }[]): {
+/** Localized text of the API issues the form can meet (kernel/src/company-admin.ts); other messages stay as sent. */
+const KNOWN_ISSUES: Partial<Record<CompanyField, Record<string, Label>>> = {
+  code: {
+    'already used': {
+      ja: 'このコードはテナント内の別の会社で使われています',
+      en: 'This code is already used by another company of the tenant',
+    },
+  },
+};
+const IMMUTABLE_ISSUE: Label = { ja: '作成後は変更できません', en: 'It cannot be changed after creation' };
+
+/**
+ * The API's validation issues by form field, localized where the message is known (`t` picks the language); an issue
+ * on another path (or none) goes to the form-level list.
+ */
+export function issuesByField(
+  issues: readonly { path: string; message: string }[],
+  t: (label: Label) => string,
+): {
   fields: Partial<Record<CompanyField, string>>;
   form: string[];
 } {
@@ -67,11 +88,20 @@ export function issuesByField(issues: readonly { path: string; message: string }
   const form: string[] = [];
   for (const issue of issues) {
     const head = issue.path.split('.')[0] as CompanyField;
-    if ((COMPANY_FIELDS as readonly string[]).includes(head))
-      fields[head] = fields[head] ? `${fields[head]}; ${issue.message}` : issue.message;
-    else form.push(issue.path ? `${issue.path}: ${issue.message}` : issue.message);
+    if ((COMPANY_FIELDS as readonly string[]).includes(head)) {
+      const known =
+        KNOWN_ISSUES[head]?.[issue.message] ??
+        (issue.message === 'immutable after creation' ? IMMUTABLE_ISSUE : undefined);
+      const message = known ? t(known) : issue.message;
+      fields[head] = fields[head] ? `${fields[head]}; ${message}` : message;
+    } else form.push(issue.path ? `${issue.path}: ${issue.message}` : issue.message);
   }
   return { fields, form };
+}
+
+/** The first field with an error, in form order (the field focus moves to). */
+export function firstErrorField(errors: Partial<Record<CompanyField, unknown>>): CompanyField | undefined {
+  return COMPANY_FIELDS.find((field) => errors[field] !== undefined);
 }
 
 /**
@@ -79,7 +109,15 @@ export function issuesByField(issues: readonly { path: string; message: string }
  * docs/specs/setup-wizard.md) will replace these with /setup; until then they open the company tab of the settings
  * console and the fiscal year list.
  */
-export const SETUP_DESTINATIONS: readonly { href: string; label: Label }[] = [
-  { href: '/settings?tab=company', label: { ja: '会社プロフィールを入力', en: 'Fill in the company profile' } },
-  { href: '/e/fiscal_year', label: { ja: '会計年度を確認', en: 'Check the fiscal year' } },
+export const SETUP_DESTINATIONS: readonly { href: string; label: Label; switchLabel: Label }[] = [
+  {
+    href: '/settings?tab=company',
+    label: { ja: '会社プロフィールを入力', en: 'Fill in the company profile' },
+    switchLabel: { ja: '切り替えて会社プロフィールを入力', en: 'Switch and fill in the company profile' },
+  },
+  {
+    href: '/e/fiscal_year',
+    label: { ja: '会計年度を確認', en: 'Check the fiscal year' },
+    switchLabel: { ja: '切り替えて会計年度を確認', en: 'Switch and check the fiscal year' },
+  },
 ];

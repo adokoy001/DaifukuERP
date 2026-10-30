@@ -19,12 +19,15 @@ export function parse<T extends z.ZodType>(schema: T, value: unknown, part: stri
   throw new ValidationError(`invalid ${part}`, issues);
 }
 
-/** `snapshot`: one repeatable-read snapshot for every statement of the request (see withContext). */
+/**
+ * `snapshot`: one repeatable-read snapshot for every statement of the request; `readOnlySnapshot`: the same, in a
+ * read-only transaction (see withContext).
+ */
 export function withRequestContext<T>(
   db: Database,
   req: FastifyRequest,
   fn: (ctx: Context) => Promise<T>,
-  options: { snapshot?: boolean } = {},
+  options: { snapshot?: boolean; readOnlySnapshot?: boolean } = {},
 ): Promise<T> {
   return withContext(db, req.contextParams(), fn, options);
 }

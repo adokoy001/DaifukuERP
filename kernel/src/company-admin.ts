@@ -11,13 +11,19 @@ import type { Context } from './context.ts';
 import { makeContext, systemParams } from './db/client.ts';
 import { companies, companyMemberships, users } from './db/system-tables.ts';
 import type { ModuleDef } from './dsl/defs.ts';
-import { DaifukuError, NotFound, StateError, ValidationError } from './errors.ts';
+import { DaifukuError, NotFound, safeErrorDiagnostics, StateError, ValidationError } from './errors.ts';
 import { newId } from './ids.ts';
 import { registry } from './registry.ts';
 
 /** Company code: upper-case letters, digits, `_` and `-`, 1 to 20 characters (AC-3). */
 export const COMPANY_CODE = /^[A-Z0-9_-]{1,20}$/;
 const country = z.string().regex(/^[A-Z]{2}$/, 'ISO 3166-1 alpha-2 (e.g. JP)');
+/**
+ * Currencies a new company may have. Sales, purchase and payment submit refuse a company whose currency is not JPY
+ * (modules/accounting money-contract), and the currency is immutable, so a company created with another currency could
+ * never post. Until multi-currency business exists only JPY is accepted (docs/specs/company-admin.md AC-3).
+ */
+export const SUPPORTED_COMPANY_CURRENCIES = ['JPY'] as const;
 
 export const createCompanySchema = z
   .object({
@@ -25,8 +31,7 @@ export const createCompanySchema = z
     name: z.string().trim().min(1).max(200),
     country: country.default('JP'),
     currency: z
-      .string()
-      .regex(/^[A-Z]{3}$/, 'ISO 4217 (e.g. JPY)')
+      .enum(SUPPORTED_COMPANY_CURRENCIES, { error: 'only JPY is supported until multi-currency business exists' })
       .default('JPY'),
   })
   .strict();
@@ -161,11 +166,14 @@ async function seedCompany(ctx: Context, companyId: string, modules: readonly Mo
     try {
       await module.seed(seedCtx);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      // The public error names the module only: a raw message may carry SQL and bound values (DrizzleQueryError), so
+      // a non-Daifuku cause contributes its SQLSTATE alone (docs/conventions/errors.md, safeErrorDiagnostics).
+      const diagnostics = error instanceof DaifukuError ? { cause: error.toBody() } : safeErrorDiagnostics(error);
+      ctx.log.warn('company seed failed', { module: module.name, requestId: ctx.requestId, ...diagnostics });
       throw new StateError(
-        `Initial data of module "${module.name}" could not be created: ${message}`,
-        'Nothing was created (the company, the membership and every seed were rolled back). Fix the cause and create the company again.',
-        { module: module.name, ...(error instanceof DaifukuError ? { cause: error.toBody() } : {}) },
+        `Initial data of module "${module.name}" could not be created`,
+        'Nothing was created (the company, the membership and every seed were rolled back). Report the request id to the operator, fix the cause and create the company again.',
+        { module: module.name, ...diagnostics },
       );
     }
     seeded.push(module.name);

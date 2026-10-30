@@ -264,6 +264,7 @@ export {
   createCompany,
   createCompanySchema,
   listCompanies,
+  SUPPORTED_COMPANY_CURRENCIES,
   updateCompany,
   updateCompanySchema,
   type AdminCompany,

@@ -5,6 +5,7 @@ import { newId, type Database } from '@daifuku/kernel';
 import fastifyCors from '@fastify/cors';
 import fastify, { LogController, type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { validatorCompiler } from 'fastify-type-provider-zod';
+import { appliedMigrationsReader } from './deployment/readiness.ts';
 import { validateIdentityOptions, type IdentityOptions } from './identity/config.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { registerErrorHandler } from './plugins/errors.ts';
@@ -84,7 +85,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerHealthRoutes(server, {
     db: opts.app,
     platform: {
-      owner: opts.owner,
+      appliedMigrations: appliedMigrationsReader(opts.owner),
       ...(opts.identity ? { identity: opts.identity } : {}),
       ...(opts.storageDirectory ? { storageDirectory: opts.storageDirectory } : {}),
       ...(opts.migrationsDirectory ? { migrationsDirectory: opts.migrationsDirectory } : {}),

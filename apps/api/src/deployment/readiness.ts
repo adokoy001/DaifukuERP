@@ -47,6 +47,28 @@ export async function expectedMigrations(directory: string) {
     }),
   );
 }
+/** An applied row of drizzle.__drizzle_migrations: its hash and timestamp, nothing else. */
+export interface AppliedMigrationRecord {
+  hash: string;
+  created_at: string;
+}
+/**
+ * The one owner-connection read the setup health item `system.migrations` makes inside GET /meta/health (ADR-0027 §7,
+ * a recorded exception to ADR-0004): a fixed statement on drizzle.__drizzle_migrations returning the applied hashes and
+ * timestamps, or null when the table does not exist. The health check receives this function, never the owner Database.
+ */
+export function appliedMigrationsReader(owner: Database): () => Promise<AppliedMigrationRecord[] | null> {
+  return async () => {
+    const [table] = await owner.sql<
+      { name: string | null }[]
+    >`select to_regclass('drizzle.__drizzle_migrations')::text as name`;
+    if (!table?.name) return null;
+    const rows = await owner.sql<
+      AppliedMigrationRecord[]
+    >`select hash, created_at::text from drizzle.__drizzle_migrations order by created_at, id`;
+    return rows.map((row) => ({ hash: row.hash, created_at: row.created_at }));
+  };
+}
 async function query<T>(pending: PromiseLike<T> & { cancel(): void }, milliseconds: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

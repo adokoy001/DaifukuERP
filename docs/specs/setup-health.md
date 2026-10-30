@@ -37,7 +37,7 @@
 | `system.storage`           | api        | 書き込める／未作成（最初の添付で作る）         | 保存先が未設定                                                 | 書き込めない               | —                                                                      |
 | `system.outbox`            | kernel     | 失敗なし（未配送の件数を表示）                 | 配送に失敗した行がある                                         | —                          | —                                                                      |
 
-並びは `order`（10 刻み）で、kernel・module・API の順に並ぶ。module が足す点検は `<module>.<name>` の id で登録する。
+並びは `order` の昇順（表の順）。同じ `order` なら kernel・module・API の順。module が足す点検は `<module>.<name>` の id で登録する。
 
 ## 関係するファイル・インターフェース（名指し）
 
@@ -60,18 +60,20 @@
 ## 検証手順（E2E、実行して記録する）
 
 1. `pnpm gate:light`
-2. DB: 各点検の ok / warn / fail を作る（期間を締める・日付を進める、税率の有効期間を外す、発行者とプロフィールを空にする・定義に合わない値にする、倉庫コードを不一致にする、物品を無効にする、outbox に失敗行を入れる、移行一覧と適用記録をずらす、保存先をファイルにする）、provider の例外と SQL エラー、権限不足の項目、店舗・拠点限定と sales の拒否、応答に接続文字列や秘密値・パスが含まれないこと（AC-1〜AC-8）— `apps/api/test/setup-health.db.test.ts`
+2. DB: 各点検の ok / warn / fail を作る（期間を締める・日付を進める、税率の有効期間を外す、発行者とプロフィールを空にする・定義に合わない値にする、倉庫コードを不一致にする、物品を無効にする、outbox に失敗行を入れる、移行一覧と適用記録をずらす、保存先をファイルにする）、provider の例外と SQL エラー（ログに SQL・束縛値が出ないこと）、読取専用のトランザクションで書く点検が `warn` になること、権限不足の項目、店舗・拠点限定と sales の拒否、応答に接続文字列や秘密値・パスが含まれないこと（AC-1〜AC-8）— `apps/api/test/setup-health.db.test.ts`
 3. 単体: 登録 port と並び・href の判定（`kernel/test/health.test.ts`）、移行件数と保存先の状態（`apps/api/test/setup-health.test.ts`）、画面の並び・表示・リンク（`apps/web/src/lib/health.test.ts`）
-4. ブラウザ: fail を含む状態で画面を開き、リンクから直して再点検で ok になる、390px、英語、axe、権限の無い利用者（AC-9、AC-10）— `apps/web/e2e/setup-health.spec.ts`
+4. ブラウザ: fail を含む状態で画面を開き、リンクから直して再点検で ok になる、再点検の失敗（前回の結果を残し失敗を知らせる、ボタンのフォーカスを保つ）、390px、英語、axe、権限の無い利用者（AC-9、AC-10）— `apps/web/e2e/setup-health.spec.ts`
 5. `pnpm gate:full`（統合担当が実行）
 
 ## 実装時の確認と変更（2026-10-30）
 
 - **登録 port**: `registry.registerHealthCheck({ id, label, order?, run })`。module は `defineModule` の `hooks` で登録する（設定の登録と同じ場所）。kernel 自身の点検（`company.profile`、`system.outbox`）は `KERNEL_HEALTH_CHECKS` として実行時に必ず含め、API の運用点検は `runHealthChecks(ctx, extra)` の `extra` で渡す（サーバーごとの設定を process 全体の registry に登録しないため）。API は module の内部を import しない。
 - **権限**: 各点検は呼出し元の Context のまま実行する（バイパスなし）。settings ロールだけの利用者は会計期間・倉庫・品目を読めないので、その項目は「点検する権限がありません」の `warn` になる（税率は settings も読める）。
-- **savepoint**: 点検ごとに `withSavepoint` で囲み、SQL エラーでも要求のトランザクションを使い続けられるようにした（DB 試験で確認）。例外の文はログにだけ書き、応答には出さない。
+- **savepoint**: 点検ごとに `withSavepoint` で囲み、SQL エラーでも要求のトランザクションを使い続けられるようにした（DB 試験で確認）。応答には例外の何も出さない。ログには点検 id・request id・エラーコードと、kernel のエラーならその文、それ以外は `safeErrorDiagnostics`（SQLSTATE）だけを書き、生の例外の文（SQL と束縛値を含みうる）は書かない（2026-10-30 レビュー指摘で変更。DB 試験で確認）。
+- **読取専用のトランザクション**: `GET /meta/health` は `withRequestContext(..., { readOnlySnapshot: true })` で実行する。書こうとした点検は DB が拒否し、その項目だけが `warn` になる（DB 試験で確認）。
 - **在庫の倉庫**: 計画は「既定倉庫コードに一致する倉庫が無い場合を fail」だったが、伝票の確定（`resolveDefaultWarehouse`）は既定に指定した倉庫へ代わるので、両方無いときだけ `fail`、代わるときは `warn` にした。
-- **移行の件数**: readiness と同じ方法（`meta/_journal.json` と各 SQL の sha256、`drizzle.__drizzle_migrations` を owner 接続で読む）。返すのは件数だけ。適用記録の表が無い DB（試験用に直接作った DB）は `warn`。
+- **移行の件数**: readiness と同じ方法（`meta/_journal.json` と各 SQL の sha256、`drizzle.__drizzle_migrations` を owner 接続で読む）。返すのは件数だけ。適用記録の表が無い DB（試験用に直接作った DB）は `warn`。owner 接続は要求の処理の中で使う例外になるため、点検には owner の `Database` を渡さず、固定の読取だけを行う関数（`apps/api/src/deployment/readiness.ts` の `appliedMigrationsReader`）を渡す（ADR-0027 §7 に例外として記録。2026-10-30 レビュー指摘で変更）。
+- **再点検の失敗**: 再点検の取得に失敗しても TanStack Query は前回の結果を残すので、画面は前回の結果を表示したまま「再点検できませんでした。前回の結果を表示しています。」を読み上げ領域と項目の上の通知（技術情報は閉じた `<details>`）に出す。「再点検」ボタンは取得中も `aria-disabled` で、押したボタンからフォーカスを失わせない（2026-10-30 レビュー指摘で変更）。
 - **保存先**: 書込み可なら `ok`、まだ無い（親に書ける）なら `ok`（最初の添付で作られる）、ファイル・書込み不可なら `fail`、API に保存先が渡されていなければ `warn`。readiness の「本人だけが読める権限」の検査は readiness 側に残し、ここでは書込み可否だけを見る。
 - **outbox**: 配送の worker（F1）がまだ無いので、未配送の件数だけでは `warn` にしない。`last_error` のある未配送行があれば `warn`。
 - **OIDC**: 任意機能なので、未設定でも `ok`（「パスワードでログイン」と表示）。

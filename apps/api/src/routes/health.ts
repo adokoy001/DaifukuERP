@@ -19,6 +19,8 @@ export function registerHealthRoutes(
         summary: 'Setup health of the current company: status, label, detail and fix link per item (admin or settings)',
       },
     },
-    (req) => withRequestContext(opts.db, req, (ctx) => runHealthChecks(ctx, platform)),
+    // Checks only read (the spec puts fixing out of scope): a read-only transaction makes a check that tries to write
+    // fail, and runHealthChecks reports it as a warn item (ADR-0027 §7).
+    (req) => withRequestContext(opts.db, req, (ctx) => runHealthChecks(ctx, platform), { readOnlySnapshot: true }),
   );
 }
