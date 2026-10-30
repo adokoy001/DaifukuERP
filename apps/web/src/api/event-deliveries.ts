@@ -43,11 +43,18 @@ export function useRetryDelivery() {
   });
 }
 
+/**
+ * Issues a secret for the URL the administrator confirmed (AC-14): the server refuses with 409 when the endpoint's URL
+ * changed meanwhile. Either way the endpoint list is fetched again, so the screen shows the current URL.
+ */
 export function useIssueSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (endpointId: string) =>
-      request<IssuedSecret>(`/admin/webhooks/${encodeURIComponent(endpointId)}/secret`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: webhooksKey }),
+    mutationFn: ({ endpointId, url }: { endpointId: string; url: string }) =>
+      request<IssuedSecret>(`/admin/webhooks/${encodeURIComponent(endpointId)}/secret`, {
+        method: 'POST',
+        body: { url },
+      }),
+    onSettled: () => qc.invalidateQueries({ queryKey: webhooksKey }),
   });
 }

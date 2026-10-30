@@ -62,6 +62,27 @@ function add<T extends object>(into: T, from: T): void {
     if (typeof value === 'number') target[key] = (target[key] ?? 0) + value;
 }
 
+/** True when the tick changed something: any counter except the tenant count and the rows this process skipped. */
+export function tickDidWork(result: TickResult): boolean {
+  const { sent, failed, dead, cancelled } = result.sends;
+  const sum = (counts: Record<string, number>) => Object.values(counts).reduce((total, n) => total + n, 0);
+  return (
+    result.failedTenants + result.purged + sent + failed + dead + cancelled + sum(result.events) + sum(result.inbox) > 0
+  );
+}
+
+const IDLE_LOG_MS = 3_600_000;
+
+/**
+ * Whether the periodic worker logs a tick: always when it did work; when it only found rows this process cannot send
+ * (no encryption key / SMTP here) at most once an hour, so a tenant that stays due does not log every interval.
+ */
+export function shouldLogTick(result: TickResult, lastIdleLogAt: number | null, now: number): boolean {
+  if (tickDidWork(result)) return true;
+  if (result.sends.skipped === 0) return false;
+  return lastIdleLogAt === null || now - lastIdleLogAt >= IDLE_LOG_MS;
+}
+
 /** CLI exit code (AC-3): 1 when a tenant failed, else 2 when due rows could not be sent for lack of configuration, else 0. */
 export function tickExitCode(result: TickResult): 0 | 1 | 2 {
   if (result.failedTenants > 0) return 1;
@@ -130,6 +151,7 @@ export function startEventWorker(deps: EventWorkerDeps): EventWorker {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | null = null;
+  let lastIdleLogAt: number | null = null;
   const schedule = () => {
     if (stopped) return;
     timer = setTimeout(tick, deps.config.intervalMs);
@@ -137,7 +159,10 @@ export function startEventWorker(deps: EventWorkerDeps): EventWorker {
   const tick = () => {
     running = runEventTick(deps, controller.signal)
       .then((result) => {
-        if (result.tenants > 0) log.info('event delivery tick', { ...result });
+        const at = Date.now();
+        if (!shouldLogTick(result, lastIdleLogAt, at)) return;
+        if (!tickDidWork(result)) lastIdleLogAt = at;
+        log.info('event delivery tick', { ...result });
       })
       .catch((error: unknown) => log.error('event delivery tick failed', safeDiagnosticFields(error)))
       .finally(() => {

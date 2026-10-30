@@ -1,10 +1,11 @@
 // Inbox mail switch on /inbox (docs/specs/event-delivery.md AC-18, AC-26): "Email me when my to-dos increase". When the
 // company has not enabled inbox mail or the server cannot send mail, the checkbox is disabled and the reason is tied to
-// it with aria-describedby. Turning it off always works.
+// it with aria-describedby. Turning it off always works. A failed read says so with a retry instead of hiding the switch.
 import { useId } from 'react';
 import { useInboxNotification, useSetInboxNotification } from '../api/notifications.ts';
 import { useLocale } from '../i18n.tsx';
 import { notificationReason } from '../lib/event-deliveries.ts';
+import { Button } from '../ui/index.ts';
 import { useToast } from './toast.tsx';
 
 export function InboxNotificationToggle() {
@@ -15,6 +16,17 @@ export function InboxNotificationToggle() {
   const helpId = `${id}-help`;
   const current = useInboxNotification();
   const update = useSetInboxNotification();
+  if (current.isError && !current.data)
+    return (
+      <div className="inbox-notification flex flex-wrap items-center gap-2" data-testid="inbox-notification-error">
+        <p className="text-xs text-text-secondary">
+          {t({ ja: 'メール通知の設定を読み込めませんでした。', en: 'Could not load the inbox mail setting.' })}
+        </p>
+        <Button size="sm" variant="default" onClick={() => void current.refetch()} disabled={current.isFetching}>
+          {t({ ja: '再読み込み', en: 'Retry' })}
+        </Button>
+      </div>
+    );
   if (!current.data) return null;
   const value = current.data;
   const reason = notificationReason(value);
@@ -46,8 +58,8 @@ export function InboxNotificationToggle() {
       </label>
       <p id={helpId} className="text-xs text-text-muted">
         {t({
-          ja: '15 分ごとに件数を確かめ、増えたときだけ送ります。件数には画面に出ない項目が含まれることがあります。',
-          en: 'Counts are checked about every 15 minutes and mailed only when they increase. The count may include items this screen does not show.',
+          ja: '件数を定期的に（既定では約 15 分ごとに）確かめ、増えたときだけ送ります。件数には画面に出ない項目が含まれることがあります。',
+          en: 'Counts are checked periodically (about every 15 minutes by default) and mailed only when they increase. The count may include items this screen does not show.',
         })}
       </p>
       {reason ? (

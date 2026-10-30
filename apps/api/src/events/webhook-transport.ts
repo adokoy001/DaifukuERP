@@ -2,8 +2,10 @@
 // any address that is not globally routable unicast (IPv4-mapped IPv6 is checked as IPv4; NAT64, 6to4, Teredo and the
 // documentation ranges are refused outright), then connects to the checked address only (no second lookup), with TLS
 // verification, a 10 s limit, no redirects and at most 64 KiB of the response read and discarded. Loopback URLs connect
-// to loopback only, and only when EVENT_WEBHOOK_ALLOW_LOOPBACK is on (development and test).
-import { lookup } from 'node:dns/promises';
+// to loopback only, and only when EVENT_WEBHOOK_ALLOW_LOOPBACK is on (development and test). The 10 s limit and the
+// shutdown abort cover name resolution too: DNS names are resolved with c-ares (no libuv threadpool thread is held by a
+// slow DNS server) and the query is cancelled when the attempt times out or the process stops.
+import { lookup, Resolver } from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
@@ -132,8 +134,11 @@ const TLS_ERROR = /CERT|SSL|TLS|SELF_SIGNED|UNABLE_TO_VERIFY|HOSTNAME|ALTNAME/i;
 
 export interface WebhookTransportOptions {
   allowLoopback: boolean;
-  /** Name resolution (injected by tests); defaults to the system resolver with every address. */
-  resolve?: (hostname: string) => Promise<ResolvedAddress[]>;
+  /**
+   * Name resolution (injected by tests). The default resolves DNS names with c-ares (A and AAAA, every address) and
+   * cancels the query on `signal`; `localhost` (a development loopback URL) goes through the system resolver.
+   */
+  resolve?: (hostname: string, signal: AbortSignal) => Promise<ResolvedAddress[]>;
   timeoutMs?: number;
   maxResponseBytes?: number;
   /** Extra TLS trust for tests; production uses the system store. */
@@ -141,13 +146,53 @@ export interface WebhookTransportOptions {
 }
 
 const blocked: WebhookOutcome = { ok: false, code: 'blocked_destination' };
+const timedOut: WebhookOutcome = { ok: false, code: 'timeout' };
+
+/** A/AAAA lookup with c-ares: bounded by the attempt's signal, cancelled on abort, no threadpool thread. */
+async function resolveDns(hostname: string, signal: AbortSignal, timeoutMs: number): Promise<ResolvedAddress[]> {
+  if (hostname.toLowerCase() === 'localhost')
+    return (await lookup(hostname, { all: true, verbatim: true })).map((a) => ({
+      address: a.address,
+      family: a.family,
+    }));
+  const resolver = new Resolver({ timeout: Math.max(100, Math.floor(timeoutMs / 2)), tries: 2 });
+  const cancel = () => resolver.cancel();
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const [v4, v6] = await Promise.allSettled([resolver.resolve4(hostname), resolver.resolve6(hostname)]);
+    const addresses = [
+      ...(v4.status === 'fulfilled' ? v4.value.map((address) => ({ address, family: 4 })) : []),
+      ...(v6.status === 'fulfilled' ? v6.value.map((address) => ({ address, family: 6 })) : []),
+    ];
+    if (addresses.length === 0) throw new Error('no address');
+    return addresses;
+  } finally {
+    signal.removeEventListener('abort', cancel);
+  }
+}
+
+/** Resolves `work`, or null as soon as `signal` aborts (the work is then abandoned). */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T | null> {
+  if (signal.aborted) return Promise.resolve(null);
+  return new Promise<T | null>((resolve, reject) => {
+    const onAbort = () => resolve(null);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error instanceof Error ? error : new Error('resolution failed'));
+      },
+    );
+  });
+}
 
 export function webhookTransport(options: WebhookTransportOptions): WebhookTransport {
-  const resolve =
-    options.resolve ??
-    (async (hostname: string) =>
-      (await lookup(hostname, { all: true, verbatim: true })).map((a) => ({ address: a.address, family: a.family })));
   const timeoutMs = options.timeoutMs ?? 10_000;
+  const resolve = options.resolve ?? ((hostname, signal) => resolveDns(hostname, signal, timeoutMs));
   const maxResponseBytes = options.maxResponseBytes ?? 64 * 1024;
   return {
     async send(request: WebhookRequest): Promise<WebhookOutcome> {
@@ -160,19 +205,28 @@ export function webhookTransport(options: WebhookTransportOptions): WebhookTrans
       const loopbackUrl = isLoopbackWebhookUrl(url);
       if (loopbackUrl ? !options.allowLoopback : webhookUrlProblem(request.url) !== null) return blocked;
       if (url.protocol !== 'https:' && !(loopbackUrl && url.protocol === 'http:')) return blocked;
+      // One limit for the whole attempt, name resolution included (AC-9); the shutdown signal aborts it too (AC-1).
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
       const host = url.hostname.replace(/^\[|\]$/g, '');
-      let addresses: ResolvedAddress[];
+      let addresses: ResolvedAddress[] | null;
       try {
-        addresses = isIP(host) ? [{ address: host, family: isIP(host) }] : await resolve(host);
+        addresses = isIP(host)
+          ? [{ address: host, family: isIP(host) }]
+          : await untilAborted(resolve(host, signal), signal);
       } catch {
-        return { ok: false, code: 'network' };
+        return signal.aborted ? timedOut : { ok: false, code: 'network' };
       }
+      if (addresses === null) return timedOut;
       if (addresses.length === 0) return { ok: false, code: 'network' };
       const classes = addresses.map((a) => classifyAddress(a.address));
       // A DNS name that resolves to loopback is refused whatever the flag says; a loopback URL reaches loopback only.
       if (loopbackUrl ? classes.some((c) => c !== 'loopback') : classes.some((c) => c !== 'global')) return blocked;
       const target = connectAddress(addresses[0] as ResolvedAddress);
-      return post(url, target, request, { timeoutMs, maxResponseBytes, ...(options.ca ? { ca: options.ca } : {}) });
+      return post(url, target, request, signal, timeout, {
+        maxResponseBytes,
+        ...(options.ca ? { ca: options.ca } : {}),
+      });
     },
   };
 }
@@ -181,10 +235,10 @@ function post(
   url: URL,
   target: ResolvedAddress,
   request: WebhookRequest,
-  limits: { timeoutMs: number; maxResponseBytes: number; ca?: string },
+  signal: AbortSignal,
+  timeout: AbortSignal,
+  limits: { maxResponseBytes: number; ca?: string },
 ): Promise<WebhookOutcome> {
-  const timeout = AbortSignal.timeout(limits.timeoutMs);
-  const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
   const body = Buffer.from(request.body, 'utf8');
   const secure = url.protocol === 'https:';
   return new Promise<WebhookOutcome>((resolveOutcome) => {

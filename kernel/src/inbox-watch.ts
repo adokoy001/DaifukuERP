@@ -3,12 +3,14 @@
 // read-only Context (the same `<module>.todo` providers the web inbox runs), and records the observation with
 // `inbox.count_changed` in the user's own read-write Context. Routing (event-delivery.ts) turns an increase into one
 // email delivery row; the message carries counts and labels only.
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { canRunAction, runAction } from './actions/run.ts';
 import type { Context } from './context.ts';
 import { withContext, systemParams, type Database } from './db/client.ts';
 import { inboxWatches } from './db/event-tables.ts';
+import { companies } from './db/system-tables.ts';
 import { PermissionDenied, StateError } from './errors.ts';
+import { insertOutbox } from './event-insert.ts';
 import type { Label } from './i18n.ts';
 import { integrationWebhooksOf } from './integration-settings.ts';
 import { registry } from './registry.ts';
@@ -67,7 +69,10 @@ export interface ClaimedWatch {
 
 /**
  * Claims up to 20 due watches of one tenant (system context, FOR UPDATE SKIP LOCKED) and moves their next check one
- * interval ahead, so concurrent workers count each user at most once per interval.
+ * interval ahead, so concurrent workers count each user at most once per interval. Only watches of companies whose
+ * `integration.webhooks.inboxEmail` is on are returned (AC-16: counting happens only while the switch is on); the others
+ * are advanced without counting and forget their baseline, so the first check after the switch is turned back on records
+ * a new baseline instead of mailing about changes made while it was off.
  */
 export async function claimInboxWatches(
   app: Database,
@@ -82,11 +87,25 @@ export async function claimInboxWatches(
       .orderBy(asc(inboxWatches.nextCheckAt))
       .limit(Math.max(1, Math.min(opts.limit ?? WATCH_BATCH, 100)))
       .for('update', { skipLocked: true });
+    if (rows.length === 0) return [];
+    const switches = await ctx.db
+      .select({ id: companies.id, settings: companies.settings })
+      .from(companies)
+      .where(
+        and(eq(companies.tenantId, tenantId), inArray(companies.id, [...new Set(rows.map((row) => row.companyId))])),
+      );
+    const enabled = new Set(
+      switches
+        .filter(
+          (company) => integrationWebhooksOf((company.settings ?? {}) as Record<string, unknown>).value.inboxEmail,
+        )
+        .map((company) => company.id),
+    );
     const next = new Date(opts.now.getTime() + opts.intervalMinutes * 60_000);
     for (const row of rows)
       await ctx.db
         .update(inboxWatches)
-        .set({ nextCheckAt: next })
+        .set(enabled.has(row.companyId) ? { nextCheckAt: next } : { nextCheckAt: next, lastTotal: null })
         .where(
           and(
             eq(inboxWatches.tenantId, tenantId),
@@ -94,12 +113,18 @@ export async function claimInboxWatches(
             eq(inboxWatches.userId, row.userId),
           ),
         );
-    return rows;
+    return rows.filter((row) => enabled.has(row.companyId));
   });
 }
 
-/** Removes a watch whose user is inactive or lost the company (system context; no event). */
+/** Worker-only maintenance runs in the system context (a user's or a module's context is refused). */
+function assertSystemActor(ctx: Context, op: string): void {
+  if (ctx.actor.type !== 'system') throw new PermissionDenied('inbox_watch', op, ctx.roles);
+}
+
+/** Removes a watch whose user is inactive or lost the company (system context only; no event). */
 export async function removeInboxWatch(ctx: Context, companyId: string, userId: string): Promise<void> {
+  assertSystemActor(ctx, 'remove');
   await ctx.db
     .delete(inboxWatches)
     .where(
@@ -139,7 +164,8 @@ export async function recordInboxObservation(
     return 'unchanged';
   }
   await ctx.db.update(inboxWatches).set({ lastTotal: summary.total, observedAt: now }).where(key);
-  await ctx.emit(INBOX_COUNT_CHANGED, {
+  // Kernel-reserved topic (event-insert.ts): ctx.emit refuses it, so no other code path can name a mail recipient.
+  await insertOutbox(ctx, INBOX_COUNT_CHANGED, {
     userId,
     total: summary.total,
     previousTotal: watch.lastTotal,

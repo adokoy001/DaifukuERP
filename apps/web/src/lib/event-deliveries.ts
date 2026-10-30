@@ -48,6 +48,8 @@ export interface WebhooksView {
 }
 export interface IssuedSecret {
   endpointId: string;
+  /** The destination URL the secret is bound to (the one the administrator confirmed). */
+  url: string;
   secret: string;
   issuedAt: string;
 }
@@ -179,18 +181,30 @@ export function targetText(item: Pick<DeliveryItem, 'kind' | 'target'>): Label {
   return { ja: '社内の購読者', en: 'Internal subscribers' };
 }
 
-export function secretStateText(secret: WebhookEndpointView['secret'], formatDate: (iso: string) => string): Label {
-  if (secret.state === 'none') return { ja: '署名鍵: 未発行', en: 'Signing secret: not issued' };
+/** The short state word of a signing secret: the Badge text (a Badge does not wrap, so it stays one or two words). */
+export const SECRET_STATE_TEXT: Record<SecretState, Label> = {
+  none: { ja: '未発行', en: 'Not issued' },
+  active: { ja: '発行済み', en: 'Issued' },
+  reissue_required: { ja: '再発行が必要', en: 'Reissue required' },
+};
+
+/** The wrapping line under the state Badge: what the state means for sending, with the issue date and issuer. */
+export function secretStateDetail(secret: WebhookEndpointView['secret'], formatDate: (iso: string) => string): Label {
+  if (secret.state === 'none')
+    return {
+      ja: '署名鍵が未発行のため、まだ送信していません。',
+      en: 'No signing secret has been issued, so nothing is sent yet.',
+    };
   if (secret.state === 'reissue_required')
     return {
-      ja: '署名鍵: URL が変わったため再発行が必要です（送信を止めています）',
-      en: 'Signing secret: the URL changed, so it must be reissued (sending is paused)',
+      ja: 'URL が変わったため、管理者が署名鍵を再発行するまで送信を止めています。',
+      en: 'The URL changed, so sending is paused until an administrator reissues the signing secret.',
     };
   const when = secret.issuedAt ? formatDate(secret.issuedAt) : '';
   const who = secret.issuedByName ?? '';
   return {
-    ja: `署名鍵: 発行済み（${when}${who ? `、${who}` : ''}）`,
-    en: `Signing secret: issued (${when}${who ? `, ${who}` : ''})`,
+    ja: `署名鍵を ${when}${who ? ` に ${who} が` : ' に'}発行しました。`,
+    en: `Signing secret issued ${when}${who ? ` by ${who}` : ''}.`,
   };
 }
 

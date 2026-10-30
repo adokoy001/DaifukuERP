@@ -4,8 +4,11 @@
 // tenant does not stop the others and the tick reports counts only (AC-2, AC-3), stop waits then aborts (AC-1), inbox
 // mail counts the real workforce.todo provider in the user's own scope (AC-16, AC-17), and the self-service and admin
 // routes refuse everyone else (AC-18, AC-19, AC-22, AC-23). No external network: the receiver listens on 127.0.0.1.
+import { execFile } from 'node:child_process';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import {
   bootstrapTenant,
   companies,
@@ -25,12 +28,13 @@ import {
   type IdentityMailTransport,
   type Logger,
 } from '@daifuku/kernel';
-import { freshDb, type TestDb } from '@daifuku/kernel/testing';
+import { APP_URL, freshDb, OWNER_URL, type TestDb } from '@daifuku/kernel/testing';
 import { seedWorkforce, WorkforceSite } from '@daifuku/mod-workforce';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EventWorkerConfig } from '../src/events/config.ts';
+import { dueTenantsReader } from '../src/events/due-tenants.ts';
 import { emptyTick, runEventTick, startEventWorker, tickExitCode, type EventWorkerDeps } from '../src/events/worker.ts';
 import { buildServer } from '../src/server.ts';
 
@@ -195,9 +199,10 @@ describe('settings and write-only secrets (AC-14, AC-15)', () => {
   it('AC-14 the secret is returned once with no-store and appears in no API, audit row, table or setting', async () => {
     const saved = await putWebhooks({ endpoints: [endpoint('recv', '/hook')], inboxEmail: true });
     expect(saved.statusCode, saved.body).toBe(200);
-    const issued = await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret');
+    const issued = await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret', { url: `${base}/hook` });
     expect(issued.statusCode, issued.body).toBe(200);
     expect(issued.headers['cache-control']).toContain('no-store');
+    expect(issued.json()).toMatchObject({ endpointId: 'recv', url: `${base}/hook` });
     secret = issued.json<{ secret: string }>().secret;
     expect(secret).toMatch(/^whsec_/);
     const webhooks = await call(api, adminToken, 'GET', '/admin/webhooks');
@@ -222,11 +227,38 @@ describe('settings and write-only secrets (AC-14, AC-15)', () => {
       const rows = await db.owner.sql.unsafe(`select * from ${table}`);
       expect(JSON.stringify(rows), table).not.toContain(secret);
     }
-    const noKey = await call(plain, await login(plain, 'admin@example.com'), 'POST', '/admin/webhooks/recv/secret');
+    const noKey = await call(plain, await login(plain, 'admin@example.com'), 'POST', '/admin/webhooks/recv/secret', {
+      url: `${base}/hook`,
+    });
     expect(noKey.statusCode).toBe(409);
     expect(noKey.json()).toMatchObject({ error: { code: 'INVALID_STATE' } });
     expect(noKey.json<{ error: { hint: string } }>().error.hint).toContain('IDENTITY_ENCRYPTION_KEY');
-    expect((await call(api, adminToken, 'POST', '/admin/webhooks/unknown/secret')).statusCode).toBe(404);
+    expect(
+      (await call(api, adminToken, 'POST', '/admin/webhooks/unknown/secret', { url: `${base}/hook` })).statusCode,
+    ).toBe(404);
+    expect((await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret')).statusCode).toBe(400);
+  });
+
+  it('AC-14 AC-15 a URL changed by the settings role between the admin view and the click is 409; nothing is issued', async () => {
+    await person('settings-url@event.test', ['settings']);
+    const settingsToken = await login(api, 'settings-url@event.test', 'test-password');
+    const shown = await call(api, adminToken, 'GET', '/admin/webhooks');
+    const seen = shown.json<{ endpoints: { id: string; url: string }[] }>().endpoints.find((e) => e.id === 'recv');
+    expect(seen?.url).toBe(`${base}/hook`);
+    const before = await db.owner.sql`select * from webhook_secrets order by endpoint_id`;
+    const swapped = await putWebhooks({ endpoints: [endpoint('recv', '/attacker')], inboxEmail: true }, settingsToken);
+    expect(swapped.statusCode, swapped.body).toBe(200);
+    const refused = await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret', { url: seen?.url });
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ error: { code: 'INVALID_STATE', details: { reason: 'url_changed' } } });
+    expect(refused.body).not.toContain('whsec_');
+    expect(await db.owner.sql`select * from webhook_secrets order by endpoint_id`).toEqual(before);
+    // The changed URL is not sent to until an administrator confirms it; restore the receiver for the later tests.
+    expect(
+      (await call(api, adminToken, 'GET', '/admin/webhooks')).json<{ endpoints: { secret: { state: string } }[] }>()
+        .endpoints[0]?.secret.state,
+    ).toBe('reissue_required');
+    expect((await putWebhooks({ endpoints: [endpoint('recv', '/hook')], inboxEmail: true })).statusCode).toBe(200);
   });
 });
 
@@ -341,6 +373,21 @@ describe('worker ticks (AC-2, AC-3, AC-5, AC-8..AC-11, AC-20)', () => {
     expect(sent.sends.sent).toBe(1);
   });
 
+  it('AC-21 AC-2 a tenant whose only work is expired delivered rows is still listed and purged', async () => {
+    await db.owner.sql`delete from event_deliveries`;
+    received.length = 0;
+    await emit('test.ping', { purge: true });
+    await tick(minutes(new Date(), 1));
+    expect(await deliveryRows()).toMatchObject([{ status: 'delivered' }]);
+    const due = dueTenantsReader(db.owner);
+    expect(await due(minutes(new Date(), 2))).not.toContain(db.tenantId);
+    const later = new Date(Date.now() + 31 * 86_400_000);
+    expect(await due(later)).toContain(db.tenantId);
+    expect((await tick(later)).purged).toBe(1);
+    expect(await deliveryRows()).toEqual([]);
+    expect(await due(later)).not.toContain(db.tenantId);
+  });
+
   it('AC-1 stop waits for the running tick, then aborts the in-flight send; the row is resent after its lease', async () => {
     await db.owner.sql`delete from event_deliveries`;
     received.length = 0;
@@ -353,7 +400,7 @@ describe('worker ticks (AC-2, AC-3, AC-5, AC-8..AC-11, AC-20)', () => {
       inboxEmail: true,
     });
     expect(saved.statusCode, saved.body).toBe(200);
-    const issued = await call(api, adminToken, 'POST', '/admin/webhooks/slow/secret');
+    const issued = await call(api, adminToken, 'POST', '/admin/webhooks/slow/secret', { url: `${base}/slow` });
     expect(issued.statusCode).toBe(200);
     await emit('test.slow', {});
     const worker = startEventWorker(deps({ config: { ...config, intervalMs: 1000 } }));
@@ -487,6 +534,45 @@ describe('inbox mail with the real workforce.todo provider (AC-16, AC-17)', () =
     expect(events[1]?.payload).toMatchObject({ total: 2, previousTotal: 1 });
   });
 
+  it('AC-3 AC-16 the events:deliver CLI loads the runtime: it counts with the real providers like the API worker', async () => {
+    const recorded = await watch();
+    const events = (await changedEvents()).length;
+    expect(recorded?.last_total).toBeGreaterThan(0);
+    await db.owner
+      .sql`update inbox_watches set next_check_at = now() - interval '1 minute' where user_id = ${managerId}`;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [fileURLToPath(new URL('../../../node_modules/tsx/dist/cli.mjs', import.meta.url)), 'src/events/cli.ts'],
+      {
+        cwd: fileURLToPath(new URL('..', import.meta.url)),
+        timeout: 120_000,
+        env: {
+          PATH: process.env.PATH ?? '',
+          NODE_ENV: 'test',
+          DATABASE_URL: APP_URL,
+          DATABASE_URL_OWNER: OWNER_URL,
+          JWT_SECRET: 'event-delivery-cli-test',
+          IDENTITY_ENCRYPTION_KEY: KEY,
+          PUBLIC_WEB_URL: WEB,
+          // A closed loopback port: no mail can leave this test (an email row due now fails as mail_failed).
+          SMTP_HOST: '127.0.0.1',
+          SMTP_PORT: '9',
+          SMTP_USER: 'cli-test',
+          SMTP_PASSWORD: 'cli-test',
+          SMTP_FROM: 'noreply@event.test',
+          EVENT_WEBHOOK_ALLOW_LOOPBACK: 'true',
+        },
+      },
+    );
+    const result = JSON.parse(stdout.trim().split('\n').at(-1) ?? '{}') as ReturnType<typeof emptyTick>;
+    expect(result.inbox).toMatchObject({ checked: 1, changed: 0, discarded: 0 });
+    // Without the runtime the CLI saw no provider and recorded 0 with a false `inbox.count_changed`.
+    expect(await watch()).toEqual(recorded);
+    expect(await changedEvents()).toHaveLength(events);
+    await db.owner
+      .sql`update inbox_watches set next_check_at = ${minutes(NOW, 55).toISOString()} where user_id = ${managerId}`;
+  }, 150_000);
+
   it('AC-16 a failing provider discards the observation; losing the company removes the registration', async () => {
     failing = true;
     await submittedExpense(alice);
@@ -503,6 +589,39 @@ describe('inbox mail with the real workforce.todo provider (AC-16, AC-17)', () =
     expect(removed.inbox).toMatchObject({ checked: 1, removed: 1, changed: 0 });
     expect(await watch()).toBeUndefined();
     expect(await changedEvents()).toHaveLength(2);
+  });
+
+  it('AC-16 while the company switch is off nothing is counted or recorded; turning it on again starts a new baseline', async () => {
+    await db.owner.drizzle.insert(companyMemberships).values({
+      tenantId: db.tenantId,
+      companyId: db.companyId,
+      userId: managerId,
+      roles: ['workforce_manager'],
+      accessScope: 'sites',
+      siteIds: [siteA],
+    });
+    const endpoints = [endpoint('recv', '/hook'), endpoint('slow', '/slow', ['test.slow'])];
+    expect((await putWebhooks({ endpoints, inboxEmail: true })).statusCode).toBe(200);
+    expect((await call(api, managerToken, 'PUT', '/me/notifications', { inboxEmail: true })).statusCode).toBe(200);
+    await db.owner
+      .sql`update inbox_watches set next_check_at = ${minutes(NOW, 90).toISOString()} where user_id = ${managerId}`;
+    expect((await tick(minutes(NOW, 90))).inbox).toMatchObject({ checked: 1, changed: 0 });
+    const baseline = (await watch())?.last_total ?? -1;
+    expect(baseline).toBeGreaterThan(0);
+    const events = (await changedEvents()).length;
+
+    expect((await putWebhooks({ endpoints, inboxEmail: false })).statusCode).toBe(200);
+    await submittedExpense(alice);
+    const off = await tick(minutes(NOW, 110));
+    expect(off.inbox).toMatchObject({ checked: 0, changed: 0 });
+    expect(await changedEvents()).toHaveLength(events);
+    expect(await watch()).toEqual({ last_total: null });
+
+    expect((await putWebhooks({ endpoints, inboxEmail: true })).statusCode).toBe(200);
+    const on = await tick(minutes(NOW, 130));
+    expect(on.inbox).toMatchObject({ checked: 1, changed: 0 });
+    expect(await watch()).toEqual({ last_total: baseline + 1 });
+    expect(await changedEvents()).toHaveLength(events);
   });
 });
 
@@ -551,7 +670,7 @@ describe('self-service and admin access (AC-18, AC-19, AC-22, AC-23)', () => {
         ['GET', '/admin/webhooks'],
         ['POST', '/admin/webhooks/recv/secret'],
       ] as const) {
-        const r = await call(api, token, method, url, undefined, headers);
+        const r = await call(api, token, method, url, method === 'POST' ? { url: `${base}/hook` } : undefined, headers);
         expect(r.statusCode, `${method} ${url} ${r.body}`).toBe(403);
       }
   });
@@ -580,7 +699,10 @@ describe('self-service and admin access (AC-18, AC-19, AC-22, AC-23)', () => {
       inB,
     );
     expect(savedB.statusCode, savedB.body).toBe(200);
-    expect((await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret', undefined, inB)).statusCode).toBe(200);
+    expect(
+      (await call(api, adminToken, 'POST', '/admin/webhooks/recv/secret', { url: `${base}/company-b` }, inB))
+        .statusCode,
+    ).toBe(200);
     respond = (_req, res) => res.writeHead(500).end();
     await emit('test.ping', { company: 'A' });
     await tick(minutes(new Date(), 1));

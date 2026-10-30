@@ -1217,6 +1217,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "event_deliveries_purge_idx": {
+          "name": "event_deliveries_purge_idx",
+          "columns": [
+            {
+              "expression": "coalesce(\"delivered_at\", \"cancelled_at\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"event_deliveries\".\"status\" in ('delivered', 'cancelled')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -47917,6 +47939,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "a27e456b-6308-432b-97e2-589ac7028ee3",
+  "id": "9bcc42aa-8224-4547-94f5-93ce42d8021d",
   "prevId": "425896ca-d400-4c17-9383-45c3d16bac88"
 }

@@ -27,6 +27,7 @@ import {
   getInboxNotification,
   INBOX_COUNT_CHANGED,
   recordInboxObservation,
+  removeInboxWatch,
   setInboxNotification,
 } from '../src/inbox-watch.ts';
 import { integrationWebhooksSchema, INTEGRATION_WEBHOOKS_KEY } from '../src/integration-settings.ts';
@@ -82,10 +83,20 @@ async function setWebhooks(value: unknown, now = at(0), companyId = db.companyId
     setSetting(ctx, INTEGRATION_WEBHOOKS_KEY, integrationWebhooksSchema, value),
   );
 }
-const issue = (endpointId: string, now: Date, encryptionKey: string | undefined = KEY) =>
-  db.run({ now: () => now }, (ctx) => issueWebhookSecret(ctx, endpointId, { encryptionKey }));
-const issueWithoutKey = (endpointId: string, now: Date) =>
-  db.run({ now: () => now }, (ctx) => issueWebhookSecret(ctx, endpointId, { encryptionKey: undefined }));
+/** The endpoint's URL as stored now: what an administrator's screen shows and sends back when issuing (AC-14). */
+async function storedUrl(endpointId: string, companyId = db.companyId): Promise<string> {
+  const [row] = await db.owner.drizzle.select().from(companies).where(eq(companies.id, companyId));
+  const value = (row?.settings as Record<string, { endpoints?: { id: string; url: string }[] } | undefined>)[
+    INTEGRATION_WEBHOOKS_KEY
+  ];
+  return value?.endpoints?.find((e) => e.id === endpointId)?.url ?? 'https://unknown.example.com/';
+}
+const issueWith = async (endpointId: string, now: Date, encryptionKey: string | undefined) => {
+  const expectedUrl = await storedUrl(endpointId);
+  return db.run({ now: () => now }, (ctx) => issueWebhookSecret(ctx, endpointId, { encryptionKey, expectedUrl }));
+};
+const issue = (endpointId: string, now: Date, encryptionKey: string = KEY) => issueWith(endpointId, now, encryptionKey);
+const issueWithoutKey = (endpointId: string, now: Date) => issueWith(endpointId, now, undefined);
 const emit = (topic: string, payload: unknown, now: Date, companyId: string | null = db.companyId) =>
   db.run({ now: () => now, companyId }, async (ctx) => {
     await ctx.emit(topic, payload);
@@ -229,13 +240,20 @@ describe('routing (AC-6, AC-7)', () => {
     await setWebhooks({ endpoints: [endpoint('e1')], inboxEmail: false });
     await issue('e1', at(100));
     await emit('test.routed', { n: 'before activation' }, at(50));
+    // Inclusive boundary: an event created at the activation instant is sent.
+    await emit('test.routed', { n: 'at activation' }, at(100));
+    await deliver(at(105));
+    expect((await deliveries()).map((r) => (r.payload as { n: string }).n)).toEqual(['at activation']);
     await issue('e1', at(200));
     const [secret] = await db.owner.drizzle.select().from(webhookSecrets);
     expect(secret?.activatedAt.toISOString()).toBe(at(100).toISOString());
     expect(secret?.issuedAt.toISOString()).toBe(at(200).toISOString());
     await emit('test.routed', { n: 'after activation' }, at(150));
     await deliver(at(210));
-    expect((await deliveries()).map((r) => (r.payload as { n: string }).n)).toEqual(['after activation']);
+    expect((await deliveries()).map((r) => (r.payload as { n: string }).n)).toEqual([
+      'at activation',
+      'after activation',
+    ]);
     await setWebhooks({ endpoints: [endpoint('e1', { url: URL_B })], inboxEmail: false }, at(300));
     await emit('test.routed', { n: 'URL changed, not reissued' }, at(310));
     await deliver(at(320));
@@ -246,6 +264,7 @@ describe('routing (AC-6, AC-7)', () => {
     await emit('test.routed', { n: 'after new activation' }, at(450));
     await deliver(at(460));
     expect((await deliveries()).map((r) => (r.payload as { n: string }).n)).toEqual([
+      'at activation',
       'after activation',
       'after new activation',
     ]);
@@ -282,6 +301,27 @@ describe('routing (AC-6, AC-7)', () => {
     const events = await db.owner.drizzle.select().from(outbox).where(eq(outbox.topic, INBOX_COUNT_CHANGED));
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.publishedAt !== null)).toBe(true);
+  });
+
+  it('AC-7 inbox topics are kernel-reserved: ctx.emit refuses them, so no other code can mail a registered user', async () => {
+    await setWebhooks({ endpoints: [], inboxEmail: true });
+    await db.run({ now: () => at(0) }, (ctx) => setInboxNotification(ctx, true, { mailConfigured: true }));
+    const spoof = {
+      userId: db.adminUserId,
+      total: 99,
+      previousTotal: 0,
+      items: [{ provider: 'x.todo', key: 'k', label: { ja: '至急 https://evil.example/login', en: 'x' }, count: 99 }],
+    };
+    for (const params of [{}, { actor: { type: 'system' as const, id: 'system' } }])
+      await expect(
+        db.run({ ...params, now: () => at(1) }, async (ctx) => {
+          await ctx.emit(INBOX_COUNT_CHANGED, spoof);
+        }),
+      ).rejects.toMatchObject({ code: 'PERMISSION_DENIED', httpStatus: 403 });
+    await expect(emit('inbox.anything', {}, at(1))).rejects.toMatchObject({ httpStatus: 403 });
+    expect(await db.owner.drizzle.select().from(outbox)).toHaveLength(0);
+    await deliver(at(2));
+    expect(await deliveries()).toHaveLength(0);
   });
 });
 
@@ -564,6 +604,12 @@ describe('secrets and access (AC-14, AC-18, AC-22)', () => {
       expect(text).not.toContain(issued.secret);
     await expect(issueWithoutKey('e1', at(1))).rejects.toMatchObject({ code: 'INVALID_STATE', httpStatus: 409 });
     await expect(issue('nope', at(1))).rejects.toMatchObject({ code: 'NOT_FOUND', httpStatus: 404 });
+    // Bound to the URL the administrator confirmed: another URL is 409 and the stored secret is unchanged.
+    await expect(
+      db.run({ now: () => at(2) }, (ctx) => issueWebhookSecret(ctx, 'e1', { encryptionKey: KEY, expectedUrl: URL_B })),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE', httpStatus: 409, details: { reason: 'url_changed' } });
+    expect(await db.owner.drizzle.select().from(webhookSecrets)).toEqual([row]);
+    expect(issued.url).toBe(URL_A);
     await setWebhooks({ endpoints: [endpoint('e1', { url: URL_B })], inboxEmail: false });
     expect((await db.run({}, (ctx) => webhookEndpoints(ctx))).endpoints[0]?.secret.state).toBe('reissue_required');
   });
@@ -585,8 +631,15 @@ describe('secrets and access (AC-14, AC-18, AC-22)', () => {
       });
       await expect(db.run(params, (ctx) => webhookEndpoints(ctx))).rejects.toMatchObject({ httpStatus: 403 });
       await expect(
-        db.run(params, (ctx) => issueWebhookSecret(ctx, 'e1', { encryptionKey: KEY })),
+        db.run(params, (ctx) => issueWebhookSecret(ctx, 'e1', { encryptionKey: KEY, expectedUrl: URL_A })),
       ).rejects.toMatchObject({ httpStatus: 403 });
+    }
+    // Worker-only maintenance refuses every context but the system one (a user's or a module's).
+    for (const params of [{}, { actor: { type: 'agent' as const, id: 'agent-1', onBehalfOf: db.adminUserId } }]) {
+      await expect(db.run(params, (ctx) => purgeEventDeliveries(ctx))).rejects.toMatchObject({ httpStatus: 403 });
+      await expect(db.run(params, (ctx) => removeInboxWatch(ctx, db.companyId, db.adminUserId))).rejects.toMatchObject({
+        httpStatus: 403,
+      });
     }
     for (const actor of [
       { type: 'system' as const, id: 'system' },

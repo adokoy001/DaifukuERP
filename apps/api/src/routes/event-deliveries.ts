@@ -5,7 +5,8 @@
 //   GET  /admin/event-deliveries?status&limit&before   -> { items, counts, nextCursor }
 //   POST /admin/event-deliveries/:id/retry             -> the row, back to pending with the same delivery id
 //   GET  /admin/webhooks                               -> endpoints with secret states and this server's facts
-//   POST /admin/webhooks/:endpointId/secret            -> { endpointId, secret, issuedAt } once (no-store)
+//   POST /admin/webhooks/:endpointId/secret { url }    -> { endpointId, url, secret, issuedAt } once (no-store);
+//                                                         409 when the endpoint's URL is no longer the one sent
 //   GET  /me/notifications, PUT /me/notifications      -> { inboxEmail, available, reason? }
 import {
   deliveryListQuerySchema,
@@ -34,6 +35,8 @@ export interface EventDeliveryRouteOptions {
 const idParams = z.object({ id: z.string().min(1).max(100) });
 const endpointParams = z.object({ endpointId: z.string().min(1).max(40) });
 const notificationBody = z.object({ inboxEmail: z.boolean() }).strict();
+/** The destination URL the administrator saw and confirmed (AC-14): the secret is issued only for that URL. */
+const issueBody = z.object({ url: z.string().min(1).max(500) }).strict();
 
 export function registerEventDeliveryRoutes(app: FastifyInstance, opts: EventDeliveryRouteOptions): void {
   const mail = { mailConfigured: opts.mailConfigured };
@@ -88,14 +91,17 @@ export function registerEventDeliveryRoutes(app: FastifyInstance, opts: EventDel
     {
       schema: {
         tags: ['access'],
-        summary: 'Issue (or reissue) the signing secret of one endpoint; returned once (company admins, users only)',
+        summary:
+          'Issue (or reissue) the signing secret of one endpoint for the URL the admin confirmed; returned once (company admins, users only)',
         params: endpointParams,
+        body: issueBody,
       },
     },
     async (req, reply) => {
       const { endpointId } = parse(endpointParams, req.params, 'params');
+      const { url } = parse(issueBody, req.body, 'body');
       const issued = await withRequestContext(opts.db, req, (ctx) =>
-        issueWebhookSecret(ctx, endpointId, { encryptionKey: opts.encryptionKey }),
+        issueWebhookSecret(ctx, endpointId, { encryptionKey: opts.encryptionKey, expectedUrl: url }),
       );
       void reply.header('cache-control', 'no-store');
       return issued;

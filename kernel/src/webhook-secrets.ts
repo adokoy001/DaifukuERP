@@ -12,7 +12,7 @@ import { NotFound, StateError } from './errors.ts';
 import { seal } from './identity/crypto.ts';
 import { assertEventAdmin, webhookSecretPurpose } from './event-delivery.ts';
 import { integrationWebhooksOf, webhookUrlHash } from './integration-settings.ts';
-import { getCompany } from './settings.ts';
+import { getCompany, lockedCompanySettings } from './settings.ts';
 
 export type WebhookSecretState = 'none' | 'active' | 'reissue_required';
 
@@ -94,20 +94,25 @@ export async function webhookEndpoints(ctx: Context): Promise<WebhookEndpointsVi
 
 export interface IssuedWebhookSecret {
   endpointId: string;
+  /** The destination the secret is bound to (the URL the administrator confirmed). */
+  url: string;
   /** Shown once; never stored or returned again. */
   secret: string;
   issuedAt: string;
 }
 
 /**
- * Generates and stores a new signing secret for one endpoint (AC-14), replacing the previous one. The activation time is
- * kept when the URL is unchanged (reissue) and set to now otherwise. Audited as `webhook_secret` op `issue` with the
- * endpoint id and host only. 409 without an encryption key; 404 for an endpoint the company setting does not have.
+ * Generates and stores a new signing secret for one endpoint (AC-14), replacing the previous one. Issuing activates the
+ * endpoint, so it is bound to the URL the administrator saw: `expectedUrl` must equal the endpoint's URL read under the
+ * company row lock (the lock setSetting takes), otherwise 409 and nothing changes, so a settings-role user cannot swap the
+ * destination between the administrator's view and the click. The activation time is kept when the URL is unchanged
+ * (reissue) and set to now otherwise. Audited as `webhook_secret` op `issue` with the endpoint id and host only. 409
+ * without an encryption key; 404 for an endpoint the company setting does not have.
  */
 export async function issueWebhookSecret(
   ctx: Context,
   endpointId: string,
-  opts: { encryptionKey: string | undefined },
+  opts: { encryptionKey: string | undefined; expectedUrl: string },
 ): Promise<IssuedWebhookSecret> {
   assertEventAdmin(ctx, 'issue');
   if (!opts.encryptionKey)
@@ -115,9 +120,15 @@ export async function issueWebhookSecret(
       'webhook signing secrets need the identity encryption key on this server',
       'Ask the operator to configure IDENTITY_ENCRYPTION_KEY and PUBLIC_WEB_URL (see the deployment guide), then retry.',
     );
-  const company = await getCompany(ctx);
+  const company = await lockedCompanySettings(ctx);
   const endpoint = integrationWebhooksOf(company.settings).value.endpoints.find((e) => e.id === endpointId);
   if (!endpoint) throw new NotFound('webhook_endpoint', endpointId);
+  if (endpoint.url !== opts.expectedUrl)
+    throw new StateError(
+      'the destination URL of this endpoint changed after it was shown',
+      'Reload the screen, check the destination URL, then issue the signing secret again.',
+      { endpointId: endpoint.id, reason: 'url_changed' },
+    );
   const now = ctx.now();
   const urlHash = webhookUrlHash(endpoint.url);
   const key = and(
@@ -148,5 +159,5 @@ export async function issueWebhookSecret(
     endpointId: endpoint.id,
     host: new URL(endpoint.url).hostname,
   });
-  return { endpointId: endpoint.id, secret, issuedAt: now.toISOString() };
+  return { endpointId: endpoint.id, url: endpoint.url, secret, issuedAt: now.toISOString() };
 }

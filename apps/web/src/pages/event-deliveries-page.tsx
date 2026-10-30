@@ -16,8 +16,9 @@ import {
   errorText,
   isCompanyAdmin,
   KIND_TEXT,
+  SECRET_STATE_TEXT,
   SECRET_TONE,
-  secretStateText,
+  secretStateDetail,
   selectedTab,
   STATUS_TEXT,
   STATUS_TONE,
@@ -118,7 +119,18 @@ function IssueConfirm({
           </Button>
         </>
       }
-    />
+    >
+      <p className="text-sm font-semibold text-text-secondary">{t({ ja: '送信先の URL', en: 'Destination URL' })}</p>
+      <p className="break-all font-mono text-xs text-text" data-testid="secret-confirm-url">
+        {endpoint.url}
+      </p>
+      <p className="text-sm text-text-secondary">
+        {t({
+          ja: 'この URL に対して発行します。表示した後に URL が変わっていた場合は発行せず、画面を読み込み直すよう案内します。',
+          en: 'The secret is issued for this URL. If the URL changed after this screen loaded, nothing is issued and you are asked to reload.',
+        })}
+      </p>
+    </Dialog>
   );
 }
 
@@ -157,6 +169,12 @@ function SecretDialog({ issued, label, onClose }: { issued: IssuedSecret; label:
         </Button>
       }
     >
+      <p className="text-sm text-text-secondary">
+        {t({ ja: '送信先: ', en: 'Destination: ' })}
+        <span className="break-all font-mono text-xs text-text" data-testid="secret-url">
+          {issued.url}
+        </span>
+      </p>
       <label htmlFor={inputId} className="text-sm font-semibold text-text-secondary">
         {t({ ja: '署名鍵', en: 'Signing secret' })}
       </label>
@@ -190,24 +208,21 @@ function EndpointCard({
 }: {
   endpoint: WebhookEndpointView;
   secretsAvailable: boolean;
-  onIssue: () => void;
+  onIssue: (trigger: HTMLButtonElement) => void;
 }) {
   const { t, locale } = useLocale();
   const reasonId = useId();
-  const state = secretStateText(endpoint.secret, (iso) => formatTimestamp(iso, locale));
+  const detail = secretStateDetail(endpoint.secret, (iso) => formatTimestamp(iso, locale));
   return (
     <li
-      className="flex flex-col gap-2 border-b border-border-subtle py-3 last:border-b-0"
+      className="flex min-w-0 flex-col gap-2 border-b border-border-subtle py-3 last:border-b-0"
       data-testid={`endpoint-${endpoint.id}`}
       data-secret={endpoint.secret.state}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-text">{endpoint.label}</span>
+        <span className="break-words text-sm font-semibold text-text">{endpoint.label}</span>
         <Badge tone={endpoint.enabled ? 'success' : 'neutral'}>
           {endpoint.enabled ? t({ ja: '有効', en: 'Enabled' }) : t({ ja: '無効', en: 'Disabled' })}
-        </Badge>
-        <Badge tone={SECRET_TONE[endpoint.secret.state]} data-testid="endpoint-secret-state">
-          {t(state)}
         </Badge>
       </div>
       <span className="break-all font-mono text-xs text-text-secondary">{endpoint.url}</span>
@@ -218,11 +233,21 @@ function EndpointCard({
           </li>
         ))}
       </ul>
+      {/* AC-25 (b): a short state word in the Badge (it does not wrap); the consequence in a wrapping line. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-text-secondary">{t({ ja: '署名鍵', en: 'Signing secret' })}</span>
+        <Badge tone={SECRET_TONE[endpoint.secret.state]} data-testid="endpoint-secret-state">
+          {t(SECRET_STATE_TEXT[endpoint.secret.state])}
+        </Badge>
+      </div>
+      <p className="text-sm text-text-secondary" data-testid="endpoint-secret-detail">
+        {t(detail)}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant={endpoint.secret.state === 'active' ? 'default' : 'primary'}
-          onClick={onIssue}
+          onClick={(event) => onIssue(event.currentTarget)}
           disabled={!secretsAvailable}
           aria-describedby={secretsAvailable ? undefined : reasonId}
           data-testid={`issue-${endpoint.id}`}
@@ -278,7 +303,10 @@ function DeliveryRow({
             variant="default"
             onClick={() => onRetry(item)}
             disabled={busy}
-            aria-label={t({ ja: `再送: ${item.topic}`, en: `Resend: ${item.topic}` })}
+            aria-label={t({
+              ja: `再送: ${item.topic}（${targetText(item).ja}、${formatTimestamp(item.createdAt, locale)}）`,
+              en: `Resend: ${item.topic} (${targetText(item).en}, ${formatTimestamp(item.createdAt, locale)})`,
+            })}
             data-testid="delivery-retry"
           >
             {t({ ja: '再送', en: 'Resend' })}
@@ -386,32 +414,42 @@ export function EventDeliveriesPage() {
   const meta = useMeta();
   const allowed = isCompanyAdmin(meta.data?.roles);
   const webhooks = useWebhooks(allowed);
-  const counts = useDeliveries(selectedTab(search), allowed).data?.pages[0]?.counts;
+  const deliveries = useDeliveries(selectedTab(search), allowed);
+  const counts = deliveries.data?.pages[0]?.counts;
   const issue = useIssueSecret();
   const [confirming, setConfirming] = useState<WebhookEndpointView | null>(null);
   const [issued, setIssued] = useState<{ secret: IssuedSecret; label: string } | null>(null);
+  // The endpoint's issue button: focus goes back to it when the one-time secret Dialog closes (that Dialog opens from
+  // the confirmation Dialog, which is gone by then).
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const tab = selectedTab(search);
   if (meta.isError && !meta.data) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (!meta.data) return <LoadingView />;
   // AC-27: the navigation shows this screen to admins only; a direct URL explains instead of failing. A store- or
-  // site-scoped admin has the role, but the API refuses (403): the same explanation.
-  const refused = webhooks.isError && isApiError(webhooks.error) && webhooks.error.status === 403;
-  if (!allowed || refused) return <Forbidden />;
+  // site-scoped admin has the role, but the API refuses (403): the same explanation, whichever request answers first.
+  const forbidden = (query: { isError: boolean; error: unknown }) =>
+    query.isError && isApiError(query.error) && query.error.status === 403;
+  if (!allowed || forbidden(webhooks) || forbidden(deliveries)) return <Forbidden />;
+  // Decide between the page and the refusal before showing either.
+  if (webhooks.isPending) return <LoadingView />;
   const select = (next: string) =>
     void navigate({ to: '/admin/event-deliveries', search: { status: next as DeliveryTab }, replace: true });
   const confirmIssue = () => {
     const endpoint = confirming;
     if (!endpoint) return;
-    issue.mutate(endpoint.id, {
-      onSuccess: (secret) => {
-        setConfirming(null);
-        setIssued({ secret, label: endpoint.label });
+    issue.mutate(
+      { endpointId: endpoint.id, url: endpoint.url },
+      {
+        onSuccess: (secret) => {
+          setConfirming(null);
+          setIssued({ secret, label: endpoint.label });
+        },
+        onError: (error) => {
+          setConfirming(null);
+          toast.error(error, t({ ja: '署名鍵を発行できませんでした', en: 'Could not issue the secret' }));
+        },
       },
-      onError: (error) => {
-        setConfirming(null);
-        toast.error(error, t({ ja: '署名鍵を発行できませんでした', en: 'Could not issue the secret' }));
-      },
-    });
+    );
   };
   const view = webhooks.data;
   return (
@@ -446,7 +484,7 @@ export function EventDeliveriesPage() {
           landmark
           title={t({ ja: '送信先（Webhook）', en: 'Destinations (webhooks)' })}
           description={t({
-            ja: '送信先の追加・変更は会社設定の「外部連携」タブで行います。署名鍵の発行はここで管理者が行い、発行より前のイベントは送りません。',
+            ja: '送信先の追加・変更は会社設定の「連携」タブで行います。署名鍵の発行はここで管理者が行い、発行より前のイベントは送りません。',
             en: 'Add or change destinations on the Integrations tab of the company settings. An administrator issues each signing secret here; events from before the issue are not sent.',
           })}
         >
@@ -456,7 +494,7 @@ export function EventDeliveriesPage() {
             className="ui-link self-start text-sm"
             data-testid="endpoints-settings-link"
           >
-            {t({ ja: '会社設定の「外部連携」を開く', en: 'Open the Integrations settings' })}
+            {t({ ja: '会社設定の「連携」を開く', en: 'Open the Integrations settings' })}
           </Link>
           {webhooks.isError && !view ? (
             <MetaError error={webhooks.error} retry={() => void webhooks.refetch()} />
@@ -464,12 +502,27 @@ export function EventDeliveriesPage() {
             <div aria-busy="true">
               <SkeletonCard lines={3} />
             </div>
+          ) : !view.settingValid ? (
+            <div className="ui-notice ui-notice-warning text-sm" data-testid="endpoints-invalid">
+              <p className="font-semibold">
+                {t({
+                  ja: '保存されている外部連携の設定が現在の定義に合わないため、どの送信先にも送信していません。',
+                  en: 'The stored integration setting no longer matches its current definition, so nothing is sent to any destination.',
+                })}
+              </p>
+              <p>
+                {t({
+                  ja: '会社設定の「連携」タブで「外部連携（Webhook・通知）」を開き、内容を確かめて保存し直してください。',
+                  en: 'Open “Integrations (webhooks and notifications)” on the Integrations tab of the company settings, check the value and save it again.',
+                })}
+              </p>
+            </div>
           ) : view.endpoints.length === 0 ? (
             <EmptyState
               testId="endpoints-empty"
               title={t({ ja: '送信先はまだありません', en: 'No destinations yet' })}
               description={t({
-                ja: '会社設定の「外部連携」で送信先（URL と topic）を登録してから、ここで署名鍵を発行します。',
+                ja: '会社設定の「連携」で送信先（URL と topic）を登録してから、ここで署名鍵を発行します。',
                 en: 'Register a destination (URL and topics) on the Integrations settings tab, then issue its signing secret here.',
               })}
             />
@@ -480,7 +533,10 @@ export function EventDeliveriesPage() {
                   key={endpoint.id}
                   endpoint={endpoint}
                   secretsAvailable={view.secretsAvailable}
-                  onIssue={() => setConfirming(endpoint)}
+                  onIssue={(button) => {
+                    trigger.current = button;
+                    setConfirming(endpoint);
+                  }}
                 />
               ))}
             </ul>
@@ -524,6 +580,9 @@ export function EventDeliveriesPage() {
           onClose={() => {
             setIssued(null);
             issue.reset();
+            requestAnimationFrame(() => {
+              if (trigger.current?.isConnected) trigger.current.focus();
+            });
           }}
         />
       ) : null}

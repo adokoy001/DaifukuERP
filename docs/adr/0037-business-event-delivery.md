@@ -40,7 +40,9 @@
 
 署名鍵はサーバーが 32 バイトの乱数から作り（`whsec_<base64url>`）、発行の応答で 1 度だけ `Cache-Control: no-store` で返す。保存は kernel の表 `webhook_secrets` に AES-256-GCM の暗号文だけ（`IDENTITY_ENCRYPTION_KEY` を共用し、AAD `<tenantId>:<companyId>:<endpointId>:webhook-secret` で用途を分ける。ADR-0022 の「DB の秘密は hash か暗号文」）。会社設定 `integration.webhooks` は `.strict()` で秘密を受け付けない（ADR-0027 §9）。
 
-鍵は発行時の URL の SHA-256 に結びつく。URL を変えると鍵は無効（`reissue_required`）になり、管理者が再発行するまで送らない（settings ロールだけでは署名付きの宛先を差し替えられない）。有効化時刻（その URL で最初に鍵を発行した時刻）より前のイベントは送らない（worker を初めて有効にしたときに溜まったイベントが一斉に流れない）。同じ URL での再発行は有効化時刻を引き継ぐ。
+鍵は発行時の URL の SHA-256 に結びつく。URL を変えると鍵は無効（`reissue_required`）になり、管理者が再発行するまで送らない（settings ロールだけでは署名付きの宛先を差し替えられない）。有効化時刻（その URL で最初に鍵を発行した時刻）より前のイベントは送らない（worker を初めて有効にしたときに溜まったイベントが一斉に流れない）。同じ URL での再発行は有効化時刻を引き継ぐ。発行は管理者が画面で確かめた URL に結びつける: 発行の要求は送信先の URL を持ち、kernel は会社の行をロック（`setSetting` と同じ `FOR UPDATE`）して現在の URL と比べ、違えば 409 で何も変えない（画面を開いた後に settings ロールが URL を差し替えても、その宛先は有効にならない）。
+
+`inbox.` で始まる topic は kernel だけが書く。outbox の行には書いた actor が残らず、振り分けは payload の利用者 id の本人へメールの配送行を作るので、`ctx.emit` はこの topic を拒み（403）、受信箱の監視は本人の Context で outbox へ直接書く。
 
 送信先を消して同じ id・同じ URL で足し直した場合に旧鍵が生きることは許容する（管理者が承認した URL から署名付きの通信が別の宛先へ向くことはない。spec のレビュー対応に記録）。
 
@@ -50,15 +52,15 @@
 
 ### 7. worker は配送の仕組みに限って system context を使う（規則 2 の正当な例外）
 
-CLAUDE.md 規則 2 と計画 §8 は `systemContext()` を移行と seed に限るが、`systemParams` の注記と `deliverPending` の契約は worker を想定している。この ADR で、**業務イベントの配送 worker を移行・seed と並ぶ `systemParams` の正当な利用者**とし、その範囲を次に限る: `deliverPending`（内部購読者と振り分け）、配送行と受信箱の監視の claim、送信結果の書込み、保存期間（30 日）を過ぎた送信済み・取消の行の削除、所属を失った利用者の監視の削除。業務 entity の読み書きはしない。受信箱の件数と、その観測・`inbox.count_changed` の書込みは本人の Context で行う。
+CLAUDE.md 規則 2 と計画 §8 は `systemContext()` を移行と seed に限るが、`systemParams` の注記と `deliverPending` の契約は worker を想定している。この ADR で、**業務イベントの配送 worker を移行・seed と並ぶ `systemParams` の正当な利用者**とし、その範囲を次に限る: `deliverPending`（内部購読者と振り分け）、配送行と受信箱の監視の claim、送信結果の書込み、保存期間（30 日）を過ぎた送信済み・取消の行の削除、所属を失った利用者の監視の削除（削除の 2 つの kernel 関数は system context 以外を拒む）。会社の受信箱のメール通知がオフのときは、claim で監視の期限を進めて基準を消すだけで数えない。業務 entity の読み書きはしない。受信箱の件数と、その観測・`inbox.count_changed` の書込みは本人の Context で行う。
 
-テナントをまたぐ処理は 1 つだけ: 期限の来た仕事のある tenant id の列挙を owner 接続の固定の読取（`apps/api/src/events/due-tenants.ts`、部分索引 `outbox_due_idx`・`event_deliveries_due_idx`・`inbox_watches_due_idx` による `SELECT DISTINCT tenant_id` の和集合）で行う（ADR-0027 §7 の `appliedMigrationsReader` と同じ扱い）。受信箱の点検での利用者の権限の再読込は、API の認証と同じ `loadPrincipal` / `resolveCompanyAccess`（owner 接続）を使う。それ以外の読み書きは app 接続の tenant ごとのトランザクション（RLS）で行い、1 つのトランザクションで複数の tenant を扱わない。
+テナントをまたぐ処理は 1 つだけ: 期限の来た仕事のある tenant id の列挙を owner 接続の固定の読取（`apps/api/src/events/due-tenants.ts`、部分索引 `outbox_due_idx`・`event_deliveries_due_idx`・`inbox_watches_due_idx`・`event_deliveries_purge_idx`（保存期間を過ぎた送信済み・取消の行。他に仕事の無い tenant も削除する）による `SELECT DISTINCT tenant_id` の和集合）で行う（ADR-0027 §7 の `appliedMigrationsReader` と同じ扱い）。受信箱の点検での利用者の権限の再読込は、API の認証と同じ `loadPrincipal` / `resolveCompanyAccess`（owner 接続）を使う。それ以外の読み書きは app 接続の tenant ごとのトランザクション（RLS）で行い、1 つのトランザクションで複数の tenant を扱わない。
 
 CLAUDE.md 規則 2 の 1 行の明確化（「`systemContext()` is for migrations/seeds and the event delivery worker」）は統合担当への提案に留める。
 
 ### 8. worker の起動と停止
 
-`EVENT_WORKER_ENABLED=true` の API process だけが worker を動かす（既定は無効。起動しただけで外向きの通信は始まらない）。tick は前の tick の完了後に `EVENT_WORKER_INTERVAL_MS`（既定 10 秒）後に予約し、重ねない。停止時は新しい tick を始めず、実行中の tick を最大 15 秒待ってから送信中の HTTP を中断する（行は `sending` のまま残り、lease 切れ後に同じ配送 ID で送り直される）。スケジューラで動かす配備のため 1 回実行の CLI（`events:deliver`）を持つ（終了コード: tenant の失敗 1、設定不足で送れない行 2、それ以外 0）。
+`EVENT_WORKER_ENABLED=true` の API process だけが worker を動かす（既定は無効。起動しただけで外向きの通信は始まらない）。tick は前の tick の完了後に `EVENT_WORKER_INTERVAL_MS`（既定 10 秒）後に予約し、重ねない。停止時は新しい tick を始めず、実行中の tick を最大 15 秒待ってから送信中の HTTP を中断する（行は `sending` のまま残り、lease 切れ後に同じ配送 ID で送り直される）。スケジューラで動かす配備のため 1 回実行の CLI（`events:deliver`）を持つ（終了コード: tenant の失敗 1、設定不足で送れない行 2、それ以外 0）。CLI は API と同じ runtime を読み込んでから tick を実行する（内部購読者と受信箱の提供元が同じに登録されていないと、イベントが購読者を経ずに配送済みになり、受信箱が 0 件と数えられる）。Webhook の 10 秒の制限と停止の中断は名前解決にもかかる（DNS 名は c-ares で引き、libuv の threadpool を使わず、中断で問い合わせを取り消す）。
 
 ### 9. 管理と本人の API は user の actor だけ
 

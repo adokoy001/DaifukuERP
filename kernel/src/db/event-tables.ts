@@ -69,6 +69,10 @@ export const eventDeliveries = pgTable(
       .on(t.tenantId, t.nextAttemptAt)
       .where(sql`${t.status} in ('pending', 'sending')`),
     index('event_deliveries_list_idx').on(t.tenantId, t.companyId, t.status, t.createdAt.desc()),
+    // Retention (AC-21): the worker's tenant list and the purge find expired delivered / cancelled rows by settled time.
+    index('event_deliveries_purge_idx')
+      .on(sql`coalesce(${t.deliveredAt}, ${t.cancelledAt})`, t.tenantId)
+      .where(sql`${t.status} in ('delivered', 'cancelled')`),
     foreignKey({
       name: 'event_deliveries_company_scope_fk',
       columns: [t.tenantId, t.companyId],

@@ -74,6 +74,8 @@ CREATE INDEX "event_deliveries_due_idx" ON "event_deliveries" USING btree ("tena
 --> statement-breakpoint
 CREATE INDEX "event_deliveries_list_idx" ON "event_deliveries" USING btree ("tenant_id","company_id","status","created_at" DESC NULLS LAST);
 --> statement-breakpoint
+CREATE INDEX "event_deliveries_purge_idx" ON "event_deliveries" USING btree (coalesce("delivered_at", "cancelled_at"),"tenant_id") WHERE "event_deliveries"."status" in ('delivered', 'cancelled');
+--> statement-breakpoint
 CREATE INDEX "inbox_watches_due_idx" ON "inbox_watches" USING btree ("next_check_at","tenant_id");
 --> statement-breakpoint
 CREATE INDEX "outbox_due_idx" ON "outbox" USING btree ("tenant_id","next_attempt_at") WHERE "outbox"."published_at" is null and "outbox"."dead_at" is null;

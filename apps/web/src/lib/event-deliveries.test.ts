@@ -7,7 +7,8 @@ import {
   isCompanyAdmin,
   notificationReason,
   parseDeliveriesSearch,
-  secretStateText,
+  SECRET_STATE_TEXT,
+  secretStateDetail,
   selectedTab,
   STATUS_TEXT,
   STATUS_TONE,
@@ -83,14 +84,25 @@ describe('event delivery screen helpers', () => {
     expect(targetText({ kind: 'email', target: { userName: '山田' } }).ja).toBe('山田');
     expect(targetText({ kind: 'internal', target: {} }).en).toBe('Internal subscribers');
     const date = (iso: string) => iso.slice(0, 10);
-    expect(secretStateText({ state: 'none' }, date).ja).toBe('署名鍵: 未発行');
-    expect(secretStateText({ state: 'active', issuedAt: '2026-10-30T01:00:00Z', issuedByName: 'Admin' }, date)).toEqual(
-      {
-        ja: '署名鍵: 発行済み（2026-10-30、Admin）',
-        en: 'Signing secret: issued (2026-10-30, Admin)',
-      },
+    // The Badge carries a short word; the explanation is a wrapping line (AC-25 (b), AC-27 at 390px).
+    expect(SECRET_STATE_TEXT.none).toEqual({ ja: '未発行', en: 'Not issued' });
+    expect(SECRET_STATE_TEXT.active).toEqual({ ja: '発行済み', en: 'Issued' });
+    expect(SECRET_STATE_TEXT.reissue_required).toEqual({ ja: '再発行が必要', en: 'Reissue required' });
+    for (const text of Object.values(SECRET_STATE_TEXT)) expect(text.en.length).toBeLessThanOrEqual(16);
+    expect(secretStateDetail({ state: 'none' }, date).ja).toBe('署名鍵が未発行のため、まだ送信していません。');
+    expect(
+      secretStateDetail({ state: 'active', issuedAt: '2026-10-30T01:00:00Z', issuedByName: 'Admin' }, date),
+    ).toEqual({
+      ja: '署名鍵を 2026-10-30 に Admin が発行しました。',
+      en: 'Signing secret issued 2026-10-30 by Admin.',
+    });
+    expect(secretStateDetail({ state: 'active', issuedAt: '2026-10-30T01:00:00Z' }, date).en).toBe(
+      'Signing secret issued 2026-10-30.',
     );
-    expect(secretStateText({ state: 'reissue_required' }, date).ja).toContain('再発行が必要');
+    expect(secretStateDetail({ state: 'reissue_required' }, date)).toEqual({
+      ja: 'URL が変わったため、管理者が署名鍵を再発行するまで送信を止めています。',
+      en: 'The URL changed, so sending is paused until an administrator reissues the signing secret.',
+    });
   });
 
   it('AC-26 AC-27 inbox mail reasons and the company-admin navigation condition', () => {

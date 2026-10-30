@@ -54,6 +54,35 @@
 - 制御されたチェックボックスに Playwright の `check()` が使えない（状態はサーバーの応答で変わる）— 発見: ブラウザ試験、修正: `click()` と状態の待機に変えた（試験の書き方の修正で、確認は弱めていない）。
 - 手動確認で、`content-type: application/json` を付けた空の POST は Fastify が 400 を返す — 発見: 手動の通し確認、対処: スクリプトに `{}` を付けた。画面の client は本文が無いとき `content-type` を付けないので影響なし（API の挙動は変えていない）。
 
+## 実装レビューの指摘の修正（修正担当、2026-10-30）
+
+レビューの 17 件（blocker 1・major 2・minor 9・nit 5）をコードで確かめ、すべて正しいと判断して直した（却下なし）。spec に「レビュー指摘への対応（実装のレビュー）」の節を足し、AC-2・AC-3・AC-7・AC-9・AC-14・AC-16・AC-21・AC-22・AC-25・AC-26、データの節、検証の表を変えた。ADR-0037 §5・§7・§8 に追記した（新しい ADR は作っていない）。
+
+- **blocker: `events:deliver` の CLI が runtime を読み込んでいなかった。** CLI の process には `<module>.todo` も `registry.subscribe` も登録されず、受信箱を 0 件と記録して偽の `inbox.count_changed` を書き、内部購読者を経ずにイベントを配送済みにしていた。`cli.ts` で `loadRuntime()`（`@daifuku/runtime`。`db/cli.ts` と同じ）を tick の前に呼ぶ。回帰試験は CLI を子 process（`tsx src/events/cli.ts`、閉じた loopback の SMTP、試験 DB）で実行し、実在の `workforce.todo` で数えた記録が API の worker の記録と同じでイベントが増えないことを確かめる。`loadRuntime()` を外すとこの試験が失敗することを実測した。
+- **major: 署名鍵の発行（＝送信先の有効化）が管理者の見た URL に結びついていなかった。** `POST /admin/webhooks/:endpointId/secret` は本文 `{ url }` を必須にし（無いと 400）、`issueWebhookSecret` は会社の行を `FOR UPDATE`（`setSetting` と同じ `lockedCompanySettings`。kernel 内で export した）で読んで現在の URL と比べ、違えば 409（`INVALID_STATE`、`details.reason = 'url_changed'`）で鍵の表を変えない。応答に鍵を結びつけた `url` を返し、確認のダイアログに URL を全文で表示する。画面は 409 を `toast.error` にして送信先を取得し直す。
+- **major: 390px で署名鍵の状態の `Badge` がはみ出した。** `Badge` は短い語（未発行／発行済み／再発行が必要）だけにし、発行日・発行者や「URL が変わったため送信を止めています」は折り返す 1 行（`endpoint-secret-detail`）に分けた（`secretStateText` を `SECRET_STATE_TEXT` と `secretStateDetail` に分割）。
+- **受信箱の監視は会社のスイッチがオフの間は数えない。** `claimInboxWatches` が会社の `inboxEmail` を読み、オフの会社の監視は期限を進めて基準（`last_total`）を消すだけで返さない。オンに戻した後の最初の観測は基準になり、オフの間の増減をメールにしない（基準を残すと戻した直後に 1 通出るため、消す方を選んだ）。
+- **保存期間の削除は他に仕事の無い tenant でも動く。** 期限の来た tenant の列挙に「30 日を過ぎた送信済み・取消の配送行」の和集合を足し、部分索引 `event_deliveries_purge_idx (coalesce(delivered_at, cancelled_at), tenant_id) where status in ('delivered','cancelled')` を足した。削除の問い合わせも同じ式にした（送信済みの行は `delivered_at` だけ、取消の行は `cancelled_at` だけを持つので同値）。移行 0018 は未統合なので、journal の項目と snapshot を外して `pnpm db:generate event_delivery` で作り直し、差分が索引 1 文だけであることを確かめ、journal の時刻と snapshot の id を元に戻した。
+- **名前解決を 10 秒の制限と停止の中断の内に入れた。** 制限の signal を `send()` の最初に作り、停止の signal と合わせて名前解決と HTTP の両方にかける。DNS 名は c-ares（`dns.promises.Resolver`、`timeout`・`tries` 付き）で A と AAAA を引き、中断で `cancel()` する（libuv の threadpool を握らない）。`localhost`（開発用の loopback URL）だけはシステムの resolver。応答しない名前解決は `timeout`。
+- **`inbox.` の topic を kernel 専用にした。** `ctx.emit` は `inbox.` で始まる topic を 403（`PERMISSION_DENIED`）で拒み（`event-insert.ts` の `emitOutbox`）、受信箱の監視は本人の Context のまま `insertOutbox` で直接書く。`insertOutbox` は kernel の公開 index に無い。
+- **worker 専用の `purgeEventDeliveries`・`removeInboxWatch` は system context 以外を 403 にした。**
+- 画面の残り: 設定タブの名前を「連携」に直した（ページ 3 か所とマニュアル 08）、`settingValid: false` で警告を出す、`/me/notifications` の読込失敗で再読み込みを出す、点検の間隔を「定期的に（既定では約 15 分ごと）」と書く（マニュアルでは `EVENT_INBOX_CHECK_MINUTES` と 1 巡の人数の上限に触れた）、権限の判定が済むまで読込中を出し、一覧の 403 でも権限の説明にする、再送ボタンの名前に送信先と作成日時を足す、秘密のダイアログを閉じたら焦点を「発行」「再発行」のボタンへ戻す。
+- nit: 有効化と同じ時刻のイベントの境界の試験（`>` を `>=` にする変異で試験が落ちることを実測）、送れない行だけの tick のログを 1 時間に 1 回へ間引いた（`shouldLogTick`）。
+
+### 既存試験の変更（規則 8）
+
+- `apps/api/test/event-delivery.db.test.ts`: 発行の要求に `{ url }` を付けた（本文の無い要求は新しい契約で 400 になるため。AC-22 の 403 の確認は本文付きで同じく 403 を確かめる）。`kernel/test/event-delivery.db.test.ts`: 発行の補助関数が保存中の URL を読んで `expectedUrl` に渡す形にし、AC-6 (d) の試験に境界のイベントを足したため期待する配送行の列に 1 件増えた（確認を弱めていない）。`apps/web/e2e/event-delivery.spec.ts` の AC-25: 鍵の状態の期待を短い語と説明の行に合わせた。
+
+### 修正の検証
+
+- [実測] DB `kernel/test/event-delivery.db.test.ts` 23 件、`apps/api/test/event-delivery.db.test.ts` 17 件（新規: settings ロールの URL 変更で発行が 409・鍵の表は不変・`url` 無しは 400、古い送信済みの行だけの tenant が列挙され削除される、CLI の子 process、スイッチがオフの間は数えず記録もイベントも無くオンに戻すと基準から）が通過。
+- [実測] 単体 `apps/api/test/webhook-transport.test.ts`（応答しない名前解決が 200 ms の制限で `timeout` になり問い合わせが取り消される、停止で打ち切る）、`apps/api/test/event-worker-log.test.ts`（新規）、`apps/web/src/lib/event-deliveries.test.ts` が通過。
+- [実測] ブラウザ（slot 21）`e2e/event-delivery.spec.ts` 7 件（新規 3 件: `page.route` で暗号鍵のあるサーバーの `GET /admin/webhooks` に差し替え、発行と再発行の確認の文と URL・送った `{ url }`・鍵の 1 度だけの表示・コピー・閉じた後に DOM・localStorage・sessionStorage・URL に鍵が無い・焦点が押したボタンへ戻る・409 の `toast.error` と再取得、390px の英語と日本語で 3 つの状態の `Badge` と説明がカードと画面の内側に収まる、定義に合わない設定の警告、`/me/notifications` の読込失敗と再読み込み）。前の記録の「[レビュー] 発行ダイアログの表示とコピーは実機で未確認」は、この差し替えの試験で確かめた（本物の暗号鍵による発行の画面経由の通しは、試験の API に鍵が無いため引き続き DB 試験だけ）。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`（`.runtime/gate/20261030T181650Z-light`、2564 秒、負荷 8〜20）: format・docs・assurance・typecheck（root・api・web）・lint・unit 170 ファイル 1733 件・deploy が通過。DB は 136 ファイル中 135 ファイル 919 件が通過し、`apps/edge/test/actual-api.db.test.ts` 1 ファイルが `beforeAll` の合成 API の起動待ち（30 秒）の超過で失敗した（負荷約 20 の時刻）。この suite だけを再実行して 4 件通過（23 秒）。この item の変更と無関係の負荷による時間切れと判断した（同じ suite は変更前の gate:light でも通過している）。
+- [実測] ブラウザ（slot 21）`e2e/event-delivery.spec.ts` 7 件・`e2e/inbox.spec.ts`・`e2e/setup-health.spec.ts` を同時に実行し 14 件中 13 件が通過。`setup-health` AC-9 の 1 件は、税率の保存ボタンを押した直後に API で値を読む箇所（保存の応答を待たない）で古い値を読んで失敗した。単独で再実行して 4 件とも通過（B3 の試験の待ち方の問題で、この item の変更と無関係。統合担当へ伝える）。
+- [未検証] 既定の c-ares による名前解決の実際の DNS での動作（試験は名前解決を注入し、この環境から外部の DNS には届かない）。
+- 計測（修正の回）: agent_minutes=約95（gate:light の待ち時間を含む）、rework_lines=約30（`purgeEventDeliveries` の日時の束縛の誤り、試験の補助関数の既定引数の誤り）、gate_failures=0（DB の 1 suite は上記の負荷による時間切れ）。
+
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 
 - `pnpm gate:full`（統合担当が実行）

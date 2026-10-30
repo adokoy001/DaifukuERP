@@ -4,7 +4,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { consoleLogger, type Context, type ContextParams, type Db } from '../context.ts';
 import { newId } from '../ids.ts';
-import { insertOutbox } from '../event-insert.ts';
+import { emitOutbox } from '../event-insert.ts';
 import { storage } from '../storage.ts';
 import { TENANT_SETTING } from './table.ts';
 import { companies } from './system-tables.ts';
@@ -92,7 +92,7 @@ export function makeContext(db: Db, params: ContextParams): Context {
       return storage();
     },
     now,
-    emit: (topic, payload) => insertOutbox(ctx, topic, payload),
+    emit: (topic, payload) => emitOutbox(ctx, topic, payload),
   };
   return ctx;
 }

@@ -2,8 +2,12 @@
 // event through the real kernel delivery path to a receiver that always fails, so /admin/event-deliveries shows a
 // genuine dead webhook delivery; resending moves it to the waiting tab. The browser-test API has no encryption key and
 // no worker, so issuing is disabled with its reason and the worker notice shows. 390px, English, axe; a user without
-// admin and a store-scoped admin are refused. /inbox shows the mail switch disabled with each reason, and with stubbed
-// /me/notifications it toggles with a toast and reports a 409 with toast.error.
+// admin and a store-scoped admin are refused. With a stubbed GET /admin/webhooks (a server that has the key): the issue
+// and reissue confirmations with the destination URL, the one-time secret Dialog (copy, nothing left in the DOM,
+// storage or URL after closing, focus back on the trigger), a 409 when the URL changed meanwhile, the short secret
+// state Badge at 390px in English, and the notice for a stored setting that no longer matches. /inbox shows the mail
+// switch disabled with each reason, with stubbed /me/notifications it toggles with a toast and reports a 409 with
+// toast.error, and a failed read shows a retry.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -85,7 +89,8 @@ test('event-delivery AC-25: a dead delivery is explained and resent to the waiti
   await expect(page.getByTestId('worker-disabled')).toContainText('EVENT_WORKER_ENABLED');
   const endpoint = page.getByTestId('endpoint-erp');
   await expect(endpoint).toHaveAttribute('data-secret', 'active');
-  await expect(endpoint.getByTestId('endpoint-secret-state')).toContainText('署名鍵: 発行済み');
+  await expect(endpoint.getByTestId('endpoint-secret-state')).toHaveText('発行済み');
+  await expect(endpoint.getByTestId('endpoint-secret-detail')).toContainText('発行しました');
   const issue = endpoint.getByTestId('issue-erp');
   await expect(issue).toBeDisabled();
   await expect(issue).toHaveAccessibleDescription(/IDENTITY_ENCRYPTION_KEY/);
@@ -246,5 +251,215 @@ test('event-delivery AC-26: the inbox mail switch shows why it is unavailable an
   await toggle.click();
   await expect(page.getByText('inbox mail is not enabled for this company').first()).toBeVisible();
   await expect(toggle).not.toBeChecked();
+  await page.unroute('**/me/notifications');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Stubbed GET /admin/webhooks: the browser-test API has no encryption key, so the secret flow is driven with page.route.
+
+type SecretState = 'none' | 'active' | 'reissue_required';
+const ISSUED_AT = '2026-10-30T01:00:00.000Z';
+const stubEndpoint = (id: string, state: SecretState, patch: Record<string, unknown> = {}) => ({
+  id,
+  label: `受信先 ${id}`,
+  url: `https://hooks.example.com/daifuku/${id}`,
+  topics: ['sales_invoice.submitted'],
+  enabled: true,
+  secret: state === 'none' ? { state } : { state, issuedAt: ISSUED_AT, issuedByName: 'Admin' },
+  ...patch,
+});
+const stubView = (endpoints: unknown[], patch: Record<string, unknown> = {}) => ({
+  endpoints,
+  inboxEmail: false,
+  settingValid: true,
+  secretsAvailable: true,
+  mailConfigured: false,
+  worker: { enabledHere: true },
+  ...patch,
+});
+
+async function stubWebhooks(page: Page, view: () => unknown): Promise<{ gets: () => number }> {
+  let gets = 0;
+  await page.route(
+    (url) => url.pathname === '/admin/webhooks',
+    (route) => {
+      gets++;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view()) });
+    },
+  );
+  return { gets: () => gets };
+}
+
+test('event-delivery AC-25 (b)(c): issue and reissue confirm the URL; the secret is shown once and leaves nothing behind', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const webhooks = await stubWebhooks(page, () =>
+    stubView([stubEndpoint('fresh', 'none'), stubEndpoint('erp', 'active')]),
+  );
+  const secret = `whsec_${'Q'.repeat(43)}`;
+  const posted: { path: string; body: unknown }[] = [];
+  let refuse = false;
+  await page.route(
+    (url) => /^\/admin\/webhooks\/[^/]+\/secret$/.test(url.pathname),
+    (route) => {
+      const body = route.request().postDataJSON() as { url: string };
+      posted.push({ path: new URL(route.request().url()).pathname, body });
+      if (refuse)
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: {
+              code: 'INVALID_STATE',
+              message: 'the destination URL of this endpoint changed after it was shown',
+              hint: 'Reload the screen, check the destination URL, then issue the signing secret again.',
+              details: { endpointId: 'erp', reason: 'url_changed' },
+            },
+          }),
+        });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'cache-control': 'no-store' },
+        body: JSON.stringify({ endpointId: 'erp', url: body.url, secret, issuedAt: ISSUED_AT }),
+      });
+    },
+  );
+  await signInQuality(page);
+  await page.goto('/admin/event-deliveries');
+  await expect(page.getByTestId('endpoint-erp')).toBeVisible();
+
+  // First issue: the confirmation names the destination and the "no earlier events" rule; going back sends nothing.
+  const fresh = page.getByTestId('issue-fresh');
+  await fresh.click();
+  const confirm = page.getByRole('dialog');
+  await expect(confirm.getByRole('heading', { name: '「受信先 fresh」の署名鍵を発行しますか？' })).toBeVisible();
+  await expect(confirm).toContainText('発行より前に起きたイベントは送りません');
+  await expect(confirm.getByTestId('secret-confirm-url')).toHaveText('https://hooks.example.com/daifuku/fresh');
+  await confirm.getByRole('button', { name: '戻る' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(fresh).toBeFocused();
+  expect(posted).toEqual([]);
+
+  // Reissue: the warning about the old secret, the URL sent back as the one confirmed, the secret shown once.
+  const trigger = page.getByTestId('issue-erp');
+  await trigger.click();
+  await expect(confirm.getByRole('heading', { name: '「受信先 erp」の署名鍵を再発行しますか？' })).toBeVisible();
+  await expect(confirm).toContainText('これまでの鍵では署名を検証できなくなります');
+  await expect(confirm.getByTestId('secret-confirm-url')).toHaveText('https://hooks.example.com/daifuku/erp');
+  await confirm.getByTestId('secret-confirm').click();
+  const shown = page.getByRole('dialog', { name: '「受信先 erp」の署名鍵' });
+  await expect(shown).toBeVisible();
+  expect(posted).toEqual([
+    { path: '/admin/webhooks/erp/secret', body: { url: 'https://hooks.example.com/daifuku/erp' } },
+  ]);
+  await expect(shown).toHaveAccessibleDescription(/閉じると再表示できません/);
+  await expect(shown.getByTestId('secret-value')).toHaveValue(secret);
+  await expect(shown.getByTestId('secret-url')).toHaveText('https://hooks.example.com/daifuku/erp');
+  await shown.getByTestId('secret-copy').click();
+  await expect(shown.getByTestId('secret-copy-status')).toHaveText(/コピーしました。|Ctrl\+C/);
+  await shown.getByTestId('secret-close').click();
+  await expect(shown).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(await page.content()).not.toContain(secret);
+  expect(page.url()).not.toContain(secret);
+  const stored = await page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]));
+  expect(stored).not.toContain(secret);
+  expect(stored).not.toContain('whsec_');
+
+  // The URL changed after the screen loaded: 409, an error toast, no secret, and the endpoints are fetched again.
+  refuse = true;
+  const before = webhooks.gets();
+  await trigger.click();
+  await confirm.getByTestId('secret-confirm').click();
+  await expect(page.getByText('the destination URL of this endpoint changed after it was shown').first()).toBeVisible();
+  await expect(page.getByTestId('secret-value')).toHaveCount(0);
+  await expect.poll(() => webhooks.gets()).toBeGreaterThan(before);
+  await expect(trigger).toBeFocused();
+});
+
+test('event-delivery AC-25 (b) AC-27: the secret state Badge stays a short word inside the card at 390px; an invalid setting is explained', async ({
+  page,
+}) => {
+  const longName = '経理部 システム連携担当 山田 太郎（外部委託先の窓口を兼務）';
+  let view = stubView([
+    stubEndpoint('moved', 'reissue_required', { label: 'Accounting connector for the head office ledger' }),
+    stubEndpoint('erp', 'active', { secret: { state: 'active', issuedAt: ISSUED_AT, issuedByName: longName } }),
+    stubEndpoint('fresh', 'none'),
+  ]);
+  await stubWebhooks(page, () => view);
+  await signInQuality(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const locale of ['en', 'ja'] as const) {
+    await page.evaluate((value) => localStorage.setItem('daifuku.locale', value), locale);
+    await page.goto('/admin/event-deliveries');
+    await expect(page.getByTestId('endpoint-moved')).toBeVisible();
+    await assertNoOverflow(page);
+    for (const id of ['moved', 'erp', 'fresh']) {
+      const card = page.getByTestId(`endpoint-${id}`);
+      const box = await card.evaluate((element) => {
+        const badge = element.querySelector('[data-testid="endpoint-secret-state"]') as HTMLElement;
+        const detail = element.querySelector('[data-testid="endpoint-secret-detail"]') as HTMLElement;
+        const cardBox = element.getBoundingClientRect();
+        return {
+          innerWidth,
+          card: cardBox.right,
+          badge: badge.getBoundingClientRect().right,
+          detail: detail.getBoundingClientRect().right,
+          detailScroll: detail.scrollWidth <= detail.clientWidth,
+        };
+      });
+      expect(box.badge, `${locale} ${id} badge`).toBeLessThanOrEqual(Math.min(box.innerWidth, box.card) + 0.5);
+      expect(box.detail, `${locale} ${id} detail`).toBeLessThanOrEqual(Math.min(box.innerWidth, box.card) + 0.5);
+      expect(box.detailScroll, `${locale} ${id} detail wraps`).toBe(true);
+    }
+    if (locale === 'en') {
+      await expect(page.getByTestId('endpoint-moved').getByTestId('endpoint-secret-state')).toHaveText(
+        'Reissue required',
+      );
+      await expect(page.getByTestId('endpoint-moved').getByTestId('endpoint-secret-detail')).toContainText(
+        'sending is paused until an administrator reissues',
+      );
+      await page.screenshot({ path: test.info().outputPath('endpoints-390-en.png'), fullPage: true });
+    } else {
+      await expect(page.getByTestId('endpoint-moved').getByTestId('endpoint-secret-state')).toHaveText('再発行が必要');
+      await expect(page.getByTestId('endpoint-erp').getByTestId('endpoint-secret-detail')).toContainText(longName);
+    }
+  }
+
+  // A stored value that no longer matches its schema routes nowhere: say so instead of "no destinations yet".
+  view = stubView([], { settingValid: false });
+  await page.goto('/admin/event-deliveries');
+  await expect(page.getByTestId('endpoints-invalid')).toContainText('どの送信先にも送信していません');
+  await expect(page.getByTestId('endpoints-invalid')).toContainText('「連携」タブ');
+  await expect(page.getByTestId('endpoints-empty')).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem('daifuku.locale', 'ja'));
+});
+
+test('event-delivery AC-26: a failed read of the inbox mail setting is reported with a retry', async ({ page }) => {
+  let fail = true;
+  await page.route('**/me/notifications', (route) =>
+    fail
+      ? route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'INTERNAL', message: 'synthetic failure', hint: 'Retry later.' } }),
+        })
+      : route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ inboxEmail: false, available: true }),
+        }),
+  );
+  await signInQuality(page);
+  await page.goto('/inbox');
+  const error = page.getByTestId('inbox-notification-error');
+  await expect(error).toContainText('メール通知の設定を読み込めませんでした');
+  fail = false;
+  await error.getByRole('button', { name: '再読み込み' }).click();
+  await expect(page.getByTestId('inbox-notification-toggle')).toBeEnabled();
+  await expect(error).toHaveCount(0);
   await page.unroute('**/me/notifications');
 });

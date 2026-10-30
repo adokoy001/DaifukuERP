@@ -619,19 +619,27 @@ export async function deliverEventDeliveries(
   return result;
 }
 
-/** Deletes delivered and cancelled rows older than the retention period (AC-21); dead and pending rows are kept. */
+/** The instant before which delivered / cancelled rows are purged (AC-21). */
+export function deliveryRetentionCutoff(now: Date): Date {
+  return new Date(now.getTime() - DELIVERY_RETENTION_DAYS * 86_400_000);
+}
+
+/**
+ * Deletes delivered and cancelled rows older than the retention period (AC-21); dead and pending rows are kept. System
+ * context only (the worker): the purge spans every company of the tenant. Served by event_deliveries_purge_idx; a
+ * delivered row has only delivered_at and a cancelled row only cancelled_at, so the coalesce is the settled time.
+ */
 export async function purgeEventDeliveries(ctx: Context, now: Date = ctx.now()): Promise<number> {
-  const cutoff = new Date(now.getTime() - DELIVERY_RETENTION_DAYS * 86_400_000);
+  if (ctx.actor.type !== 'system') throw new PermissionDenied('event_delivery', 'purge', ctx.roles);
+  const cutoff = deliveryRetentionCutoff(now);
   const ids = await ctx.db
     .select({ id: eventDeliveries.id })
     .from(eventDeliveries)
     .where(
       and(
         eq(eventDeliveries.tenantId, ctx.tenantId),
-        or(
-          and(eq(eventDeliveries.status, 'delivered'), lt(eventDeliveries.deliveredAt, cutoff)),
-          and(eq(eventDeliveries.status, 'cancelled'), lt(eventDeliveries.cancelledAt, cutoff)),
-        ),
+        inArray(eventDeliveries.status, ['delivered', 'cancelled']),
+        sql`coalesce(${eventDeliveries.deliveredAt}, ${eventDeliveries.cancelledAt}) < ${cutoff.toISOString()}::timestamptz`,
       ),
     )
     .limit(PURGE_BATCH);

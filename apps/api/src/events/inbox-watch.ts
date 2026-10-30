@@ -1,7 +1,8 @@
 // Inbox checks of one tenant (docs/specs/event-delivery.md AC-16, AC-23). The user's permissions are reloaded through
 // the owner connection exactly like API authentication (loadPrincipal, resolveCompanyAccess); the inbox is counted in
 // the user's own read-only Context and the observation is written in the user's own read-write Context. A user who is
-// inactive or lost the company has the watch removed (system context) without an event.
+// inactive or lost the company has the watch removed (system context) without an event. Watches of a company whose
+// inbox mail switch is off are not returned by the claim (they are advanced without counting; kernel claimInboxWatches).
 import {
   claimInboxWatches,
   loadPrincipal,

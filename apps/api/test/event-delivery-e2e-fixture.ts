@@ -79,7 +79,7 @@ async function main() {
       }),
     );
     await withContext(app, { ...admin, now: at(0) }, (ctx) =>
-      issueWebhookSecret(ctx, 'erp', { encryptionKey: FIXTURE_KEY }),
+      issueWebhookSecret(ctx, 'erp', { encryptionKey: FIXTURE_KEY, expectedUrl: `${base}/hook` }),
     );
     await withContext(app, { ...admin, now: at(1) }, (ctx) => ctx.emit('e2e.dead_letter', { runId }));
     const transport = webhookTransport({ allowLoopback: true, timeoutMs: 5000 });

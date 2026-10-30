@@ -418,6 +418,7 @@ export {
   DELIVERY_LIST_STATUSES,
   DELIVERY_RETENTION_DAYS,
   deliveryListQuerySchema,
+  deliveryRetentionCutoff,
   listEventDeliveries,
   MAX_DELIVERY_ATTEMPTS,
   purgeEventDeliveries,

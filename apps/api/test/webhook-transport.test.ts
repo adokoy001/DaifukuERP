@@ -144,6 +144,35 @@ describe('address allow-list (AC-13)', () => {
     });
     expect(await transport.send(request('https://hooks.example.com/x'))).toEqual({ ok: false, code: 'network' });
   });
+
+  it('AC-9 a name lookup that never answers is a timeout within the attempt limit, and the query is cancelled', async () => {
+    let cancelled = false;
+    const transport = webhookTransport({
+      allowLoopback: false,
+      timeoutMs: 200,
+      resolve: (_host, signal) =>
+        new Promise<ResolvedAddress[]>(() => signal.addEventListener('abort', () => (cancelled = true))),
+    });
+    const started = Date.now();
+    expect(await transport.send(request('https://hooks.example.com/x'))).toEqual({ ok: false, code: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(cancelled).toBe(true);
+  });
+
+  it('AC-1 a shutdown abort ends a hanging name lookup at once', async () => {
+    const transport = webhookTransport({
+      allowLoopback: false,
+      timeoutMs: 10_000,
+      resolve: () => new Promise<ResolvedAddress[]>(() => undefined),
+    });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+    const started = Date.now();
+    expect(await transport.send(request('https://hooks.example.com/x', controller.signal))).toMatchObject({
+      ok: false,
+    });
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
 });
 
 describe('HTTP behaviour (AC-9)', () => {

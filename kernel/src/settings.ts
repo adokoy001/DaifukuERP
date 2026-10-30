@@ -88,7 +88,8 @@ function assertWriteRoles(ctx: Context, key: string, op: 'update' | 'delete'): v
  * they audit as "before" through it, so a write that overlaps another write of the same company waits for it and the
  * audited history forms an unbroken chain (each before is the previous after).
  */
-async function lockedCompanySettings(ctx: Context): Promise<{ id: string; settings: Record<string, unknown> }> {
+/** The current company's settings under a row lock (FOR UPDATE): writers and checks that must see one value. */
+export async function lockedCompanySettings(ctx: Context): Promise<{ id: string; settings: Record<string, unknown> }> {
   if (!ctx.companyId) throw new NotFound('company', 'null');
   const rows = await ctx.db
     .select({ id: companies.id, settings: companies.settings })
