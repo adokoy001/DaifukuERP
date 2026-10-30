@@ -152,7 +152,60 @@ export { configureStorage, storage, LocalStorage, type StoragePort, type StoredO
 export { snapshot } from './repository/rows.ts';
 export { submitDocument, cancelDocument, amendDocument, transitionDocument, findDependents } from './document.ts';
 export { nextNumber } from './numbering.ts';
-export { writeAudit, auditTrail, type AuditEntry } from './audit.ts';
+export { writeAudit, auditTrail, auditSnapshotFilter, type AuditEntry } from './audit.ts';
+export {
+  AUDIT_OP_LABELS,
+  AUDIT_SEARCH_DEFAULT_LIMIT,
+  AUDIT_SEARCH_MAX_DAYS,
+  AUDIT_SEARCH_MAX_LIMIT,
+  AUDIT_SUBJECTS,
+  auditPeriod,
+  auditPeriodDays,
+  auditSearchOptions,
+  auditSearchQuery,
+  auditSearchStatement,
+  decodeAuditCursor,
+  encodeAuditCursor,
+  searchAudit,
+  unreadableEntities,
+  type AuditCursor,
+  type AuditScope,
+  type AuditSearchItem,
+  type AuditSearchOptions,
+  type AuditSearchQuery,
+  type AuditSearchResult,
+  type AuditSubjectDef,
+  type AuditSubjectOption,
+  type AuditUserKind,
+  type AuditUserOption,
+} from './audit-search.ts';
+export {
+  derivePermissionMatrix,
+  describeRowRule,
+  isSelfRule,
+  permissionMatrix,
+  type MatrixAction,
+  type MatrixActionPermission,
+  type MatrixEntity,
+  type MatrixFieldGroup,
+  type MatrixInput,
+  type MatrixPack,
+  type MatrixPolicy,
+  type MatrixRole,
+  type MatrixRowRule,
+  type MatrixScopeNote,
+  type MatrixTransition,
+  type PermissionMatrix,
+} from './permission-matrix.ts';
+export {
+  ACCESS_INSIGHT_ROLES,
+  assertAccessInsight,
+  HEALTH_ROLES,
+  hasAnyRole,
+  KERNEL_CAPABILITIES,
+  SETTINGS_ROLES,
+  type KernelCapability,
+} from './kernel-capabilities.ts';
 export { deliverPending, type DeliveryResult } from './events.ts';
 export {
   can,

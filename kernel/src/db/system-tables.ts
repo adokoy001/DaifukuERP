@@ -164,6 +164,12 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_record_idx').on(t.tenantId, t.entity, t.recordId),
     index('audit_log_at_idx').on(t.tenantId, t.at),
+    // access-insight AC-18: the audit search (company range newest first with an (at, id) keyset, user filters).
+    index('audit_log_company_at_idx').on(t.tenantId, t.companyId, t.at, t.id),
+    index('audit_log_actor_at_idx').on(t.tenantId, t.actorId, t.at),
+    index('audit_log_on_behalf_at_idx')
+      .on(t.tenantId, t.onBehalfOf, t.at)
+      .where(sql`${t.onBehalfOf} is not null`),
     tenantPolicy('audit_log'),
   ],
 ).enableRLS();

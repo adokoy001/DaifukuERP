@@ -2,7 +2,8 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { writeAudit } from './audit.ts';
-import { isAdmin, type Context } from './context.ts';
+import type { Context } from './context.ts';
+import { hasAnyRole, SETTINGS_ROLES } from './kernel-capabilities.ts';
 import { auditLog, companies, users } from './db/system-tables.ts';
 import { NotFound, PermissionDenied, ValidationError } from './errors.ts';
 import { registry } from './registry.ts';
@@ -69,7 +70,7 @@ export async function getSetting<T>(ctx: Context, key: string, schema: z.ZodType
 /** Company settings are changed and their history read by admin or role `settings`, never by a store/site-scoped member. */
 function assertSettingsAccess(ctx: Context, op: 'update' | 'delete' | 'audit'): void {
   if (ctx.accessScope && ctx.accessScope !== 'all') throw new PermissionDenied('company_settings', op, ctx.roles);
-  if (!isAdmin(ctx) && !ctx.roles.includes('settings')) throw new PermissionDenied('company_settings', op, ctx.roles);
+  if (!hasAnyRole(ctx, SETTINGS_ROLES)) throw new PermissionDenied('company_settings', op, ctx.roles);
 }
 
 /**

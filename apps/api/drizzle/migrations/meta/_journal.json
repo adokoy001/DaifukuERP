@@ -148,6 +148,13 @@
       "when": 1793388877672,
       "tag": "0020_machine_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793388964823,
+      "tag": "0021_audit_search_indexes",
+      "breakpoints": true
     }
   ]
 }

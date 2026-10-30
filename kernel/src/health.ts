@@ -5,7 +5,8 @@
 // still run. Outcomes carry labels and an in-app path only: never secrets, connection strings or file paths.
 import { and, count, eq, isNotNull, isNull } from 'drizzle-orm';
 import { isAppHref } from './app-href.ts';
-import { isAdmin, type Context } from './context.ts';
+import type { Context } from './context.ts';
+import { HEALTH_ROLES, hasAnyRole } from './kernel-capabilities.ts';
 import { companyProfileOf, companyProfileSchema, COMPANY_PROFILE_KEY } from './company-profile.ts';
 import { outbox } from './db/system-tables.ts';
 import { DaifukuError, PermissionDenied, safeErrorDiagnostics } from './errors.ts';
@@ -48,7 +49,7 @@ function isLabel(value: unknown): value is Label {
 /** Health is read by admin or role `settings` with company-wide access (AC-1), like company settings. */
 export function assertHealthAccess(ctx: Context): void {
   if (ctx.accessScope && ctx.accessScope !== 'all') throw new PermissionDenied('setup_health', 'read', ctx.roles);
-  if (!isAdmin(ctx) && !ctx.roles.includes('settings')) throw new PermissionDenied('setup_health', 'read', ctx.roles);
+  if (!hasAnyRole(ctx, HEALTH_ROLES)) throw new PermissionDenied('setup_health', 'read', ctx.roles);
 }
 
 const SETTINGS_COMPANY_TAB = '/settings?tab=company';
