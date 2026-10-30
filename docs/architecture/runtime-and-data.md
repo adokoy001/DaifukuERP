@@ -31,7 +31,7 @@ RESTは [request-context](../../apps/api/src/request-context.ts) と [routes](..
 
 Entityは `id/tenantId/companyId/version/createdBy/updatedBy` などの共通項目とDSLの業務項目を持ちます。company scopeが既定です。金額/数量はDBではnumeric、domainではDecimal、JSONでは文字列として扱います。JSの浮動小数で途中計算してからDecimalに包む実装は避けます。
 
-Documentはentityに `docstatus/number/amendedFrom` を加えます。draft=0、submitted=1、cancelled=2。確定後の訂正は取消と改訂で履歴をつなぎます。明細のCRUDも親documentの状態・所属を確認します。計算値・状態・他伝票への連動IDはserverOwnedなどで汎用書込みから保護します。
+Documentはentityに `docstatus/number/amendedFrom` を加えます。draft=0、submitted=1、cancelled=2。確定後の訂正は取消と改訂で履歴をつなぎます。明細のCRUDも親documentの状態・所属を確認します。entity も明細（`lines`）を持てますが、凍結は document だけで、entity の明細は親の update 権限があればいつでも置換保存できます（[ADR-0031](../adr/0031-entity-lines.md)、例: 定期仕訳 `recurring_journal`）。計算値・状態・他伝票への連動IDはserverOwnedなどで汎用書込みから保護します。
 
 ```mermaid
 stateDiagram-v2
@@ -74,7 +74,7 @@ Repositoryの変更は [audit](../../kernel/src/audit.ts) に記録されます�
 - `ref` field（`@company` を除く）。`journalEntryId` もこれに含まれます。
 - 同じ entity にある `<x>Entity`（text / enum）と `<x>Id`（uuid / text）の組。`journal_entry.sourceEntity/sourceId`、`payment_allocation.invoiceEntity/invoiceId`、`attachment.linkedEntity/linkedId`、在庫の `sourceEntity/sourceId` が該当します。enum なら値に挙がった entity だけを対象にします。別 entity を uuid で指す項目を新しく作るときは、この組の名前にすると関連として辿られます。
   - **組は `serverOwned` にするか、書込時に対象を検査してください。** kernel は `ref` と違ってこの組を書込時に検査しません。利用者が自由に書ける組を作ると、その entity を作成できる人が、id を知っている任意の記録の「参照元」に作り話の記録を出せます。検査は「対象 entity が登録されていること」と「書く人が対象の記録を読めること」（添付の `assertLinkTarget` と同じ）。利用者が書ける既存の組（添付・入金の消込明細・在庫の入出庫・在庫元帳）は書込時に検査しており、[API の DB テスト](../../apps/api/test/related.db.test.ts)がこの一覧を固定しています（新しい組は確認して一覧に足すまで失敗します）。
-- document の明細。明細の参照は親 document の参照として扱い、記録を参照している明細は親 document として返します（自分自身の明細は返しません）。別の document の明細を指す連結（`trade_fulfillment_line.orderLineId` → 受発注明細など）は、その明細の親 document として返します。逆向きに、記録の明細を指している連結も記録への参照として辿ります（対象 entity を名指しする `ref` / enum の組だけ。対象が自由文字の組は記録そのものだけを見ます）。
+- document（と明細を持つ entity、ADR-0031）の明細。明細の参照は親 document の参照として扱い、記録を参照している明細は親 document として返します（自分自身の明細は返しません）。別の document の明細を指す連結（`trade_fulfillment_line.orderLineId` → 受発注明細など）は、その明細の親 document として返します。逆向きに、記録の明細を指している連結も記録への参照として辿ります（対象 entity を名指しする `ref` / enum の組だけ。対象が自由文字の組は記録そのものだけを見ます）。
 - 各項目の連結 field（`via`）は項目ごとに持ちます（同じ entity をヘッダの 2 項目と明細で指していても、それぞれの field を返します。同じ記録に複数の連結があれば最初に見つかったもの）。
 - `amendedFrom` の訂正元（遡る）と訂正版（下る）。それぞれ 50 段まで。
 

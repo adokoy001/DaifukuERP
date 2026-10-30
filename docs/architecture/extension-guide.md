@@ -15,7 +15,7 @@
 ## 1機能を追加する順序
 
 1. `docs/specs/` に入力、結果、権限、状態、対象外、検証方法を書く。
-2. 必要なentity/documentをDSLで定義し、field、ref、unique、serverOwned、role、行/拠点policyを宣言する。
+2. 必要なentity/documentをDSLで定義し、field、ref、unique、serverOwned、role、行/拠点policyを宣言する。ヘッダと明細を1回で保存する形は document でも entity でも `lines` で宣言する（entity の明細は凍結されないので、履歴に効く値は module の hook で守る。[ADR-0031](../adr/0031-entity-lines.md)）。
 3. 業務actionを作り、ContextとRepositoryだけを通して処理する。数量/金額はDecimal、二重処理はbusiness lockと一意性、競合はexpectedVersionで扱う。
 4. 公開indexから必要な型/定義だけをexportし、package名で依存する。内部ソースへ相対importしない。
 5. 共通moduleはruntime catalog、業界packはruntime pack catalogへ追加する。schema生成時は全登録packを読み、runtimeで無効なpackの既存データも保持する。
