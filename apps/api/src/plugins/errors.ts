@@ -5,7 +5,7 @@ import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 
 function codeForStatus(status: number): ErrorCode {
-  if (status === 400) return 'VALIDATION';
+  if (status === 400 || status === 413) return 'VALIDATION';
   if (status === 401 || status === 403) return 'PERMISSION_DENIED';
   if (status === 404) return 'NOT_FOUND';
   if (status === 409) return 'CONFLICT';
@@ -38,7 +38,9 @@ export function mapError(err: unknown, requestId: string): { status: number; bod
         ? 'Log in with POST /auth/login and send `Authorization: Bearer <token>`.'
         : status === 400
           ? 'Check the request body, query and headers.'
-          : 'Check the request.';
+          : status === 413
+            ? 'Send a smaller body; split large imports (csv-import: 2 MB and 5,000 rows per request).'
+            : 'Check the request.';
     const message =
       status === 401
         ? 'Authentication required.'
@@ -46,7 +48,9 @@ export function mapError(err: unknown, requestId: string): { status: number; bod
           ? 'Operation not permitted.'
           : status === 404
             ? 'Resource not found.'
-            : 'Invalid request.';
+            : status === 413
+              ? 'Request body is too large.'
+              : 'Invalid request.';
     const body: ErrorBody = { code, message, hint, details: { requestId } };
     return { status, body };
   }

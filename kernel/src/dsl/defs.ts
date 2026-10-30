@@ -74,6 +74,8 @@ export interface ActionConfig<I extends z.ZodType, O extends z.ZodType> {
    * entity `before_validate` hooks can supply defaults for required fields (the schema still documents the API).
    */
   inputMode?: 'strict' | 'lenient';
+  /** Largest request body (bytes) the HTTP adapter accepts for this action; omitted = the adapter's default (ADR-0028). */
+  inputBytes?: number;
   /**
    * `true`: in-process only (another module calls it through `runAction` or its exported function). Apps leave it out of
    * `/actions/*`, REST sugar, OpenAPI, `/meta` and MCP tools (ADR-0014). Default false.

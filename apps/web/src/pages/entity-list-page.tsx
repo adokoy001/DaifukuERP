@@ -1,5 +1,6 @@
 // AC-3: /e/:entity — paged table (views.list), debounced search, sortable headers, total count, "New" when ops has create.
 // ui-kit AC-4..6: PageHeader + Toolbar, skeleton rows while a changed query loads, and an empty state with the next step.
+// csv-import AC-11: "Import" next to "New" when the entity has a derived <entity>.import action and create permission.
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEntityMeta, useList, useRefLabelMaps } from '../api/queries.ts';
@@ -68,7 +69,7 @@ function Pager({ total, page, onPage }: { total: number; page: number; onPage: (
   );
 }
 
-function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }) {
+function ListView({ entity, search, importable }: { entity: EntityMeta; search: ListSearch; importable: boolean }) {
   const { t } = useLocale();
   const toast = useToast();
   const { text, setText, navigate } = useDebouncedNavigate(entity.name, search);
@@ -135,9 +136,17 @@ function ListView({ entity, search }: { entity: EntityMeta; search: ListSearch }
         meta={<span className="ui-code">{entity.name}</span>}
         actions={
           canCreate ? (
-            <Link to="/e/$entity/new" params={{ entity: entity.name }} className={buttonClass('primary')}>
-              + {t(S.new)}
-            </Link>
+            <>
+              {/* csv-import AC-11: only for importable masters the caller may create. */}
+              {importable ? (
+                <Link to="/e/$entity/import" params={{ entity: entity.name }} className={buttonClass()}>
+                  {t({ ja: '取込', en: 'Import' })}
+                </Link>
+              ) : null}
+              <Link to="/e/$entity/new" params={{ entity: entity.name }} className={buttonClass('primary')}>
+                + {t(S.new)}
+              </Link>
+            </>
           ) : null
         }
       />
@@ -181,5 +190,6 @@ export function EntityListPage() {
   if (meta.isError) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
-  return <ListView key={entity.name} entity={entity} search={search} />;
+  const importable = (meta.data?.actions ?? []).some((a) => a.name === `${entity.name}.import`);
+  return <ListView key={entity.name} entity={entity} search={search} importable={importable} />;
 }

@@ -49,6 +49,7 @@ export function registerActionRoutes(app: FastifyInstance, opts: { db: Database 
           response: { 200: action.output },
         },
         validatorCompiler: passthroughValidator,
+        ...(action.inputBytes ? { bodyLimit: action.inputBytes } : {}),
       },
       async (req) => callAction(opts.db, req, action.name, req.body),
     );

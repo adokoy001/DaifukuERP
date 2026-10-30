@@ -180,6 +180,12 @@ const newRoute = createRoute({
   path: '/e/$entity/new',
   component: () => <EntityFormPage mode="new" />,
 });
+// csv-import AC-11: master CSV import (static segment wins over $id).
+const importRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/e/$entity/import',
+  component: lazyRouteComponent(() => import('./pages/entity-import-page.tsx'), 'EntityImportPage'),
+});
 const recordRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/e/$entity/$id',
@@ -327,6 +333,7 @@ const routeTree = rootRoute.addChildren([
     analyticsRoute,
     listRoute,
     newRoute,
+    importRoute,
     recordRoute,
     reportRoute,
     settingsRoute,

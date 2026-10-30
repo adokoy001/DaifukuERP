@@ -23,7 +23,11 @@ export function ScreenTrail() {
     crumbs.push({ label: entry.label, href: entry.href });
     if (pathname !== entry.href)
       crumbs.push({
-        label: pathname.endsWith('/new') ? { ja: '新規作成', en: 'New record' } : { ja: '詳細', en: 'Record details' },
+        label: pathname.endsWith('/new')
+          ? { ja: '新規作成', en: 'New record' }
+          : pathname.endsWith('/import')
+            ? { ja: '取込', en: 'Import' }
+            : { ja: '詳細', en: 'Record details' },
       });
   } else if (pathname !== '/' && !workspace) crumbs.push({ label: { ja: '現在の画面', en: 'Current screen' } });
   const title = t(crumbs[crumbs.length - 1]?.label);

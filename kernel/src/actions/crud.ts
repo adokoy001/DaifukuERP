@@ -1,4 +1,4 @@
-// Generic per-entity actions (ADR-0009): <entity>.list/get/create/update/delete (+ submit/cancel/amend).
+// Generic per-entity actions (ADR-0009): <entity>.list/get/create/update/delete (+ submit/cancel/amend, + import).
 import { z } from 'zod';
 import { defineAction } from '../dsl/action.ts';
 import type { EntityDef } from '../dsl/entity.ts';
@@ -13,6 +13,8 @@ import { snapshot } from '../repository/rows.ts';
 import { ValidationError } from '../errors.ts';
 import { createInputSchema, followExtFields, hasLines, recordJsonSchema, updateInputSchema } from './crud-schemas.ts';
 import { publicOutput } from '../public-output.ts';
+import { isImportable } from '../import-values.ts';
+import { registerImportAction } from './import.ts';
 
 const idInput = z.object({ id: z.uuid() });
 const versionInput = idInput.extend({ expectedVersion: z.number().int().min(1).optional() });
@@ -34,13 +36,18 @@ async function withLines(
   return { ...jsonOf(entity, row), lines: publicLines };
 }
 
-/** Registers generic CRUD actions for every entity that has none yet. Call once after all modules are imported. */
+/**
+ * Registers generic CRUD actions for every entity that has none yet, and `<entity>.import` for importable masters
+ * (csv-import AC-1, ADR-0028). Call once after all modules are imported (line entities are known only then).
+ */
 export function registerCrudActions(): void {
   for (const entity of registry.allEntities()) {
-    if (registry.hasAction(`${entity.name}.list`)) continue;
-    registerReadActions(entity);
-    registerWriteActions(entity);
-    if (entity.kind === 'document') registerDocumentActions(entity);
+    if (!registry.hasAction(`${entity.name}.list`)) {
+      registerReadActions(entity);
+      registerWriteActions(entity);
+      if (entity.kind === 'document') registerDocumentActions(entity);
+    }
+    if (!registry.hasAction(`${entity.name}.import`) && isImportable(entity)) registerImportAction(entity);
   }
 }
 

@@ -136,6 +136,21 @@ describe('AC-2 tools/list mirrors the action registry', () => {
   });
 });
 
+describe('csv-import AC-1: the derived <entity>.import action is a tool', () => {
+  it('csv-import AC-1: mcp_test_item_import is listed as mutating and a dry-run through it changes nothing', async () => {
+    const { tools } = await client.listTools();
+    const tool = tools.find((t) => t.name === 'mcp_test_item_import');
+    expect(tool?.annotations).toEqual({ title: 'mcp_test_item.import', readOnlyHint: false });
+    expect(tool?.inputSchema.required).toEqual(['rows', 'mode', 'onExisting']);
+    expect(tools.some((t) => t.name === 'mcp_test_order_import')).toBe(false);
+    const name = 'MCP import ' + newId();
+    const res = await call(client, 'mcp_test_item_import', { rows: [{ name }], mode: 'dry-run', onExisting: 'skip' });
+    expect(res).toMatchObject({ isError: false, body: { committed: false, summary: { created: 1, errors: 0 } } });
+    const listed = await call(client, 'mcp_test_item_list', { where: { name } });
+    expect(listed.body.total).toBe(0);
+  });
+});
+
 describe('AC-3 tools/call runs the action in a context; errors are self-describing', () => {
   let createdId: string;
 

@@ -151,6 +151,20 @@ export {
   grantedRoles,
 } from './permissions.ts';
 export { registerCrudActions } from './actions/crud.ts';
+export {
+  assertImportable,
+  importRecords,
+  importTemplateCsv,
+  importInputSchema,
+  importResultSchema,
+  isImportable,
+  IMPORT_MAX_BYTES,
+  IMPORT_MAX_ROWS,
+  type ImportInput,
+  type ImportMessage,
+  type ImportResult,
+  type ImportRowResult,
+} from './import.ts';
 export { registerPackActions } from './actions/pack.ts';
 export {
   applyPack,

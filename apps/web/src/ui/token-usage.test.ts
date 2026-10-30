@@ -11,6 +11,7 @@ const read = (path: string) => readFileSync(SRC + path, 'utf8');
 const CONVERTED = [
   'pages/entity-list-page.tsx',
   'pages/entity-form-page.tsx',
+  'pages/entity-import-page.tsx',
   'pages/settings-page.tsx',
   'pages/action-page.tsx',
   'pages/report-page.tsx',
