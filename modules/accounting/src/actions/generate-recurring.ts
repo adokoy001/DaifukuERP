@@ -48,6 +48,7 @@ import {
   allocationTotal,
   checkTemplate,
   dueOccurrences,
+  RECURRING_KINDS,
   type Occurrence,
   type StopReason,
 } from '../services/recurrence.ts';
@@ -90,6 +91,7 @@ const stopJson = z.object({
 const templateJson = z.object({
   templateId: z.uuid(),
   name: z.string(),
+  kind: z.enum(RECURRING_KINDS),
   status: z.enum(RUN_STATUSES),
   entries: z.array(entryJson),
   nextRunDate: z.string().nullable(),
@@ -236,6 +238,7 @@ async function runTemplate(
   const result: TemplateResult = {
     templateId: template.id,
     name: template.name,
+    kind: template.kind,
     status: 'up_to_date',
     entries: [],
     nextRunDate: template.nextRunDate,
@@ -337,7 +340,7 @@ export async function generateRecurring(
     }
     // re-read under the row lock: an earlier run may have moved the cursor while this one waited for the series lock
     const template = await repo(ctx, RecurringJournal).lock(candidate.id);
-    const base = { templateId: template.id, name: template.name, entries: [], more: false };
+    const base = { templateId: template.id, name: template.name, kind: template.kind, entries: [], more: false };
     if (!template.isActive) {
       if (input.templateId) out.templates.push({ ...base, status: 'inactive', nextRunDate: template.nextRunDate });
       continue;
