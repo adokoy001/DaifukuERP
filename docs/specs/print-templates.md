@@ -1,0 +1,155 @@
+# Spec: print-templates（帳票の共通化と拡充）
+
+- 状態: draft
+- モジュール: 新規 `modules/print-layout`（package `@daifuku/mod-print-layout`、module 名 `print_layout`。共通レイアウトの純粋関数、会社設定 `print_layout.date_style`）、`modules/sales`、`modules/trade`、`modules/payment`、`modules/workforce`、`l10n/jp`、`kernel`（action DSL の `print` 宣言と `/meta`）、`apps/web`（印刷ボタン） ／ 依存: [company-admin](company-admin.md)（B2 の `resolveIssuer` と `company.profile`）、[settings-console](settings-console.md)（設定の表示属性）、[ui-kit](ui-kit.md)、[document-links](document-links.md)（記録画面のヘッダ）
+- ADR: 新規なし（ADR-0033 は使わない）。[ADR-0009](../adr/0009-actions-rest-mcp.md) に「帳票 action の `print` 宣言と `<module>.render_<document>_html` の命名」を追記する（kernel DSL の後方互換な拡張。新しい読取・書込経路は作らない）。帳票レイアウトの差し替えは既存の [ADR-0008](../adr/0008-extension-mechanism.md) の override、和暦の表は [ADR-0011](../adr/0011-l10n-country-packs.md) に従い l10n/jp に置く
+- 作成: 2026-10-30 ／ 作成者: agent（spec writer、`wip/print-templates`）。設計の元は [完成度向上の実装計画](../completion-plan.md) C5。計画の entity 名の訂正は「設計上の決定」D-5
+
+## 目的（1段落）
+
+紙や PDF で取引先・従業員へ渡す書類のうち、今は売上請求書（適格請求書）しか印刷できない。見積書・注文書・納品書・領収書・支払通知書・合計請求書・給与明細を、記録の画面から同じ操作で開いて印刷できるようにする。各 module は自分の document を自分の権限で読み、共通の部品（発行者・宛先・明細表・税率別内訳・合計・備考・日付表記・エスケープ）で HTML を組み立てる。画面は `/meta` の宣言を読んでボタンを出すだけにし、帳票ごとの対応表を Web に持たない。
+
+## 対象の帳票と実際の entity
+
+| 帳票 | action（`print.entity`、表示条件 `when`） | 対象 entity（module） | 差し替え点（ADR-0008） |
+|---|---|---|---|
+| 請求書（既存、変更は宣言の追加だけ） | `sales.render_invoice_html { id }`（`sales_invoice`） | `sales_invoice`（sales） | `sales.invoice_html`（既存。l10n/jp が登録） |
+| 合計請求書 | `sales.render_statement_html { partnerId, closingDate? }`（`partner`、`idInput: 'partnerId'`、`when: { isCustomer: true }`） | `partner` の締め日 + `sales_invoice`（sales） | `sales.statement_html` |
+| 見積書 | `trade.render_quotation_html { id }`（`trade_quotation`） | `trade_quotation`（trade。direction は常に `sales`） | `trade.quotation_html` |
+| 注文書 | `trade.render_order_html { id }`（`trade_order`、`when: { direction: 'purchase' }`） | `trade_order` の発注（trade） | `trade.order_html` |
+| 納品書 | `trade.render_delivery_note_html { id }`（`trade_fulfillment`、`when: { direction: 'sales' }`） | `trade_fulfillment` の出荷（trade） | `trade.delivery_note_html` |
+| 領収書 | `payment.render_receipt_html { id }`（`payment`、`when: { direction: 'receive' }`） | `payment` の入金（payment） | `payment.receipt_html` |
+| 支払通知書 | `payment.render_payment_notice_html { id }`（`payment`、`when: { direction: 'pay' }`） | `payment` の支払（payment） | `payment.payment_notice_html` |
+| 給与明細 | `workforce.render_payslip_html { id }`（`workforce_payroll`） | `workforce_payroll`（workforce） | `workforce.payslip_html` |
+
+## 受入基準（EARS）
+
+### 規約と発見
+
+- AC-1 THE SYSTEM SHALL 帳票 action を名前 `<module>.render_<document>_html`、`tx: 'none'`、`mutates: false`、出力 `{ html: string }` とし、`defineAction` の任意の宣言 `print: { entity, label, idInput?, when? }` で「どの entity の記録画面に、どの入力 property へ記録の id を渡して出すか」を宣言する。`idInput` の既定は `'id'`、`when` は記録の field 値（文字列・数値・真偽）との等値条件の AND。IF `print` を持つ action の名前が規約に合わない、`mutates` が true、`tx` が `'required'`、または入力が `idInput` を property に持つ zod object でない THEN THE SYSTEM SHALL 定義時に Error を投げる（開発時の誤り）。
+- AC-2 WHEN `/meta` が要求された THE SYSTEM SHALL 要求者が実行できる action の宣言を `actions[].print`（`{ entity, label, idInput, when }`、`idInput` は既定値を補う）として返す。実行できない action は従来どおり `/meta` に出さない。
+- AC-3 WHEN 利用者が記録の画面（`/e/:entity/:id`）を開いた THE SYSTEM SHALL `print.entity` がその entity で、`inputSchema.properties` に `idInput` があり、`when` が記録の値とすべて一致し、entity が document なら記録が確定済み（docstatus 1）である action ごとに、宣言の `label` の印刷ボタンを `/meta` の順に出す。module 名と接尾辞 `render_invoice_html` から推測する従来の発見（`PRINT_ACTION_SUFFIX`）はやめ、`sales.render_invoice_html` に `print: { entity: 'sales_invoice', label: 請求書を表示 }` を付けて同じ画面に同じボタン（`data-testid="print-button"`）を出す。各ボタンは `data-print-action=<action 名>` を持つ。
+- AC-4 WHEN 印刷ボタンを押した THE SYSTEM SHALL クリックの処理内で新しいタブを同期的に開き、`POST /actions/<name>` に `{ [idInput]: 記録の id, ...追加入力 }` を送り、返った HTML に既存の印刷・閉じるバー（`withPrintBar`、紙には出ない）を付けてそのタブに表示する。WHEN action の入力に `idInput` 以外の property がある THE SYSTEM SHALL 先に入力ダイアログ（`inputSchema` から `SchemaFields` で生成。必須項目は必須、説明文を補助文に表示）を開き、ダイアログの「表示」の押下で同じ手順を行う。IF ポップアップが拒否された THEN THE SYSTEM SHALL トースト `popupBlocked` を出す。IF action が失敗した、または `html` が返らない THEN THE SYSTEM SHALL 開いたタブを閉じ、API エラーまたは `printNoHtml` をトーストで出す。IF ダイアログの入力が VALIDATION で拒否された THEN THE SYSTEM SHALL ダイアログを閉じずに該当項目の下へエラーを出す。
+
+### 共通レイアウト
+
+- AC-5 THE SYSTEM SHALL 共通レイアウトを `@daifuku/mod-print-layout` の公開 index から import できる純粋関数（DB・時刻・registry・fs を読まない）として提供する: `escapeHtml`、`formatMoney`、`formatRate`、`formatDocumentDate`、`issuerBlock`（名称・登録番号・郵便番号・住所・電話・メール）、`addresseeBlock`（宛先と敬称）、`lineTable`（明細表。軽減税率対象の行に ※）、`taxBreakdownTable`（税率ごとの対価の額・消費税額・税込額）、`totalsTable`、`remarksSection`（備考・振込先・但し書きなど見出し付きの文）、`statusBanner`、`printDocument`（`<!DOCTYPE html>`、`lang`、`<title>`、`viewport`、A4 の `@page` を持つ完全な HTML 文書）。部品は inline style を持ち、断片としても文書としても使える。mod-print-layout は kernel 以外に依存せず、税区分の表示名（`TAX_CATEGORY_LABELS` など mod-tax の名称）と税率の表示は呼び出し側の module が行や内訳に入れて渡す。sales の既定請求書レイアウト `defaultInvoiceHtml` はこれらの部品で組み立て、既存の単体・DB テストの期待（断片 `<article class="invoice" lang="…">`、ISO 日付、文言、エスケープ）を変更せずに満たす。`@daifuku/mod-sales` は `escapeHtml`・`formatMoney`・`formatRate` を mod-print-layout から再 export して公開 API を保つ。
+- AC-6 THE SYSTEM SHALL 帳票に出す記録・設定・取引先・従業員に由来する文字列をすべて HTML エスケープし（`& < > " '`）、帳票の HTML に `<script>`、外部資源（`src=`、`href=`、`url(`、`<link`）、イベント属性（`on…=`）を含めない。
+- AC-7 THE SYSTEM SHALL 金額・数量・税率・税率別内訳を保存済みの値（Decimal 文字列）から桁区切りだけを付けて表示し、税額の計算・端数処理・税率の引き直しを行わない。複数の保存値の合計（合計請求書の合計と税率別合計、納品書の税率区分ごとの税抜合計）は Decimal の加算だけで求める。WHEN 確定後に税率マスタや端数処理の設定が変わった THE SYSTEM SHALL 印刷される金額を変えない。
+- AC-8 THE SYSTEM SHALL 会社設定 `print_layout.date_style`（`western` | `japanese_era` | `both`、既定 `both`、設定画面の「会社」タブ、値ごとに日英のラベル）で帳票の日付表記を切り替える。`western` は日本語 `2026年10月30日`・英語 `2026-10-30`、`japanese_era` は `令和8年10月30日`、`both` は `2026年10月30日（令和8年10月30日）`（英語は `2026-10-30（令和8年10月30日）`）。和暦への変換は l10n/jp が登録する差し替え点 `print_layout.era_date`（`toWareki`）で行い、IF 差し替えが登録されていない、または変換できない日付 THEN THE SYSTEM SHALL 西暦で表示する。請求書は、会社が `print_layout.date_style` を保存した場合だけ l10n/jp の請求書レイアウトがそれに従い（描画時に `InvoiceRenderData.dateStyle` を渡す。発行時データ `issuedSnapshot` には保存しない）、保存していない会社では現在の表記（西暦と和暦の併記）を変えない。
+- AC-9 THE SYSTEM SHALL 発行者を、取引の帳票（見積書・注文書・納品書・領収書・支払通知書・合計請求書）では B2 の `resolveIssuer`（`sales.issuer` を保存していればその全体、無ければ `company.profile`、無ければ会社名）で、給与明細では `company.profile`（正式名称、無ければ会社名・郵便番号・住所・電話。登録番号と振込先は出さない）で決める。`company.profile` から発行者を組み立てる処理は mod-print-layout の `issuerFromCompanyProfile` 1 つにまとめ、`resolveIssuer` の代替経路もそれを使う（B2 の `modules/sales/test/issuer.test.ts` は変更なしで通る）。振込先（`bankInfo`）は請求書（従来どおり）と合計請求書だけに出す。新しい帳票の発行者は印刷時点の設定から作る（発行時データは保存しない。請求書の `issuedSnapshot` は従来どおり）。
+
+### 各帳票
+
+- AC-10 WHEN `trade.render_quotation_html { id }` が呼ばれた THE SYSTEM SHALL 見積書として、見積番号・見積日（`date`）・有効期限（`validUntil`）、宛先（取引時名称 `partnerName`、無ければ取引先名。郵便番号・住所は取引先マスタ）、発行者、御見積金額（`total`）、明細（行番号・品名・数量と単位 `uomCode`・税抜単価・税抜金額・税区分と税率）、税率別内訳（`taxSummary`）、税抜合計・消費税額・合計（`subtotal`・`taxTotal`・`total`）、※の凡例、備考（`note`）を出す。
+- AC-11 WHEN `trade.render_order_html { id }` が発注（direction `purchase`）に対して呼ばれた THE SYSTEM SHALL 注文書として、注文番号・注文日・希望納期（`requiredDate`）、宛先（仕入先）、発行者、注文金額（`total`）と AC-10 と同じ明細・内訳・合計・備考を出す。IF 受注（direction `sales`）の id THEN THE SYSTEM SHALL INVALID_STATE を返す（ヒント: 注文請書は対象外）。
+- AC-12 WHEN `trade.render_delivery_note_html { id }` が出荷（direction `sales`）に対して呼ばれた THE SYSTEM SHALL 納品書として、納品番号・納品日（`date`）・受注番号（`orderId` の受発注書の `number`）、宛先（得意先）、発行者、明細（行番号・品名・数量と単位・税抜単価・税抜金額・税区分。税率は受発注書の `taxSummary` の区分ごとの率）、税率区分ごとの税抜合計と総合計（明細の保存値の加算）、注記「消費税額は請求書に記載します」、※の凡例、備考を出す。消費税額と倉庫は出さない。IF 入荷（direction `purchase`）の id THEN THE SYSTEM SHALL INVALID_STATE を返す。
+- AC-13 WHEN `payment.render_receipt_html { id }` が入金（direction `receive`）に対して呼ばれた THE SYSTEM SHALL 領収書として、番号・領収日（`date`）・金額（`amount`）・受領方法（現金・振込・その他）、宛先（取引先）、発行者（登録番号を保存していれば表示）、内訳として消込明細（売上請求書の番号・請求日・消込額 `payment_allocation.amount`）と未消込額（`unallocatedAmount`、前受金）、備考を出す。税率別内訳、収入印紙欄、印紙税の注記は出さない（未決事項 1）。IF 支払（direction `pay`）の id THEN THE SYSTEM SHALL INVALID_STATE を返す（ヒント: 支払通知書 `payment.render_payment_notice_html`）。
+- AC-14 WHEN `payment.render_payment_notice_html { id }` が支払（direction `pay`）に対して呼ばれた THE SYSTEM SHALL 支払通知書として、番号・支払日・支払金額・支払方法、宛先（仕入先）、発行者、内訳（仕入請求書の番号・先方請求書番号 `supplierInvoiceNo`・請求日・支払額）と未消込額（前払金）、備考を出す。IF 入金（direction `receive`）の id THEN THE SYSTEM SHALL INVALID_STATE を返す（ヒント: 領収書）。
+- AC-15 WHEN `sales.render_statement_html { partnerId, closingDate? }` が呼ばれた THE SYSTEM SHALL 合計請求書として、取引先の締め日 `closingDay`（31 は月末）で決まる期間 =（前回締め日, `closingDate`]（前回締め日は前月の同じ締め日を月の日数で丸めた日。`closingDateOf(請求日, closingDay) === closingDate` と同じ集合）に請求日がある、その取引先の確定済み（docstatus 1）売上請求書を請求日・番号の順に 1 行ずつ（請求日・請求書番号・支払期日・税抜金額 `subtotal`・消費税額 `taxTotal`・税込金額 `total`）並べ、税率別内訳（各請求書の `taxSummary` を区分と税率ごとに加算）、合計（各列の加算）、今回御請求額、締め日・対象期間・発行日（今日、日本時間）、すべての請求書の支払期日が同じときだけお支払期限、発行者と振込先を出す。取消（docstatus 2）と下書きは含めない。対象が 0 件なら「この期間の確定済みの請求書はありません」と合計 0 を出す。WHEN `closingDate` が省略された THE SYSTEM SHALL 今日（日本時間）以前で最も新しい締め日を使う。IF `closingDate` がその取引先の締め日でない THEN THE SYSTEM SHALL VALIDATION（path `closingDate`）を返し、ヒントに直前と直後の締め日を示す。IF 対象が 500 件を超える THEN THE SYSTEM SHALL INVALID_STATE を返す。
+- AC-16 WHEN `workforce.render_payslip_html { id }` が確定済みの給与に対して呼ばれた THE SYSTEM SHALL 給与明細として、番号・対象月（日本語 `2026年10月分`、英語 `2026-10`）・計算期間（`periodStart`〜`periodEnd`）、宛先（従業員名・従業員コード・所属拠点名）、発行者（会社）、支給（通常賃金 `basePay`・割増賃金 `premiumPay`・手当の各行 `allowances`・総支給額 `grossPay`）、控除（`deductions` の 8 区分の名称と金額・控除合計 `deductionTotal`）、差引支給額 `netPay`、勤怠（労働時間 時:分、有給取得日数 `paidLeaveDays`）を出す。計算根拠（`calculation`、各控除・手当の根拠文）は出さない。IF 下書き（docstatus 0）の給与 THEN THE SYSTEM SHALL INVALID_STATE を返す（未確認の控除を含むため）。
+- AC-17 WHEN 下書きの見積書・注文書・納品書・領収書・支払通知書を action で描画した THE SYSTEM SHALL 本文の先頭に「下書き（未確定） / DRAFT」の帯（`role="status"`）を入れる。WHEN 取消済み（docstatus 2）の見積書・注文書・納品書・領収書・支払通知書・給与明細を描画した THE SYSTEM SHALL 請求書と同じ「取消済み / CANCELLED」の帯を入れる（合計請求書は確定済みの請求書だけを集めるため帯を持たない）。帯は差し替え後のレイアウトにも action が入れる（`<body>` の直後、無ければ先頭）。
+- AC-18 THE SYSTEM SHALL 帳票の固定文言を日本語と英語で持ち、要求の `ctx.locale` で切り替える（宛先の敬称 `御中`、給与明細の `様` は日本語だけに付ける）。
+
+### 権限と境界
+
+- AC-19 THE SYSTEM SHALL 帳票 action の権限を `permission: { entity: <対象 entity>, op: 'read' }`（合計請求書は `sales_invoice` の read）とし、対象の記録と付随して読む記録（取引先、受発注書、消込先の請求書、従業員、拠点）をすべて要求者の `Context` のまま `repo()` で読む（`systemContext()` や権限を外す経路を使わない）。行の権限・会社・拠点・本人の境界と field の mask はそのまま適用する。IF 対象を読めない THEN THE SYSTEM SHALL PERMISSION_DENIED（read の無いロール）または NOT_FOUND（行の権限・別会社・存在しない id）を返す。IF 付随する記録を読めない THEN THE SYSTEM SHALL PERMISSION_DENIED を返し、一部だけの HTML を返さない。
+- AC-20 IF read 権限の無いロール（例: purchasing が見積書、ロール無しの利用者が入出金）が帳票 action を呼んだ THEN THE SYSTEM SHALL PERMISSION_DENIED を返し、そのロールの `/meta` にその action を出さない（印刷ボタンも出ない）。行の権限により、sales ロールは支払（pay）の入出金と発注の受発注書を、purchasing ロールは入金（receive）の入出金と出荷を印刷できない（NOT_FOUND）。
+- AC-21 THE SYSTEM SHALL 取引の帳票（sales・trade・payment の action）に `storeAccess` / `siteAccess` を宣言せず、店舗・拠点に限定された文脈からの呼出しを PERMISSION_DENIED とする（請求書と同じ）。給与明細の action は `siteAccess: true` とし、workforce の行の権限に従う: workforce_employee・manager・hr ロールは自分の確定済みの明細だけ、workforce_payroll ロールは会社内の確定済みの明細を印刷でき、他人の明細と別会社の明細は NOT_FOUND、本人ロールから見た自分の下書きは NOT_FOUND（行の権限で見えない）とする。
+- AC-22 THE SYSTEM SHALL 合計請求書に、要求者の有効な会社に属し、指定の取引先を得意先とする確定済み売上請求書だけを含め、別の取引先・別会社・下書き・取消・期間外の請求書を含めない。IF `partnerId` が別会社の取引先または存在しない THEN THE SYSTEM SHALL NOT_FOUND を返す。
+
+### 画面
+
+- AC-23 WHEN 確定済みの見積書・発注の受発注書・出荷・入出金・給与の記録画面を開いた THE SYSTEM SHALL 該当する印刷ボタンを出す（入出金は区分により領収書か支払通知書のどちらか一方、受注と入荷には出さない）。WHEN 得意先（`isCustomer`）の取引先画面を開いた THE SYSTEM SHALL 「合計請求書を表示」を出し、押すと締め日の入力ダイアログ（空欄なら直近の締め日を使う旨の説明付き）を開く。
+- AC-24 WHEN `/me` の給与明細タブ、または `/workforce` の給与タブで確定済みの明細を表示した THE SYSTEM SHALL `/meta` に `workforce.render_payslip_html` がある利用者に「給与明細を表示」を出し、AC-4 の手順で新しいタブに開く。下書き・取消の明細には出さない。
+- AC-25 THE SYSTEM SHALL 印刷ボタンとダイアログの文言を日本語と英語で持ち、390px 幅で記録画面とダイアログを横スクロールなしに操作でき、ダイアログを開いた画面が axe の serious / critical 違反を出さない（[e2e-a11y](e2e-a11y.md) の `judge()`）。帳票の HTML は `viewport` を持ち、390px 幅では明細表の枠の中だけを横スクロールにする。
+
+## 設計
+
+- 処理の流れ（帳票ごとに同じ）: action の handler が要求者の `Context` で記録を `repo()` から読み、表示用の `<Document>RenderData`（文字列・Decimal 文字列だけの素のデータ。`locale` を含む）を作る → `loadPrintTools(ctx)`（mod-print-layout。`getSetting` で `print_layout.date_style` を、`registry.override` で `print_layout.era_date` を読み、`formatDate(date)` を持つ `PrintTools` を返す。純粋でない唯一の関数）→ `registry.override('<module>.<document>_html', 既定の描画関数)` → `render(data, tools)` → 状態の帯（AC-17）→ `{ html }`。既定の描画関数は module の `services/*-html.ts` に置く純粋関数で、golden の対象。
+- kernel の DSL 拡張: `ActionConfig.print?: ActionPrintBinding`（`{ entity: string; label: Label; idInput?: string; when?: Readonly<Record<string, string | number | boolean>> }`）。`defineAction` が AC-1 の検査を行い、`appMeta` が `actions[].print` を出す。Web の `ActionMeta.print` も同じ形。
+- 新しい module `print_layout`（`modules/print-layout`）: 依存は kernel だけ。entity・action は持たず、`hooks` で設定 `print_layout.date_style` を登録する（`category: 'company'`、`valueLabels`）。sales・trade・payment・workforce の package と `depends` に加え、`apps/runtime/src/catalog.ts` で sales より前に並べる。l10n/jp は `print_layout.era_date` に `toWareki` を登録する（`registerJapanOverrides`）。
+- Web: `lib/print.ts` に `printBindingsFor(entity, record, actions)`（AC-3 の判定）、`printInputOf(binding, record, extra)`、`extraInputSchema(action)` を置き、`components/print-button.tsx` を複数ボタンと入力ダイアログに対応させる。給与明細は `components/workforce-payroll.tsx` から同じボタン部品を使う。`withPrintBar`・`htmlOf` は変えない。
+
+## 関係するファイル・インターフェース（名指し）
+
+- kernel: `kernel/src/dsl/defs.ts`（`ActionConfig.print`、型 `ActionPrintBinding`）、`kernel/src/dsl/action.ts`（AC-1 の検査）、`kernel/src/meta.ts`（`AppMeta.actions[].print`）、`kernel/src/index.ts`（型の export）。使う既存 port: `repo()`、`getSetting`、`getCompany`、`companyProfileOf`、`registry.override` / `registerOverride` / `registerSetting`、`todayLocal`、`Decimal`
+- modules/print-layout（新規）: `package.json`、`tsconfig.json`、`src/index.ts`、`src/module.ts`（`PrintLayoutModule`、設定の登録）、`src/format.ts`（`escapeHtml`・`formatMoney`・`formatRate`・`formatDocumentDate`）、`src/blocks.ts`（`issuerBlock`・`addresseeBlock`・`lineTable`・`taxBreakdownTable`・`totalsTable`・`remarksSection`・`statusBanner`）、`src/document.ts`（`printDocument`・`withStatusBanner`）、`src/issuer.ts`（`PrintIssuer`・`issuerFromCompanyProfile`）、`src/settings.ts`（`PRINT_DATE_STYLE_KEY`・`printDateStyleSchema`・`PRINT_ERA_DATE_OVERRIDE`・`loadPrintTools`・型 `PrintTools`・`DateStyle`）
+- modules/sales: `src/services/render-html.ts`（部品で組み立て直し、出力の期待は不変）、`src/actions/render-invoice-html.ts`（`print` 宣言、`resolveIssuer` の代替経路を `issuerFromCompanyProfile` に、保存済みの `dateStyle` を描画データへ）、`src/actions/render-statement-html.ts`（新規）、`src/services/statement-html.ts`（新規、純粋）、`src/module.ts`、`src/index.ts`、`package.json`。`InvoiceRenderData` に任意の `dateStyle` を追加（[sales spec](sales.md) の InvoiceRenderData 節も更新）
+- modules/trade: `src/print.ts`（新規。3 つの action と描画データの組み立て）、`src/print-html.ts`（新規、純粋な既定レイアウト）、`src/module.ts`（actions に追加）、`src/index.ts`、`package.json`。読む entity: `TradeQuotation(+Line)`、`TradeOrder(+Line)`、`TradeFulfillment(+Line)`、`Partner`
+- modules/payment: `src/actions/render-receipt-html.ts`、`src/actions/render-payment-notice-html.ts`、`src/services/receipt-html.ts`、`src/services/payment-notice-html.ts`（いずれも新規）、`src/module.ts`、`src/index.ts`、`package.json`。読む entity: `Payment`、`PaymentAllocation`、`SalesInvoice` / `PurchaseInvoice`（`loadInvoice` など既存の公開関数）、`Partner`
+- modules/workforce: `src/actions/payslip.ts`（新規）、`src/services/payslip-html.ts`（新規、純粋。控除 8 区分の日英ラベル）、`src/module.ts`、`src/index.ts`、`package.json`（`@daifuku/mod-print-layout` を追加。kernel 以外への初めての依存だが、print-layout は kernel だけに依存する）。読む entity: `WorkforcePayroll`、`WorkforceEmployee`、`WorkforceSite`
+- l10n/jp: `src/module.ts`（`print_layout.era_date` の登録）、`src/services/invoice-render-data.ts`（`dateStyle` を任意で追加）、`src/services/invoice-html.ts`（`dateStyle` に従う。無ければ現在の併記）、`package.json`
+- apps/runtime: `src/catalog.ts`（`PrintLayoutModule`）
+- apps/web: `src/api/types.ts`（`ActionMeta.print`）、`src/lib/print.ts`、`src/lib/print.test.ts`、`src/components/print-button.tsx`、`src/components/workforce-payroll.tsx`、`src/strings.ts`。ルート・画面カタログ・ヘルプ章の追加はない
+- MCP: 新しい action は既存の仕組みで MCP tool（`trade_render_quotation_html` など）になる。`apps/mcp` の変更はない
+- docs: `docs/adr/0009-actions-rest-mcp.md`（追記）、`docs/conventions/ui.md`（「印刷ビュー」の行と帳票の規約の節）、`docs/manual/05-daily.md`（「帳票を印刷する」）、`docs/manual/03-setup.md`（日付の表記）、`docs/manual/appendix-f-workforce.md`（給与明細の印刷）、`docs/manual/appendix-l-commerce-bank-filing.md`（見積書・注文書・納品書）、`docs/architecture/program-map.md`（modules の一覧に帳票レイアウト）、`docs/specs/sales.md`、作業記録 `docs/log/2026-10-30-print-templates.md`
+
+## データ・業務ルール（出典）
+
+- 適格請求書の記載事項（発行者の名称と登録番号 `T`+13 桁、税率ごとの対価の額と消費税額、軽減税率対象の明示）— [日本の制度事実](../domain/japan-tax.md#インボイス制度)（国税庁 タックスアンサー No.6625、確認 2026-09-10）。請求書のほか、領収書・合計請求書の発行者の登録番号の表示と、見積書・注文書・合計請求書の税率別内訳・※印に同じ出典を使う。新しい帳票が適格請求書であるとは表示しない。
+- 消費税の端数処理は 1 請求書につき税率ごとに 1 回 — [同](../domain/japan-tax.md#rounding)（Q&A 問57）。納品書と合計請求書の組合せでは書類ごとの丸めを合算してよい — 同（Q&A 問67、確認 2026-09-10）。合計請求書は各請求書の保存済みの税額を合算し、再計算・再丸めしない根拠とする（AC-7、AC-15）。
+- 締め日・支払サイト — [同](../domain/japan-tax.md#商習慣)。期間の決め方は `modules/partner/src/services/due-date.ts` の `closingDateOf` と同じ。
+- 和暦: 内部は西暦、表示で変換。令和 = 2019-05-01〜 — [同](../domain/japan-tax.md#商習慣)、元号の開始日と出典（首相官邸、確認 2026-09-10）は `l10n/jp/src/services/wareki.ts`。
+- 給与の閲覧範囲（本人は確定済み行だけ、管理者の別拠点制限）— [ADR-0019](../adr/0019-workforce-access.md)。
+- 【未検証・印字しない】領収書の記載事項と印紙税（売上代金の受取書の課税・非課税の金額基準、収入印紙欄の要否）。この session から国税庁（www.nta.go.jp）へ接続できず（2026-10-30、ネットワークの許可外）、一次資料で確認できないため docs/domain に追加せず、領収書に該当の文言を出さない。給与等の支払明細書の交付義務と記載事項（所得税法第 231 条）も同じ理由で未確認とし、明細に法令の文言を出さない。
+
+## 設計上の決定（計画が選択を残した点）
+
+- D-1 印刷の対応は action 側の宣言 `print` に置く（entity 側ではない）。理由: 1 つの entity に複数の帳票がある（入出金の領収書と支払通知書）、entity を持たない module・pack・l10n が既存 entity の帳票を足せる、action は既に権限と入力 schema を持つ。Web の対応表は持たない。宣言と命名規約 `<module>.render_<document>_html` を `defineAction` で検査する。kernel DSL の後方互換な拡張なので ADR-0009 に追記し、新しい ADR 番号（ADR-0033）は使わない。
+- D-2 共通レイアウトは新しい module package `modules/print-layout`（kernel だけに依存）に置く。sales に置くと workforce（今は kernel だけに依存）が sales・accounting・tax・partner・product に依存してしまうため。module 名は店舗機器の印刷ジョブ（edge の `print.text`）と区別するため `print_layout` とする。mod-tax にも依存しない（mod-tax を import すると税率 entity が登録され、workforce だけの構成に税の entity が入るため。税区分の名称は呼び出し側が渡す）。sales の公開 API（`escapeHtml` など）は再 export で保つ。
+- D-3 発行者: 取引の帳票は B2 の `resolveIssuer`（sales が持つ `sales.issuer` を優先）。給与明細は `company.profile` から作る（`sales.issuer` は請求書の名義・振込先の設定で、雇用主の表示には合わないため）。`company.profile` からの組み立ては 1 か所（`issuerFromCompanyProfile`）にする。
+- D-4 日付表記は会社設定 `print_layout.date_style`（既定 `both`。l10n/jp の請求書の現在の表記と同じ）。元号の表は国の事情なので l10n/jp に残し、差し替え点 `print_layout.era_date` で使う。l10n/jp が無い構成では西暦になる。sales の既定請求書（l10n/jp が無いときだけ使われる）は ISO 日付のまま変えない。請求書は設定を保存した会社だけに適用し、既存の会社の請求書の見た目を変えない。
+- D-5 計画の entity 名の訂正: 支払通知書は `purchase_settlement` ではなく `payment`（direction `pay`）。`purchase_settlement` は番号・取引先・日付のまとまりを持たない、請求書ごとの append-only の消込事実（消込履歴）で、書類にならないため。注文書は `trade_order` の発注（direction `purchase`）、納品書は `trade_fulfillment` の出荷（direction `sales`）、見積書は `trade_quotation`（作成時に常に direction `sales`）、給与明細は `workforce_payroll`。
+- D-6 「保存値から表示し再計算しない」の範囲: 税額の計算・丸め・税率の引き直しをしない。保存値どうしの加算（合計請求書の合計と税率別合計、納品書の税抜合計）は再計算にあたらないとして行う。納品書は出荷に税額が保存されていないため消費税額を出さない。
+- D-7 下書き: 画面のボタンは確定済みだけに出す。action は下書きも「下書き（未確定）」の帯付きで描画する（請求書の下書きプレビューと揃え、MCP からの確認に使える）。給与明細だけは未確認の控除を含むため下書きを拒否する。
+- D-8 合計請求書の `closingDate` は任意とし、省略時は今日以前の直近の締め日を使う（画面のダイアログが締め日の計算を Web に複製しないため）。指定された日が締め日でなければ VALIDATION。締め日は取引先の現在の `closingDay` を使う（売上請求書は締め日を保存していない。未決事項 6）。
+- D-9 店舗・拠点に限定された文脈: 取引の帳票は請求書と同じく `storeAccess` / `siteAccess` を宣言しない（その文脈から売上・入出金の書類を出す業務が無い）。給与明細は workforce の他の action と同じく `siteAccess: true`。
+- D-10 差し替え点は帳票ごとに `<module>.<document>_html`（既定の描画関数と同じ引数 `(data, tools)`）。l10n/jp の請求書レイアウトを共通部品へ置き換えることはこの項目では行わない（日付表記の切替だけ対応）。
+- D-11 給与明細の入口は記録画面に加えて `/me` と `/workforce` の給与タブ（従業員が明細を見る場所）。宣言は同じ action のものを使う。
+
+## スコープ外（明記）
+
+- ロゴ・社印・角印の画像（添付基盤を使う別項目）、帳票レイアウトの画面からの編集（差し替えは pack / l10n の override）
+- サーバでの PDF 生成・メール送付（ブラウザの印刷と PDF 保存を使う）、一覧からの一括印刷
+- 督促状 `sales.render_reminder_html`（計画 E3）、商流請求（`trade_billing`）の帳票（請求は売上請求書を印刷する）
+- 注文請書（受注の受発注書）、入荷の受領書・検収書、仕入先の見積の印刷
+- 合計請求書の前回請求額・入金額・繰越額、合計請求書の採番と発行履歴の保存
+- 領収書の収入印紙欄・印紙税の注記・「再発行」の印字、支払通知書を仕入明細書（仕入税額控除の根拠書類）として扱うこと
+- 新しい帳票の発行時データ（発行者・宛先の固定）の保存
+- 給与明細の電子交付の同意管理・一括配信、源泉徴収票
+- `/commerce/trade` ボードへの印刷ボタン（記録画面と関連パネルから開く）
+- 帳票の閲覧の監査記録（読取は従来どおり監査しない）
+
+## 検証手順（E2E、実行して記録する）
+
+1. 編集中は `pnpm gate:quick`。コミット前に `TEST_DATABASE_URL_*` を設定し `GATE_DB_SHARDS=1 pnpm gate:light`（kernel を変更するため DB 全件へ昇格する）。最後に `pnpm test:db:templates -- --drop`。
+2. 単体（unit）:
+   - `kernel/test/action-print.test.ts` — 命名・`mutates`・`tx`・`idInput` の定義時検査、`appMeta` の `actions[].print`（実行できない action は出ない）（AC-1、AC-2）
+   - `modules/print-layout/test/layout.test.ts` — エスケープ（各部品と文書）、金額・税率の表示、`formatDocumentDate` の 3 方式と日英、和暦の差し替え無し・変換失敗時の西暦、`printDocument` に script・外部資源・イベント属性が無いこと、`issuerFromCompanyProfile`、保存値（税率と整合しない税額を含む）をそのまま出すこと、状態の帯の挿入（AC-5〜AC-9、AC-17）
+   - golden（`toMatchFileSnapshot`、固定の描画データ、日本語）と英語・エスケープの検査: `modules/trade/test/print-html.test.ts`（`golden/quotation.html`、`golden/purchase-order.html`、`golden/delivery-note.html`）、`modules/payment/test/print-html.test.ts`（`golden/receipt.html`、`golden/payment-notice.html`）、`modules/sales/test/statement-html.test.ts`（`golden/statement.html`）、`modules/workforce/test/payslip-html.test.ts`（`golden/payslip.html`）（AC-6、AC-7、AC-10〜AC-16、AC-18）
+   - 既存の `modules/sales/test/recalculate.test.ts`・`modules/sales/test/issuer.test.ts`・`l10n/jp/test/services.test.ts`（`golden/invoice.html`）が変更なしで通ること（AC-5、AC-8、AC-9）
+   - `l10n/jp/test/print-dates.test.ts` — `print_layout.era_date` の登録、請求書の `dateStyle` 3 方式と未指定時の併記（AC-8）
+   - `apps/web/src/lib/print.test.ts` — 宣言による発見（entity・`idInput`・`when`・document の確定状態・複数）、入力の組み立て、追加入力の schema（AC-3、AC-4）。接尾辞による発見の試験は宣言による試験に置き換え、理由を作業記録に書く
+   - `apps/runtime/test/setting-labels.test.ts` が新しい設定を含めて通ること（AC-8）
+3. DB:
+   - `modules/trade/test/print.db.test.ts` — 3 帳票の描画、受注・入荷の INVALID_STATE、下書き・取消の帯、purchasing / sales の行の権限、read の無いロール、別会社の id、確定後に端数処理設定を変えても金額が変わらないこと、設定 `print_layout.date_style` の反映（AC-7、AC-8、AC-10〜AC-12、AC-17、AC-19〜AC-21）
+   - `modules/payment/test/print.db.test.ts` — 領収書と支払通知書、区分違いの INVALID_STATE、消込明細と未消込額、`sales.issuer` / `company.profile` の発行者、sales・purchasing の行の権限、店舗限定の文脈の PERMISSION_DENIED（AC-9、AC-13、AC-14、AC-19〜AC-21）
+   - `modules/sales/test/statement.db.test.ts` — 期間の境界（前回締め日の翌日と締め日、月末締め、2 月）、下書き・取消・別取引先・別会社・期間外の除外、合計と税率別合計が保存値の和であること、`closingDate` 省略時の直近の締め日、締め日でない日の VALIDATION、別会社の取引先の NOT_FOUND、0 件（AC-7、AC-15、AC-19、AC-22）
+   - `modules/workforce/test/payslip-print.db.test.ts` — 本人・manager・hr は自分の確定済みだけ、payroll は全員、他人と別会社は NOT_FOUND、下書きの INVALID_STATE（payroll）と NOT_FOUND（本人）、取消の帯、拠点限定の文脈で自分の明細を印刷できること、発行者が `company.profile` であること（AC-9、AC-16、AC-17、AC-19、AC-21）
+   - `apps/api/test/print-meta.db.test.ts` — ロールごとの `/meta` の `print` 宣言、`POST /actions/<name>` の 403 / 404 / 409（AC-2、AC-19、AC-20）
+   - 既存の `modules/sales/test/sales.db.test.ts`・`apps/api/test/scenario.db.test.ts`・`apps/api/test/company-admin.db.test.ts` が変更なしで通ること
+4. ブラウザ: `apps/web/e2e/print-templates.spec.ts`（chromium project。industry の会社は使わない）— 確定済みの見積書・入金（領収書）・支払（支払通知書。入金とボタンが入れ替わること）・得意先の合計請求書（ダイアログ、締め日でない日のエラー表示）・`/me` の給与明細で印刷ボタン → 新しいタブに帳票が開くこと、受注と下書きにボタンが出ないこと、英語表示、390px（記録画面とダイアログ）、ダイアログを開いた状態の axe（AC-3、AC-4、AC-23〜AC-25）。既存の `company-admin.spec.ts` の請求書の印刷が通ること
+5. 目視: 各帳票を Chrome の印刷プレビューで開き、明細 20 行以内で A4 1 枚に収まることと、印刷バーが紙に出ないことを確認し、作業記録に「目視」と書く
+6. `pnpm gate:full`（統合担当が実行）
+
+## 未決事項（利用者の判断待ち）
+
+1. 領収書の記載事項と印紙税の扱い（収入印紙欄・金額基準の注記）— 国税庁の一次資料を確認できなかったため印字しない（推奨の既定）。確認できたら docs/domain に URL と確認日を書き、`payment.receipt_html` の既定レイアウトか l10n/jp の差し替えで追加する。
+2. 給与明細の法定記載事項・交付方法（所得税法第 231 条、電子交付の同意）— 未確認。保存済みの項目だけを印字し、法令の文言は出さない（推奨の既定）。
+3. 日付表記の既定値 — `both`（l10n/jp の請求書と同じ）を推奨。`western` にすると既存会社の新しい帳票は西暦だけになる。
+4. 合計請求書の前回繰越・入金額 — 初版は期間内の請求書の一覧と合計だけ（推奨）。入金・繰越の欄は消込履歴（`sales_settlement`）から作れるが、印刷時点で値が変わるため別項目で設計する。
+5. 新しい帳票の発行時データ — 印刷時点の発行者・取引先住所を使う（推奨）。発行後に会社名・住所を変えると再印刷の内容が変わる。必要なら document ごとに snapshot の field を足す（移行を伴う）。
+6. 締め日を変更した取引先の過去の合計請求書 — 現在の `closingDay` で期間を決める（推奨）。過去の期間を正確に再現するには売上請求書に締め日を保存する変更が要る。
+7. 合計請求書の上限 500 件 — 1 取引先・1 締め期間で 500 件を超える場合は印刷できない（推奨のまま。必要ならページ分割を検討）。
+8. 納品書の金額を出さない版 — 初版は金額あり（推奨）。取引先ごとの切替は設定の追加が要る。
