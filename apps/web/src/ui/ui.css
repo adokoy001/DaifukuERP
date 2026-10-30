@@ -415,6 +415,50 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
+  /* Selectable rows (list workbench bulk operations): a narrow checkbox column; the selected row's cells are tinted
+   * (cells, not the row, so the unlayered stripe/hover rules on `tr` do not hide it). */
+  .ui-select-cell {
+    width: calc(var(--spacing) * 9);
+    text-align: center;
+  }
+  .ui-row-check {
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .ui-row-check:disabled {
+    cursor: not-allowed;
+  }
+  .ui-row-link.is-selected > td {
+    background: var(--accent-soft);
+  }
+
+  /* ---- Filter chips (applied list filters; each removes itself) ---- */
+  .ui-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--spacing) * 1.5);
+  }
+  .ui-chip {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: var(--spacing);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--accent-on-soft);
+    padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    overflow-wrap: anywhere;
+  }
+  .ui-chip:hover {
+    border-color: var(--accent);
+  }
 
   /* ---- Tabs ---- */
   .ui-tabs {

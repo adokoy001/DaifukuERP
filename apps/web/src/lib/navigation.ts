@@ -111,7 +111,8 @@ function menuEntry(
   const match = /^\/(r|a)\/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/.exec(path);
   const action = match?.[2] ? actions.get(match[2]) : undefined;
   if (!action) return undefined;
-  if (match?.[1] === 'r') return action.resultKind === 'table' ? actionEntry(action, meta, item.label) : undefined;
+  if (match?.[1] === 'r')
+    return action.resultKind === 'table' && !action.generic ? actionEntry(action, meta, item.label) : undefined;
   // Keep the generated action page's own visibility contract: internal/generic and pack setup are not forms here.
   return !action.generic && action.resultKind !== 'table' && action.module !== 'pack'
     ? actionEntry(action, meta, item.label)
@@ -140,7 +141,9 @@ export function buildNavigation(meta: AppMeta | undefined, tenantAdmin: boolean)
       if (entry) add(entries, entry);
     }
   for (const entity of entities.values()) add(entries, recordEntry(entity, meta));
-  for (const action of actions.values()) if (action.resultKind === 'table') add(entries, actionEntry(action, meta));
+  // Generic entity actions are never reports (<entity>.export_rows is the list's CSV source).
+  for (const action of actions.values())
+    if (action.resultKind === 'table' && !action.generic) add(entries, actionEntry(action, meta));
   const all = [...entries.values()];
   return {
     entries: all,

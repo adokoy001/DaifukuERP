@@ -78,8 +78,10 @@ test('navigation AC-1/2/4/5/11: compact areas, complete paged directory and bili
   const children = new Set(meta.entities.flatMap((entity) => (entity.lines ?? []).map((line) => line.entity)));
   for (const entity of meta.entities.filter((entity) => entity.ops.includes('read') && !children.has(entity.name)))
     expect(all).toContain(`/e/${entity.name}`);
-  for (const action of meta.actions.filter((action) => action.resultKind === 'table'))
+  // Every report is listed; generic table actions (<entity>.export_rows, the list's CSV source) are not reports.
+  for (const action of meta.actions.filter((action) => action.resultKind === 'table' && !action.generic))
     expect(all).toContain(`/r/${action.name}`);
+  for (const action of meta.actions.filter((action) => action.generic)) expect(all).not.toContain(`/r/${action.name}`);
   for (const child of children) expect(all).not.toContain(`/e/${child}`);
   await page
     .getByRole('navigation', { name: '画面一覧のページ' })

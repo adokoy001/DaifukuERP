@@ -165,6 +165,7 @@ export {
   type ImportResult,
   type ImportRowResult,
 } from './import.ts';
+export { EXPORT_ROWS_LIMIT } from './actions/export-rows.ts';
 export { registerPackActions } from './actions/pack.ts';
 export {
   applyPack,

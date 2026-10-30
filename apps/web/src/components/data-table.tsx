@@ -44,6 +44,38 @@ export interface DataTableProps {
   empty?: ReactNode;
   /** Bound the table to the viewport so the sticky header stays visible. */
   fill?: boolean;
+  /** list-workbench AC-10: a leading checkbox column for bulk operations. */
+  selection?: RowSelection;
+}
+
+export interface RowSelection {
+  isSelected: (row: RecordJson) => boolean;
+  onToggle: (row: RecordJson, selected: boolean) => void;
+  /** Header checkbox: select or clear every row on the page. */
+  onTogglePage: (rows: RecordJson[], selected: boolean) => void;
+  /** A row that cannot be added (the selection limit is reached). */
+  isDisabled?: (row: RecordJson) => boolean;
+  /** Accessible name of a row checkbox, e.g. "Select INV-2026-000012". */
+  rowLabel: (row: RecordJson) => string;
+  pageLabel: string;
+}
+
+function SelectAll({ rows, selection }: { rows: RecordJson[]; selection: RowSelection }) {
+  const checked = rows.length > 0 && rows.every((row) => selection.isSelected(row));
+  const some = rows.some((row) => selection.isSelected(row));
+  return (
+    <input
+      type="checkbox"
+      className="ui-row-check"
+      aria-label={selection.pageLabel}
+      checked={checked}
+      disabled={rows.length === 0}
+      ref={(el) => {
+        if (el) el.indeterminate = some && !checked;
+      }}
+      onChange={(e) => selection.onTogglePage(rows, e.target.checked)}
+    />
+  );
 }
 
 function toSortingState(sort: string | undefined): SortingState {
@@ -135,6 +167,7 @@ export function DataTable(props: DataTableProps) {
     stale = false,
     empty,
     fill,
+    selection,
   } = props;
   const { t } = useLocale();
   const cols = useColumns(entity, columns, refLabel);
@@ -152,8 +185,14 @@ export function DataTable(props: DataTableProps) {
   });
   const headerGroups = table.getHeaderGroups();
   const bodyRows = table.getRowModel().rows;
+  const pageRows = bodyRows.map((row) => row.original);
   const head = headerGroups.map((hg) => (
     <tr key={hg.id}>
+      {selection ? (
+        <th scope="col" className="ui-select-cell px-2 py-1.5">
+          <SelectAll rows={pageRows} selection={selection} />
+        </th>
+      ) : null}
       {hg.headers.map((h) => {
         const align = alignOf(h.column.columnDef.meta);
         const canSort = h.column.getCanSort();
@@ -181,7 +220,7 @@ export function DataTable(props: DataTableProps) {
   return (
     <DataTableShell
       head={head}
-      columnCount={cols.length}
+      columnCount={cols.length + (selection ? 1 : 0)}
       busy={loading}
       skeleton={loading && (rows === undefined || stale)}
       skeletonRows={8}
@@ -201,8 +240,22 @@ export function DataTable(props: DataTableProps) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') onRowClick(row.original);
           }}
-          className="ui-row-link"
+          className={cx('ui-row-link', selection?.isSelected(row.original) && 'is-selected')}
         >
+          {selection ? (
+            // The checkbox cell is not part of the row link: clicks and Enter on it only toggle the selection.
+            <td className="ui-select-cell px-2 py-1" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                className="ui-row-check"
+                aria-label={selection.rowLabel(row.original)}
+                checked={selection.isSelected(row.original)}
+                disabled={!selection.isSelected(row.original) && selection.isDisabled?.(row.original) === true}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => selection.onToggle(row.original, e.target.checked)}
+              />
+            </td>
+          ) : null}
           {row.getAllCells().map((cell) => (
             <td key={cell.id} className={cx('px-2 py-1', cellAlignClass(alignOf(cell.column.columnDef.meta)))}>
               <table.FlexRender cell={cell} />

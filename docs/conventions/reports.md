@@ -34,6 +34,10 @@ export const tableResult = z.object({
 
 `meta.truncated` がある帳票の総計・残高の対象範囲はアクション側で説明する。画面ページングは返却上限の解消ではなく、取得済みの結果を見やすくする表示処理である。
 
+## 汎用一覧の CSV（`<entity>.export_rows`）との違い
+
+kernel が entity ごとに派生する `<entity>.export_rows`（[list-workbench](../specs/list-workbench.md)）も TableResult を返すが、レポートではない（`generic: true`。`/r/`・レポート一覧・画面検索に出さない）。汎用一覧の現在の条件・列で最大 5,000 行（`EXPORT_ROWS_LIMIT`、帳票の 10,000 行とは別）を表示値で返し、出力 1 回ごとに監査へ記録する。権限は entity の `export`、経路はレポートと同じ `POST /actions/:name/export`。
+
 ## ブラウザ・ピボットとの境界
 
 `/analytics/catalog` と `/analytics/snapshot` はブラウザ探索分析用の専用HTTP契約であり、`TableResult` ではない。任意entityやSQLを受け取らず、最大9対象の許可リストから会社・拠点・本人・項目権限を適用する。読取専用Repeatable Readで500行ずつ同じDBスナップショットを採取し、5万行を超える場合は部分結果を返さない。これは既存帳票の `MAX_REPORT_ROWS = 10000` と別の上限である。

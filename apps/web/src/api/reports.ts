@@ -4,7 +4,8 @@ import { request } from './client.ts';
 import type { ActionMeta, AppMeta, TableResult } from './types.ts';
 
 export function reportActions(meta: AppMeta | undefined): ActionMeta[] {
-  return (meta?.actions ?? []).filter((a) => a.resultKind === 'table');
+  // Generic entity actions are never reports: <entity>.export_rows returns a TableResult for the list's CSV only.
+  return (meta?.actions ?? []).filter((a) => a.resultKind === 'table' && !a.generic);
 }
 
 export function useRunReport(name: string): UseMutationResult<TableResult, Error, Record<string, unknown>> {

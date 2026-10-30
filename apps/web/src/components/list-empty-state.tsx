@@ -13,19 +13,42 @@ export interface ListEmptyStateProps {
   /** Renders the create link (router <Link>) with the given text; omitted when the entity cannot be created here. */
   renderCreate?: (text: string) => ReactNode;
   onClearSearch: () => void;
+  /** list-workbench: applied filters (0 = none); with `onClearFilters` the state offers to clear them. */
+  filterCount?: number;
+  onClearFilters?: () => void;
 }
 
-export function ListEmptyState({ entityLabel, query, total, renderCreate, onClearSearch }: ListEmptyStateProps) {
+export function ListEmptyState({
+  entityLabel,
+  query,
+  total,
+  renderCreate,
+  onClearSearch,
+  filterCount = 0,
+  onClearFilters,
+}: ListEmptyStateProps) {
   const { t, locale } = useLocale();
   const q = query?.trim() ?? '';
-  if (q)
+  if (q || filterCount > 0) {
+    const parts = [
+      q ? (locale === 'ja' ? `「${q}」` : `“${q}”`) : '',
+      filterCount > 0 ? (locale === 'ja' ? `絞り込み ${filterCount} 件` : `${filterCount} filter(s)`) : '',
+    ].filter(Boolean);
     return (
       <EmptyState
         title={t(S.listNoMatch)}
-        description={locale === 'ja' ? `「${q}」` : `“${q}”`}
-        action={<Button onClick={onClearSearch}>{t(S.clearSearch)}</Button>}
+        description={parts.join(locale === 'ja' ? '・' : ', ')}
+        action={
+          <>
+            {q ? <Button onClick={onClearSearch}>{t(S.clearSearch)}</Button> : null}
+            {filterCount > 0 && onClearFilters ? (
+              <Button onClick={onClearFilters}>{t({ ja: '絞り込みをクリア', en: 'Clear filters' })}</Button>
+            ) : null}
+          </>
+        }
       />
     );
+  }
   if (total > 0) return <EmptyState title={t(S.noRows)} />;
   return (
     <EmptyState

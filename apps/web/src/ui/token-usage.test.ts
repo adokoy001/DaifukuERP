@@ -24,6 +24,12 @@ const CONVERTED = [
   'components/setting-card.tsx',
   'components/setting-code-field.tsx',
   'pages/close-page.tsx',
+  // list-workbench (docs/specs/list-workbench.md)
+  'components/list-filter-panel.tsx',
+  'components/list-columns-dialog.tsx',
+  'components/list-views-dialog.tsx',
+  'components/list-bulk.tsx',
+  'components/list-export.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))
