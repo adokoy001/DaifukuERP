@@ -33,6 +33,7 @@ import { lineSpecsOf, planSave, type LineSpecMeta } from '../lib/save.ts';
 import { S } from '../strings.ts';
 import { formFingerprint } from '../lib/dirty.ts';
 import { lineLockReason } from '../lib/line-lock.ts';
+import { recurringLineLock } from '../lib/recurring.ts';
 import { seededLines, seededValues, type DraftSeed } from '../lib/duplicate.ts';
 import { AllocationPicker, useAllocationConvention } from './allocation-picker.tsx';
 import { FieldWidget } from './fields/field-widget.tsx';
@@ -416,6 +417,7 @@ export function RecordForm({
     saving,
     conflict: state.conflict,
     frozen: mode === 'update' && (record?.docstatus ?? 0) !== 0,
+    locked: mode === 'update' ? recurringLineLock(entity.name, record) : undefined,
   });
   const linesReadOnly = lineLock !== undefined;
   const locked = !canWrite || actionBusy || saving || state.conflict;

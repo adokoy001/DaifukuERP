@@ -370,6 +370,11 @@ const openingRoute = createRoute({
   validateSearch: parseOpeningSearch,
   component: lazyRouteComponent(() => import('./pages/opening-balances-page.tsx'), 'OpeningBalancesPage'),
 });
+const recurringRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/recurring',
+  component: lazyRouteComponent(() => import('./pages/recurring-page.tsx'), 'RecurringPage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -440,6 +445,7 @@ const routeTree = rootRoute.addChildren([
     bankingRoute,
     closeRoute,
     openingRoute,
+    recurringRoute,
     taxFilingRoute,
   ]),
 ]);

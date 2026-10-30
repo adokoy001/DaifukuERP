@@ -50,6 +50,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/finance/close': topic(MONTHLY),
   // docs/specs/opening-balances.md AC-31: the setup chapter explains the opening balance import.
   '/finance/opening': topic('03-setup.md', '期首残高の取込'),
+  // docs/specs/recurring-journals.md AC-24
+  '/finance/recurring': topic(MONTHLY, '定期仕訳を生成する'),
 };
 /** Reports explained in the monthly chapter; every other table report uses the report-screen appendix. */
 const REPORTS: Readonly<Record<string, HelpTopic>> = {
@@ -76,6 +78,7 @@ const ENTITIES: readonly (readonly [RegExp, HelpTopic])[] = [
   [/^sales_invoice$/, topic('05-daily.md', '売上請求書を作る')],
   [/^(?:purchase_invoice|payment)$/, topic('05-daily.md')],
   [/^journal_entry$/, topic('05-daily.md', '仕訳を入力する')],
+  [/^recurring_journal(?:_run)?$/, topic('05-daily.md', '定期仕訳を登録する')],
   [/^(?:stock_entry|stock_count)$/, topic('05-daily.md', '在庫の入出庫と棚卸')],
   [/^workforce_/, WORKFORCE],
   [/^(?:retail|real_estate)_/, topic('07-templates.md')],

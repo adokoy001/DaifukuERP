@@ -268,3 +268,108 @@ describe('document-links AC-1/AC-7: the seed in router history state', () => {
     expect(businessToday(new Date('2026-12-31T15:30:00Z'))).toBe('2027-01-01');
   });
 });
+
+describe('recurring-journals AC-3: duplicating an entity with lines (ADR-0031)', () => {
+  // Shapes as GET /meta serves modules/accounting recurring_journal / recurring_journal_line, trimmed.
+  const template: EntityMeta = {
+    ...base,
+    module: 'accounting',
+    name: 'recurring_journal',
+    kind: 'entity',
+    label: L('定期仕訳', 'Recurring journal'),
+    displayField: 'name',
+    fields: [
+      field('name', 'text', { required: true }),
+      field('kind', 'enum', {
+        required: true,
+        hasDefault: true,
+        defaultValue: 'fixed',
+        values: ['fixed', 'allocation'],
+      }),
+      field('startDate', 'date', { required: true, hasDefault: true }),
+      field('endDate', 'date'),
+      field('allocationPeriods', 'int'),
+      field('nextRunDate', 'date', { serverOwned: true, readOnly: true }),
+      field('lastOccurrenceDate', 'date', { serverOwned: true, readOnly: true }),
+    ],
+    views: { list: [], form: 'auto', search: [] },
+    lines: [{ entity: 'recurring_journal_line', parentField: 'templateId' }],
+  };
+  const templateLine: EntityMeta = {
+    ...base,
+    module: 'accounting',
+    name: 'recurring_journal_line',
+    kind: 'entity',
+    label: L('定期仕訳明細', 'Recurring journal line'),
+    displayField: undefined,
+    fields: [
+      field('templateId', 'ref', { required: true, ref: 'recurring_journal' }),
+      field('seq', 'int', { required: true, hasDefault: true }),
+      field('accountId', 'ref', { required: true, ref: 'account' }),
+      field('debit', 'decimal', { required: true, hasDefault: true, money: true }),
+      field('credit', 'decimal', { required: true, hasDefault: true, money: true }),
+      field('memo', 'text'),
+    ],
+    views: { list: ['accountId', 'debit', 'credit', 'memo'], form: 'auto', search: [] },
+  };
+  const row = (id: string, values: Record<string, unknown>): RecordJson => ({
+    id,
+    tenantId: 't',
+    companyId: 'c',
+    createdAt: '',
+    updatedAt: '',
+    createdBy: null,
+    updatedBy: null,
+    version: 1,
+    templateId: '66666666-6666-4666-8666-666666666666',
+    ...values,
+  });
+  const generated: RecordJson = {
+    ...row('66666666-6666-4666-8666-666666666666', {}),
+    name: '前払保険料',
+    kind: 'allocation',
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    allocationPeriods: 12,
+    nextRunDate: '2026-11-30',
+    lastOccurrenceDate: '2026-10-31',
+    lines: {
+      recurring_journal_line: [
+        row('77777777-7777-4777-8777-777777777777', {
+          seq: 1,
+          accountId: 'a1',
+          debit: '120000',
+          credit: '0',
+          memo: 'm',
+        }),
+        row('88888888-8888-4888-8888-888888888888', {
+          seq: 2,
+          accountId: 'a2',
+          debit: '0',
+          credit: '120000',
+          memo: null,
+        }),
+      ],
+    },
+  };
+
+  it('AC-3: copies the template and its lines; server-owned run dates and line ids are not copied', () => {
+    const seed = duplicateSeed(template, generated, [template, templateLine], '2026-10-30', '前払保険料');
+    expect(seed.values).toEqual({
+      name: '前払保険料',
+      kind: 'allocation',
+      startDate: '2026-10-30',
+      endDate: null,
+      allocationPeriods: 12,
+    });
+    expect(seed.lines).toEqual({
+      recurring_journal_line: [
+        { accountId: 'a1', debit: '120000', credit: '0', memo: 'm' },
+        { accountId: 'a2', debit: '0', credit: '120000', memo: null },
+      ],
+    });
+    const specs = lineSpecsOf(template, [template, templateLine]);
+    expect(specs.map((s) => s.line.name)).toEqual(['recurring_journal_line']);
+    expect(seededLines(specs, seed).recurring_journal_line?.every((r) => r.id === undefined)).toBe(true);
+  });
+});
