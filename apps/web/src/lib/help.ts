@@ -52,6 +52,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/finance/opening': topic('03-setup.md', '期首残高の取込'),
   // docs/specs/recurring-journals.md AC-24
   '/finance/recurring': topic(MONTHLY, '定期仕訳を生成する'),
+  // docs/specs/evidence-search.md AC-12
+  '/finance/evidence': topic('02-basics.md', '証憑の検索'),
 };
 /** Reports explained in the monthly chapter; every other table report uses the report-screen appendix. */
 const REPORTS: Readonly<Record<string, HelpTopic>> = {

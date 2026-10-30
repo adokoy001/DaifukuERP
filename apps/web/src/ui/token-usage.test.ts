@@ -52,6 +52,10 @@ const CONVERTED = [
   'pages/opening-balances-page.tsx',
   // recurring-journals (docs/specs/recurring-journals.md AC-23)
   'pages/recurring-page.tsx',
+  // evidence-search (docs/specs/evidence-search.md)
+  'pages/evidence-page.tsx',
+  'components/evidence-download.tsx',
+  'components/evidence-history-dialog.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

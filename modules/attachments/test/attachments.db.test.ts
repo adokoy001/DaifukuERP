@@ -68,6 +68,9 @@ describe('attachment entity (docs/specs/attachments.md)', () => {
       'attachment.supersede',
       'attachment.link',
       'attachment.for_record',
+      // docs/specs/evidence-search.md AC-1 / AC-10
+      'attachment.evidence_search',
+      'attachment.history',
     ]);
     expect(Attachment.fieldNames).toEqual([
       'storageKey',

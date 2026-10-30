@@ -39,6 +39,7 @@ import { forgetRecentNames } from './api/navigation-assist.ts';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
 import { parseOpeningSearch } from './lib/opening-balances.ts';
+import { parseEvidenceSearch } from './lib/evidence-search.ts';
 import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
@@ -375,6 +376,13 @@ const recurringRoute = createRoute({
   path: '/finance/recurring',
   component: lazyRouteComponent(() => import('./pages/recurring-page.tsx'), 'RecurringPage'),
 });
+// docs/specs/evidence-search.md AC-12/AC-13: the evidence search keeps its criteria in the URL.
+const evidenceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/evidence',
+  validateSearch: parseEvidenceSearch,
+  component: lazyRouteComponent(() => import('./pages/evidence-page.tsx'), 'EvidencePage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -446,6 +454,7 @@ const routeTree = rootRoute.addChildren([
     closeRoute,
     openingRoute,
     recurringRoute,
+    evidenceRoute,
     taxFilingRoute,
   ]),
 ]);

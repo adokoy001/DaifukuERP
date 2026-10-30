@@ -228,9 +228,13 @@ export interface Downloaded {
   contentType: string | null;
 }
 
-/** Authenticated binary GET (attachment download). */
-export async function download(path: string): Promise<Downloaded> {
-  const res = await send(path, { method: 'GET', headers: authHeaders(false), cache: 'no-store' }, false);
+/** Authenticated binary GET (attachment download). `signal` stops it (the evidence bulk download's "stop"). */
+export async function download(path: string, signal?: AbortSignal): Promise<Downloaded> {
+  const res = await send(
+    path,
+    { method: 'GET', headers: authHeaders(false), cache: 'no-store', ...(signal ? { signal } : {}) },
+    false,
+  );
   return {
     blob: await res.blob(),
     contentDisposition: res.headers.get('content-disposition'),

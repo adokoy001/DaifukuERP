@@ -2,6 +2,7 @@
 
 - 状態: approved ／ モジュール: modules/attachments ＋ apps/api のアップロード/ダウンロード経路 ／ 依存: partner
 - ADR: 0007, 0013（storage ポート） ／ 作成: 2026-09-10 ／ 出典: docs/domain/japan-tax.md#電子帳簿保存法
+- 関連: [evidence-search](evidence-search.md)（2026-10-30。証憑の横断検索 `attachment.evidence_search` / 差替の履歴 `attachment.history` / `/finance/evidence`。`attachment.search` の入出力は変えていない）
 
 ## 目的
 受領・発行した請求書/領収書等のファイルを、電帳法の検索要件（取引年月日・取引金額・取引先、範囲・組合せ検索）と真実性（訂正削除履歴）を満たす形で保存し、任意の伝票にリンクする。

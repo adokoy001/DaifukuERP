@@ -39,6 +39,7 @@ const ROUTES = [
   '/finance/banking',
   '/finance/filing',
   '/finance/recurring',
+  '/finance/evidence',
   '/e/partner',
   '/e/partner/new',
   '/e/partner/00000000-0000-4000-8000-000000000001',

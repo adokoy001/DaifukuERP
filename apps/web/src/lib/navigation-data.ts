@@ -242,6 +242,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/finance/evidence',
+    workspace: 'finance',
+    module: 'attachment',
+    action: 'attachment.evidence_search',
+    label: { ja: '証憑の検索', en: 'Evidence search' },
+    description: {
+      ja: '取引年月日・取引金額・取引先で証憑を探し、リンク先の伝票と差替の履歴を確かめ、選んだ証憑をまとめてダウンロードします（電子帳簿保存法の検索要件）。',
+      en: 'Find evidence by transaction date, amount and partner, check the linked document and the supersede history, and download selected evidence together.',
+    },
+  },
+  {
     href: '/finance/filing',
     workspace: 'finance',
     module: 'tax_filing',
