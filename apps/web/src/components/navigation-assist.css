@@ -1,0 +1,236 @@
+/* navigation-assist: command palette, top-bar search button, screen-trail tools, sidebar shortcuts.
+   Colours come from the semantic tokens (styles.css); breakpoints follow docs/conventions/ui.md (480/768). */
+
+/* Top-bar button: label and shortcut on wide screens, icon only below 768px. */
+.topbar-search {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.topbar-search:hover {
+  border-color: var(--accent-border);
+  color: var(--text-strong);
+}
+.topbar-search kbd {
+  font: inherit;
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+/* The palette: the kit Dialog (.action-dialog) placed near the top, wider, with a scrolling candidate list. */
+.action-dialog.command-palette {
+  inset: 10vh 0 auto;
+  margin: 0 auto;
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(640px, 84dvh);
+  overflow: hidden;
+  padding: 18px 18px 12px;
+}
+.action-dialog.command-palette .dialog-heading {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  margin: 0;
+}
+.action-dialog.command-palette h2 {
+  font-size: 15px;
+  margin: 0 40px 12px 2px;
+}
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+.palette-search:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.palette-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+.palette-list {
+  margin-top: 8px;
+  max-height: min(440px, calc(84dvh - 170px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.palette-group-label {
+  padding: 10px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.palette-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.palette-option svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.palette-option[aria-selected='true'] {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent-on-soft);
+}
+.palette-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.palette-option-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.palette-option-text small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.palette-empty {
+  padding: 18px 6px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text-muted);
+}
+.palette-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.palette-footer a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 4px 0;
+}
+
+/* Screen trail: breadcrumb on the left, favourite toggle and manual link on the right. */
+.screen-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.screen-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.screen-favorite {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.screen-favorite[aria-pressed='true'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+.screen-favorite[aria-pressed='true'] svg {
+  fill: currentColor;
+}
+.screen-trail a.screen-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--link);
+}
+
+/* Sidebar shortcuts reuse .nav-caption/.nav-link; long record names are cut with an ellipsis. */
+.nav-shortcut > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nav-shortcut > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-shortcut small {
+  font-size: 10px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .topbar-search {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+  .topbar-search span,
+  .topbar-search kbd {
+    display: none;
+  }
+}
+@media (max-width: 479px) {
+  /* Full width at phone size (AC-8): the palette spans the viewport from the top edge. */
+  .action-dialog.command-palette {
+    inset: 0 0 auto;
+    width: 100%;
+    max-height: 100dvh;
+    border-radius: 0 0 16px 16px;
+    border-width: 0 0 1px;
+    padding: 14px 12px 10px;
+  }
+  .palette-search input {
+    font-size: 16px;
+  }
+  .palette-list {
+    max-height: calc(100dvh - 190px);
+  }
+}

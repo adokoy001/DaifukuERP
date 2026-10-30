@@ -53,7 +53,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 
 サイドバーに全entity・全report・全moduleメニューを展開しない。`/workspaces` の画面検索と種類・ページングで探し、`/workspaces/<workspace>` では目的別の専用画面とマスター・記録を選ぶ。table帳票は分析・レポートへ集約する。既存のURLとAPI認可を保持し、module menuの外部・曖昧・未対応URLを転送しない。
 
-画面検索はNFKC、大小文字、カタカナ/ひらがなを正規化し、複数語をANDで照合する。記録データの横断検索ではない。ホームの伝票件数は詳細を開いて選択したmoduleだけ取得する。パンくずとメニューは既存routerを使って未保存保護を通す。drawerのEscapeとフォーカス復帰を共通shellで扱う。詳細は [ナビゲーションの構造](../architecture/navigation-workspaces.md)、操作は [付録N](../manual/appendix-n-navigation.md) を参照。
+画面検索はNFKC、大小文字、カタカナ/ひらがなを正規化し、複数語をANDで照合する。記録データの横断検索ではない。コマンドパレット（`Ctrl/⌘+K`）も同じ `searchNavigation` を使い、続けてブラウザ内の最近の記録を出す。最近の記録とお気に入りは利用者・tenant・会社ごとの `localStorage`（`lib/assist-storage.ts`）で、保存できないときは表示しないだけにする。個人情報を表示名に持つentity（`workforce_`・`filing_payroll_`）は表示名を保存しない。現在位置の「この画面の説明」は `lib/help.ts` の経路→章の対応表から作る。**専用画面を足したら `help.ts` にも章を足す**（`help.test.ts` が専用画面の対応と章・節の実在を検査する）。ホームの伝票件数は詳細を開いて選択したmoduleだけ取得する。パンくずとメニューは既存routerを使って未保存保護を通す。drawerのEscapeとフォーカス復帰を共通shellで扱う。詳細は [ナビゲーションの構造](../architecture/navigation-workspaces.md)、操作は [付録N](../manual/appendix-n-navigation.md) を参照。
 
 ## やること受信箱（`<module>.todo`）
 

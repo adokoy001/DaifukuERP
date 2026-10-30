@@ -25,6 +25,7 @@ import { PageHeader } from '../ui/index.ts';
 import { RecordLinkActions, SeedNotice, useDraftSeed } from '../components/record-links.tsx';
 import { RelatedPanel } from '../components/related-panel.tsx';
 import type { DraftSeed } from '../lib/duplicate.ts';
+import { useRecordVisit } from '../api/navigation-assist.ts';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -67,6 +68,7 @@ function RecordView({
   const toast = useToast();
   const navigate = useNavigate();
   const submitBlocked = useSubmitBlock(entity, record);
+  useRecordVisit(entity, record); // navigation-assist AC-3: recent records
   const [formStatus, setFormStatus] = useState({ dirty: false, saving: false });
   const [actionBusy, setActionBusy] = useState(false);
   const blocked = formStatus.saving

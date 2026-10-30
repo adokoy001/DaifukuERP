@@ -157,17 +157,20 @@ export function buildNavigation(meta: AppMeta | undefined, tenantAdmin: boolean)
   };
 }
 
-/** NFKC joins width/voicing variants; map katakana to hiragana so Japanese labels can be found with either script. */
-function normalize(value: string, locale: Locale): string {
+/**
+ * NFKC joins width/voicing variants; map katakana to hiragana so Japanese labels can be found with either script.
+ * Exported for the command palette's recent-record matching, which must normalize exactly like screen search.
+ */
+export function normalizeSearchText(value: string, locale: Locale): string {
   return value
     .normalize('NFKC')
     .toLocaleLowerCase(locale === 'ja' ? 'ja-JP' : 'en-US')
     .replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
 }
 function searchRank(entry: NavigationEntry, terms: string[], locale: Locale): number | undefined {
-  const label = normalize(entry.label[locale], locale);
+  const label = normalizeSearchText(entry.label[locale], locale);
   const other = locale === 'ja' ? 'en' : 'ja';
-  const content = normalize(
+  const content = normalizeSearchText(
     [
       entry.label[locale],
       entry.label[other],
@@ -187,7 +190,7 @@ function searchRank(entry: NavigationEntry, terms: string[], locale: Locale): nu
 }
 /** Search every authorized destination. Pagination belongs to the directory UI, never to this reachability catalog. */
 export function searchNavigation(catalog: NavigationCatalog, query: string, locale: Locale): NavigationEntry[] {
-  const terms = normalize(query, locale).trim().split(/\s+/).filter(Boolean);
+  const terms = normalizeSearchText(query, locale).trim().split(/\s+/).filter(Boolean);
   if (!terms.length) return [...catalog.entries];
   const collator = new Intl.Collator(locale === 'ja' ? 'ja-JP' : 'en-US', { numeric: true });
   return catalog.entries

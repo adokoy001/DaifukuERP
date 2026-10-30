@@ -34,11 +34,36 @@ import { ReadRefreshNotice } from './components/read-refresh-notice.tsx';
 import { canRetainData } from './lib/read-recovery.ts';
 import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
+import { CommandPalette } from './components/command-palette.tsx';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
 import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
+
+const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+
+/**
+ * navigation-assist AC-1: Ctrl+K (⌘+K on macOS) opens the command palette anywhere in the shell, also from a form
+ * field. While another modal (a confirmation dialog, the phone drawer) is open the browser keeps the key.
+ */
+function usePaletteShortcut(open: () => void) {
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() !== 'k' && event.code !== 'KeyK') return;
+      if (document.querySelector('dialog.command-palette[open]')) {
+        event.preventDefault();
+        return;
+      }
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) return;
+      event.preventDefault();
+      open();
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [open]);
+}
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -57,6 +82,10 @@ function AppLayout() {
   const { t } = useLocale();
   const [navOpen, setNavOpen] = useState(false);
   const closeNavigation = useCallback(() => setNavOpen(false), []);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  usePaletteShortcut(openPalette);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const previousPath = useRef(pathname);
   const content = useRef<HTMLDivElement>(null);
@@ -107,6 +136,18 @@ function AppLayout() {
                 <small>{t({ ja: '会社を切り替え', en: 'Switch company' })}</small>
               </Link>
             </div>
+            <button
+              type="button"
+              className="topbar-search"
+              aria-label={t({ ja: '画面と記録を検索', en: 'Search screens and records' })}
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Control+K Meta+K"
+              onClick={openPalette}
+            >
+              <Icon name="search" size={16} />
+              <span>{t({ ja: '検索', en: 'Search' })}</span>
+              <kbd>{MAC ? '⌘K' : 'Ctrl K'}</kbd>
+            </button>
             <Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}>
               <span>{getUser()?.name ?? getUser()?.email}</span>
               <span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span>
@@ -136,6 +177,7 @@ function AppLayout() {
             )}
           </div>
         </main>
+        {paletteOpen ? <CommandPalette onClose={closePalette} /> : null}
       </div>
     </CompanyProvider>
   );
