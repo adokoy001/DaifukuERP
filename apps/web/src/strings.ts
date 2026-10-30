@@ -163,8 +163,7 @@ export const S = {
   settingSaved: L('設定を保存しました', 'Setting saved'),
   key: L('キー', 'Key'),
   rawJson: L('JSON で編集', 'Edit as JSON'),
-  // web-polish: print view
-  viewInvoice: L('請求書を表示', 'View invoice'),
+  // web-polish: print view (button labels come from the render action's print declaration)
   print: L('印刷', 'Print'),
   rendering: L('帳票を作成しています…', 'Rendering…'),
   popupBlocked: L(
@@ -172,6 +171,12 @@ export const S = {
     'Could not open a new tab. Please allow pop-ups for this site.',
   ),
   printNoHtml: L('帳票の HTML が返されませんでした', 'The action returned no HTML'),
+  // print-templates: input dialog of a render action with extra inputs (AC-4, AC-25)
+  printDialogHint: L(
+    '条件を入力して「表示」を押すと、新しいタブに帳票が開きます。',
+    'Enter the conditions and press View; the document opens in a new tab.',
+  ),
+  printDialogShow: L('表示', 'View'),
   // web-polish: home dashboard
   documents: L('伝票', 'Documents'),
   masters: L('マスタ', 'Masters'),

@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useMeta } from '../api/queries.ts';
 import { formText, type PayrollSummary } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { formatDecimal } from '../lib/format.ts';
+import { printActionsFor, type PrintAction } from '../lib/print.ts';
 import { deductionLabels, minutesLabel } from '../lib/workforce.ts';
+import { PrintActionButton } from './print-button.tsx';
 import { StatutoryPayrollConfirm } from './fiscal-payroll.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceCalculation } from './workforce-calculation.tsx';
@@ -242,6 +245,13 @@ export function WorkforcePayroll({
   const [confirm, setConfirm] = useState<PayrollSummary>();
   const [cancel, setCancel] = useState<PayrollSummary>();
   const visible = self ? rows.filter((row) => row.status === 'confirmed') : rows;
+  // print-templates AC-24: the payslip print declaration from /meta (absent for roles that cannot run it).
+  const meta = useMeta();
+  const payslip: PrintAction | undefined = useMemo(
+    () =>
+      printActionsFor({ name: 'workforce_payroll', kind: 'document' }, { docstatus: 1 }, meta.data?.actions ?? [])[0],
+    [meta.data],
+  );
   return (
     <WorkforcePanel
       title={t(self ? { ja: '給与明細', en: 'Payslips' } : { ja: '給与の計算・確定', en: 'Payroll calculations' })}
@@ -285,6 +295,9 @@ export function WorkforcePayroll({
                 >
                   {t({ ja: '明細を見る', en: 'View details' })}
                 </button>
+                {payslip && row.status === 'confirmed' ? (
+                  <PrintActionButton action={payslip} recordId={row.id} />
+                ) : null}
                 {!self && row.status === 'draft' && actions.includes('workforce.confirm_payroll') ? (
                   <button
                     type="button"

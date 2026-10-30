@@ -10,7 +10,7 @@ import { AttachmentsPanel } from '../components/attachments-panel.tsx';
 import { AuditPanel } from '../components/audit-panel.tsx';
 import { DocActions, type DocActionsHandle } from '../components/doc-actions.tsx';
 import { DocstatusBadge } from '../components/docstatus-badge.tsx';
-import { PrintButton } from '../components/print-button.tsx';
+import { PrintButtons } from '../components/print-button.tsx';
 import { RecordForm, type SubmitControl } from '../components/record-form.tsx';
 import { RecordNavControls, useRecordNav } from '../components/record-nav.tsx';
 import { WorkforceWorkflowLink } from '../components/workforce-workflow-link.tsx';
@@ -138,7 +138,7 @@ function RecordView({
         actions={
           record ? (
             <>
-              <PrintButton entity={entity} record={record} />
+              <PrintButtons entity={entity} record={record} />
               <RecordLinkActions entity={entity} record={record} blocked={blocked} />
               <DocActions
                 ref={docActions}

@@ -115,6 +115,18 @@ export interface JsonSchema {
 
 export type ResultKind = 'table' | 'record' | 'other';
 
+/** A render action's print declaration (docs/specs/print-templates.md AC-2): where the record page offers it. */
+export interface PrintBindingMeta {
+  entity: string;
+  label: Label;
+  /** Input property that receives the record id (default `id`, filled in by the server). */
+  idInput: string;
+  /** Field values the record must have (equality, all of them). */
+  when?: Record<string, string | number | boolean>;
+  /** ja/en label and help of the other input properties (the input dialog). */
+  fields?: Record<string, { label: Label; description?: Label }>;
+}
+
 export interface ActionMeta {
   name: string;
   module: string;
@@ -127,6 +139,8 @@ export interface ActionMeta {
   resultKind: ResultKind;
   /** JSON Schema of the input; module actions only. */
   inputSchema?: JsonSchema;
+  /** Document render actions only (print-templates). */
+  print?: PrintBindingMeta;
 }
 
 export interface AppMeta {
