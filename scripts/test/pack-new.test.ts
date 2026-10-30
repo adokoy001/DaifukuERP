@@ -37,6 +37,7 @@ import {
   main,
   nextSteps,
   packNames,
+  parsePackNewArgs,
   planPack,
   validateLabel,
   validatePackName,
@@ -192,7 +193,7 @@ describe('pack-new generation (AC-1..AC-5)', { timeout: 30_000 }, () => {
       snake: 'bike_shop',
       pascal: 'BikeShop',
       camel: 'bikeShop',
-      code: 'BIKESHOP',
+      code: 'BIKE_SHOP',
       dir: 'packs/bike-shop',
       packageName: '@daifuku/pack-bike-shop',
       packExport: 'BikeShopPack',
@@ -201,12 +202,20 @@ describe('pack-new generation (AC-1..AC-5)', { timeout: 30_000 }, () => {
       entityFile: 'packs/bike-shop/src/entities/bike-shop-tag.ts',
       action: 'bike_shop.count_tags',
       extKey: 'bikeShopNote',
-      sampleCode: 'BIKESHOP-0001',
+      sampleCode: 'BIKE_SHOP-0001',
       spec: 'docs/specs/pack-bike-shop.md',
       migration: 'pack_bike_shop',
     });
-    expect(packNames('professional-services-x').code).toBe('PROFESSIONAL');
-    expect(packNames('x-1')).toMatchObject({ snake: 'x_1', pascal: 'X1', camel: 'x1', extKey: 'x1Note' });
+    expect(packNames('x-1')).toMatchObject({ snake: 'x_1', pascal: 'X1', camel: 'x1', extKey: 'x1Note', code: 'X_1' });
+    // The sample partner code keeps distinct names distinct and fits partner.code (20 characters).
+    expect(packNames('bikeshop').code).toBe('BIKESHOP');
+    expect(packNames('professional-sv').code).toBe('PROFESSIONAL_SV');
+    expect(packNames('professional-svc').code).toBe('PROFESSION_5A87');
+    expect(packNames('bike-shop-and-repairs-x').code).toBe('BIKE_SHOP_4BBA');
+    expect(packNames('industrial-mach-east').code).toBe('INDUSTRIAL_1B7F');
+    expect(packNames('industrial-mach-west').code).toBe('INDUSTRIAL_1F5E');
+    for (const name of ['x'.repeat(24), 'a-b-c-d-e-f-g-h-i-j-k-l', 'bike-shop-and-repairs-x'])
+      expect(packNames(name).sampleCode.length, name).toBeLessThanOrEqual(20);
 
     const root = fixture();
     expect((await run(root, BIKE_ARGS)).code).toBe(0);
@@ -229,7 +238,7 @@ describe('pack-new generation (AC-1..AC-5)', { timeout: 30_000 }, () => {
     for (const absent of ['settings:', 'labels:', 'hooks:']) expect(pack).not.toContain(absent);
     expect(read(root, 'packs/bike-shop/src/entities/bike-shop-tag.ts')).toContain("name: 'bike_shop_tag',");
     expect(read(root, 'packs/bike-shop/src/actions/count-tags.ts')).toContain("name: 'bike_shop.count_tags',");
-    expect(read(root, 'packs/bike-shop/src/sample.ts')).toContain("['BIKESHOP-0001']");
+    expect(read(root, 'packs/bike-shop/src/sample.ts')).toContain("['BIKE_SHOP-0001']");
     expect(read(root, 'packs/bike-shop/src/index.ts')).toContain("export { BikeShopPack } from './pack.ts';");
   });
 
@@ -363,6 +372,8 @@ describe('pack-new steps (AC-6)', { timeout: 30_000 }, () => {
         (line: string) => line.startsWith('4. pnpm --filter @daifuku/pack-bike-shop typecheck'),
         (line: string) => line.includes('pnpm exec vitest run --project db packs/bike-shop/test/pack.db.test.ts'),
         (line: string) => line.startsWith('5. pnpm gate:light'),
+        (line: string) =>
+          line.trim().startsWith('Before claiming done: pnpm gate:full') && line.includes('workforce.spec.ts'),
         (line: string) => line.startsWith('6. Optional') && line.includes('DAIFUKU_PACKS'),
         (line: string) => line.startsWith('7. Apply: pnpm pack:apply bike_shop --sample'),
       ].map((match) => steps.findIndex(match));
@@ -372,7 +383,11 @@ describe('pack-new steps (AC-6)', { timeout: 30_000 }, () => {
       ).toBe(true);
       expect([...order].sort((a, b) => a - b)).toEqual(order);
       if (register) expect(steps[0]).toContain('done (--register edited');
-      else
+      else {
+        // Re-running with --register cannot register an existing pack, so the step never suggests it.
+        expect(steps[0]).toContain('pasting these four edits');
+        expect(steps[0]).toContain('running pack-new again refuses because packs/bike-shop exists');
+        expect(steps.join('\n')).not.toContain('run again with --register');
         expect(steps).toEqual(
           expect.arrayContaining([
             "        bike_shop: async () => (await import('@daifuku/pack-bike-shop')).BikeShopPack,",
@@ -381,6 +396,7 @@ describe('pack-new steps (AC-6)', { timeout: 30_000 }, () => {
             `        '利用できる業界テンプレート ${count} 種' -> '利用できる業界テンプレート ${count + 1} 種'`,
           ]),
         );
+      }
     }
     const root = fixture();
     const result = await run(root, BIKE_ARGS);
@@ -444,7 +460,12 @@ describe('pack-new --dry-run (AC-8)', { timeout: 30_000 }, () => {
     );
     expect(result.stdout).toContain("+       'bike_shop',");
     expect(result.stdout).toContain('+     "@daifuku/pack-bike-shop": "workspace:*"');
-    expect(result.stdout).toContain('Next steps:\n  1. Register: done');
+    const steps = result.stdout.slice(result.stdout.indexOf('Next steps:'));
+    expect(steps).toContain(
+      `Next steps:\n  1. Register: --register would edit ${Object.values(REGISTER_FILES).join(', ')}`,
+    );
+    expect(steps).not.toContain('Register: done');
+    expect(steps).not.toContain('--register edited');
   });
 
   it('AC-8 a refusal still applies under --dry-run (exit 1)', async () => {
@@ -471,6 +492,40 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
       expect(result.stderr).toContain('Usage: node scripts/pack-new.mjs <name>');
     }
     expect(snapshot(root)).toEqual(before);
+  });
+
+  it('AC-9 parsePackNewArgs returns the options, resolves --root and throws on usage errors', () => {
+    expect(parsePackNewArgs(['bike-shop'])).toEqual({
+      help: false,
+      name: 'bike-shop',
+      register: false,
+      dryRun: false,
+      root: ROOT,
+    });
+    expect(
+      parsePackNewArgs([
+        '--register',
+        '--dry-run',
+        '--label-ja',
+        '自転車店',
+        '--label-en=Bike',
+        'bike-shop',
+        '--root',
+        'x',
+      ]),
+    ).toEqual({
+      help: false,
+      name: 'bike-shop',
+      register: true,
+      dryRun: true,
+      root: join(process.cwd(), 'x'),
+      labelJa: '自転車店',
+      labelEn: 'Bike',
+    });
+    expect(parsePackNewArgs(['--help'])).toEqual({ help: true });
+    expect(() => parsePackNewArgs([])).toThrow('Missing <name>.');
+    expect(() => parsePackNewArgs(['a-b', 'c-d'])).toThrow('Expected one <name>, got 2.');
+    expect(() => parsePackNewArgs(['a-b', '--bogus'])).toThrow("Unknown option '--bogus'");
   });
 
   it('AC-9 names outside the kebab-case rule (traversal shapes included) exit 1 with the rule and a corrected example', async () => {
@@ -541,6 +596,13 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
     mkdirSync(join(root, 'packs/stale/node_modules'), { recursive: true });
     symlinkSync(join(root, 'packs/example'), join(root, 'packs/linked'));
     writeFileSync(join(root, 'docs/specs/pack-lonely.md'), '# taken\n');
+    // A sample partner code already in use, and two names whose hashed codes coincide (INDUSTRIAL_3037).
+    mkdirSync(join(root, 'packs/cycle-old/src'), { recursive: true });
+    writeFileSync(
+      join(root, 'packs/cycle-old/src/sample.ts'),
+      "export const SAMPLE_PARTNER_CODES = ['CYCLE_HUB-0001'];\n",
+    );
+    mkdirSync(join(root, 'packs/industrial-mach-a493'));
     const before = snapshot(root);
     const cases: [string, string[]][] = [
       [
@@ -563,6 +625,13 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
       ['stale', ['packs/stale already exists.']],
       ['linked', ['packs/linked already exists.']],
       ['beauty-salon', ['"beauty_salon" is already a key of AVAILABLE in apps/runtime/src/packs.ts.']],
+      ['cycle-hub', ['the sample partner code prefix "CYCLE_HUB-" already appears in packs/cycle-old/src/sample.ts.']],
+      [
+        'industrial-mach-a649',
+        [
+          'packs/industrial-mach-a493 derives the same sample partner code (INDUSTRIAL_3037-0001); choose another name.',
+        ],
+      ],
     ];
     for (const [name, expected] of cases) {
       const result = await run(root, [name, '--register']);
@@ -570,7 +639,18 @@ describe('pack-new refusals (AC-9..AC-11)', { timeout: 30_000 }, () => {
       for (const line of expected) expect(result.stderr, name).toContain(`  - ${line}\n`);
     }
     expect(findCollisions(root, packNames('ignored-mod')).problems).toEqual([]);
+    // bike-shop and bikeshop no longer share a sample partner code (BIKE_SHOP / BIKESHOP).
+    expect(findCollisions(root, packNames('bikeshop')).problems).toEqual([]);
     expect(snapshot(root)).toEqual(before);
+  });
+
+  it('AC-10 bike-shop and bikeshop both generate, with distinct sample partner codes, so neither sample skips the other', async () => {
+    const root = fixture();
+    expect((await run(root, ['bike-shop', '--label-ja', '自転車店'])).code).toBe(0);
+    const result = await run(root, ['bikeshop', '--label-ja', '自転車']);
+    expect(result.code, result.stderr).toBe(0);
+    expect(read(root, 'packs/bike-shop/src/sample.ts')).toContain("['BIKE_SHOP-0001']");
+    expect(read(root, 'packs/bikeshop/src/sample.ts')).toContain("['BIKESHOP-0001']");
   });
 
   it('AC-10 against the real repository sales, real-estate, sales-invoice and example collide (read only)', () => {
@@ -651,6 +731,27 @@ describe('pack-new write order and rollback (AC-12)', { timeout: 30_000 }, () =>
       const error = await writePlan(plan, root, { writeFile }).catch((e: unknown) => e);
       expect(error, failing).toBeInstanceOf(PackNewError);
       expect((error as Error).message).toContain('disk full');
+      expect(snapshot(root), failing).toEqual(before);
+    }
+  });
+
+  it('AC-12 a write that fails partway (a truncated edit target, a partial spec) is still restored or removed', async () => {
+    for (const failing of [REGISTER_FILES.runtimePackage, 'docs/specs/pack-bike-shop.md']) {
+      const root = fixture();
+      const plan = await registerPlan(root);
+      const before = snapshot(root);
+      // Like writeFileSync after open (O_TRUNC, or O_CREAT|O_EXCL for the spec): the first 10 characters land, then ENOSPC.
+      const writeFile = (path: string, content: string, flag?: string) => {
+        if (path === join(root, failing)) {
+          defaultIo.writeFile(path, content.slice(0, 10), flag);
+          throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' });
+        }
+        defaultIo.writeFile(path, content, flag);
+      };
+      const error = await writePlan(plan, root, { writeFile }).catch((e: unknown) => e);
+      expect(error, failing).toBeInstanceOf(PackNewError);
+      expect((error as Error).message, failing).toContain(`Writing ${failing} failed: ENOSPC`);
+      expect((error as Error).message, failing).toContain('Everything this run wrote was removed or restored.');
       expect(snapshot(root), failing).toEqual(before);
     }
   });
@@ -758,9 +859,12 @@ describe('pack-new default labels (AC-23)', { timeout: 30_000 }, () => {
     const result = await run(root, ['bike-shop']);
     expect(result.code, result.stderr).toBe(0);
     expect(result.stderr).toContain(
-      'warning: --label-ja was not given; the Japanese label is "Bike Shop". Set a Japanese name in packs/bike-shop/src/pack.ts and the spec.\n',
+      'warning: --label-ja was not given; the Japanese label is "Bike Shop". Set a Japanese name in packs/bike-shop/src/pack.ts (pack, note and menu labels), packs/bike-shop/src/entities/bike-shop-tag.ts and the spec.\n',
     );
     expect(read(root, 'packs/bike-shop/src/pack.ts')).toContain("label: label('Bike Shop', 'Bike Shop'),");
+    expect(read(root, 'packs/bike-shop/src/entities/bike-shop-tag.ts')).toContain(
+      "label: label('Bike Shopのタグ', 'Bike Shop tags'),",
+    );
     expect(read(root, 'docs/specs/pack-bike-shop.md')).toMatch(/^TODO: 日本語ラベルを決める/m);
     expect(defaultLabels(packNames('x-1')).en).toBe('X 1');
 

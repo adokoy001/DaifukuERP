@@ -155,10 +155,10 @@
 - 限界: 実際の銀行受理や振込実行を確認しない。申告の鮮度再検査とは別の契約。
 
 ## PV-PACK-SCAFFOLD-01
-- 条件: `scripts/pack-new.mjs`が生成するpackは編集なしで型検査を通り、生成したDBテスト（登録、初回適用と再適用の書込ゼロ、force/sample、権限、適用済み会社間と未適用会社の境界、extの検証/検索、/meta）が現在のkernelとpartnerに対して成功する。
+- 条件: `scripts/pack-new.mjs`が生成するpackは編集なしで型検査を通り、生成したDBテスト（登録、初回適用と再適用の書込ゼロ、force/sample、権限（admin限定の適用、店舗・拠点限定の文脈の拒否を含む）、適用済み会社間と未適用会社の境界、extの検証/検索、/meta）が現在のkernelとpartnerに対して成功する。
 - 前提: 一時workspaceへ生成し、`node_modules`を`packs/example/node_modules`へリンクする。runtime catalogへの登録、migration生成、画面での適用は含まない。
 - 仕様: [pack雛形生成](../specs/pack-scaffold.md)
-- 実装: [生成器](../../scripts/pack-new.mjs)、[packテンプレート](../../scripts/pack-template/src/pack.ts.tmpl)、[マスタのテンプレート](../../scripts/pack-template/src/entities/tag.ts.tmpl)、[生成テストのテンプレート](../../scripts/pack-template/test/pack.db.test.ts.tmpl)、[適用](../../kernel/src/pack.ts)、[pack action](../../kernel/src/actions/pack.ts)、[actionの権限](../../kernel/src/actions/run.ts)、[entityの権限](../../kernel/src/permissions.ts)、[meta](../../kernel/src/meta.ts)、[試験基盤](../../kernel/src/testing.ts)
+- 実装: [生成器](../../scripts/pack-new.mjs)、[packテンプレート](../../scripts/pack-template/src/pack.ts.tmpl)、[マスタのテンプレート](../../scripts/pack-template/src/entities/tag.ts.tmpl)、[actionのテンプレート](../../scripts/pack-template/src/actions/count-tags.ts.tmpl)、[seedのテンプレート](../../scripts/pack-template/src/seed.ts.tmpl)、[sampleのテンプレート](../../scripts/pack-template/src/sample.ts.tmpl)、[公開indexのテンプレート](../../scripts/pack-template/src/index.ts.tmpl)、[生成テストのテンプレート](../../scripts/pack-template/test/pack.db.test.ts.tmpl)、[生成specのテンプレート](../../scripts/pack-template/spec.md.tmpl)、[適用](../../kernel/src/pack.ts)、[pack action](../../kernel/src/actions/pack.ts)、[actionの権限](../../kernel/src/actions/run.ts)、[entityの権限](../../kernel/src/permissions.ts)、[meta](../../kernel/src/meta.ts)、[試験基盤](../../kernel/src/testing.ts)
 - 試験: [生成・拒否・型検査](../../scripts/test/pack-new.test.ts)、[生成packのDBテスト実行](../../scripts/test/pack-new.db.test.ts)
 - 根拠: 子プロセスのvitestが生成テスト11件を実行し、生成ACごとに成功を照合する。テンプレートの型を壊すとunitの型検査が、viewerに作成権限を足すとDB実行が失敗することを実装時に確認した。
 - 失効条件: テンプレート、definePack/applyPack/pack action/権限/meta/freshDbの契約、partnerの公開API、登録先（runtime catalog、runtimeテストの一覧、workforceの件数表示）の形の変更。変更時は規約の手順で登録経路を一巡し直す。

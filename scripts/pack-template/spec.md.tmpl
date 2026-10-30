@@ -17,7 +17,7 @@ __PACK_LABEL_TODO__
 - AC-1 WHEN `@daifuku/pack-__PACK_KEBAB__` を import した THE SYSTEM SHALL pack `__PACK_SNAKE__`（version `0.1.0`、depends `['partner']`）、partner の ext `__PACK_CAMEL__Note`（`source: 'pack:__PACK_SNAKE__'`）、pack が所有する entity `__PACK_SNAKE___tag` と派生 CRUD action、action `__PACK_SNAKE__.count_tags`（`mutates: false`、`tx: 'none'`、権限は `__PACK_SNAKE___tag` の read）、メニュー（__PACK_TAG_LABEL_JA__ ／ __PACK_TAG_LABEL_EN__）を登録する。
 - AC-2 WHEN 会社に初めて `applyPack(ctx, '__PACK_SNAKE__')` を実行した THE SYSTEM SHALL seed の 3 件のタグ（`standard`・`priority`・`inactive`）を作り、`packs.applied` に `{ at, version: '0.1.0' }` を記録し、sample は実行しない。2 回目の適用は何も書かない（タグの `version`、会社の settings、`company_settings` の監査件数が不変）。
 - AC-3 WHEN `force: true` で再適用した THE SYSTEM SHALL seed を再実行してもタグを重複させない。WHEN `sample: true` で適用した THE SYSTEM SHALL sample の取引先 `__PACK_CODE__-0001`（ext `__PACK_CAMEL__Note` 付き）を 1 回だけ作り、再度の `sample: true` では作らない。
-- AC-4 THE SYSTEM SHALL `pack.apply` を admin だけに許し（`sales` は `PERMISSION_DENIED`）、タグの read と `__PACK_SNAKE__.count_tags` を `viewer` に許し、`viewer` のタグ作成、タグに付与の無いロール（`accounting`）の一覧と `__PACK_SNAKE__.count_tags`、拠点限定の文脈（`accessScope: 'stores'`）の `__PACK_SNAKE__.count_tags` を `PERMISSION_DENIED` とする。
+- AC-4 THE SYSTEM SHALL action `pack.apply` を admin だけに許し（admin は action 経由で実行でき、`sales` は `PERMISSION_DENIED`）、タグの read と `__PACK_SNAKE__.count_tags` を `viewer` に許し、`viewer` のタグ作成、タグに付与の無いロール（`accounting`）の一覧と `__PACK_SNAKE__.count_tags`、店舗限定・拠点限定の文脈（`accessScope: 'stores'`・`'sites'`）の `__PACK_SNAKE__.count_tags`・`__PACK_SNAKE___tag.list` と（admin でも）タグの作成を `PERMISSION_DENIED` とする（マスタに `storeAccess`／`siteAccess` を足すときもこの検査を残し、許す範囲の試験を足す）。
 - AC-5 WHILE pack が会社 A と会社 B に適用されている WHEN 会社 A でタグを作った THE SYSTEM SHALL 会社 B の一覧・件数・`__PACK_SNAKE__.count_tags` にそれを含めない。IF pack が適用されていない会社で admin を含む利用者がタグの一覧・作成または `__PACK_SNAKE__.count_tags` を呼んだ THEN THE SYSTEM SHALL `PERMISSION_DENIED` とする。
 - AC-6 IF partner を ext `__PACK_CAMEL__Note` が 200 文字を超える値で作ろうとした THEN THE SYSTEM SHALL `ValidationError`（path `ext.__PACK_CAMEL__Note`）とし何も書かない。WHEN `where: { 'ext.__PACK_CAMEL__Note': … }` または `search` で取引先を探した THE SYSTEM SHALL sample の取引先を返す。
 - AC-7 WHEN 適用済みの会社で `appMeta` を読んだ THE SYSTEM SHALL partner の `extFields` に `ext.__PACK_CAMEL__Note`（`source: 'pack:__PACK_SNAKE__'`、`searchable: true`）、`packs` に `{ name: '__PACK_SNAKE__', applied: true }`、module `__PACK_SNAKE__` のメニュー、entity `__PACK_SNAKE___tag` を含める。未適用の会社では `applied: false` で、メニュー・entity・ext を含めない。
@@ -34,7 +34,7 @@ __PACK_LABEL_TODO__
 - `packs/__PACK_KEBAB__/src/actions/count-tags.ts`: `defineAction`（`__PACK_SNAKE__.count_tags`）
 - `packs/__PACK_KEBAB__/src/seed.ts`・`src/sample.ts`: 冪等な seed と会社ごとに 1 回の sample
 - `packs/__PACK_KEBAB__/test/pack.db.test.ts`: AC-1〜AC-7
-- `apps/runtime/src/packs.ts`・`apps/runtime/package.json`: カタログへの登録（[pack の書き方](../conventions/packs.md)「apps への追加」）
+- `apps/runtime/src/packs.ts`・`apps/runtime/package.json`・`apps/runtime/test/runtime.test.ts`・`apps/web/e2e/workforce.spec.ts`: カタログへの登録の 4 編集（[pack の書き方](../conventions/packs.md)「雛形から始める」）
 - TODO: 設定（`hooks` の `registry.registerSetting`、ADR-0027 の日英ラベル）・ラベル上書き・伝票を足すときは `packs/example`・`packs/restaurant-chain` を参照してここに書く
 
 ## データ・業務ルール（出典）
@@ -49,7 +49,7 @@ __PACK_LABEL_TODO__
 
 1. `pnpm install` の後、`pnpm --filter @daifuku/pack-__PACK_KEBAB__ typecheck`
 2. `pnpm exec vitest run --project db packs/__PACK_KEBAB__/test/pack.db.test.ts`（`TEST_DATABASE_URL_OWNER`／`TEST_DATABASE_URL` が必要）
-3. 登録後に `pnpm db:generate pack___PACK_SNAKE__`、`pnpm gate:light`
+3. 登録後に `pnpm db:generate pack___PACK_SNAKE__`、`pnpm gate:light`。完了と言う前に `pnpm gate:full`（ブラウザ試験を含み、`apps/web/e2e/workforce.spec.ts` の業界テンプレート数を確かめる）
 4. `pnpm pack:apply __PACK_SNAKE__ --sample` または画面 `/templates` で適用し、メニュー「__PACK_TAG_LABEL_JA__」から一覧を開く
 5. TODO: 業務の受入基準の確認手順
 

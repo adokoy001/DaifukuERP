@@ -72,14 +72,7 @@ export interface Writable {
 }
 
 export const ROOT: string;
-export const TEMPLATE_DIR: string;
-export const NAME_PATTERN: RegExp;
-export const NAME_MIN: number;
-export const NAME_MAX: number;
-export const LABEL_MAX: number;
 export const RESERVED_NAMES: readonly string[];
-export const DECLARATION_DIRS: readonly string[];
-export const EXT_KEY_DIRS: readonly string[];
 export const STAGING_DIR: string;
 export const REGISTER_FILES: Readonly<{
   catalog: string;
@@ -88,20 +81,11 @@ export const REGISTER_FILES: Readonly<{
   workforceSpec: string;
 }>;
 export const CATALOG_TEST_MARKER: string;
-export const TEMPLATE_COUNT_PATTERN: RegExp;
-export const TEMPLATE_FILES: readonly (readonly [string, (names: PackNames) => string])[];
-export const USAGE: string;
 export const defaultIo: Readonly<PackNewIo>;
 
-export class PackNewUsageError extends Error {}
 export class PackNewError extends Error {
   constructor(message: string, problems?: string[]);
   problems: string[];
-}
-export class PackNewInterrupted extends Error {
-  constructor(signal: NodeJS.Signals);
-  signal: NodeJS.Signals;
-  problems?: string[];
 }
 
 export function parsePackNewArgs(argv: string[]): PackNewArgs | { help: true };
@@ -109,22 +93,19 @@ export function packNames(kebab: string): PackNames;
 export function validatePackName(name: unknown): string[];
 export function validateLabel(text: string, option: string): string[];
 export function defaultLabels(names: PackNames, given?: { labelJa?: string; labelEn?: string }): PackLabels;
-export function catalogKeys(text: string): string[];
-export function stagingLeftovers(root: string): string[];
 export function findCollisions(root: string, names: PackNames): Collisions;
 export function escapeMarkdown(text: string): string;
-export function renderTemplate(template: string, values: Record<string, string>, source?: string): string;
-export function registrationLines(
+export function nextSteps(
   names: PackNames,
-  count: number | null,
-): { catalog: string; runtimePackage: string; runtimeTest: string; workforceSpec: string };
-export function nextSteps(names: PackNames, options: { register: boolean; count?: number | null }): string[];
+  options: { register: boolean; count?: number | null; dryRun?: boolean },
+): string[];
 export function planPack(input: {
   root: string;
   names: PackNames;
   labels: PackLabels;
   today: string;
   register: boolean;
+  dryRun?: boolean;
 }): Promise<PackPlan>;
 export function assertTargets(
   root: string,
@@ -135,7 +116,6 @@ export function writePlan(
   root: string,
   overrides?: Partial<PackNewIo>,
 ): Promise<{ created: string[]; edited: string[] }>;
-export function lineDiff(before: string, after: string, context?: number): string[];
 export function main(
   argv: string[],
   options?: { stdout?: Writable; stderr?: Writable; today?: string; io?: Partial<PackNewIo> },

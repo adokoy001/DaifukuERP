@@ -4,6 +4,7 @@
 // remaining steps in order, and with --register applies the four registration edits. Every check and every output is
 // computed before the first write; writes go through a staging directory and are rolled back on failure or signal.
 // Pure planning functions are exported for scripts/test/pack-new.test.ts and pack-new.db.test.ts.
+import { createHash } from 'node:crypto';
 import {
   lstatSync,
   mkdirSync,
@@ -12,6 +13,7 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -22,11 +24,13 @@ import { parseArgs } from 'node:util';
 import * as prettier from 'prettier';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const TEMPLATE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'pack-template');
-export const NAME_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-export const NAME_MIN = 2;
-export const NAME_MAX = 24;
-export const LABEL_MAX = 40;
+const TEMPLATE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'pack-template');
+const NAME_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+const NAME_MIN = 2;
+const NAME_MAX = 24;
+const LABEL_MAX = 40;
+// The sample partner code is `<CODE>-0001` and partner.code allows 20 characters.
+const SAMPLE_CODE_MAX = 15;
 // pack: kernel-reserved; packs/company: kernel company-setting namespaces (packs.applied, company.profile);
 // all/none: special DAIFUKU_PACKS values; kernel: layer name; constructor/missing: unknown names in runtime.test.ts AC-2.
 export const RESERVED_NAMES = Object.freeze([
@@ -40,8 +44,8 @@ export const RESERVED_NAMES = Object.freeze([
   'missing',
 ]);
 // Directories scanned for declared module/pack/entity names (AC-10) and for partner ext keys (no apps/).
-export const DECLARATION_DIRS = Object.freeze(['kernel', 'modules', 'l10n', 'packs', 'apps']);
-export const EXT_KEY_DIRS = Object.freeze(['kernel', 'modules', 'l10n', 'packs']);
+const DECLARATION_DIRS = Object.freeze(['kernel', 'modules', 'l10n', 'packs', 'apps']);
+const EXT_KEY_DIRS = Object.freeze(['kernel', 'modules', 'l10n', 'packs']);
 export const STAGING_DIR = 'node_modules/.cache/pack-new';
 export const REGISTER_FILES = Object.freeze({
   catalog: 'apps/runtime/src/packs.ts',
@@ -50,9 +54,9 @@ export const REGISTER_FILES = Object.freeze({
   workforceSpec: 'apps/web/e2e/workforce.spec.ts',
 });
 export const CATALOG_TEST_MARKER = 'expect(schema.packs).toEqual([';
-export const TEMPLATE_COUNT_PATTERN = /利用できる業界テンプレート (\d+) 種/g;
+const TEMPLATE_COUNT_PATTERN = /利用できる業界テンプレート (\d+) 種/g;
 // Template file (relative to TEMPLATE_DIR) -> output path builder.
-export const TEMPLATE_FILES = Object.freeze([
+const TEMPLATE_FILES = Object.freeze([
   ['src/index.ts.tmpl', (n) => `${n.dir}/src/index.ts`],
   ['src/pack.ts.tmpl', (n) => `${n.dir}/src/pack.ts`],
   ['src/entities/tag.ts.tmpl', (n) => n.entityFile],
@@ -66,7 +70,7 @@ const PLACEHOLDER = /__PACK_([A-Z]+(?:_[A-Z]+)*)__/g;
 const LABEL_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 const MARKDOWN_SPECIAL = /[\\`*_[\]<>|#]/g;
 
-export const USAGE = `Usage: node scripts/pack-new.mjs <name> [options]
+const USAGE = `Usage: node scripts/pack-new.mjs <name> [options]
 
 Creates packs/<name> (a minimal pack with a partner ext field, a small master, a read-only action, seed, sample and
 its DB test) and docs/specs/pack-<name>.md, then prints the remaining steps. <name> is kebab-case, 2-24 characters
@@ -83,14 +87,14 @@ Options:
 Details: docs/conventions/packs.md ("雛形から始める") and docs/specs/pack-scaffold.md.
 `;
 
-export class PackNewUsageError extends Error {}
+class PackNewUsageError extends Error {}
 export class PackNewError extends Error {
   constructor(message, problems = []) {
     super(message);
     this.problems = problems;
   }
 }
-export class PackNewInterrupted extends Error {
+class PackNewInterrupted extends Error {
   constructor(signal) {
     super(`interrupted by ${signal}`);
     this.signal = signal;
@@ -136,12 +140,21 @@ export function parsePackNewArgs(argv) {
 
 const capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 
+// `<s>` in upper case (distinct names keep distinct codes); over SAMPLE_CODE_MAX, its first 10 characters plus `_` and
+// four hex digits of the SHA-256 of `<s>`. findCollisions still refuses a code another pack derives or uses.
+function sampleCodeBase(snake) {
+  const upper = snake.toUpperCase();
+  if (upper.length <= SAMPLE_CODE_MAX) return upper;
+  const hash = createHash('sha256').update(snake).digest('hex').slice(0, 4).toUpperCase();
+  return `${upper.slice(0, SAMPLE_CODE_MAX - 5).replace(/_+$/, '')}_${hash}`;
+}
+
 export function packNames(kebab) {
   const words = kebab.split('-');
   const snake = words.join('_');
   const pascal = words.map(capitalize).join('');
   const camel = (words[0] ?? '') + words.slice(1).map(capitalize).join('');
-  const code = snake.replaceAll('_', '').toUpperCase().slice(0, 12);
+  const code = sampleCodeBase(snake);
   const dir = `packs/${kebab}`;
   return {
     kebab,
@@ -212,7 +225,7 @@ export function defaultLabels(names, given = {}) {
   const ja = given.labelJa ?? en;
   const warnings = jaDefaulted
     ? [
-        `warning: --label-ja was not given; the Japanese label is "${en}". Set a Japanese name in ${names.dir}/src/pack.ts and the spec.`,
+        `warning: --label-ja was not given; the Japanese label is "${en}". Set a Japanese name in ${names.dir}/src/pack.ts (pack, note and menu labels), ${names.entityFile} and the spec.`,
       ]
     : [];
   return { ja, en, jaDefaulted, warnings };
@@ -279,7 +292,7 @@ function workspacePackageNames(root) {
   return names;
 }
 
-export function catalogKeys(text) {
+function catalogKeys(text) {
   const lines = text.split('\n');
   const start = lines.findIndex((line) => /^\s*(export\s+)?const AVAILABLE\b/.test(line));
   if (start < 0) return [];
@@ -290,7 +303,7 @@ export function catalogKeys(text) {
     .filter(Boolean);
 }
 
-export function stagingLeftovers(root) {
+function stagingLeftovers(root) {
   return listDir(join(root, STAGING_DIR)).map((entry) => `${STAGING_DIR}/${entry.name}`);
 }
 
@@ -307,7 +320,14 @@ export function findCollisions(root, names) {
     problems.push(
       `packs/${dir} derives the same identifiers (${names.pascal}Pack, ${names.extKey}); choose another name.`,
     );
+  const sameCode = listDir(join(root, 'packs'))
+    .map((entry) => entry.name)
+    .filter((dir) => dir !== names.kebab && NAME_PATTERN.test(dir) && packNames(dir).code === names.code);
+  for (const dir of sameCode)
+    problems.push(`packs/${dir} derives the same sample partner code (${names.sampleCode}); choose another name.`);
   const extKey = new RegExp(`(?:^|[\\s{,])['"]?${names.extKey}['"]?\\??\\s*:`, 'm');
+  // A partner code with the same prefix in any source (a pack's sample, a seed, a fixture) would make the sample skip.
+  const codePrefix = new RegExp(`['"\`]${names.code}-`);
   for (const top of DECLARATION_DIRS) {
     for (const file of sourceFiles(join(root, top))) {
       const text = readTextOrNull(file) ?? '';
@@ -318,6 +338,8 @@ export function findCollisions(root, names) {
           problems.push(`entity "${entity}" is already declared in ${at(file)}.`);
       if (EXT_KEY_DIRS.includes(top) && extKey.test(text))
         problems.push(`ext key "${names.extKey}" already appears in ${at(file)}.`);
+      if (codePrefix.test(text))
+        problems.push(`the sample partner code prefix "${names.code}-" already appears in ${at(file)}.`);
     }
   }
   const catalog = readTextOrNull(join(root, REGISTER_FILES.catalog));
@@ -366,7 +388,7 @@ function placeholderValues(names, labels, today, markdown) {
   return values;
 }
 
-export function renderTemplate(template, values, source = 'template') {
+function renderTemplate(template, values, source = 'template') {
   const lines = template.split('\n').filter((line) => {
     const only = /^__PACK_([A-Z]+(?:_[A-Z]+)*)__$/.exec(line);
     return !(only && values[only[1]] === '');
@@ -406,7 +428,7 @@ function packageJsonFor(root, names) {
 
 // ---- registration edits (AC-7, AC-11) --------------------------------------------------------------------------------
 
-export function registrationLines(names, count) {
+function registrationLines(names, count) {
   return {
     catalog: `${names.snake}: async () => (await import('${names.packageName}')).${names.packExport},`,
     runtimePackage: `"${names.packageName}": "workspace:*"`,
@@ -537,12 +559,17 @@ async function planEdits(root, names) {
 
 // ---- steps (AC-6) -----------------------------------------------------------------------------------------------------
 
-export function nextSteps(names, { register, count = null }) {
+export function nextSteps(names, { register, count = null, dryRun = false }) {
   const lines = registrationLines(names, count);
+  const files = Object.values(REGISTER_FILES).join(', ');
   const registration = register
-    ? [`1. Register: done (--register edited ${Object.values(REGISTER_FILES).join(', ')}).`]
+    ? [
+        dryRun
+          ? `1. Register: --register would edit ${files} (see Edits above).`
+          : `1. Register: done (--register edited ${files}).`,
+      ]
     : [
-        '1. Register the pack (or run again with --register). To try it unregistered first, skip this step; when you register later, run step 2 again.',
+        `1. Register the pack by pasting these four edits (--register applies them only while generating: running pack-new again refuses because ${names.dir} exists). To try it unregistered first, skip this step; when you register later, run step 2 again.`,
         `   a. ${REGISTER_FILES.catalog}, as the last entry of AVAILABLE:`,
         `        ${lines.catalog}`,
         `   b. ${REGISTER_FILES.runtimePackage}, at the end of "dependencies":`,
@@ -559,6 +586,7 @@ export function nextSteps(names, { register, count = null }) {
     `4. pnpm --filter ${names.packageName} typecheck`,
     `   pnpm exec vitest run --project db ${names.dir}/test/pack.db.test.ts   # needs TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL`,
     '5. pnpm gate:light   # the new package.json widens light to every DB suite.',
+    `   Before claiming done: pnpm gate:full   # pnpm gate plus the browser suite, which checks the template count in ${REGISTER_FILES.workforceSpec}.`,
     `6. Optional: add ${names.snake} to DAIFUKU_PACKS in .env if you narrowed it; describe the pack in apps/web/src/lib/templates.ts; map module ${names.snake} to a workspace in apps/web/src/lib/navigation-data.ts (otherwise its menu shows under "Other"); update docs/manual when users get new steps; write the work log in docs/log/; fill in the TODO: items of ${names.spec}.`,
     `7. Apply: pnpm pack:apply ${names.snake} --sample, or the /templates screen.`,
   ];
@@ -566,7 +594,7 @@ export function nextSteps(names, { register, count = null }) {
 
 // ---- plan (pure: reads only) -------------------------------------------------------------------------------------------
 
-export async function planPack({ root, names, labels, today, register }) {
+export async function planPack({ root, names, labels, today, register, dryRun = false }) {
   const files = [];
   for (const [template, output] of TEMPLATE_FILES) {
     const path = output(names);
@@ -585,7 +613,13 @@ export async function planPack({ root, names, labels, today, register }) {
     if (file.content.includes('__PACK_')) throw new PackNewError(`${file.path}: a template placeholder was left`);
   const edits = register ? await planEdits(root, names) : [];
   const count = templateCount(readTextOrNull(join(root, REGISTER_FILES.workforceSpec)) ?? '');
-  return { packDir: names.dir, specPath: names.spec, files, edits, steps: nextSteps(names, { register, count }) };
+  return {
+    packDir: names.dir,
+    specPath: names.spec,
+    files,
+    edits,
+    steps: nextSteps(names, { register, count, dryRun }),
+  };
 }
 
 // ---- write (AC-12) ------------------------------------------------------------------------------------------------------
@@ -623,18 +657,23 @@ export function assertTargets(root, plan) {
   return { target, spec };
 }
 
+const rollbackSummary = (problems) =>
+  problems.length
+    ? 'The rollback was incomplete; fix the paths below by hand.'
+    : 'Everything this run wrote was removed or restored.';
+
 // Lets a pending SIGINT/SIGTERM listener run between write steps.
 const tick = () => nextTurn();
 
 // Removes the empty directories this run created for staging (from `dir` up to `top`, the first one mkdir created).
+// rmdir is not recursive: a directory another tool wrote into meanwhile (ENOTEMPTY) is kept with its content.
 function removeEmptyChain(dir, top) {
   if (typeof top !== 'string') return;
   for (let current = dir; ; current = dirname(current)) {
     try {
-      if (readdirSync(current).length > 0) return;
-      rmSync(current, { recursive: true, force: true });
-    } catch {
-      /* already gone */
+      rmdirSync(current);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return;
     }
     if (current === top || dirname(current) === current) return;
   }
@@ -684,15 +723,22 @@ export async function writePlan(plan, root, overrides = {}) {
     const specFile = plan.files.find((candidate) => candidate.path === plan.specPath);
     if (specFile)
       await step(plan.specPath, () => {
-        io.writeFile(spec, specFile.content, 'wx');
+        try {
+          io.writeFile(spec, specFile.content, 'wx');
+        } catch (error) {
+          // EEXIST: someone else's file, never removed. Any other failure after `wx` may leave a partial spec of ours.
+          if (error?.code !== 'EEXIST') created.push(spec);
+          throw error;
+        }
         created.push(spec);
       });
     for (const edit of plan.edits) {
       await step(edit.path, () => {
         const path = join(root, edit.path);
         if (io.readFile(path) !== edit.before) throw new Error(`${edit.path} changed after planning`);
-        io.writeFile(path, edit.after);
+        // Recorded before the write: a write that truncates and then fails (ENOSPC, EIO) is still restored to `before`.
         edited.push(edit);
+        io.writeFile(path, edit.after);
       });
     }
     await tick();
@@ -722,7 +768,7 @@ export async function writePlan(plan, root, overrides = {}) {
       throw error;
     }
     throw new PackNewError(
-      `Writing ${current ?? 'the pack'} failed: ${error instanceof Error ? error.message : String(error)}. Everything this run wrote was removed or restored.`,
+      `Writing ${current ?? 'the pack'} failed: ${error instanceof Error ? error.message : String(error)}. ${rollbackSummary(rollbackProblems)}`,
       rollbackProblems,
     );
   } finally {
@@ -735,7 +781,7 @@ export async function writePlan(plan, root, overrides = {}) {
 
 // ---- output -------------------------------------------------------------------------------------------------------------
 
-export function lineDiff(before, after, context = 2) {
+function lineDiff(before, after, context = 2) {
   const a = before.split('\n');
   const b = after.split('\n');
   let start = 0;
@@ -800,6 +846,7 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       labels,
       today: today ?? localDate(),
       register: args.register,
+      dryRun: args.dryRun,
     });
   } catch (error) {
     if (!(error instanceof PackNewError)) throw error;
@@ -832,7 +879,8 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
     return 0;
   } catch (error) {
     if (error instanceof PackNewInterrupted) {
-      stderr.write(`pack-new: ${error.message}; everything this run wrote was removed or restored.\n`);
+      const summary = rollbackSummary(error.problems ?? []);
+      stderr.write(`pack-new: ${error.message}; ${summary.charAt(0).toLowerCase()}${summary.slice(1)}\n`);
       for (const problem of error.problems ?? []) stderr.write(`  - ${problem}\n`);
       return error.signal === 'SIGTERM' ? 143 : 130;
     }

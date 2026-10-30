@@ -134,13 +134,18 @@ describe('pack __PACK_SNAKE__: apply', () => {
 });
 
 describe('pack __PACK_SNAKE__: permissions', () => {
-  it('AC-4 pack.apply is admin-only: sales is denied', async () => {
+  it('AC-4 pack.apply is admin-only: admin runs the action (already applied, nothing written), sales is denied', async () => {
+    expect(await db.run({}, (ctx) => runAction(ctx, 'pack.apply', { name: PACK }))).toMatchObject({
+      name: PACK,
+      alreadyApplied: true,
+      seeded: false,
+    });
     await expect(db.run(asUser(['sales']), (ctx) => runAction(ctx, 'pack.apply', { name: PACK }))).rejects.toMatchObject(
       { code: 'PERMISSION_DENIED' },
     );
   });
 
-  it('AC-4 viewer reads tags and runs count_tags but cannot create; a role without a grant and a store-scoped context are denied', async () => {
+  it('AC-4 viewer reads tags and runs count_tags but cannot create; a role without a grant and store- or site-scoped contexts are denied', async () => {
     const viewer = asUser(['viewer']);
     expect((await db.run(viewer, tagsOf)).items.map((t) => t.code)).toEqual(seedCodes);
     expect(await db.run(viewer, (ctx) => runAction(ctx, COUNT, {}))).toEqual({ count: SEED_TAGS.length });
@@ -154,10 +159,25 @@ describe('pack __PACK_SNAKE__: permissions', () => {
       code: 'PERMISSION_DENIED',
     });
 
-    const storeScoped = asUser(['viewer'], { accessScope: 'stores', storeIds: [newId()] });
-    await expect(db.run(storeScoped, (ctx) => runAction(ctx, COUNT, {}))).rejects.toMatchObject({
-      code: 'PERMISSION_DENIED',
-    });
+    // The master declares no storeAccess/siteAccess: a scoped context is denied on count_tags, on the generic CRUD
+    // action and on the repository, for admin too. Keep these when adding a store or site policy to the master.
+    for (const scope of [
+      { accessScope: 'stores' as const, storeIds: [newId()] },
+      { accessScope: 'sites' as const, siteIds: [newId()] },
+    ]) {
+      const denied = { code: 'PERMISSION_DENIED' };
+      const scopedViewer = asUser(['viewer'], scope);
+      await expect(db.run(scopedViewer, (ctx) => runAction(ctx, COUNT, {})), scope.accessScope).rejects.toMatchObject(
+        denied,
+      );
+      await expect(db.run(scopedViewer, (ctx) => runAction(ctx, `${TAG}.list`, {})), scope.accessScope).rejects.toMatchObject(
+        denied,
+      );
+      await expect(
+        db.run(asUser(['admin'], scope), (ctx) => repo(ctx, __PACK_PASCAL__Tag).create({ code: 'scoped-made', name: 'x' })),
+        scope.accessScope,
+      ).rejects.toMatchObject(denied);
+    }
   });
 });
 
