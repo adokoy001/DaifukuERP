@@ -10,6 +10,7 @@ import { CountValue, DashboardSummary, QuickStart, type CountLookup } from '../c
 import { Icon, moduleIcon } from '../components/icon.tsx';
 import { InboxCardView } from '../components/inbox-card.tsx';
 import { RoleHome } from '../components/role-home.tsx';
+import { SetupCard } from '../components/setup-card.tsx';
 import { WorkspaceCards } from '../components/workspace-cards.tsx';
 import { useLocale } from '../i18n.tsx';
 import { DOCSTATUSES, groupByModule, type ModuleGroup } from '../lib/dashboard.ts';
@@ -234,6 +235,7 @@ export function HomePage() {
           </Link>
         ) : null}
       </div>
+      <SetupCard />
       {unavailable ? <MetaError error={meta.error} retry={() => void meta.refetch()} /> : null}
       {meta.isPending ? <LoadingView /> : null}
       {meta.data && !unavailable ? (

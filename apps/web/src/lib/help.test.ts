@@ -25,6 +25,7 @@ const ROUTES = [
   '/admin/users',
   '/admin/companies',
   '/admin/health',
+  '/setup',
   '/operations',
   '/operations/devices',
   '/me',
@@ -138,5 +139,11 @@ describe('navigation-assist AC-6: help for this screen', () => {
     expect(helpUrl({ chapter: '02-basics.md' }, 'https://docs.example.com/m/')).toBe(
       'https://docs.example.com/m/02-basics.md',
     );
+  });
+});
+
+describe('setup-wizard AC-28: help for the setup wizard', () => {
+  it('AC-28: /setup opens the wizard section of the setup chapter', () => {
+    expect(helpTopicFor('/setup')).toEqual({ chapter: '03-setup.md', section: 'セットアップウィザード' });
   });
 });

@@ -324,13 +324,21 @@ export function AccessMemberships({
   user,
   catalog,
   onStatus,
+  initialCompanyId,
 }: {
   user: AccessUser;
   catalog: AccessCatalog;
   onStatus: (status: AccessEditorStatus) => void;
+  /** setup-wizard AC-22: open on this company (the wizard's current company) instead of the user's default. */
+  initialCompanyId?: string;
 }) {
   const { t } = useLocale();
-  const [companyId, setCompanyId] = useState(user.defaultCompanyId ?? catalog.companies[0]?.id ?? '');
+  const [companyId, setCompanyId] = useState(
+    (initialCompanyId && catalog.companies.some((c) => c.id === initialCompanyId) ? initialCompanyId : undefined) ??
+      user.defaultCompanyId ??
+      catalog.companies[0]?.id ??
+      '',
+  );
   const [status, setStatus] = useState<AccessEditorStatus>({ dirty: false, busy: false });
   useEffect(() => {
     onStatus(status);

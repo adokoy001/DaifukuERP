@@ -192,6 +192,31 @@ export function invalidStoredText(setting: SettingMeta): Label {
   return setting.defaultValue !== undefined ? SC.invalidStored : SC.invalidStoredNoDefault;
 }
 
+/**
+ * setup-wizard AC-12: how a setting kept by a dedicated screen (`managedBy`) is offered — a link for admins (the screen
+ * is admin only), a sentence for everyone else (the settings role would get 403 there). null when it is not managed.
+ */
+export function managedByView(
+  setting: SettingMeta,
+  roles: readonly string[] | undefined,
+): { kind: 'link'; href: string; text: Label } | { kind: 'text'; text: Label } | null {
+  const managed = setting.managedBy;
+  if (!managed) return null;
+  if ((roles ?? []).includes('admin'))
+    return {
+      kind: 'link',
+      href: managed.href,
+      text: { ja: `${managed.label.ja}で変更`, en: `Change in ${managed.label.en}` },
+    };
+  return {
+    kind: 'text',
+    text: {
+      ja: `会社の管理者が${managed.label.ja}の画面で変更します`,
+      en: `A company administrator changes this in ${managed.label.en}`,
+    },
+  };
+}
+
 /** Whether any template (pack) is recorded as applied in this company (`packs.applied`, ADR-0015). */
 export function templatesApplied(settings: readonly SettingMeta[]): boolean {
   const applied = settings.find((s) => s.key === 'packs.applied')?.value;

@@ -10,6 +10,7 @@ import {
   codeIsMissing,
   codeLookupNeeded,
   invalidStoredText,
+  managedByView,
   opLabel,
   resolveTab,
   SC,
@@ -366,5 +367,37 @@ describe('settings-console AC-12: history entries', () => {
         'en',
       ),
     ).toBe('agent:mcp (for Sato)');
+  });
+});
+
+describe('setup-wizard AC-12: settings kept by a dedicated screen (managedBy)', () => {
+  const managed = {
+    key: 'setup.progress',
+    label: { ja: 'セットアップの進捗', en: 'Setup progress' },
+    schema: { type: 'object', properties: {} },
+    value: null,
+    category: 'system',
+    isDefault: true,
+    managedBy: { href: '/setup', label: { ja: 'セットアップ', en: 'Setup' } },
+  } as SettingMeta;
+
+  it('AC-12: admins get a link to the screen', () => {
+    expect(managedByView(managed, ['admin'])).toEqual({
+      kind: 'link',
+      href: '/setup',
+      text: { ja: 'セットアップで変更', en: 'Change in Setup' },
+    });
+  });
+
+  it('AC-12: the settings role gets a sentence instead of a link it could not open', () => {
+    expect(managedByView(managed, ['settings'])).toEqual({
+      kind: 'text',
+      text: { ja: '会社の管理者がセットアップの画面で変更します', en: 'A company administrator changes this in Setup' },
+    });
+  });
+
+  it('AC-12: a setting without managedBy is edited as before', () => {
+    const { managedBy: _ignored, ...plain } = managed;
+    expect(managedByView(plain as SettingMeta, ['admin'])).toBeNull();
   });
 });

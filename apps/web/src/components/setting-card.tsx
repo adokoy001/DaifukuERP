@@ -1,13 +1,17 @@
 // settings-console AC-9..AC-12: one company setting as a kit Card form — labelled fields (code pickers, checkboxes,
 // textareas), whether the module default applies and what it is, "reset to default" behind a kit Dialog, and the
 // change history. Saving is PUT /meta/settings/:key; resetting is DELETE (the API checks the role either way).
-import { useId, useMemo, useState, type FormEvent } from 'react';
+// setup-wizard AC-9/AC-12/AC-20: the wizard embeds the same card — it reports unsaved changes (`onDirtyChange`), can
+// start from a draft (`draftValue`, e.g. the issuer copied from the profile) and hears when a save ends (`onSettled`).
+// A setting kept by a dedicated screen (`managedBy`) is shown read-only with a link there.
+import { Link } from '@tanstack/react-router';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { isApiError } from '../api/client.ts';
 import { useResetSetting, useSaveSetting, useSettingHistory } from '../api/settings.ts';
 import type { AppMeta, SettingMeta } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { issuesToFieldErrors } from '../lib/form.ts';
-import { refResolverFrom, stripSettingKey, toFieldMeta, type SchemaField } from '../lib/schema.ts';
+import { refResolverFrom, schemaInitialValues, stripSettingKey, toFieldMeta, type SchemaField } from '../lib/schema.ts';
 import {
   actorText,
   canReset,
@@ -15,6 +19,7 @@ import {
   changeTime,
   fill,
   invalidStoredText,
+  managedByView,
   opLabel,
   SC,
   settingForm,
@@ -184,22 +189,88 @@ function ResetDialog({
   );
 }
 
-export function SettingCard({
-  setting,
-  meta,
-  templatesApplied = false,
-}: {
+/** setup-wizard AC-12: a setting another screen keeps — state, help, a link (admins) or a sentence, and the history. */
+function ManagedSettingCard({ setting, meta }: { setting: SettingMeta; meta: AppMeta }) {
+  const { t } = useLocale();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyId = useId();
+  const view = managedByView(setting, meta.roles);
+  return (
+    <Card aria-label={t(setting.label)} data-testid={`setting-${setting.key}`} data-managed="true">
+      <FormSection
+        title={t(setting.label)}
+        meta={
+          <>
+            <Badge tone={setting.isDefault ? 'neutral' : 'accent'} data-testid="setting-status">
+              {t(setting.isDefault ? SC.notSet : SC.customized)}
+            </Badge>
+            <span className="ui-code break-all">{setting.key}</span>
+          </>
+        }
+        description={setting.description ? t(setting.description) : undefined}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {view?.kind === 'link' ? (
+            <Link to={view.href} className="ui-link" data-testid="setting-managed-link">
+              {t(view.text)}
+            </Link>
+          ) : view ? (
+            <p className="text-sm text-text-secondary" data-testid="setting-managed-text">
+              {t(view.text)}
+            </p>
+          ) : null}
+          <Button
+            variant="ghost"
+            aria-expanded={historyOpen}
+            aria-controls={historyOpen ? historyId : undefined}
+            onClick={() => setHistoryOpen((open) => !open)}
+          >
+            {t(SC.history)}
+          </Button>
+        </div>
+        {historyOpen ? <SettingHistory setting={setting} id={historyId} /> : null}
+      </FormSection>
+    </Card>
+  );
+}
+
+export function SettingCard(props: SettingCardProps) {
+  return props.setting.managedBy ? (
+    <ManagedSettingCard setting={props.setting} meta={props.meta} />
+  ) : (
+    <EditableSettingCard {...props} />
+  );
+}
+
+export interface SettingCardProps {
   setting: SettingMeta;
   meta: AppMeta;
   /** Some template is applied in this company (its values are company values; reset does not return to them). */
   templatesApplied?: boolean;
-}) {
+  /** setup-wizard AC-9: called with true while the inputs differ from the saved value, false otherwise. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** setup-wizard AC-20: values to put into the inputs (unsaved); a new object applies again. */
+  draftValue?: Record<string, unknown>;
+  /** setup-wizard AC-2/AC-24: called after every save attempt, successful or not (the wizard re-reads its status). */
+  onSettled?: () => void;
+}
+
+function EditableSettingCard({
+  setting,
+  meta,
+  templatesApplied = false,
+  onDirtyChange,
+  draftValue,
+  onSettled,
+}: SettingCardProps) {
   const { t, locale } = useLocale();
   const toast = useToast();
   const refOf = useMemo(() => refResolverFrom(meta.entities), [meta.entities]);
   const { mode, fields } = useMemo(() => settingForm(setting, refOf), [setting, refOf]);
   const current = useMemo(() => settingFormValue(setting, mode), [setting, mode]);
-  const form = useSchemaForm(fields, { current, jsonOnly: mode === 'json' });
+  // A draft (object settings) seeds the inputs instead of the saved value; dirtiness is still measured against `current`,
+  // so the copied values count as unsaved until they are saved. A new draft object resets the inputs to it.
+  const form = useSchemaForm(fields, { current: draftValue ?? current, jsonOnly: mode === 'json' });
   const save = useSaveSetting();
   const reset = useResetSetting();
   const [confirming, setConfirming] = useState(false);
@@ -209,6 +280,17 @@ export function SettingCard({
   const busy = save.isPending || reset.isPending;
   const invalidStored = storedValueInvalid(setting);
   const resettable = canReset(setting, mode);
+  const baseline = useMemo(
+    () => JSON.stringify(schemaInitialValues(fields, current as Record<string, unknown> | null)),
+    [fields, current],
+  );
+  const dirty = form.state.jsonMode
+    ? form.state.json !== JSON.stringify(current ?? {}, null, 2)
+    : JSON.stringify(form.state.values) !== baseline;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -221,6 +303,7 @@ export function SettingCard({
       { key: setting.key, value: form.state.jsonMode ? built.payload : settingPayload(mode, built.payload) },
       {
         onSuccess: () => toast.success(t(S.settingSaved)),
+        onSettled: () => onSettled?.(),
         onError: (err) => {
           if (isApiError(err) && err.code === 'VALIDATION') {
             const issues = stripSettingKey(err.issues(), setting.key).map((i) =>

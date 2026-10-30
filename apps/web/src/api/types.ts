@@ -188,6 +188,8 @@ export interface SettingMeta {
   defaultValue?: unknown;
   /** True when the company has no stored value. */
   isDefault: boolean;
+  /** A dedicated screen keeps this setting (setup-wizard AC-12): shown read-only with a link there. */
+  managedBy?: { href: string; label: Label };
 }
 
 /** One choice of a settings code picker (settings-console AC-10): an account or warehouse code and its name. */

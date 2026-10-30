@@ -28,6 +28,7 @@ import { HomePage } from './pages/home-page.tsx';
 import { LoginPage } from './pages/login-page.tsx';
 import { ReportPage } from './pages/report-page.tsx';
 import { parseSettingsSearch, SettingsPage } from './pages/settings-page.tsx';
+import { parseSetupSearch } from './lib/setup-wizard.ts';
 import { TemplatesPage } from './pages/templates-page.tsx';
 import { ActionPage } from './pages/action-page.tsx';
 import { ReadRefreshNotice } from './components/read-refresh-notice.tsx';
@@ -290,6 +291,13 @@ const healthRoute = createRoute({
   path: '/admin/health',
   component: lazyRouteComponent(() => import('./pages/health-page.tsx'), 'HealthPage'),
 });
+// setup-wizard AC-1/AC-8: the setup wizard for company admins; `?step=` keeps the open step (known ids only).
+const setupRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/setup',
+  validateSearch: parseSetupSearch,
+  component: lazyRouteComponent(() => import('./pages/setup-page.tsx'), 'SetupPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
@@ -440,6 +448,7 @@ const routeTree = rootRoute.addChildren([
     accessRoute,
     companiesRoute,
     healthRoute,
+    setupRoute,
     employeeRoute,
     workforceRoute,
     inboxRoute,

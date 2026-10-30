@@ -64,6 +64,14 @@ const CONVERTED = [
   'components/role-home-employee.tsx',
   'components/role-home-admin.tsx',
   'role-home.css',
+  // setup-wizard (docs/specs/setup-wizard.md)
+  'pages/setup-page.tsx',
+  'components/setup-card.tsx',
+  'components/setup-stepper.tsx',
+  'components/setup-shared.tsx',
+  'components/setup-setting-steps.tsx',
+  'components/setup-fiscal-step.tsx',
+  'components/setup-people-steps.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

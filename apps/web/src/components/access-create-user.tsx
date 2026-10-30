@@ -5,9 +5,12 @@ import { useToast } from './toast.tsx';
 export function AccessCreateUser({
   onClose,
   onStatus,
+  onCreated,
 }: {
   onClose: () => void;
   onStatus: (status: AccessEditorStatus) => void;
+  /** setup-wizard AC-22: the created user (its id), e.g. to open its membership for the current company next. */
+  onCreated?: (user: { id: string }) => void;
 }) {
   const { t } = useLocale();
   const toast = useToast();
@@ -34,8 +37,10 @@ export function AccessCreateUser({
     mutation.mutate(
       { path: '/admin/users', method: 'POST', body: { name, email, password, tenantAdmin } },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setPassword('');
+          const id = (created as { id?: unknown } | undefined)?.id;
+          if (typeof id === 'string') onCreated?.({ id });
           toast.success(
             t({
               ja: '利用者を作成しました。会社への所属を設定してください。',

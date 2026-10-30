@@ -3,7 +3,8 @@ import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 
-export function WorkforceInitialize() {
+/** `onDone` (setup-wizard AC-23): called after the policy was prepared, e.g. to re-read the setup status. */
+export function WorkforceInitialize({ onDone }: { onDone?: () => void } = {}) {
   const { t } = useLocale();
   const task = useWorkforceTask();
   const [open, setOpen] = useState(false);
@@ -23,6 +24,7 @@ export function WorkforceInitialize() {
           onClose={() => setOpen(false)}
           onSubmit={async () => {
             await task.mutateAsync({ action: 'workforce.initialize_policy', input: {} });
+            onDone?.();
           }}
         >
           <label className="workforce-checkbox">

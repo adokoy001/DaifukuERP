@@ -105,19 +105,13 @@ export function firstErrorField(errors: Partial<Record<CompanyField, unknown>>):
 }
 
 /**
- * Where a new company's first setup continues (AC-9), opened after switching to it. The setup wizard (B4,
- * docs/specs/setup-wizard.md) will replace these with /setup; until then they open the company tab of the settings
- * console and the fiscal year list.
+ * Where a new company's first setup continues (AC-9), opened after switching to it: the setup wizard
+ * (docs/specs/setup-wizard.md AC-27), whose first steps are the company profile and the fiscal year.
  */
 export const SETUP_DESTINATIONS: readonly { href: string; label: Label; switchLabel: Label }[] = [
   {
-    href: '/settings?tab=company',
-    label: { ja: '会社プロフィールを入力', en: 'Fill in the company profile' },
-    switchLabel: { ja: '切り替えて会社プロフィールを入力', en: 'Switch and fill in the company profile' },
-  },
-  {
-    href: '/e/fiscal_year',
-    label: { ja: '会計年度を確認', en: 'Check the fiscal year' },
-    switchLabel: { ja: '切り替えて会計年度を確認', en: 'Switch and check the fiscal year' },
+    href: '/setup',
+    label: { ja: 'セットアップを始める', en: 'Start the setup' },
+    switchLabel: { ja: '切り替えてセットアップを始める', en: 'Switch and start the setup' },
   },
 ];

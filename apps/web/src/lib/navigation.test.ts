@@ -7,6 +7,7 @@ import {
   searchNavigation,
   workspaceForModule,
 } from './navigation.ts';
+import { DEDICATED_NAVIGATION } from './navigation-data.ts';
 
 const label = (ja: string, en = ja): Label => ({ ja, en });
 function entity(name: string, module: string | undefined = 'sales', extra: Partial<EntityMeta> = {}): EntityMeta {
@@ -81,6 +82,18 @@ describe('authorized navigation catalog', () => {
         kind: 'workspace',
       });
     }
+  });
+  it('setup-wizard AC-28: /setup is a setting entry for the admin role only (not settings, not tenant admin alone)', () => {
+    expect(hrefs(meta([], [], [], ['admin']))).toContain('/setup');
+    expect(hrefs(meta([], [], [], ['admin', 'accounting']))).toContain('/setup');
+    expect(hrefs(meta([], [], [], ['settings']))).not.toContain('/setup');
+    expect(hrefs(meta([], [], [], ['sales']))).not.toContain('/setup');
+    expect(hrefs(meta(), true)).not.toContain('/setup');
+    expect(DEDICATED_NAVIGATION.find((n) => n.href === '/setup')).toMatchObject({
+      workspace: 'admin',
+      kind: 'setting',
+      condition: 'admin',
+    });
   });
   it('keeps tenant administration separate from company settings permission', () => {
     expect(hrefs(meta([], [], [], ['admin']))).toContain('/settings');

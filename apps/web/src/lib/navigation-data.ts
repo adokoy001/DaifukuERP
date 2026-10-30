@@ -121,7 +121,8 @@ export interface DedicatedNavigation {
   kind?: NavigationKind;
   /** The same entry action used by the existing sidebar, not a substitute for server authorization. */
   action?: string;
-  condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox';
+  /** `admin`: the /meta roles include admin (setup-wizard AC-28); the API still decides (company-wide access). */
+  condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox' | 'admin';
 }
 export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
   {
@@ -353,6 +354,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '現在の会社に適用する業務設定を変更します。',
       en: 'Edit business settings for the current company.',
+    },
+  },
+  {
+    href: '/setup',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: 'セットアップ', en: 'Setup' },
+    description: {
+      ja: '会社情報・会計年度・税・発行者・在庫・テンプレート・利用者を順に整え、完了を実データで確かめます。',
+      en: 'Set up the company profile, fiscal year, tax, invoice issuer, inventory, templates and users step by step, checked against real data.',
     },
   },
   {

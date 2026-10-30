@@ -48,6 +48,7 @@ function allowedDedicated(definition: DedicatedNavigation, meta: AppMeta, tenant
     return meta.actions.some((action) => ACTION_NAME.test(action.name) && isReportAction(action));
   if (definition.condition === 'settings') return canEditSettings(meta.roles);
   if (definition.condition === 'tenant-admin') return tenantAdmin;
+  if (definition.condition === 'admin') return meta.roles.includes('admin');
   return true;
 }
 function dedicatedEntry(definition: DedicatedNavigation, meta: AppMeta): NavigationEntry {

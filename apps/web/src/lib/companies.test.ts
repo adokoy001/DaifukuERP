@@ -72,8 +72,10 @@ describe('company-admin AC-3: create form rules', () => {
 });
 
 describe('company-admin AC-9/AC-11: setup links, labels and navigation', () => {
-  it('AC-9: the first-setup destinations are the company profile tab and the fiscal year list', () => {
-    expect(SETUP_DESTINATIONS.map((d) => d.href)).toEqual(['/settings?tab=company', '/e/fiscal_year']);
+  // setup-wizard AC-27: the destinations planned by company-admin AC-9 ("replaced by /setup once B4 exists") are now
+  // the wizard; this changes where the button goes, not how much is checked.
+  it('AC-9 / setup-wizard AC-27: the first-setup destination is the setup wizard', () => {
+    expect(SETUP_DESTINATIONS.map((d) => d.href)).toEqual(['/setup']);
   });
 
   it('AC-11: every field label and destination has ja and en text', () => {
@@ -86,8 +88,7 @@ describe('company-admin AC-9/AC-11: setup links, labels and navigation', () => {
 
   it('AC-11: each switch button has one whole phrase per language (no joined fragments)', () => {
     expect(SETUP_DESTINATIONS.map((d) => d.switchLabel)).toEqual([
-      { ja: '切り替えて会社プロフィールを入力', en: 'Switch and fill in the company profile' },
-      { ja: '切り替えて会計年度を確認', en: 'Switch and check the fiscal year' },
+      { ja: '切り替えてセットアップを始める', en: 'Switch and start the setup' },
     ]);
   });
 
