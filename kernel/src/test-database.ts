@@ -161,6 +161,24 @@ export function templateTarget(
 /** A database name with `test` as a whole underscore-separated segment: daifuku_test, daifuku_test_w3, daifuku_ci_test. */
 export const DISPOSABLE_NAME = /(?:^|_)test(?:_|$)/;
 
+/**
+ * Shard databases of `pnpm gate:light` (docs/specs/light-tier-speed.md): the DB step splits its suites over the test
+ * database and <db>_shard_2, <db>_shard_3, ... Mirrors SHARD_INFIX of scripts/gate.mjs (scripts/test/gate.test.ts
+ * compares them). Each shard database keeps its own schema templates.
+ */
+export const SHARD_INFIX = '_shard_';
+
+export function shardDatabaseName(database: string, index: number): string {
+  return index === 1 ? database : `${database}${SHARD_INFIX}${index}`;
+}
+
+/** True for <database>_shard_<n> with n >= 2: a shard database the tier runner derives from `database`. */
+export function isShardDatabase(database: string, name: string): boolean {
+  if (!name.startsWith(`${database}${SHARD_INFIX}`)) return false;
+  const index = name.slice(database.length + SHARD_INFIX.length);
+  return /^[1-9][0-9]*$/.test(index) && Number(index) >= 2;
+}
+
 export interface TargetState {
   createdb: boolean;
   exists: boolean;
@@ -487,6 +505,58 @@ export async function ownTemplates(
       }
     }
     return result;
+  } finally {
+    await maintenance.close();
+  }
+}
+
+export interface ShardDatabase {
+  name: string;
+  bytes: number;
+  /** Set by the cleanup: dropped, or kept because a session was connected to it. */
+  dropped?: boolean;
+}
+
+/**
+ * The shard databases of the test database (<db>_shard_<n>, n >= 2) that the connecting owner role owns, by name
+ * (`pnpm test:db:templates`). Databases of other roles and other names are never listed. Their schema templates are
+ * separate: `ownTemplates` with the shard database as the target.
+ */
+export async function ownShardDatabases(target: Extract<TemplateTarget, { ok: true }>): Promise<ShardDatabase[]> {
+  const maintenance = connect(target.maintenanceUrl, { max: 1 });
+  try {
+    const rows = await maintenance.sql<{ name: string; bytes: string }[]>`
+      select d.datname as name, pg_database_size(d.oid)::text as bytes
+      from pg_database d join pg_roles r on r.rolname = current_user and d.datdba = r.oid
+      where starts_with(d.datname, ${`${target.database}${SHARD_INFIX}`}) and not d.datistemplate order by 1`;
+    return rows
+      .filter((row) => isShardDatabase(target.database, row.name))
+      .map((row) => ({ name: row.name, bytes: Number(row.bytes) }));
+  } finally {
+    await maintenance.close();
+  }
+}
+
+/**
+ * Drops one shard database of the test database (`pnpm test:db:templates -- --drop`): true when dropped, false when a
+ * session is connected to it (SQLSTATE 55006). Refuses any other name and a database the owner role does not own.
+ */
+export async function dropShardDatabase(target: Extract<TemplateTarget, { ok: true }>, name: string): Promise<boolean> {
+  if (!isShardDatabase(target.database, name)) throw new Error(`${name} is not a shard database of ${target.database}`);
+  const maintenance = connect(target.maintenanceUrl, { max: 1 });
+  try {
+    const [row] = await maintenance.sql<{ owned: boolean }[]>`
+      select d.datdba = r.oid as owned from pg_database d join pg_roles r on r.rolname = current_user
+      where d.datname = ${name}`;
+    if (!row) return true;
+    if (!row.owned) throw new Error(`${name} belongs to another role`);
+    try {
+      await maintenance.sql.unsafe(`DROP DATABASE IF EXISTS ${quote(name)}`);
+      return true;
+    } catch (error) {
+      if (errorCode(error) !== OBJECT_IN_USE) throw error;
+      return false;
+    }
   } finally {
     await maintenance.close();
   }

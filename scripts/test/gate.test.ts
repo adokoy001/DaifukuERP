@@ -17,14 +17,20 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   ALWAYS_DB_SUITES,
   CHANGED_FILES_IN_TABLE,
+  DEFAULT_SUITE_SECONDS,
   ESCALATION_RULES,
   E2E_DATABASE_NAME,
   FILE_ARGUMENT_LIMIT,
   GUIDANCE,
   GateUsageError,
   IDENTITY_DATABASE_NAME,
+  MAX_DB_SHARDS,
   MAX_REPORTED_FILES,
   ROOT,
+  SHARD_DATABASE_NAME,
+  SHARD_INFIX,
+  SHARD_NAME_LIMIT,
+  TEST_DATABASE_NAME,
   applyPreflight,
   applySelection,
   browserFixtureEnv,
@@ -37,6 +43,7 @@ import {
   commandText,
   databaseUrl,
   declaresSchema,
+  defaultDbShards,
   deferSchemaSuites,
   detectEscalation,
   formatTable,
@@ -47,7 +54,11 @@ import {
   packageOf,
   parseCli,
   parseGateScript,
+  parseSuiteDurations,
   parseWorkspacePatterns,
+  partitionShards,
+  planPhases,
+  planShards,
   planSteps,
   provisionDatabaseName,
   provisionGuard,
@@ -55,6 +66,7 @@ import {
   referenceTriggers,
   reportFileName,
   resolveBase,
+  resolveConcurrency,
   runSteps,
   scopeOf,
   scrubbedEnv,
@@ -62,10 +74,13 @@ import {
   selectBySubprocessScope,
   selectByTestDirectory,
   setupFileTargets,
+  shardDatabaseName,
+  shardDatabases,
   smokePrerequisites,
   spawnsProcesses,
   subprocessEntries,
   testDatabaseProblems,
+  testSummary,
   workspaceClosure,
 } from '../gate.mjs';
 import type { Base, Change, Git, GitResult, Options, Report, Step, Tier } from '../gate.mjs';
@@ -1737,4 +1752,651 @@ describe('selection rules beyond the module graph', () => {
       "pnpm exec prettier --check './new dir/a b.ts'",
     );
   });
+});
+
+// ---- docs/specs/light-tier-speed.md: light runs its static lane and DB lane side by side, DB suites over shards ----
+
+const parallel = (paths: readonly string[], extra: { deleted?: string[]; opts?: Partial<Options> } = {}) =>
+  plan('light', paths, { ...extra, opts: { parallel: true, dbShards: 2, ...extra.opts } });
+const deferred = () => {
+  let resolve: (value: { ok: boolean }) => void = () => undefined;
+  const promise = new Promise<{ ok: boolean }>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+const tick = () => new Promise((done) => setTimeout(done, 0));
+
+describe('light-tier-speed AC-1 static and DB lanes side by side', () => {
+  it('AC-1 puts every static step in the static lane in plan order and the DB step in its own lane', () => {
+    const { steps } = parallel(['modules/sales/src/settings.ts']);
+    expect(steps.map((item) => [item.id, item.lane])).toEqual([
+      ['format', 'static'],
+      ['docs', 'static'],
+      ['assurance', 'static'],
+      ['typecheck', 'static'],
+      ['typecheck:api', 'static'],
+      ['typecheck:web', 'static'],
+      ['lint', 'static'],
+      ['unit', 'static'],
+      ['db', 'db'],
+      ['deploy', 'static'],
+    ]);
+    const phases = planPhases(steps);
+    expect(phases).toHaveLength(1);
+    expect(phases[0]?.map((lane) => lane.map((entry) => entry.item.id))).toEqual([
+      ['format', 'docs', 'assurance', 'typecheck', 'typecheck:api', 'typecheck:web', 'lint', 'unit', 'deploy'],
+      ['db'],
+    ]);
+  });
+  it('AC-1 keeps the serial plan without lanes and runs the smoke steps after both lanes', () => {
+    expect(plan('light', ['modules/sales/src/settings.ts']).steps.every((item) => item.lane === undefined)).toBe(true);
+    const { steps } = parallel(['docs/x.md'], { opts: { withSmoke: true, provision: true } });
+    expect(steps.slice(-3).map((item) => [item.id, item.lane])).toEqual([
+      ['build:api', undefined],
+      ['browser:prepare', undefined],
+      ['smoke', undefined],
+    ]);
+    const phases = planPhases(steps);
+    expect(phases.map((phase) => phase.length)).toEqual([2, 1, 1, 1]);
+    expect(planPhases(plan('full', ['docs/x.md']).steps).every((phase) => phase.length === 1)).toBe(true);
+  });
+  it('AC-1 starts the DB lane while the static lane runs and reports results in plan order', async () => {
+    const { steps } = parallel(['modules/sales/src/settings.ts']);
+    const runnable = steps.map((item) => (item.id === 'db' ? { ...item, selection: null } : item));
+    const started: string[] = [];
+    const format = deferred();
+    const db = deferred();
+    const outcome = runSteps(runnable, {
+      execute: async (item) => {
+        started.push(item.id);
+        if (item.id === 'format') return format.promise;
+        if (item.id === 'db') return db.promise;
+        return { ok: true };
+      },
+    });
+    await tick();
+    expect(started).toEqual(['format', 'db']);
+    format.resolve({ ok: true });
+    for (let index = 0; index < 20; index++) await tick();
+    expect(started).toContain('deploy');
+    db.resolve({ ok: true });
+    const result = await outcome;
+    expect(result.ok).toBe(true);
+    expect(result.steps.map((item) => item.id)).toEqual(runnable.map((item) => item.id));
+    expect(result.steps.every((item) => item.result === 'passed')).toBe(true);
+    expect(find(result.steps, 'db').offset).toBe(0);
+  });
+  it('AC-1 waits for both lanes before a step without a lane starts', async () => {
+    const order: string[] = [];
+    const slow = deferred();
+    const laned = parallel(['docs/x.md']).steps;
+    const steps = [
+      find(laned, 'format'),
+      { ...find(laned, 'db'), selection: null },
+      { ...find(laned, 'deploy'), lane: undefined },
+    ];
+    const outcome = runSteps(steps, {
+      execute: async (item) => {
+        order.push(`start ${item.id}`);
+        await (item.id === 'db' ? slow.promise : tick());
+        order.push(`end ${item.id}`);
+        return { ok: true };
+      },
+    });
+    await tick();
+    slow.resolve({ ok: true });
+    await outcome;
+    // Both lanes start before either ends; the step without a lane starts only after both ended.
+    expect(order.slice(0, 2)).toEqual(['start format', 'start db']);
+    expect(order.slice(2, 4).sort()).toEqual(['end db', 'end format']);
+    expect(order.slice(4)).toEqual(['start deploy', 'end deploy']);
+  });
+});
+
+describe('light-tier-speed AC-2 DB suites split over shards', () => {
+  const files = ['a.db.test.ts', 'b.db.test.ts', 'c.db.test.ts', 'd.db.test.ts', 'e.db.test.ts'];
+  it('AC-2 runs every selected file exactly once, longest first onto the least loaded shard', () => {
+    const durations = new Map([
+      ['a.db.test.ts', 50],
+      ['b.db.test.ts', 30],
+      ['c.db.test.ts', 25],
+      ['d.db.test.ts', 10],
+      ['e.db.test.ts', 4],
+    ]);
+    // 50 -> shard 1; 30 -> shard 2; 25 -> shard 2 (55); 10 -> shard 1 (60); 4 -> shard 2 (59).
+    expect(partitionShards(files, durations, 2)).toEqual([
+      { files: ['a.db.test.ts', 'd.db.test.ts'], estimate: 60 },
+      { files: ['b.db.test.ts', 'c.db.test.ts', 'e.db.test.ts'], estimate: 59 },
+    ]);
+    for (const count of [1, 2, 3, MAX_DB_SHARDS]) {
+      const split = partitionShards(files, durations, count).flatMap((shard) => shard.files);
+      expect(split.sort()).toEqual([...files].sort());
+    }
+    expect(partitionShards(files, durations, 2)).toEqual(partitionShards([...files].reverse(), durations, 2));
+  });
+  it('AC-2 uses fewer shards than asked for when fewer files are selected and estimates unknown suites', () => {
+    expect(partitionShards(['only.db.test.ts'], new Map(), 4)).toEqual([
+      { files: ['only.db.test.ts'], estimate: DEFAULT_SUITE_SECONDS },
+    ]);
+    const median = partitionShards(
+      ['x', 'y', 'z'],
+      new Map([
+        ['x', 2],
+        ['y', 40],
+      ]),
+      3,
+    );
+    expect(median.find((shard) => shard.files.includes('z'))?.estimate).toBe(40);
+  });
+  it('AC-2 reads suite durations from the vitest results cache of the db project only', () => {
+    const cache = JSON.stringify({
+      version: '5.0.0',
+      results: [
+        ['db:modules/sales/test/sales.db.test.ts', { duration: 7700, failed: false }],
+        ['unit:modules/sales/test/recalculate.test.ts', { duration: 300, failed: false }],
+        ['db:broken', { duration: 'x' }],
+      ],
+    });
+    expect([...parseSuiteDurations([cache, '{not json'])]).toEqual([['modules/sales/test/sales.db.test.ts', 7.7]]);
+  });
+  it('AC-2 assigns shard 1 to the configured database and shard k to <db>_shard_k', () => {
+    const step = { selectedFiles: files, shards: 2 };
+    const { shards } = shardDatabases(fullEnv, 2);
+    const planned = planShards(step, new Map(), shards);
+    expect(planned.map((shard) => [shard.index, shard.database, shard.files.length])).toEqual([
+      [1, 'daifuku_test_x', 3],
+      [2, 'daifuku_test_x_shard_2', 2],
+    ]);
+    expect(planned[1]?.ownerUrl).toBe('postgres://daifuku_owner:owner@127.0.0.1:5432/daifuku_test_x_shard_2');
+    expect(planned[1]?.appUrl).toBe('postgres://daifuku_app:app@127.0.0.1:5432/daifuku_test_x_shard_2');
+    expect(planShards(step, new Map(), shards.slice(0, 1)).map((shard) => shard.files.length)).toEqual([5]);
+  });
+  it('AC-2 AC-8 lists every DB suite for an escalated sharded step and keeps pnpm test:db with one shard', () => {
+    const sharded = find(parallel(['kernel/src/decimal.ts']).steps, 'db');
+    expect(sharded.command).toBeNull();
+    expect(sharded.shards).toBe(2);
+    expect(sharded.selection).toMatchObject({ project: 'db', all: true });
+    const single = find(parallel(['kernel/src/decimal.ts'], { opts: { dbShards: 1 } }).steps, 'db');
+    expect(commandText(single.command)).toBe('pnpm test:db');
+    expect(single.shards).toBeUndefined();
+    const related = find(parallel(['modules/sales/src/settings.ts']).steps, 'db');
+    expect(related.selection).toMatchObject({ project: 'db', deferSchemaSuites: true, extra: [...ALWAYS_DB_SUITES] });
+    expect(related.selection?.all).toBeUndefined();
+  });
+  it('AC-2 AC-8 lists through vitest exactly the files vitest run --project db runs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daifuku-gate-select-all-'));
+    try {
+      const file = join(dir, 'input.json');
+      const output = join(dir, 'out.json');
+      const input = { project: 'db', all: true, sources: [], triggers: [], extra: [...ALWAYS_DB_SUITES], output };
+      writeFileSync(file, JSON.stringify(input));
+      const result = spawnSync(process.execPath, [join(ROOT, 'scripts/gate-select.mjs'), file], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const selection = JSON.parse(readFileSync(output, 'utf8')) as {
+        total: number;
+        selected: { file: string; via: string }[];
+      };
+      const listed = spawnSync(
+        process.execPath,
+        [join(ROOT, 'node_modules/vitest/vitest.mjs'), 'list', '--project', 'db', '--filesOnly', '--json'],
+        { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      );
+      expect(listed.status, listed.stderr).toBe(0);
+      const expected = (JSON.parse(listed.stdout) as { file: string }[])
+        .map((entry) => entry.file.slice(ROOT.length + 1))
+        .sort();
+      expect(selection.selected.map((entry) => entry.file)).toEqual(expected);
+      expect(selection.total).toBe(expected.length);
+      const always = selection.selected.filter((entry) => entry.via === 'always').map((entry) => entry.file);
+      expect(always.sort()).toEqual([...ALWAYS_DB_SUITES].sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
+describe('light-tier-speed AC-3 shard databases', () => {
+  it('AC-3 derives shard names that no checkout can use as its own test database', () => {
+    expect(shardDatabaseName('daifuku_test_w9', 1)).toBe('daifuku_test_w9');
+    expect(shardDatabaseName('daifuku_test_w9', 2)).toBe('daifuku_test_w9_shard_2');
+    for (const name of ['daifuku_test', 'daifuku_ci_test', 'daifuku_test_w9']) {
+      expect(TEST_DATABASE_NAME.test(name)).toBe(true);
+      for (let index = 2; index <= MAX_DB_SHARDS; index++) {
+        const shard = shardDatabaseName(name, index);
+        expect(TEST_DATABASE_NAME.test(shard), shard).toBe(false);
+        expect(SHARD_DATABASE_NAME.test(shard), shard).toBe(true);
+      }
+    }
+    expect(SHARD_DATABASE_NAME.test('daifuku_test_w9')).toBe(false);
+    expect(SHARD_DATABASE_NAME.test('daifuku_test_w9_shard_9')).toBe(false);
+    expect(SHARD_DATABASE_NAME.test('production_shard_2')).toBe(false);
+  });
+  it('AC-3 keeps one shard for a database outside the test naming rule or too long for template names', () => {
+    const allowed = {
+      ...fullEnv,
+      GATE_ALLOW_DB_URL: '1',
+      TEST_DATABASE_URL_OWNER: 'postgres://o:o@127.0.0.1:5432/scratch_db',
+      TEST_DATABASE_URL: 'postgres://daifuku_app:a@127.0.0.1:5432/scratch_db',
+    };
+    const other = shardDatabases(allowed, 2);
+    expect(other.shards.map((shard) => shard.database)).toEqual(['scratch_db']);
+    expect(other.reason).toMatch(/derived only from daifuku_test/);
+    const longName = `daifuku_test_${'x'.repeat(SHARD_NAME_LIMIT)}`.slice(0, SHARD_NAME_LIMIT - 2);
+    const long = shardDatabases(
+      {
+        TEST_DATABASE_URL_OWNER: `postgres://o:o@127.0.0.1:5432/${longName}`,
+        TEST_DATABASE_URL: `postgres://daifuku_app:a@127.0.0.1:5432/${longName}`,
+      },
+      2,
+    );
+    expect(long.shards).toHaveLength(1);
+    expect(long.reason).toMatch(/no room for schema template names/);
+    expect(shardDatabases(fullEnv, 3).shards.map((shard) => shard.database)).toEqual([
+      'daifuku_test_x',
+      'daifuku_test_x_shard_2',
+      'daifuku_test_x_shard_3',
+    ]);
+  });
+  it('AC-3 AC-7 mirrors the shard infix of the kernel template cleanup', () => {
+    const kernel = readFileSync(join(ROOT, 'kernel/src/test-database.ts'), 'utf8');
+    expect(kernel).toContain(`export const SHARD_INFIX = '${SHARD_INFIX}';`);
+    expect(SHARD_NAME_LIMIT).toBe(63 - '_tpl_'.length - 16);
+  });
+});
+
+describe('light-tier-speed AC-4 concurrency options', () => {
+  it('AC-4 defaults to lanes and two DB shards on four or more CPUs, one shard below', () => {
+    expect(defaultDbShards(4)).toBe(2);
+    expect(defaultDbShards(16)).toBe(2);
+    expect(defaultDbShards(2)).toBe(1);
+    expect(resolveConcurrency({ tier: 'light' }, {}, 4)).toMatchObject({ parallel: true, dbShards: 2 });
+    expect(resolveConcurrency({ tier: 'light' }, {}, 2)).toMatchObject({ parallel: true, dbShards: 1 });
+  });
+  it('AC-4 --serial and GATE_PARALLEL=0 restore one step at a time with one DB process', () => {
+    expect(resolveConcurrency({ tier: 'light', serial: true }, {}, 8)).toMatchObject({ parallel: false, dbShards: 1 });
+    expect(resolveConcurrency({ tier: 'light' }, { GATE_PARALLEL: '0' }, 8)).toMatchObject({
+      parallel: false,
+      dbShards: 1,
+    });
+    expect(resolveConcurrency({ tier: 'light' }, { GATE_PARALLEL: '1' }, 8).parallel).toBe(true);
+  });
+  it('AC-4 takes --db-shards over GATE_DB_SHARDS and rejects values outside 1..8', () => {
+    expect(resolveConcurrency({ tier: 'light', dbShards: '3' }, { GATE_DB_SHARDS: '1' }, 4).dbShards).toBe(3);
+    expect(resolveConcurrency({ tier: 'light' }, { GATE_DB_SHARDS: '1' }, 4).dbShards).toBe(1);
+    for (const value of ['0', '9', 'two', '1.5', '-1'])
+      expect(() => resolveConcurrency({ tier: 'light', dbShards: value }, {}, 4)).toThrow(GateUsageError);
+    expect(() => resolveConcurrency({ tier: 'light' }, { GATE_DB_SHARDS: '12' }, 4)).toThrow(GateUsageError);
+    expect(() => resolveConcurrency({ tier: 'light' }, { GATE_PARALLEL: 'yes' }, 4)).toThrow(GateUsageError);
+    expect(() => resolveConcurrency({ tier: 'light', serial: true, dbShards: '2' }, {}, 4)).toThrow(GateUsageError);
+  });
+  it('AC-4 AC-8 leaves quick and full serial with one DB process and limits the options to light', () => {
+    for (const tier of ['quick', 'full'] as const)
+      expect(resolveConcurrency({ tier }, { GATE_DB_SHARDS: '4' }, 16)).toEqual({
+        parallel: false,
+        dbShards: 1,
+        notes: [],
+      });
+    expect(parseCli(['--tier', 'light', '--db-shards', '3'])).toMatchObject({ dbShardsOption: '3', serial: false });
+    expect(parseCli(['--tier', 'light', '--serial'])).toMatchObject({ serial: true });
+    for (const argv of [
+      ['--tier', 'full', '--serial'],
+      ['--tier', 'quick', '--db-shards', '2'],
+      ['--tier', 'light', '--serial', '--db-shards', '2'],
+      ['--tier', 'light', '--db-shards', '0'],
+    ])
+      expect(() => parseCli(argv)).toThrow(GateUsageError);
+  });
+});
+
+describe('light-tier-speed AC-5 fail-fast across lanes', () => {
+  const laned = parallel(['modules/sales/src/settings.ts']).steps.map((item) =>
+    item.id === 'db' ? { ...item, selection: null, command: { program: 'pnpm' as const, args: ['test:db'] } } : item,
+  );
+  it('AC-5 stops the steps still running in other lanes when a step fails and starts no further step', async () => {
+    const db = deferred();
+    const cancelled: string[] = [];
+    const ran: string[] = [];
+    const outcome = await runSteps(laned, {
+      cancel: (failedId) => {
+        cancelled.push(failedId);
+        db.resolve({ ok: false });
+      },
+      execute: async (item) => {
+        ran.push(item.id);
+        if (item.id === 'db') return db.promise;
+        return { ok: item.id !== 'typecheck' };
+      },
+    });
+    expect(cancelled).toEqual(['typecheck']);
+    expect(ran).toEqual(['format', 'db', 'docs', 'assurance', 'typecheck']);
+    expect(outcome.ok).toBe(false);
+    expect(find(outcome.steps, 'typecheck').result).toBe('failed');
+    expect(find(outcome.steps, 'db')).toMatchObject({ result: 'cancelled', reason: 'stopped after typecheck failed' });
+    expect(find(outcome.steps, 'lint')).toMatchObject({ result: 'not-run', reason: 'an earlier step failed' });
+  });
+  it('AC-5 keeps a step that passed although a cancellation raced with its end', async () => {
+    const db = deferred();
+    const outcome = await runSteps(laned, {
+      cancel: () => db.resolve({ ok: true }),
+      execute: async (item) => (item.id === 'db' ? db.promise : { ok: item.id !== 'format' }),
+    });
+    expect(find(outcome.steps, 'db').result).toBe('passed');
+    expect(find(outcome.steps, 'format').result).toBe('failed');
+  });
+  it('AC-5 --keep-going runs both lanes to the end without cancelling', async () => {
+    const cancelled: string[] = [];
+    const outcome = await runSteps(laned, {
+      keepGoing: true,
+      cancel: (failedId) => cancelled.push(failedId),
+      execute: async (item) => ({ ok: item.id !== 'db' }),
+    });
+    expect(cancelled).toEqual([]);
+    expect(outcome.ok).toBe(false);
+    expect(find(outcome.steps, 'deploy').result).toBe('passed');
+    expect(find(outcome.steps, 'db').result).toBe('failed');
+  });
+  it('AC-5 marks every running lane failed and the rest not-run after an interruption', async () => {
+    let interrupted = false;
+    const db = deferred();
+    const outcome = await runSteps(laned, {
+      isInterrupted: () => interrupted,
+      execute: async (item) => {
+        if (item.id === 'db') return db.promise;
+        if (item.id === 'docs') {
+          interrupted = true;
+          db.resolve({ ok: false });
+          return { ok: false, interrupted: true };
+        }
+        return { ok: true };
+      },
+    });
+    expect(outcome).toMatchObject({ ok: false, interrupted: true });
+    expect(find(outcome.steps, 'docs')).toMatchObject({ result: 'failed', reason: 'interrupted' });
+    expect(find(outcome.steps, 'db')).toMatchObject({ result: 'failed', reason: 'interrupted' });
+    expect(find(outcome.steps, 'assurance')).toMatchObject({ result: 'not-run', reason: 'interrupted' });
+  });
+});
+
+describe('light-tier-speed AC-6 report', () => {
+  const run = parallel(['modules/sales/src/settings.ts']);
+  const shard = (index: number, database: string, paths: string[], seconds: number, result: string) => ({
+    index,
+    database,
+    files: paths.length,
+    paths,
+    estimate: index === 1 ? 120 : 110,
+    seconds,
+    result,
+    reason: result === 'failed' ? 'exit 1' : null,
+    log: `.runtime/gate/r/db-${index}.log`,
+  });
+  const steps = run.steps.map((item) =>
+    item.id === 'db'
+      ? {
+          ...item,
+          result: 'failed',
+          seconds: 200,
+          offset: 0,
+          selected: { files: 3, total: 118, via: { graph: 3 } },
+          reason: 'shard 2 (daifuku_test_x_shard_2) exit 1',
+          shardResults: [
+            shard(1, 'daifuku_test_x', ['a.db.test.ts', 'b.db.test.ts'], 150.5, 'passed'),
+            shard(2, 'daifuku_test_x_shard_2', ['c.db.test.ts'], 200, 'failed'),
+          ],
+        }
+      : { ...item, result: 'passed', seconds: 10, offset: 1, log: `.runtime/gate/r/${item.id}.log` },
+  );
+  const input = {
+    tier: 'light' as const,
+    options: options({ tier: 'light' }),
+    base,
+    changes: run.changes,
+    cls: run.cls,
+    escalation: run.escalation,
+    startedAt: new Date(0),
+    finishedAt: new Date(210_000),
+  };
+  const report = buildReport({
+    ...input,
+    steps,
+    result: 'failed',
+    concurrency: { parallel: true, dbShards: 2, notes: ['2 DB shards by default on 4 CPUs'] },
+  });
+  it('AC-6 records lanes, offsets, logs, shards and the concurrency in the JSON report', () => {
+    expect(report.concurrency).toEqual({ parallel: true, dbShards: 2, notes: ['2 DB shards by default on 4 CPUs'] });
+    expect(report.steps.map((item) => item.id)).toEqual(run.steps.map((item) => item.id));
+    expect(report.steps.find((item) => item.id === 'unit')).toMatchObject({
+      lane: 'static',
+      offset: 1,
+      log: '.runtime/gate/r/unit.log',
+    });
+    const db = report.steps.find((item) => item.id === 'db');
+    expect(db).toMatchObject({
+      lane: 'db',
+      seconds: 200,
+      shards: [
+        { index: 1, files: 2 },
+        { index: 2, result: 'failed' },
+      ],
+    });
+    expect(db?.shards?.flatMap((entry) => entry.paths)).toEqual(['a.db.test.ts', 'b.db.test.ts', 'c.db.test.ts']);
+    expect(JSON.parse(JSON.stringify(report))).toEqual(report);
+  });
+  it('AC-6 prints a row per step, a row per shard and the lane totals', () => {
+    const table = formatTable(report);
+    for (const item of report.steps)
+      expect(table).toMatch(new RegExp(`^${item.id.replace(':', '\\:')}\\s+${item.result}`, 'm'));
+    expect(table).toMatch(/^ {2}db\[1\/2\]\s+passed\s+150\.5\s+2 files\s+daifuku_test_x, estimated 120s$/m);
+    expect(table).toMatch(/^ {2}db\[2\/2\]\s+failed\s+200\.0\s+1 files\s+daifuku_test_x_shard_2/m);
+    expect(table).toMatch(/^concurrency: lanes side by side \(static 90\.0s, db 200\.0s\); DB shards up to 2/m);
+    expect(formatTable(buildReport({ ...input, steps: [], result: 'passed' }))).not.toMatch(/concurrency:/);
+  });
+  it('AC-6 counts a cancelled step as stopped in the report', () => {
+    const cancelled = buildReport({
+      ...input,
+      steps: [{ ...find(run.steps, 'db'), result: 'cancelled', seconds: 12, reason: 'stopped after format failed' }],
+      result: 'failed',
+    });
+    expect(cancelled.skipped).toEqual([{ id: 'db', result: 'cancelled', reason: 'stopped after format failed' }]);
+    expect(formatTable(cancelled)).toMatch(/^db\s+cancelled\s+12\.0\s+.*stopped after format failed/m);
+  });
+  it('AC-6 picks vitest summary lines out of a step log', () => {
+    const escape = String.fromCharCode(27);
+    const log = [
+      ' ✓ kernel/test/foundation.db.test.ts (12 tests) 1200ms',
+      '',
+      ` Test Files  ${escape}[32m30 passed${escape}[39m (30)`,
+      '      Tests  180 passed (180)',
+      '   Start at  05:00:00',
+      '   Duration  120.00s',
+    ].join('\n');
+    expect(testSummary(log)).toBe('Test Files  30 passed (30) | Tests  180 passed (180)');
+    expect(testSummary('Checking formatting...\nAll matched files use Prettier code style!')).toBe('');
+  });
+});
+
+describe('light-tier-speed AC-5 AC-6 parallel light runs as processes', () => {
+  // Every step is a sandbox script; the kernel change escalates the DB step to `pnpm test:db` with one shard, so the
+  // run needs neither vitest nor a database.
+  const env = {
+    ...process.env,
+    GATE_BASE: 'HEAD',
+    GATE_DB_SHARDS: '1',
+    GATE_PARALLEL: '',
+    TEST_DATABASE_URL_OWNER: fullEnv.TEST_DATABASE_URL_OWNER,
+    TEST_DATABASE_URL: fullEnv.TEST_DATABASE_URL,
+  };
+  const ok = 'node -e "console.log(\'Test Files  1 passed (1)\')"';
+  const scripts = (overrides: Record<string, string> = {}) => ({
+    gate: 'pnpm format:check',
+    'format:check': ok,
+    'docs:check': ok,
+    typecheck: ok,
+    lint: ok,
+    test: ok,
+    'test:db': ok,
+    'test:deploy': ok,
+    ...overrides,
+  });
+  // A kernel change after the sandbox commit (escalates the DB step), an assurance script and two app packages for
+  // the API/Web typecheck steps.
+  const prepare = (dir: string) => {
+    mkdirSync(join(dir, 'kernel'), { recursive: true });
+    writeFileSync(join(dir, 'kernel/changed.ts'), 'export const y = 2;\n');
+    writeFileSync(join(dir, 'scripts/check-assurance.mjs'), '');
+  };
+  const appFiles = Object.fromEntries(
+    ['api', 'web'].map((app) => [
+      `${app}.json`,
+      JSON.stringify({ name: `@daifuku/${app}`, private: true, scripts: { typecheck: ok } }),
+    ]),
+  );
+  const workspace = (dir: string) => {
+    for (const app of ['api', 'web']) {
+      mkdirSync(join(dir, `apps/${app}`), { recursive: true });
+      copyFileSync(join(dir, `${app}.json`), join(dir, `apps/${app}/package.json`));
+    }
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n");
+  };
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const waitFor = async (condition: () => boolean, ms: number) => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (condition()) return true;
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    return condition();
+  };
+  const slow = (name: string) =>
+    [
+      "import { spawn } from 'node:child_process';",
+      "import { writeFileSync } from 'node:fs';",
+      "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+      `writeFileSync('${name}.json', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));`,
+      'setInterval(() => {}, 1000);',
+      '',
+    ].join('\n');
+  const pids = (dir: string, name: string) =>
+    JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8')) as { child: number; grandchild: number };
+  const cleanup = (dir: string, names: string[], extra: (number | undefined)[] = []) => {
+    const all = [...extra];
+    for (const name of names)
+      if (existsSync(join(dir, `${name}.json`))) {
+        const found = pids(dir, name);
+        all.push(found.child, found.grandchild);
+      }
+    for (const pid of all)
+      if (pid && alive(pid))
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+    rmSync(dir, { recursive: true, force: true });
+  };
+  const gate = (dir: string): [string, string[]] => [
+    process.execPath,
+    [join(dir, 'scripts/gate.mjs'), '--tier', 'light'],
+  ];
+  it('AC-6 writes each laned step to its own log and prints one line per finished step', () => {
+    const dir = sandbox(scripts(), appFiles);
+    try {
+      prepare(dir);
+      workspace(dir);
+      const [command, args] = gate(dir);
+      const result = spawnSync(command, args, { cwd: dir, encoding: 'utf8', env, timeout: 50_000 });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toMatch(/==> gate:light db \[db lane\]: pnpm test:db/);
+      expect(result.stdout).toMatch(/<== gate:light unit: passed/);
+      expect(result.stdout).toMatch(/Test Files {2}1 passed \(1\)/);
+      expect(result.stdout).toMatch(/^concurrency: lanes side by side/m);
+      const report = sandboxReport(dir, 'light');
+      expect(report?.concurrency).toMatchObject({ parallel: true, dbShards: 1 });
+      expect(report?.steps.length).toBe(10);
+      for (const item of report?.steps ?? []) {
+        expect(item.lane, item.id).toBe(item.id === 'db' ? 'db' : 'static');
+        expect(Boolean(item.log && existsSync(join(dir, item.log))), item.id).toBe(true);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+  it('AC-5 a failing static step stops the DB lane and its whole process group', async () => {
+    const failLater = [
+      "import { existsSync } from 'node:fs';",
+      "setInterval(() => { if (existsSync('db-pids.json')) process.exit(3); }, 50);",
+      '',
+    ].join('\n');
+    const dir = sandbox(scripts({ 'test:db': 'node slow-db.mjs', 'format:check': 'node fail-later.mjs' }), {
+      ...appFiles,
+      'slow-db.mjs': slow('db-pids'),
+      'fail-later.mjs': failLater,
+    });
+    try {
+      prepare(dir);
+      workspace(dir);
+      const [command, args] = gate(dir);
+      const result = spawnSync(command, args, { cwd: dir, encoding: 'utf8', env, timeout: 50_000 });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      const found = pids(dir, 'db-pids');
+      expect(await waitFor(() => !alive(found.child) && !alive(found.grandchild), 5_000)).toBe(true);
+      const report = sandboxReport(dir, 'light');
+      expect(report?.steps.find((item) => item.id === 'format')).toMatchObject({ result: 'failed' });
+      expect(report?.steps.find((item) => item.id === 'db')).toMatchObject({
+        result: 'cancelled',
+        reason: 'stopped after format failed',
+      });
+      expect(report?.steps.find((item) => item.id === 'docs')).toMatchObject({ result: 'not-run' });
+      expect(result.stdout).toMatch(/---- last lines of \.runtime\/gate\/\S+\/format\.log ----/);
+    } finally {
+      cleanup(dir, ['db-pids']);
+    }
+  }, 60_000);
+  it('AC-5 SIGTERM stops both lanes and every descendant and reports interrupted', async () => {
+    const dir = sandbox(scripts({ 'test:db': 'node slow-db.mjs', 'format:check': 'node slow-format.mjs' }), {
+      ...appFiles,
+      'slow-db.mjs': slow('db-pids'),
+      'slow-format.mjs': slow('format-pids'),
+    });
+    let child: ReturnType<typeof spawn> | undefined;
+    try {
+      prepare(dir);
+      workspace(dir);
+      const started = spawn(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'light'], {
+        cwd: dir,
+        stdio: 'ignore',
+        env,
+      });
+      child = started;
+      const exited = new Promise<number | null>((done) => started.once('exit', (code) => done(code)));
+      const ready = () => existsSync(join(dir, 'db-pids.json')) && existsSync(join(dir, 'format-pids.json'));
+      expect(await waitFor(ready, 30_000)).toBe(true);
+      const all = [pids(dir, 'db-pids'), pids(dir, 'format-pids')].flatMap((found) => [found.child, found.grandchild]);
+      started.kill('SIGTERM');
+      const timeout = new Promise<string>((done) => setTimeout(() => done('still running after 20 s'), 20_000));
+      expect(await Promise.race([exited, timeout])).toBe(143);
+      expect(await waitFor(() => all.every((pid) => !alive(pid)), 5_000)).toBe(true);
+      const report = sandboxReport(dir, 'light');
+      expect(report?.result).toBe('interrupted');
+      expect(report?.steps.find((item) => item.id === 'format')).toMatchObject({ result: 'failed' });
+      expect(report?.steps.find((item) => item.id === 'db')).toMatchObject({ result: 'failed' });
+      expect(report?.steps.find((item) => item.id === 'deploy')).toMatchObject({
+        result: 'not-run',
+        reason: 'interrupted',
+      });
+    } finally {
+      cleanup(dir, ['db-pids', 'format-pids'], [child?.pid]);
+    }
+  }, 60_000);
 });

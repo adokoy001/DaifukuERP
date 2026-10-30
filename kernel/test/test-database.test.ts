@@ -6,7 +6,10 @@ import type { Database } from '../src/db/client.ts';
 import { RESET_STATEMENTS, dropAll, enforcePolicies, policyStatements } from '../src/db/migrate.ts';
 import {
   DEFAULT_TEMPLATE_LIMIT,
+  SHARD_INFIX,
   isOwnTemplate,
+  isShardDatabase,
+  shardDatabaseName,
   parseTemplateComment,
   targetProblem,
   templateComment,
@@ -194,6 +197,36 @@ describe('db-test-startup AC-1 AC-2 keys, names and markers', () => {
       [own[1]?.name, own[2]?.name, own[3]?.name].sort(),
     );
     expect(templatesToDrop('daifuku_test_w1', rows, DEFAULT_TEMPLATE_LIMIT, own[0]?.name ?? '')).toEqual([]);
+  });
+});
+
+describe('light-tier-speed AC-7 shard databases of the light tier (docs/specs/light-tier-speed.md)', () => {
+  it('AC-7 recognises only <db>_shard_<n>, n >= 2, of the same test database as its shard databases', () => {
+    expect(SHARD_INFIX).toBe('_shard_');
+    expect(shardDatabaseName('daifuku_test_w9', 1)).toBe('daifuku_test_w9');
+    expect(shardDatabaseName('daifuku_test_w9', 3)).toBe('daifuku_test_w9_shard_3');
+    expect(isShardDatabase('daifuku_test_w9', 'daifuku_test_w9_shard_2')).toBe(true);
+    expect(isShardDatabase('daifuku_test_w9', 'daifuku_test_w9_shard_12')).toBe(true);
+    for (const name of [
+      'daifuku_test_w9',
+      'daifuku_test_w9_shard_1',
+      'daifuku_test_w9_shard_02',
+      'daifuku_test_w9_shard_',
+      'daifuku_test_w9_shard_2x',
+      'daifuku_test_w9_shard_2_tpl_0123456789abcdef',
+      'daifuku_test_w91_shard_2',
+      'daifuku_test_shard_2',
+      'daifuku_test_w9_tpl_0123456789abcdef',
+    ])
+      expect(isShardDatabase('daifuku_test_w9', name), name).toBe(false);
+  });
+  it('AC-7 gives a shard database room for its own schema templates', () => {
+    const shard = shardDatabaseName('daifuku_test_w9', 8);
+    expect(templateTarget(owner(shard), app(shard), {})).toMatchObject({ ok: true, database: shard });
+    expect(templateName(shard, KEY).startsWith(`${shard}_tpl_`)).toBe(true);
+    expect(isOwnTemplate('daifuku_test_w9', templateName(shard, KEY), templateComment(shard, KEY, new Date(0)))).toBe(
+      false,
+    );
   });
 });
 

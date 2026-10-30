@@ -2,7 +2,9 @@
 // Tiered regression runner (docs/specs/test-tiers.md): quick = checks limited to the change set, light = whole-repo
 // static checks + every unit test + related DB suites, full = every `pnpm gate` step + API/Web builds + browser suites.
 // Selection only chooses which existing checks run; it never skips, filters or weakens a test, and `pnpm gate` is
-// unchanged. Pure planning functions are exported for scripts/test/gate.test.ts; process work stays in the runner below.
+// unchanged. light runs its static steps and its DB step side by side and splits the selected DB suites over shard
+// databases (docs/specs/light-tier-speed.md); --serial restores one step at a time. Pure planning functions are
+// exported for scripts/test/gate.test.ts; process work stays in the runner below.
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
@@ -17,7 +19,8 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-import { basename, dirname, extname, join, posix, resolve } from 'node:path';
+import { availableParallelism } from 'node:os';
+import { basename, dirname, extname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -104,6 +107,17 @@ export const CHANGED_FILES_IN_TABLE = 20;
 // After an interruption (or when a step exits and leaves members of its process group running) the group gets
 // SIGTERM, then SIGKILL after this grace period.
 export const STOP_GRACE_MS = 10_000;
+// light: the DB step runs its selected suites in this many vitest processes, each on its own test database
+// (docs/specs/light-tier-speed.md). Shard 1 is the database of TEST_DATABASE_URL*; shard k >= 2 is <db>_shard_<k>.
+export const MAX_DB_SHARDS = 8;
+export const SHARD_INFIX = '_shard_';
+// A shard database must leave room for the schema templates of kernel/src/test-database.ts (<name>_tpl_<16 hex>,
+// 63 characters at most).
+export const SHARD_NAME_LIMIT = 63 - '_tpl_'.length - 16;
+// Seconds assumed for a DB suite that vitest's results cache has not timed yet.
+export const DEFAULT_SUITE_SECONDS = 6;
+// Lines of a failed step's log printed when its output went to a file (parallel light).
+export const FAILURE_TAIL_LINES = 80;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const SYNTHETIC_JWT_SECRET = 'synthetic-local-gate-only-not-for-deployment';
 const PLAYWRIGHT = ['--filter', '@daifuku/web', 'exec', 'playwright', 'test'];
@@ -599,11 +613,20 @@ function planQuick({ cls, base }) {
 }
 
 // `deferSchemaSuites` is off with GATE_DEFER_SCHEMA_SUITES=0 (docs/specs/db-test-startup.md, open question on the
-// deferral).
-function dbStep(cls, escalation, deferSchemaSuites = true) {
-  if (escalation.widenDb)
+// deferral). With more than one shard the escalated step lists every DB suite of the project (what `pnpm test:db`
+// runs) so that they can be split; with one shard it stays `pnpm test:db`.
+function dbStep(cls, escalation, deferSchemaSuites = true, shards = 1) {
+  const sharded = shards > 1 ? { shards } : {};
+  if (escalation.widenDb && shards <= 1)
     return step('db', pnpm('test:db'), { note: 'escalated: every DB suite (see escalation reasons)' });
+  if (escalation.widenDb)
+    return step('db', null, {
+      ...sharded,
+      selection: { project: 'db', all: true, sources: [], triggers: [], extra: [...ALWAYS_DB_SUITES] },
+      note: 'escalated: every DB suite (see escalation reasons)',
+    });
   return step('db', null, {
+    ...sharded,
     selection: {
       project: 'db',
       sources: cls.present,
@@ -627,7 +650,12 @@ function smokeSteps(options) {
   return steps;
 }
 
+// With `options.parallel` the static steps form one lane that runs in plan order and the DB step forms another; the two
+// lanes run side by side and the smoke steps wait for both (docs/specs/light-tier-speed.md). Without it (--serial, or
+// a caller that does not ask) every step runs alone in plan order, as before. `options.dbShards` (default 1) splits the
+// DB step over that many test databases.
 function planLight({ cls, base, escalation, options }) {
+  const shards = Math.max(1, options.dbShards ?? 1);
   const steps = [
     step('format', pnpm('format:check')),
     step('docs', pnpm('docs:check')),
@@ -636,11 +664,12 @@ function planLight({ cls, base, escalation, options }) {
     ...appTypechecks(cls, true),
     step('lint', pnpm('lint')),
     step('unit', pnpm('test')),
-    dbStep(cls, escalation, options.deferSchemaSuites !== false),
+    dbStep(cls, escalation, options.deferSchemaSuites !== false, shards),
     step('deploy', pnpm('test:deploy')),
   ];
-  if (options.withSmoke) steps.push(...smokeSteps(options));
-  return steps;
+  const laned = options.parallel ? steps.map((item) => ({ ...item, lane: item.id === 'db' ? 'db' : 'static' })) : steps;
+  if (options.withSmoke) laned.push(...smokeSteps(options));
+  return laned;
 }
 
 function planFull({ options, gateScripts }) {
@@ -674,6 +703,165 @@ export function planSteps({ tier, cls, base, escalation, options, gateScripts = 
   if (tier === 'quick') return planQuick({ cls, base });
   if (tier === 'light') return planLight({ cls, base, escalation, options });
   return planFull({ options, gateScripts });
+}
+
+// ---- light concurrency (docs/specs/light-tier-speed.md) ---------------------------------------------------------
+
+// DB shards when nothing is asked for: two on a machine with four or more CPUs (the static lane and two DB processes
+// share it), else one.
+export function defaultDbShards(cpus) {
+  return cpus >= 4 ? 2 : 1;
+}
+
+// Concurrency of one run: --serial / GATE_PARALLEL=0 run every step alone (the A1/A3 behaviour, one DB process);
+// --db-shards / GATE_DB_SHARDS choose the DB processes (1..MAX_DB_SHARDS). Only light runs concurrently; quick and full
+// keep their order and one DB process.
+export function resolveConcurrency({ tier, serial = false, dbShards }, env = {}, cpus = 1) {
+  const notes = [];
+  if (tier !== 'light') return { parallel: false, dbShards: 1, notes };
+  const parse = (value, origin) => {
+    if (!/^[1-9]\d*$/.test(String(value)) || Number(value) > MAX_DB_SHARDS)
+      throw new GateUsageError(`${origin} must be a whole number from 1 to ${MAX_DB_SHARDS}.`);
+    return Number(value);
+  };
+  if (env.GATE_PARALLEL !== undefined && !['', '0', '1'].includes(env.GATE_PARALLEL))
+    throw new GateUsageError('GATE_PARALLEL must be 0 or 1.');
+  const envSerial = env.GATE_PARALLEL === '0';
+  if (serial || envSerial) {
+    if (dbShards !== undefined) throw new GateUsageError('--db-shards cannot be combined with --serial.');
+    notes.push(serial ? '--serial: one step at a time, one DB process' : 'GATE_PARALLEL=0: one step at a time');
+    return { parallel: false, dbShards: 1, notes };
+  }
+  let shards = defaultDbShards(cpus);
+  if (dbShards !== undefined) shards = parse(dbShards, '--db-shards');
+  else if (env.GATE_DB_SHARDS) shards = parse(env.GATE_DB_SHARDS, 'GATE_DB_SHARDS');
+  else notes.push(`${shards} DB shard${shards === 1 ? '' : 's'} by default on ${cpus} CPUs`);
+  return { parallel: true, dbShards: shards, notes };
+}
+
+// Database of shard `index` (1-based): shard 1 is the configured test database itself.
+export function shardDatabaseName(database, index) {
+  return index === 1 ? database : `${database}${SHARD_INFIX}${index}`;
+}
+
+// The test databases of `count` shards, derived from TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL. A derived name never
+// passes TEST_DATABASE_NAME itself (two suffixes), so no other checkout can use a shard database as its own test
+// database. Without a daifuku_test[_suffix] / daifuku_ci_test base name (GATE_ALLOW_DB_URL=1) or with a name too long
+// for the shard's schema templates, the step keeps one shard and says why.
+export function shardDatabases(env, count) {
+  let owner;
+  let app;
+  try {
+    owner = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+    app = new URL(env.TEST_DATABASE_URL ?? '');
+  } catch {
+    return { shards: [], reason: 'TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL are not URLs' };
+  }
+  const database = decodeURIComponent(owner.pathname.slice(1));
+  const shards = [];
+  for (let index = 1; index <= count; index++) {
+    const name = shardDatabaseName(database, index);
+    shards.push({ index, database: name, ownerUrl: databaseUrl(owner, name), appUrl: databaseUrl(app, name) });
+  }
+  if (count <= 1) return { shards, reason: null };
+  if (!TEST_DATABASE_NAME.test(database))
+    return {
+      shards: shards.slice(0, 1),
+      reason: `shard databases are derived only from daifuku_test[_suffix] or daifuku_ci_test, not ${database}`,
+    };
+  const long = shards.find((shard) => shard.database.length > SHARD_NAME_LIMIT);
+  if (long)
+    return {
+      shards: shards.slice(0, 1),
+      reason: `${long.database} leaves no room for schema template names (${SHARD_NAME_LIMIT} characters at most)`,
+    };
+  return { shards, reason: null };
+}
+
+// Seconds per DB suite from vitest's own results cache (node_modules/.vite/vitest/*/results.json, keys
+// "<project>:<path>"), which every vitest run updates. Unreadable caches are ignored: balancing then assumes
+// DEFAULT_SUITE_SECONDS.
+export function parseSuiteDurations(texts, project = 'db') {
+  const durations = new Map();
+  for (const text of texts) {
+    let results;
+    try {
+      results = JSON.parse(text).results;
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(results)) continue;
+    for (const entry of results) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
+      const separator = entry[0].indexOf(':');
+      const duration = Number(entry[1]?.duration);
+      if (entry[0].slice(0, separator) !== project || !Number.isFinite(duration) || duration < 0) continue;
+      durations.set(entry[0].slice(separator + 1), duration / 1000);
+    }
+  }
+  return durations;
+}
+
+export function readSuiteDurations(root = ROOT, project = 'db') {
+  const directory = join(root, 'node_modules/.vite/vitest');
+  const texts = [];
+  try {
+    for (const entry of readdirSync(directory, { withFileTypes: true }))
+      if (entry.isDirectory() && existsSync(join(directory, entry.name, 'results.json')))
+        texts.push(readFileSync(join(directory, entry.name, 'results.json'), 'utf8'));
+  } catch {
+    /* no cache yet */
+  }
+  return parseSuiteDurations(texts, project);
+}
+
+// Splits the selected files over `count` shards, longest suite first onto the least loaded shard (ties: lower index,
+// then file name), so that every file runs exactly once. Unknown suites count as the median known duration (or
+// DEFAULT_SUITE_SECONDS). Empty shards are dropped.
+export function partitionShards(files, durations, count) {
+  const known = files.map((file) => durations.get(file)).filter((value) => value !== undefined);
+  const sorted = [...known].sort((a, b) => a - b);
+  const fallback = sorted.length ? sorted[Math.floor(sorted.length / 2)] : DEFAULT_SUITE_SECONDS;
+  const estimate = (file) => durations.get(file) ?? fallback;
+  const shards = Array.from({ length: Math.max(1, Math.min(count, files.length)) }, () => ({ files: [], seconds: 0 }));
+  const order = [...files].sort((a, b) => estimate(b) - estimate(a) || a.localeCompare(b));
+  for (const file of order) {
+    let target = shards[0];
+    for (const shard of shards) if (shard.seconds < target.seconds) target = shard;
+    target.files.push(file);
+    target.seconds += estimate(file);
+  }
+  return shards
+    .filter((shard) => shard.files.length)
+    .map((shard) => ({ files: shard.files.sort(), estimate: Math.round(shard.seconds * 10) / 10 }));
+}
+
+// The shard plan of a resolved DB step: which files run on which database. `available` is the list of shard databases
+// that can be used (shardDatabases, after creating the missing ones); fewer files than shards use fewer shards.
+export function planShards(item, durations, available) {
+  const files = item.selectedFiles ?? [];
+  const parts = partitionShards(files, durations, Math.min(item.shards ?? 1, available.length));
+  return parts.map((part, position) => ({ ...available[position], files: part.files, estimate: part.estimate }));
+}
+
+// Lanes of a plan: consecutive steps that carry a lane run side by side (one lane = one sequence in plan order); a
+// step without a lane runs alone after everything before it.
+export function planPhases(steps) {
+  const phases = [];
+  steps.forEach((item, index) => {
+    const last = phases.at(-1);
+    if (item.lane && last?.laned) last.entries.push({ index, item });
+    else phases.push({ laned: Boolean(item.lane), entries: [{ index, item }] });
+  });
+  return phases.map((phase) => {
+    const lanes = new Map();
+    for (const entry of phase.entries) {
+      const key = entry.item.lane ?? `#${entry.index}`;
+      if (!lanes.has(key)) lanes.set(key, []);
+      lanes.get(key).push(entry);
+    }
+    return [...lanes.values()];
+  });
 }
 
 // ---- preflight (prerequisites that would otherwise fail late) ------------------------------------------------------
@@ -823,13 +1011,22 @@ export function applySelection(item, selection, root = ROOT) {
 
 // ---- execution ---------------------------------------------------------------------------------------------------
 
-// Runs planned steps in order. Fail-fast by default: a missing prerequisite fails before anything runs, and after
-// the first failure the remaining steps are "not-run". --keep-going runs every runnable step and still fails. An
-// interruption (isInterrupted) stops the run under either mode: the step in progress fails, even when its own error
-// came from selection or fixture preparation, and the rest are "not-run".
+// Runs planned steps in plan order, lane by lane (planPhases): steps of one lane run one after another, lanes of one
+// phase run side by side, and results are reported in plan order. Fail-fast by default: a missing prerequisite fails
+// before anything runs, and after the first failure no further step starts ("not-run") and the steps still running in
+// other lanes are stopped through `cancel(failedId)` ("cancelled", unless they pass anyway). --keep-going runs every
+// runnable step and still fails. An interruption (isInterrupted) stops the run under either mode: the steps in
+// progress fail, even when their own error came from selection or fixture preparation, and the rest are "not-run".
 export async function runSteps(
   steps,
-  { keepGoing = false, execute, prepare = async (item) => item, now = () => 0, isInterrupted = () => false },
+  {
+    keepGoing = false,
+    execute,
+    prepare = async (item) => item,
+    now = () => 0,
+    isInterrupted = () => false,
+    cancel = () => undefined,
+  },
 ) {
   const firstBlocked = keepGoing ? null : steps.find((item) => item.blocked && !item.skip);
   if (firstBlocked)
@@ -842,30 +1039,38 @@ export async function runSteps(
         return { ...item, result: 'not-run', seconds: 0, reason: `missing prerequisite for ${firstBlocked.id}` };
       }),
     };
-  const results = [];
+  const results = new Array(steps.length);
+  const t0 = now();
+  const laned = steps.some((item) => item.lane);
   let failed = false;
   let stopped = false;
-  for (const planned of steps) {
+  // Fail-fast: the first failed step, and the steps that were running elsewhere when it failed.
+  let failure = null;
+  const running = new Set();
+  const cancelled = new Set();
+  const offset = (time) => Math.round((time - t0) * 10) / 10;
+  const runOne = async (index, planned) => {
     if (planned.skip) {
-      results.push({ ...planned, result: planned.skip.result, seconds: 0, reason: planned.skip.reason });
-      continue;
+      results[index] = { ...planned, result: planned.skip.result, seconds: 0, reason: planned.skip.reason };
+      return;
     }
     if (isInterrupted()) stopped = true;
     if (stopped || (failed && !keepGoing)) {
-      results.push({
+      results[index] = {
         ...planned,
         result: 'not-run',
         seconds: 0,
         reason: stopped ? 'interrupted' : 'an earlier step failed',
-      });
-      continue;
+      };
+      return;
     }
     if (planned.blocked) {
       failed = true;
-      results.push({ ...planned, result: 'failed', seconds: 0, reason: planned.blocked });
-      continue;
+      results[index] = { ...planned, result: 'failed', seconds: 0, reason: planned.blocked };
+      return;
     }
     const started = now();
+    running.add(planned.id);
     let item = planned;
     let outcome;
     try {
@@ -874,17 +1079,37 @@ export async function runSteps(
     } catch (error) {
       outcome = { ok: false, reason: error instanceof Error ? error.message : String(error) };
     }
+    running.delete(planned.id);
     if (outcome.interrupted || isInterrupted()) {
       const reason =
         outcome.reason && outcome.reason !== 'interrupted' ? `interrupted (${outcome.reason})` : 'interrupted';
-      outcome = { ok: false, interrupted: true, reason };
-    }
+      outcome = { ...outcome, ok: false, interrupted: true, reason, result: undefined };
+    } else if (!outcome.ok && cancelled.has(planned.id))
+      outcome = { ...outcome, result: 'cancelled', reason: `stopped after ${failure} failed` };
     const seconds = Math.round((now() - started) * 10) / 10;
     const result = outcome.result ?? (outcome.ok ? 'passed' : 'failed');
-    results.push({ ...item, result, seconds, reason: outcome.reason ?? item.skip?.reason ?? null });
+    results[index] = {
+      ...item,
+      ...(outcome.details ?? {}),
+      result,
+      seconds,
+      ...(laned ? { offset: offset(started) } : {}),
+      reason: outcome.reason ?? item.skip?.reason ?? null,
+    };
     if (!outcome.ok) failed = true;
     if (outcome.interrupted) stopped = true;
-  }
+    if (!outcome.ok && !outcome.interrupted && !keepGoing && failure === null && result !== 'cancelled') {
+      failure = planned.id;
+      for (const id of running) cancelled.add(id);
+      if (running.size) cancel(planned.id);
+    }
+  };
+  for (const lanes of planPhases(steps))
+    await Promise.all(
+      lanes.map(async (entries) => {
+        for (const { index, item } of entries) await runOne(index, item);
+      }),
+    );
   return { steps: results, ok: !failed && !stopped, interrupted: stopped };
 }
 
@@ -903,6 +1128,7 @@ export function buildReport({
   finishedAt,
   result,
   provisioned = null,
+  concurrency = null,
 }) {
   const partialReasons = [];
   if (options.withoutBrowser) partialReasons.push('--without-browser: browser and identity suites not run');
@@ -948,16 +1174,21 @@ export function buildReport({
     partial: partialReasons.length > 0,
     partialReasons,
     skipped: steps
-      .filter((item) => ['skipped', 'not-run', 'no-target'].includes(item.result))
+      .filter((item) => ['skipped', 'not-run', 'no-target', 'cancelled'].includes(item.result))
       .map((item) => ({ id: item.id, result: item.result, reason: item.reason ?? item.skip?.reason ?? null })),
+    concurrency: concurrency ?? { parallel: false, dbShards: 1, notes: [] },
     steps: steps.map((item) => ({
       id: item.id,
       result: item.result,
       seconds: item.seconds ?? 0,
+      lane: item.lane ?? null,
+      offset: item.offset ?? null,
       selected: item.selected ?? null,
       deferred: item.deferredFiles ?? [],
+      shards: item.shardResults ?? null,
       command: commandText(item.command),
       summary: commandSummary(item.command),
+      log: item.log ?? null,
       note: item.note ?? null,
       reason: item.reason ?? item.skip?.reason ?? item.blocked ?? null,
     })),
@@ -1003,13 +1234,26 @@ export function formatTable(report) {
         `  ... ${report.changed.count - shown.length} more (full list in the JSON report, up to ${MAX_REPORTED_FILES})`,
       );
   }
-  const rows = report.steps.map((item) => [
-    item.id,
-    item.result,
-    item.result === 'passed' || item.result === 'failed' ? item.seconds.toFixed(1) : '-',
-    selectionText(item.selected),
-    truncate(item.reason && item.result !== 'passed' ? item.reason : item.note || item.summary),
-  ]);
+  const timed = (result) => ['passed', 'failed', 'cancelled'].includes(result);
+  const rows = [];
+  for (const item of report.steps) {
+    rows.push([
+      item.id,
+      item.result,
+      timed(item.result) ? item.seconds.toFixed(1) : '-',
+      selectionText(item.selected),
+      truncate(item.reason && item.result !== 'passed' ? item.reason : item.note || item.summary),
+    ]);
+    // One row per DB shard: its database, files and time (the step's time is the slowest shard's).
+    for (const shard of item.shards ?? [])
+      rows.push([
+        `  ${item.id}[${shard.index}/${item.shards.length}]`,
+        shard.result,
+        timed(shard.result) ? shard.seconds.toFixed(1) : '-',
+        `${shard.files} files`,
+        truncate(`${shard.database}${shard.estimate !== undefined ? `, estimated ${shard.estimate}s` : ''}`),
+      ]);
+  }
   const header = ['step', 'result', 'seconds', 'selected', 'detail'];
   const widths = header.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column].length)));
   const render = (row) =>
@@ -1018,6 +1262,17 @@ export function formatTable(report) {
       .join('  ')
       .trimEnd();
   lines.push(render(header), ...rows.map(render));
+  const concurrency = report.concurrency;
+  if (concurrency?.parallel) {
+    const lanes = new Map();
+    for (const item of report.steps)
+      if (item.lane && timed(item.result)) lanes.set(item.lane, (lanes.get(item.lane) ?? 0) + item.seconds);
+    const spent = [...lanes].map(([lane, seconds]) => `${lane} ${seconds.toFixed(1)}s`).join(', ');
+    lines.push(
+      `concurrency: lanes side by side${spent ? ` (${spent})` : ''}; DB shards up to ${concurrency.dbShards}` +
+        (concurrency.notes.length ? `; ${concurrency.notes.join('; ')}` : ''),
+    );
+  } else if (concurrency?.notes.length) lines.push(`concurrency: one step at a time; ${concurrency.notes.join('; ')}`);
   if (report.escalation.required) {
     lines.push(`escalation: ${report.escalation.message}`);
     for (const reason of report.escalation.reasons) lines.push(`  - ${reason.path} [${reason.rule}] ${reason.why}`);
@@ -1055,7 +1310,12 @@ export const USAGE = `Usage: node scripts/gate.mjs --tier quick|light|full [opti
   --without-browser   full only: skip browser and identity suites; the report says partial: true
   --provision         full, or light --with-smoke: create NEW uniquely named empty loopback databases, prepare the
                       fixtures, start compiled API + Web on free ports, run Playwright, stop only what it started
-Reports: stdout table and .runtime/gate/<UTC>-<tier>.json. See docs/specs/test-tiers.md.`;
+  --serial            light only: one step at a time and one DB process, as before light-tier-speed (env
+                      GATE_PARALLEL=0)
+  --db-shards <n>     light only: split the selected DB suites over n test databases, <db> and <db>_shard_2.. (1-8;
+                      default 2 on 4+ CPUs, else 1; env GATE_DB_SHARDS)
+Reports: stdout table and .runtime/gate/<UTC>-<tier>.json; in parallel light each step's output goes to
+.runtime/gate/<UTC>-light/<step>.log. See docs/specs/test-tiers.md and docs/specs/light-tier-speed.md.`;
 
 export function parseCli(argv) {
   let parsed;
@@ -1072,6 +1332,8 @@ export function parseCli(argv) {
         'with-smoke': { type: 'boolean', default: false },
         'without-browser': { type: 'boolean', default: false },
         provision: { type: 'boolean', default: false },
+        serial: { type: 'boolean', default: false },
+        'db-shards': { type: 'string' },
         help: { type: 'boolean', short: 'h', default: false },
       },
     });
@@ -1093,6 +1355,11 @@ export function parseCli(argv) {
     throw new GateUsageError('--provision applies to full, or to light with --with-smoke.');
   if (positionals.length && !browserTier)
     throw new GateUsageError('Extra arguments are passed to Playwright and need full or light --with-smoke.');
+  if ((values.serial || values['db-shards'] !== undefined) && tier !== 'light')
+    throw new GateUsageError('--serial and --db-shards apply to the light tier only.');
+  if (values.serial && values['db-shards'] !== undefined)
+    throw new GateUsageError('--db-shards cannot be combined with --serial.');
+  if (values['db-shards'] !== undefined) resolveConcurrency({ tier, dbShards: values['db-shards'] });
   return {
     help: false,
     tier,
@@ -1103,6 +1370,8 @@ export function parseCli(argv) {
     withoutBrowser: values['without-browser'],
     provision: values.provision,
     playwrightArgs: positionals,
+    serial: values.serial,
+    ...(values['db-shards'] !== undefined ? { dbShardsOption: values['db-shards'] } : {}),
   };
 }
 
@@ -1258,15 +1527,24 @@ async function stopGroup(child, name = 'SIGTERM', graceMs = STOP_GRACE_MS) {
 // Runner state for one invocation: started process groups, provisioned databases and the browser environment.
 // Every child runs in its own process group (spawn detached), so stopping a group reaches the whole tree: pnpm does
 // not forward SIGTERM to the command it runs, and a vitest DB worker left running would keep resetting the database.
+// `running` maps each running step command (several at once in parallel light: a static step and the DB shards) to
+// the id of the step that started it.
 export function createSession(runDir) {
   const children = [];
+  const running = new Map();
+  const cancelled = new Set();
+  const stopLater = (child, name) => {
+    signalGroup(child, name);
+    globalThis.setTimeout(() => signalGroup(child, 'SIGKILL'), STOP_GRACE_MS).unref();
+  };
   return {
     runDir,
     children,
+    running,
+    cancelled,
     databases: [],
     ports: {},
     browserEnv: null,
-    current: null,
     interrupted: null,
     passed: [],
     planned: [],
@@ -1278,24 +1556,31 @@ export function createSession(runDir) {
       children.push(child);
       return child;
     },
-    // Forwards an interruption to the running step's process group; SIGKILL follows after the grace period.
+    // Forwards an interruption to every running step's process group; SIGKILL follows after the grace period.
     interruptCurrent(name) {
-      const child = this.current;
-      if (!child) return;
-      signalGroup(child, name);
-      globalThis.setTimeout(() => signalGroup(child, 'SIGKILL'), STOP_GRACE_MS).unref();
+      for (const child of running.keys()) stopLater(child, name);
+    },
+    // Fail-fast in parallel light: stops the commands of every step other than the one that failed.
+    cancelOthers(failedId) {
+      for (const [child, owner] of running)
+        if (owner !== failedId) {
+          cancelled.add(owner);
+          stopLater(child, 'SIGTERM');
+        }
     },
     // Stops only the process groups this run started.
     async stop() {
-      if (this.current) await stopGroup(this.current);
+      await Promise.all([...running.keys()].map((child) => stopGroup(child)));
       for (const child of [...children].reverse()) await stopGroup(child, 'SIGTERM', 5000);
     },
   };
 }
 
-function runCommand(command, env, session, { log } = {}) {
+function runCommand(command, env, session, { log, owner = null } = {}) {
   if (session.interrupted)
     return Promise.resolve({ ok: false, interrupted: true, reason: 'interrupted before the step started' });
+  if (owner !== null && session.cancelled.has(owner))
+    return Promise.resolve({ ok: false, cancelled: true, reason: 'cancelled before the command started' });
   return new Promise((done) => {
     const [target, args] = spawnTarget(command);
     let stdio = ['ignore', 'inherit', 'inherit'];
@@ -1307,18 +1592,21 @@ function runCommand(command, env, session, { log } = {}) {
     }
     const child = spawn(target, args, { cwd: ROOT, env, stdio, detached: true });
     if (fd !== null) closeSync(fd);
-    session.current = child;
+    session.running.set(child, owner);
     child.once('error', (error) => {
-      session.current = null;
+      session.running.delete(child);
       done({ ok: false, reason: error.message });
     });
     child.once('exit', (code, signal) => {
       // Members of the step's group that outlive its main process (a worker pnpm did not wait for) are stopped too.
       stopGroup(child).finally(() => {
-        session.current = null;
+        session.running.delete(child);
+        // A command that exits 0 passed even when a cancellation raced with its exit.
+        const cancelled = code !== 0 && owner !== null && session.cancelled.has(owner);
         done({
           ok: code === 0 && !session.interrupted,
           interrupted: Boolean(session.interrupted),
+          ...(cancelled ? { cancelled: true } : {}),
           reason: code === 0 ? null : `exit ${code ?? signal}`,
         });
       });
@@ -1407,6 +1695,14 @@ async function identityEnv(session) {
   return identityStepEnv(process.env, { owner: databaseUrl(targets.owner, name), app: databaseUrl(targets.app, name) });
 }
 
+// A step of a lane (parallel light) writes its output to <run directory>/<step>.log instead of the terminal, so that
+// the lanes' output does not interleave; the runner prints a line per step and the end of a failed step's log.
+function stepLog(session, item, suffix = '') {
+  return item.lane ? join(session.runDir, `${item.id.replace(/[^\w.-]+/g, '-')}${suffix}.log`) : undefined;
+}
+
+const relativeLog = (path) => relative(ROOT, path).split('\\').join('/');
+
 async function executeStep(item, session) {
   const guard = provisionGuard(item, session);
   if (guard) return { ok: false, reason: guard };
@@ -1414,23 +1710,173 @@ async function executeStep(item, session) {
   if (item.special === 'identity') return await runCommand(item.command, await identityEnv(session), session);
   if (item.special === 'browser' || item.special === 'smoke')
     return await runCommand(item.command, session.browserEnv ?? process.env, session);
-  return await runCommand(item.command, process.env, session);
+  if ((item.shards ?? 1) > 1 && item.selectedFiles?.length) return await runShardedDb(item, session);
+  const log = stepLog(session, item);
+  const result = await runCommand(item.command, process.env, session, { log, owner: item.id });
+  return log ? { ...result, details: { log: relativeLog(log) } } : result;
+}
+
+// Shard databases that do not exist yet are created empty (from template1, owned by the TEST_DATABASE_URL_OWNER role,
+// which needs CREATEDB as for the schema templates); the DB suites' freshDb() then builds or clones their schema. An
+// existing shard database owned by another role is refused. Only names derived by shardDatabases() are accepted.
+export const SHARD_DATABASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?_shard_[2-8]$/;
+
+async function ensureShardDatabases(shards, env) {
+  const owner = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+  const maintenance = databaseUrl(owner, env.TEST_DATABASE_MAINTENANCE_DB || 'postgres');
+  const postgres = createRequire(new URL('../apps/api/package.json', import.meta.url))('postgres');
+  const sql = postgres(maintenance, { max: 1, onnotice: () => undefined });
+  const created = [];
+  try {
+    for (const shard of shards) {
+      if (!SHARD_DATABASE_NAME.test(shard.database)) throw new Error(`refusing shard database name ${shard.database}`);
+      const [row] = await sql`select d.datdba = r.oid as owned from pg_database d, pg_roles r
+        where d.datname = ${shard.database} and r.rolname = current_user`;
+      if (!row) {
+        await sql.unsafe(`CREATE DATABASE "${shard.database}"`);
+        created.push(shard.database);
+      } else if (!row.owned) throw new Error(`${shard.database} exists but belongs to another role`);
+    }
+  } finally {
+    await sql.end();
+  }
+  return created;
+}
+
+// The available shard databases for a DB step: shardDatabases() and, for shards >= 2, ensureShardDatabases(). When a
+// shard database cannot be prepared the step runs on the configured test database alone and says why.
+async function availableShards(item, session) {
+  const notes = [];
+  const derived = shardDatabases(process.env, item.shards ?? 1);
+  if (derived.reason) notes.push(derived.reason);
+  let available = derived.shards;
+  const wanted = Math.min(available.length, item.selectedFiles?.length ?? 0);
+  if (wanted > 1 && !session.dryRun)
+    try {
+      const created = await ensureShardDatabases(available.slice(1, wanted), process.env);
+      if (created.length)
+        notes.push(`created empty shard database${created.length === 1 ? '' : 's'} ${created.join(', ')}`);
+    } catch (error) {
+      notes.push(
+        `could not prepare the shard databases (${error instanceof Error ? error.message : String(error)}); one DB process`,
+      );
+      available = available.slice(0, 1);
+    }
+  return { available, notes };
+}
+
+// Runs the DB step's shards side by side, one vitest process per shard database, each with fileParallelism false as
+// configured. Every shard runs to the end even when another fails (as one vitest process runs every file); the step
+// passes only when every shard passed, and its time is the slowest shard's.
+async function runShardedDb(item, session) {
+  const { available, notes } = await availableShards(item, session);
+  const plan = planShards(item, readSuiteDurations(ROOT), available);
+  const note = [item.note, ...notes].filter(Boolean).join('; ') || null;
+  if (plan.length <= 1) {
+    const log = stepLog(session, item);
+    const result = await runCommand(item.command, process.env, session, { log, owner: item.id });
+    return { ...result, details: { note, ...(log ? { log: relativeLog(log) } : {}) } };
+  }
+  let interrupted = false;
+  const shardResults = await Promise.all(
+    plan.map(async (shard) => {
+      const started = globalThis.performance.now();
+      const log = join(session.runDir, `${item.id}-${shard.index}.log`);
+      const env = { ...process.env, TEST_DATABASE_URL_OWNER: shard.ownerUrl, TEST_DATABASE_URL: shard.appUrl };
+      const command = pnpm('exec', 'vitest', 'run', '--project', 'db', ...shard.files.map((file) => join(ROOT, file)));
+      const outcome = await runCommand(command, env, session, { log, owner: item.id });
+      if (outcome.interrupted) interrupted = true;
+      return {
+        index: shard.index,
+        database: shard.database,
+        files: shard.files.length,
+        paths: shard.files,
+        estimate: shard.estimate,
+        seconds: Math.round((globalThis.performance.now() - started) / 100) / 10,
+        result: outcome.ok ? 'passed' : outcome.cancelled ? 'cancelled' : 'failed',
+        reason: outcome.ok ? null : (outcome.reason ?? null),
+        log: relativeLog(log),
+      };
+    }),
+  );
+  const failed = shardResults.filter((shard) => shard.result !== 'passed');
+  return {
+    ok: !failed.length,
+    interrupted,
+    cancelled: failed.length > 0 && failed.every((shard) => shard.result === 'cancelled'),
+    reason: failed.length
+      ? failed.map((shard) => `shard ${shard.index} (${shard.database}) ${shard.reason ?? shard.result}`).join('; ')
+      : null,
+    details: { note, shardResults },
+  };
 }
 
 // Selection runs as an interruptible child step (own process group) and reads its input from a file.
-async function selectTests(selection, session) {
+async function selectTests(selection, session, item = null) {
   const output = join(session.runDir, `select-${selection.project}.json`);
   const input = join(session.runDir, `select-${selection.project}.input.json`);
   mkdirSync(session.runDir, { recursive: true });
   writeFileSync(input, JSON.stringify({ ...selection, output }));
-  const result = await runCommand({ program: 'node', args: ['scripts/gate-select.mjs', input] }, process.env, session);
+  const result = await runCommand({ program: 'node', args: ['scripts/gate-select.mjs', input] }, process.env, session, {
+    owner: item?.id ?? null,
+    log: item ? stepLog(session, item, '-select') : undefined,
+  });
   if (result.interrupted) throw new Error('interrupted during test selection');
+  if (result.cancelled) throw new Error('test selection cancelled');
   if (!result.ok) throw new Error(`test selection for ${selection.project} failed (${result.reason})`);
   return JSON.parse(readFileSync(output, 'utf8'));
 }
 
 async function resolveSelection(item, session) {
-  return item.selection ? applySelection(item, await selectTests(item.selection, session)) : item;
+  return item.selection ? applySelection(item, await selectTests(item.selection, session, item)) : item;
+}
+
+// The last `count` lines of a step log (failure output in parallel light).
+function logTail(path, count = FAILURE_TAIL_LINES) {
+  try {
+    const lines = readFileSync(join(ROOT, path), 'utf8').trimEnd().split('\n');
+    return lines.slice(-count).join('\n');
+  } catch {
+    return '(log not readable)';
+  }
+}
+
+// vitest's closing "Test Files" and "Tests" lines of a step log, joined (empty for other tools). Colour codes, if a
+// tool forced them into the file, are removed.
+const COLOUR_CODE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+export function testSummary(text) {
+  return text
+    .split('\n')
+    .slice(-40)
+    .map((line) => line.replace(COLOUR_CODE, '').trim())
+    .filter((line) => /^(Test Files|Tests)\s/.test(line))
+    .join(' | ');
+}
+
+function summaryOf(path) {
+  try {
+    return testSummary(readFileSync(join(ROOT, path), 'utf8'));
+  } catch {
+    return '';
+  }
+}
+
+// Parallel light: one line per finished step (and shard), and the end of each failed log.
+function reportFinished(item, result) {
+  const details = result.details ?? {};
+  const status = result.ok ? 'passed' : result.cancelled ? 'cancelled' : 'failed';
+  const logs = details.shardResults ?? (details.log ? [{ log: details.log, result: status }] : []);
+  console.log(`<== gate:light ${item.id}: ${status}${result.reason ? ` (${result.reason})` : ''}`);
+  for (const entry of logs) {
+    const label = entry.index ? `${item.id}[${entry.index}/${logs.length}] ${entry.database}` : item.id;
+    const summary = summaryOf(entry.log);
+    console.log(
+      `    ${label}: ${entry.result}${entry.seconds !== undefined ? ` ${entry.seconds}s` : ''}, ${entry.log}`,
+    );
+    if (summary) console.log(`    ${summary}`);
+    if (entry.result === 'failed')
+      console.log(`---- last lines of ${entry.log} ----\n${logTail(entry.log)}\n---- end of ${entry.log} ----`);
+  }
 }
 
 async function main(argv) {
@@ -1445,6 +1891,18 @@ async function main(argv) {
   if (options.help) {
     console.log(USAGE);
     return 0;
+  }
+  let concurrency;
+  try {
+    concurrency = resolveConcurrency(
+      { tier: options.tier, serial: options.serial, dbShards: options.dbShardsOption },
+      process.env,
+      availableParallelism(),
+    );
+  } catch (error) {
+    if (!(error instanceof GateUsageError)) throw error;
+    console.error(`${error.message}\n\n${USAGE}`);
+    return 2;
   }
   const startedAt = new Date();
   const git = gitRunner(ROOT);
@@ -1462,13 +1920,18 @@ async function main(argv) {
   const escalation = detectEscalation(changes);
   const gateScripts = parseGateScript(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.gate);
   const runDir = join(ROOT, '.runtime/gate', reportFileName(options.tier, startedAt).replace(/\.json$/, ''));
-  const session = { ...createSession(runDir), provision: options.provision };
+  const session = { ...createSession(runDir), provision: options.provision, dryRun: options.dryRun };
   let steps = planSteps({
     tier: options.tier,
     cls,
     base,
     escalation,
-    options: { ...options, deferSchemaSuites: process.env.GATE_DEFER_SCHEMA_SUITES !== '0' },
+    options: {
+      ...options,
+      deferSchemaSuites: process.env.GATE_DEFER_SCHEMA_SUITES !== '0',
+      parallel: concurrency.parallel,
+      dbShards: concurrency.dbShards,
+    },
     gateScripts,
   });
   const needsReach = steps.some((item) => ['browser', 'smoke'].includes(item.special)) && !options.provision;
@@ -1493,6 +1956,7 @@ async function main(argv) {
       finishedAt: new Date(),
       result,
       provisioned: session.databases.length ? { databases: session.databases, ports: session.ports } : null,
+      concurrency,
     });
     const directory = join(ROOT, '.runtime/gate');
     mkdirSync(directory, { recursive: true });
@@ -1545,25 +2009,40 @@ async function main(argv) {
         console.log(
           `\n${item.id} defers ${item.deferredFiles.length} files to full:\n  ${item.deferredFiles.join('\n  ')}`,
         );
+      for (const item of planned.filter((entry) => entry.shardResults?.length))
+        for (const shard of item.shardResults)
+          console.log(
+            `\n${item.id} shard ${shard.index}/${item.shardResults.length} on ${shard.database} would run ` +
+              `${shard.files} files (estimated ${shard.estimate}s):\n  ${shard.paths.join('\n  ')}`,
+          );
       finish(planned, session.interrupted ? 'interrupted' : 'dry-run');
       return session.interrupted ?? 0;
     }
     session.planned = steps.map((item) => item.id);
+    const lane = (item) => (item.lane ? ` [${item.lane} lane]` : '');
     const outcome = await runSteps(steps, {
       keepGoing: options.keepGoing,
       now: () => globalThis.performance.now() / 1000,
       isInterrupted: () => Boolean(session.interrupted),
+      cancel: (failedId) => session.cancelOthers(failedId),
       prepare: async (item) => {
-        console.log(`\n==> gate:${options.tier} ${item.id}${item.command ? `: ${commandText(item.command)}` : ''}`);
+        console.log(
+          `\n==> gate:${options.tier} ${item.id}${lane(item)}${item.command ? `: ${commandText(item.command)}` : ''}`,
+        );
         const resolved = await resolveSelection(item, session);
         if (resolved !== item && resolved.command)
-          console.log(`    selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}`);
-        if (resolved.deferredFiles?.length) console.log(`    deferred to full: ${resolved.deferredFiles.join(', ')}`);
+          console.log(
+            `    ${item.id} selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}` +
+              ((resolved.shards ?? 1) > 1 ? ` (up to ${resolved.shards} shards)` : ''),
+          );
+        if (resolved.deferredFiles?.length)
+          console.log(`    ${item.id} deferred to full: ${resolved.deferredFiles.join(', ')}`);
         return resolved;
       },
       execute: async (item) => {
         const result = await executeStep(item, session);
         if (result.ok && !session.interrupted) session.passed.push(item.id);
+        if (item.lane) reportFinished(item, result);
         return session.interrupted ? { ...result, ok: false, interrupted: true } : result;
       },
     });
@@ -1588,6 +2067,27 @@ async function planDryRun(steps, session) {
     let resolved;
     try {
       resolved = item.blocked || item.skip ? item : await resolveSelection(item, session);
+      // The shard plan of the DB step, without creating any shard database.
+      if ((resolved.shards ?? 1) > 1 && resolved.selectedFiles?.length) {
+        const { available, notes } = await availableShards(resolved, session);
+        const plan = planShards(resolved, readSuiteDurations(ROOT), available);
+        const note = [resolved.note, ...notes].filter(Boolean).join('; ') || null;
+        resolved = {
+          ...resolved,
+          note,
+          shardResults: plan.map((shard) => ({
+            index: shard.index,
+            database: shard.database,
+            files: shard.files.length,
+            paths: shard.files,
+            estimate: shard.estimate,
+            seconds: 0,
+            result: 'planned',
+            reason: null,
+            log: null,
+          })),
+        };
+      }
     } catch (error) {
       if (!session.interrupted) throw error;
       planned.push({ ...item, result: 'not-run', reason: 'interrupted' });

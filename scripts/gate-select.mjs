@@ -4,9 +4,10 @@
 // getRelevantTestSpecifications, the same filter `vitest related` and `vitest --changed` use). gate.mjs adds files
 // that tests read or execute by name, always-run suites, suites prepared by a setupFile whose import graph changed, and
 // tests that run changed code in a child process. With `deferSchemaSuites` (light DB), graph-selected migration/setup
-// suites are deferred to full unless the change set is schema-relevant (docs/specs/db-test-startup.md). Input: JSON
-// { project, sources, triggers, extra, deferSchemaSuites, output } in the file named by the first argument, or on
-// stdin. Output: JSON written to `output`.
+// suites are deferred to full unless the change set is schema-relevant (docs/specs/db-test-startup.md). With `all`
+// (escalated light DB split over shards, docs/specs/light-tier-speed.md) every test file of the project is listed.
+// Input: JSON { project, sources, triggers, extra, deferSchemaSuites, all, output } in the file named by the first
+// argument, or on stdin. Output: JSON written to `output`.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { extname, join, posix, relative, resolve, sep } from 'node:path';
 import { Writable } from 'node:stream';
@@ -99,11 +100,8 @@ function packageSources(dir) {
   return files.sort();
 }
 
-try {
-  const all = (await vitest.globTestSpecifications()).map((spec) => toRelative(spec.moduleId)).sort();
-  const missing = [...extra].filter((file) => !all.includes(file));
-  if (missing.length)
-    throw new Error(`gate-select: always-run suites are not ${input.project} tests: ${missing.join(', ')}`);
+// The module-graph selection and the rules on top of it (docs/specs/test-tiers.md, db-test-startup.md).
+async function related(all) {
   // Every rule that selected a file: the first is reported as `via`; light defers a migration/setup suite only when the
   // module graph is its sole reason.
   const via = new Map();
@@ -180,10 +178,24 @@ try {
       } = deferSchemaSuites(selected, { changed, declaring, reached, schemaSuites, packages }));
     }
   }
-  writeFileSync(
-    input.output,
-    `${JSON.stringify({ project: input.project, total: all.length, selected, deferred, schemaReasons }, null, 2)}\n`,
-  );
+  return { selected, deferred, schemaReasons };
+}
+
+try {
+  const all = (await vitest.globTestSpecifications()).map((spec) => toRelative(spec.moduleId)).sort();
+  const missing = [...extra].filter((file) => !all.includes(file));
+  if (missing.length)
+    throw new Error(`gate-select: always-run suites are not ${input.project} tests: ${missing.join(', ')}`);
+  // Escalated light DB split over shards (docs/specs/light-tier-speed.md): every test file of the project, which is
+  // what `vitest run --project <project>` (`pnpm test:db`) runs.
+  const result = input.all
+    ? {
+        selected: all.map((file) => ({ file, via: extra.has(file) ? 'always' : 'all' })),
+        deferred: [],
+        schemaReasons: [],
+      }
+    : await related(all);
+  writeFileSync(input.output, `${JSON.stringify({ project: input.project, total: all.length, ...result }, null, 2)}\n`);
 } finally {
   await vitest.close();
 }

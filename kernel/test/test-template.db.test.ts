@@ -6,7 +6,10 @@
 // database; an owner without CREATEDB is refused; sessions left on the test database or a template make it rebuild in
 // place without dropping anything; a missing test database is restored or reported; unexpected failures name the way
 // out and leave no half-built template.
-// This suite creates and drops only the test database and databases named <test db>_tpl_* (docs/conventions/testing.md).
+// The light tier's shard databases (docs/specs/light-tier-speed.md AC-7): the cleanup lists only <test db>_shard_<n>
+// databases of the owner role and drops one at a time.
+// This suite creates and drops only the test database and databases named <test db>_tpl_* and <test db>_shard_97 or
+// <test db>_shard_x (docs/conventions/testing.md).
 import postgres from 'postgres';
 import { afterAll, describe, expect, it } from 'vitest';
 import { connect, type Database } from '../src/db/client.ts';
@@ -14,8 +17,10 @@ import { RESET_STATEMENTS } from '../src/db/migrate.ts';
 import { APP_URL, OWNER_URL, freshDb, schemaPreparation } from '../src/testing.ts';
 import {
   databaseUrl,
+  dropShardDatabase,
   isOwnTemplate,
   listTemplates,
+  ownShardDatabases,
   ownTemplates,
   parseTemplateComment,
   prepareFromTemplate,
@@ -279,6 +284,40 @@ describe('db-test-startup schema templates on the real server', () => {
       expect(listed).toContain(current.name);
       expect(listed).not.toContain(unmarked);
       expect(listed).not.toContain(foreign);
+    } finally {
+      await maintenance.close();
+    }
+  });
+
+  it('light-tier-speed AC-7 lists the shard databases of the owner role by name and drops only the one asked for', async () => {
+    if (!target.ok) throw new Error(target.reason);
+    // Index 97 is beyond the tier runner's shards (2..8): a light run sharing this test database never uses it.
+    const shard = `${target.database}_shard_97`;
+    const decoy = `${target.database}_shard_x`;
+    const maintenance = connect(target.maintenanceUrl, { max: 1 });
+    try {
+      for (const name of [shard, decoy]) {
+        await maintenance.sql.unsafe(`DROP DATABASE IF EXISTS "${name}"`);
+        await maintenance.sql.unsafe(`CREATE DATABASE "${name}"`);
+        decoys.push(name);
+      }
+      const listed = (await ownShardDatabases(target)).map((entry) => entry.name);
+      expect(listed).toContain(shard);
+      expect(listed).not.toContain(decoy);
+      expect(listed).not.toContain(target.database);
+      await expect(dropShardDatabase(target, decoy)).rejects.toThrow(/is not a shard database/);
+      await expect(dropShardDatabase(target, target.database)).rejects.toThrow(/is not a shard database/);
+      const session = postgres(databaseUrl(OWNER_URL, shard), { max: 1, onnotice: () => undefined });
+      try {
+        await session`select 1`;
+        expect(await dropShardDatabase(target, shard)).toBe(false);
+      } finally {
+        await session.end();
+      }
+      expect(await dropShardDatabase(target, shard)).toBe(true);
+      const [left] = await maintenance.sql<{ count: number }[]>`
+        select count(*)::int as count from pg_database where datname in (${shard}, ${decoy}, ${target.database})`;
+      expect(left?.count).toBe(2);
     } finally {
       await maintenance.close();
     }

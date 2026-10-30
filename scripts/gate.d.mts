@@ -69,6 +69,14 @@ export interface Options {
   playwrightArgs: string[];
   /** light: defer migration/setup DB suites without a schema-relevant change (false with GATE_DEFER_SCHEMA_SUITES=0). */
   deferSchemaSuites?: boolean;
+  /** CLI --serial (light only): one step at a time and one DB process. */
+  serial?: boolean;
+  /** CLI --db-shards as given (light only); resolveConcurrency validates it. */
+  dbShardsOption?: string;
+  /** light: run the static lane and the DB lane side by side (resolveConcurrency). Absent means one step at a time. */
+  parallel?: boolean;
+  /** light: split the DB step over this many test databases (resolveConcurrency). Absent means 1. */
+  dbShards?: number;
 }
 export interface Command {
   program: 'pnpm' | 'node';
@@ -81,6 +89,8 @@ export interface Selection {
   extra: string[];
   /** light DB only: defer graph-selected migration/setup suites without a schema-relevant change. */
   deferSchemaSuites?: boolean;
+  /** escalated light DB split over shards: every test file of the project. */
+  all?: boolean;
 }
 export interface Selected {
   files: number;
@@ -100,6 +110,37 @@ export interface Step {
   selected?: Selected | undefined;
   selectedFiles?: string[] | undefined;
   deferredFiles?: string[] | undefined;
+  /** parallel light: steps of one lane run in order; lanes of one phase run side by side. */
+  lane?: string | undefined;
+  /** light DB: the number of shard databases asked for. */
+  shards?: number | undefined;
+  /** parallel light: seconds from the first step's start to this step's start. */
+  offset?: number | undefined;
+  /** parallel light: the step's output file, relative to the repository root. */
+  log?: string | undefined;
+  shardResults?: ShardResult[] | undefined;
+}
+export interface ShardResult {
+  index: number;
+  database: string;
+  files: number;
+  paths: string[];
+  estimate: number;
+  seconds: number;
+  result: string;
+  reason: string | null;
+  log: string | null;
+}
+export interface ShardDatabase {
+  index: number;
+  database: string;
+  ownerUrl: string;
+  appUrl: string;
+}
+export interface Concurrency {
+  parallel: boolean;
+  dbShards: number;
+  notes: string[];
 }
 export interface StepResult extends Step {
   result: string;
@@ -122,10 +163,14 @@ export interface ReportStep {
   id: string;
   result: string;
   seconds: number;
+  lane: string | null;
+  offset: number | null;
   selected: Selected | null;
   deferred: string[];
+  shards: ShardResult[] | null;
   command: string;
   summary: string;
+  log: string | null;
   note: string | null;
   reason: string | null;
 }
@@ -146,6 +191,7 @@ export interface Report {
   partial: boolean;
   partialReasons: string[];
   skipped: { id: string; result: string; reason: string | null }[];
+  concurrency: Concurrency;
   steps: ReportStep[];
   options: {
     keepGoing: boolean;
@@ -175,6 +221,12 @@ export const IDENTITY_DATABASE_NAME: RegExp;
 export const TEST_DATABASE_NAME: RegExp;
 export const CHANGED_FILES_IN_TABLE: number;
 export const STOP_GRACE_MS: number;
+export const MAX_DB_SHARDS: number;
+export const SHARD_INFIX: string;
+export const SHARD_NAME_LIMIT: number;
+export const SHARD_DATABASE_NAME: RegExp;
+export const DEFAULT_SUITE_SECONDS: number;
+export const FAILURE_TAIL_LINES: number;
 export const BASE_FALLBACK_REFS: readonly string[];
 export const GUIDANCE: Readonly<Record<'testDb' | 'browser' | 'identity' | 'provision' | 'smoke', string>>;
 export const USAGE: string;
@@ -246,6 +298,31 @@ export function planSteps(input: {
   options: Options;
   gateScripts?: string[] | null;
 }): Step[];
+export function defaultDbShards(cpus: number): number;
+export function resolveConcurrency(
+  input: { tier: Tier; serial?: boolean; dbShards?: string | number | undefined },
+  env?: Record<string, string | undefined>,
+  cpus?: number,
+): Concurrency;
+export function shardDatabaseName(database: string, index: number): string;
+export function shardDatabases(
+  env: Record<string, string | undefined>,
+  count: number,
+): { shards: ShardDatabase[]; reason: string | null };
+export function parseSuiteDurations(texts: readonly string[], project?: string): Map<string, number>;
+export function readSuiteDurations(root?: string, project?: string): Map<string, number>;
+export function partitionShards(
+  files: readonly string[],
+  durations: ReadonlyMap<string, number>,
+  count: number,
+): { files: string[]; estimate: number }[];
+export function planShards(
+  step: Pick<Step, 'selectedFiles' | 'shards'>,
+  durations: ReadonlyMap<string, number>,
+  available: readonly ShardDatabase[],
+): (ShardDatabase & { files: string[]; estimate: number })[];
+export function planPhases<T extends Pick<Step, 'lane'>>(steps: readonly T[]): { index: number; item: T }[][][];
+export function testSummary(text: string): string;
 export function provisionTargets(env: Record<string, string | undefined>): { owner: URL; app: URL } | null;
 export function testDatabaseProblems(env: Record<string, string | undefined>): string[];
 export function testDatabaseLabel(env: Record<string, string | undefined>): string;
@@ -266,10 +343,20 @@ export function runSteps(
   steps: readonly Step[],
   input: {
     keepGoing?: boolean;
-    execute: (step: Step) => Promise<{ ok: boolean; result?: string; reason?: string | null; interrupted?: boolean }>;
+    execute: (step: Step) => Promise<{
+      ok: boolean;
+      result?: string;
+      reason?: string | null;
+      interrupted?: boolean;
+      cancelled?: boolean;
+      /** Fields merged into the step result (log, note, shardResults). */
+      details?: Partial<Step>;
+    }>;
     prepare?: (step: Step) => Promise<Step>;
     now?: () => number;
     isInterrupted?: () => boolean;
+    /** Fail-fast with lanes: stop the steps still running in other lanes (their result becomes "cancelled"). */
+    cancel?: (failedId: string) => void;
   },
 ): Promise<{ steps: StepResult[]; ok: boolean; interrupted: boolean }>;
 export function buildReport(input: {
@@ -285,6 +372,7 @@ export function buildReport(input: {
   finishedAt: Date;
   result: string;
   provisioned?: { databases: string[]; ports: Record<string, number> } | null;
+  concurrency?: Concurrency | null;
 }): Report;
 export function formatTable(report: Report): string;
 export function baseWarning(base: Base): string;
@@ -309,7 +397,11 @@ export interface Session {
   interrupted: number | null;
   passed: string[];
   planned: string[];
+  /** Running step commands and the id of the step that started each. */
+  running: Map<unknown, string | null>;
+  cancelled: Set<string>;
   interruptCurrent(signal: NodeJS.Signals): void;
+  cancelOthers(failedId: string): void;
   stop(): Promise<void>;
 }
 export function createSession(runDir: string): Session;
