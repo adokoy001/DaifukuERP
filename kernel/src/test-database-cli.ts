@@ -1,21 +1,16 @@
 // `pnpm test:db:templates [-- --drop]` (docs/specs/db-test-startup.md): lists the schema templates that the DB suites
 // keep for the configured test database (<db>_tpl_<16 hex>, marked by this harness), or drops them. It also lists the
-// shard databases of `pnpm gate:light` (<db>_shard_<n>, owned by the same role; docs/specs/light-tier-speed.md) with
-// their own templates, and `--drop` drops those templates and then the shard databases. Reads
-// TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL (from the environment or ./.env) and applies the same safety rules as the
-// suites; never touches the test database itself, another test database's templates or shards, or unmarked databases.
+// shard databases of `pnpm gate:light` (docs/specs/light-tier-speed.md AC-7) with their own templates, and `--drop`
+// drops those templates and then each shard database whose templates are all gone. Shard databases are recognised by
+// name and owner only (<db>_shard_2 .. <db>_shard_8 of a daifuku_test[_suffix] / daifuku_ci_test database, owned by the
+// connecting role): a test database cannot carry a marker comment. Shard templates are found by name and marker even
+// when their shard database is gone. Reads TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL (from the environment or
+// ./.env) and applies the same safety rules as the suites; never touches the test database itself, another test
+// database's templates or shards, or other unmarked databases.
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import {
-  databaseUrl,
-  dropShardDatabase,
-  ownShardDatabases,
-  ownTemplates,
-  templateTarget,
-  type OwnTemplate,
-  type ShardDatabase,
-} from './test-database.ts';
+import { ownShards, ownTemplates, templateTarget, type OwnTemplate } from './test-database.ts';
 
 const MB = 1024 * 1024;
 
@@ -29,7 +24,7 @@ async function main(argv: string[]): Promise<number> {
   if (values.help) {
     out('Usage: pnpm test:db:templates [-- --drop]');
     out('Lists (or drops) the schema templates of the test database named by TEST_DATABASE_URL_OWNER, and the');
-    out('pnpm gate:light shard databases <db>_shard_<n> with their templates.');
+    out('pnpm gate:light shard databases <db>_shard_2 .. <db>_shard_8 (by name and owner) with their templates.');
     return 0;
   }
   const envFile = resolve(process.cwd(), '.env');
@@ -62,26 +57,21 @@ async function main(argv: string[]): Promise<number> {
     }
   };
   report(target.database, await ownTemplates(target, { drop: values.drop }));
-  const shards = await ownShardDatabases(target);
-  for (const shard of shards) {
-    const shardTarget = templateTarget(
-      databaseUrl(ownerUrl, shard.name),
-      databaseUrl(appUrl, shard.name),
-      process.env,
-      { ignoreMode: true },
-    );
-    if (shardTarget.ok) report(shard.name, await ownTemplates(shardTarget, { drop: values.drop }));
-  }
-  const listed: ShardDatabase[] = [];
+  const shards = await ownShards(target, { drop: values.drop });
   for (const shard of shards)
-    listed.push(values.drop ? { ...shard, dropped: await dropShardDatabase(target, shard.name) } : shard);
-  for (const shard of listed)
-    out(`${shard.name}  ${(shard.bytes / MB).toFixed(1)} MB  shard database${state(shard.dropped)}`);
-  if (!values.drop) out(`${listed.length} shard database(s) of ${target.database}, ${megabytes(listed)} MB in all.`);
-  else {
-    const dropped = listed.filter((shard) => shard.dropped);
+    report(shard.exists ? shard.name : `${shard.name} (shard database no longer exists)`, shard.templates);
+  const existing = shards.filter((shard) => shard.exists);
+  for (const shard of existing)
     out(
-      `Dropped ${dropped.length} of ${listed.length} shard database(s) of ${target.database} (${megabytes(dropped)} MB).`,
+      `${shard.name}  ${(shard.bytes / MB).toFixed(1)} MB  shard database` +
+        (shard.dropped === undefined ? '' : shard.dropped ? '  dropped' : `  kept (${shard.kept ?? 'in use'})`),
+    );
+  if (!values.drop)
+    out(`${existing.length} shard database(s) of ${target.database}, ${megabytes(existing)} MB in all.`);
+  else {
+    const dropped = existing.filter((shard) => shard.dropped);
+    out(
+      `Dropped ${dropped.length} of ${existing.length} shard database(s) of ${target.database} (${megabytes(dropped)} MB).`,
     );
   }
   return 0;

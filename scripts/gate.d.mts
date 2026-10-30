@@ -118,6 +118,8 @@ export interface Step {
   offset?: number | undefined;
   /** parallel light: the step's output file, relative to the repository root. */
   log?: string | undefined;
+  /** parallel light: vitest FAIL lines of the failed step's log ("<file> > <suite> > <test>"). */
+  failed?: string[] | undefined;
   shardResults?: ShardResult[] | undefined;
 }
 export interface ShardResult {
@@ -129,6 +131,8 @@ export interface ShardResult {
   seconds: number;
   result: string;
   reason: string | null;
+  /** vitest FAIL lines of a failed shard's log (at most MAX_FAILED_TESTS). */
+  failed?: string[];
   log: string | null;
 }
 export interface ShardDatabase {
@@ -171,6 +175,7 @@ export interface ReportStep {
   command: string;
   summary: string;
   log: string | null;
+  failed: string[];
   note: string | null;
   reason: string | null;
 }
@@ -227,10 +232,16 @@ export const SHARD_NAME_LIMIT: number;
 export const SHARD_DATABASE_NAME: RegExp;
 export const DEFAULT_SUITE_SECONDS: number;
 export const FAILURE_TAIL_LINES: number;
+export const MAX_FAILED_TESTS: number;
+export const DURATIONS_FILE: string;
 export const BASE_FALLBACK_REFS: readonly string[];
 export const GUIDANCE: Readonly<Record<'testDb' | 'browser' | 'identity' | 'provision' | 'smoke', string>>;
 export const USAGE: string;
 export class GateUsageError extends Error {}
+export class StepError extends Error {
+  constructor(message: string, details?: Partial<Step>);
+  details: Partial<Step>;
+}
 
 export function globToRegExp(pattern: string): RegExp;
 export function matchesAny(path: string, patterns: readonly string[]): boolean;
@@ -310,7 +321,10 @@ export function shardDatabases(
   count: number,
 ): { shards: ShardDatabase[]; reason: string | null };
 export function parseSuiteDurations(texts: readonly string[], project?: string): Map<string, number>;
+export function parseGateDurations(text: string, project?: string): Map<string, number>;
 export function readSuiteDurations(root?: string, project?: string): Map<string, number>;
+export function captureSuiteDurations(files: readonly string[], root?: string, project?: string): Map<string, number>;
+export function recordSuiteDurations(measured: ReadonlyMap<string, number>, root?: string, project?: string): void;
 export function partitionShards(
   files: readonly string[],
   durations: ReadonlyMap<string, number>,
@@ -323,9 +337,11 @@ export function planShards(
 ): (ShardDatabase & { files: string[]; estimate: number })[];
 export function planPhases<T extends Pick<Step, 'lane'>>(steps: readonly T[]): { index: number; item: T }[][][];
 export function testSummary(text: string): string;
+export function failedTests(text: string): string[];
+export function failedFiles(tests: readonly string[]): string[];
 export function provisionTargets(env: Record<string, string | undefined>): { owner: URL; app: URL } | null;
 export function testDatabaseProblems(env: Record<string, string | undefined>): string[];
-export function testDatabaseLabel(env: Record<string, string | undefined>): string;
+export function testDatabaseLabel(env: Record<string, string | undefined>, shards?: number): string;
 export function smokePrerequisites(
   env: Record<string, string | undefined>,
   reach?: { api?: boolean; web?: boolean },
@@ -355,8 +371,11 @@ export function runSteps(
     prepare?: (step: Step) => Promise<Step>;
     now?: () => number;
     isInterrupted?: () => boolean;
-    /** Fail-fast with lanes: stop the steps still running in other lanes (their result becomes "cancelled"). */
-    cancel?: (failedId: string) => void;
+    /**
+     * Fail-fast with lanes: stop the steps still running in other lanes (`runningIds`; their result becomes
+     * "cancelled").
+     */
+    cancel?: (failedId: string, runningIds: string[]) => void;
   },
 ): Promise<{ steps: StepResult[]; ok: boolean; interrupted: boolean }>;
 export function buildReport(input: {
@@ -400,9 +419,35 @@ export interface Session {
   /** Running step commands and the id of the step that started each. */
   running: Map<unknown, string | null>;
   cancelled: Set<string>;
+  /** Notes for the report's concurrency (shard databases created, one DB process and why). */
+  notes: string[];
+  dryRun?: boolean;
   interruptCurrent(signal: NodeJS.Signals): void;
-  cancelOthers(failedId: string): void;
+  cancelOthers(failedId: string, ids?: readonly string[]): void;
   stop(): Promise<void>;
 }
 export function createSession(runDir: string): Session;
+export interface CommandOutcome {
+  ok: boolean;
+  reason?: string | null;
+  interrupted?: boolean;
+  cancelled?: boolean;
+}
+export type RunCommand = (
+  command: Command,
+  env: Env,
+  session: Session,
+  options: { log?: string | undefined; owner?: string | null },
+) => Promise<CommandOutcome>;
+export type EnsureShardDatabases = (shards: readonly ShardDatabase[], env: Env) => Promise<string[]>;
+export function availableShards(
+  step: Pick<Step, 'shards' | 'selectedFiles'>,
+  session: Pick<Session, 'dryRun'>,
+  deps?: { env?: Env; ensure?: EnsureShardDatabases },
+): Promise<{ available: ShardDatabase[]; notes: string[] }>;
+export function runShardedDb(
+  step: Step,
+  session: Session,
+  deps?: { env?: Env; run?: RunCommand; ensure?: EnsureShardDatabases; root?: string; print?: (line: string) => void },
+): Promise<CommandOutcome & { details: Partial<Step> }>;
 export function prepareBrowserFixture(session: Session): Promise<{ ok: boolean }>;

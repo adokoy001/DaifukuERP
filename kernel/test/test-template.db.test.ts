@@ -6,10 +6,12 @@
 // database; an owner without CREATEDB is refused; sessions left on the test database or a template make it rebuild in
 // place without dropping anything; a missing test database is restored or reported; unexpected failures name the way
 // out and leave no half-built template.
-// The light tier's shard databases (docs/specs/light-tier-speed.md AC-7): the cleanup lists only <test db>_shard_<n>
-// databases of the owner role and drops one at a time.
-// This suite creates and drops only the test database and databases named <test db>_tpl_* and <test db>_shard_97 or
-// <test db>_shard_x (docs/conventions/testing.md).
+// The light tier's shard databases (docs/specs/light-tier-speed.md AC-7): the cleanup lists only <db>_shard_2..8 of
+// the owner role and the marked templates of those shards (also when the shard database is gone), and drops a shard
+// database only after all its templates.
+// This suite creates and drops only the test database, databases named <test db>_tpl_*, and databases named
+// daifuku_test_g<8 hex>_shard_* under a throwaway base that no checkout uses (docs/conventions/testing.md).
+import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
 import { afterAll, describe, expect, it } from 'vitest';
 import { connect, type Database } from '../src/db/client.ts';
@@ -21,12 +23,14 @@ import {
   isOwnTemplate,
   listTemplates,
   ownShardDatabases,
+  ownShards,
   ownTemplates,
   parseTemplateComment,
   prepareFromTemplate,
   readTargetState,
   schemaBuild,
   targetProblem,
+  templateComment,
   templateKey,
   templateName,
   templateTarget,
@@ -289,35 +293,66 @@ describe('db-test-startup schema templates on the real server', () => {
     }
   });
 
-  it('light-tier-speed AC-7 lists the shard databases of the owner role by name and drops only the one asked for', async () => {
+  it('light-tier-speed AC-7 lists shard databases and their marked templates, and drops a shard database after its templates', async () => {
     if (!target.ok) throw new Error(target.reason);
-    // Index 97 is beyond the tier runner's shards (2..8): a light run sharing this test database never uses it.
-    const shard = `${target.database}_shard_97`;
-    const decoy = `${target.database}_shard_x`;
+    // A throwaway base that no checkout uses as its test database, so that no light run sharing this server is touched
+    // (the suite itself may run on a shard database, whose name is no shard base).
+    const base = `daifuku_test_g${randomBytes(4).toString('hex')}`;
+    const baseTarget = { ...target, database: base };
+    const shard = `${base}_shard_2`;
+    const gone = `${base}_shard_3`; // only a template of it is left
+    const outOfRange = `${base}_shard_97`;
+    const decoy = `${base}_shard_x`;
+    const busyKey = 'ab'.repeat(32);
+    const goneKey = 'cd'.repeat(32);
+    const busyTemplate = templateName(shard, busyKey);
+    const goneTemplate = templateName(gone, goneKey);
+    const unmarked = templateName(shard, 'ef'.repeat(32));
+    const created = [shard, outOfRange, decoy, busyTemplate, goneTemplate, unmarked];
     const maintenance = connect(target.maintenanceUrl, { max: 1 });
     try {
-      for (const name of [shard, decoy]) {
-        await maintenance.sql.unsafe(`DROP DATABASE IF EXISTS "${name}"`);
-        await maintenance.sql.unsafe(`CREATE DATABASE "${name}"`);
+      for (const name of created) {
         decoys.push(name);
+        await maintenance.sql.unsafe(`CREATE DATABASE "${name}"`);
       }
-      const listed = (await ownShardDatabases(target)).map((entry) => entry.name);
-      expect(listed).toContain(shard);
-      expect(listed).not.toContain(decoy);
-      expect(listed).not.toContain(target.database);
-      await expect(dropShardDatabase(target, decoy)).rejects.toThrow(/is not a shard database/);
-      await expect(dropShardDatabase(target, target.database)).rejects.toThrow(/is not a shard database/);
-      const session = postgres(databaseUrl(OWNER_URL, shard), { max: 1, onnotice: () => undefined });
+      const mark = (name: string, database: string, key: string) =>
+        maintenance.sql.unsafe(`COMMENT ON DATABASE "${name}" IS '${templateComment(database, key, new Date())}'`);
+      await mark(busyTemplate, shard, busyKey);
+      await mark(goneTemplate, gone, goneKey);
+      expect((await ownShardDatabases(baseTarget)).map((entry) => entry.name)).toEqual([shard]);
+      const listed = await ownShards(baseTarget);
+      expect(
+        listed.map((entry) => [entry.name, entry.exists, entry.templates.map((template) => template.name)]),
+      ).toEqual([
+        [shard, true, [busyTemplate]],
+        [gone, false, [goneTemplate]],
+      ]);
+      for (const name of [outOfRange, decoy, base, target.database])
+        await expect(dropShardDatabase(baseTarget, name)).rejects.toThrow(/is not a shard database/);
+      // A session on a template of shard 2 keeps that template and so shard 2 itself; the template of the shard that is
+      // gone is dropped.
+      const session = postgres(databaseUrl(OWNER_URL, busyTemplate), { max: 1, onnotice: () => undefined });
       try {
         await session`select 1`;
-        expect(await dropShardDatabase(target, shard)).toBe(false);
+        const kept = await ownShards(baseTarget, { drop: true });
+        expect(kept.find((entry) => entry.name === shard)).toMatchObject({
+          exists: true,
+          dropped: false,
+          kept: '1 template(s) in use',
+          templates: [{ name: busyTemplate, dropped: false }],
+        });
+        expect(kept.find((entry) => entry.name === gone)?.templates).toMatchObject([
+          { name: goneTemplate, dropped: true },
+        ]);
       } finally {
         await session.end();
       }
-      expect(await dropShardDatabase(target, shard)).toBe(true);
-      const [left] = await maintenance.sql<{ count: number }[]>`
-        select count(*)::int as count from pg_database where datname in (${shard}, ${decoy}, ${target.database})`;
-      expect(left?.count).toBe(2);
+      expect(await ownShards(baseTarget, { drop: true })).toMatchObject([
+        { name: shard, exists: true, dropped: true, templates: [{ name: busyTemplate, dropped: true }] },
+      ]);
+      const left = await maintenance.sql<{ name: string }[]>`
+        select datname as name from pg_database where starts_with(datname, ${base})`;
+      expect(left.map((row) => row.name).sort()).toEqual([decoy, outOfRange, unmarked].sort());
     } finally {
       await maintenance.close();
     }

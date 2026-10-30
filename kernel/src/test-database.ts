@@ -163,20 +163,25 @@ export const DISPOSABLE_NAME = /(?:^|_)test(?:_|$)/;
 
 /**
  * Shard databases of `pnpm gate:light` (docs/specs/light-tier-speed.md): the DB step splits its suites over the test
- * database and <db>_shard_2, <db>_shard_3, ... Mirrors SHARD_INFIX of scripts/gate.mjs (scripts/test/gate.test.ts
- * compares them). Each shard database keeps its own schema templates.
+ * database and <db>_shard_2 .. <db>_shard_8. The tier runner derives them only from a test database named
+ * daifuku_test[_suffix] or daifuku_ci_test. SHARD_INFIX, SHARD_BASE_NAME and MAX_SHARD_INDEX mirror SHARD_INFIX,
+ * TEST_DATABASE_NAME and MAX_DB_SHARDS of scripts/gate.mjs (scripts/test/gate.test.ts compares them). A shard database
+ * is recognised by its name and its owner only: it cannot carry a marker comment, because it is a test database itself
+ * and a test database with a database-level comment is refused (targetProblem). Each keeps its own schema templates.
  */
 export const SHARD_INFIX = '_shard_';
+export const SHARD_BASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?$/;
+export const MAX_SHARD_INDEX = 8;
 
 export function shardDatabaseName(database: string, index: number): string {
   return index === 1 ? database : `${database}${SHARD_INFIX}${index}`;
 }
 
-/** True for <database>_shard_<n> with n >= 2: a shard database the tier runner derives from `database`. */
+/** True for <database>_shard_<n>, n = 2..MAX_SHARD_INDEX, of a SHARD_BASE_NAME database: what the tier runner creates. */
 export function isShardDatabase(database: string, name: string): boolean {
-  if (!name.startsWith(`${database}${SHARD_INFIX}`)) return false;
+  if (!SHARD_BASE_NAME.test(database) || !name.startsWith(`${database}${SHARD_INFIX}`)) return false;
   const index = name.slice(database.length + SHARD_INFIX.length);
-  return /^[1-9][0-9]*$/.test(index) && Number(index) >= 2;
+  return /^[1-9][0-9]*$/.test(index) && Number(index) >= 2 && Number(index) <= MAX_SHARD_INDEX;
 }
 
 export interface TargetState {
@@ -513,14 +518,12 @@ export async function ownTemplates(
 export interface ShardDatabase {
   name: string;
   bytes: number;
-  /** Set by the cleanup: dropped, or kept because a session was connected to it. */
-  dropped?: boolean;
 }
 
 /**
- * The shard databases of the test database (<db>_shard_<n>, n >= 2) that the connecting owner role owns, by name
- * (`pnpm test:db:templates`). Databases of other roles and other names are never listed. Their schema templates are
- * separate: `ownTemplates` with the shard database as the target.
+ * The shard databases of the test database (<db>_shard_2 .. <db>_shard_8, isShardDatabase) that the connecting owner
+ * role owns, by name (`pnpm test:db:templates`). Databases of other roles and other names are never listed. Their
+ * schema templates are separate: `ownShardTemplates`.
  */
 export async function ownShardDatabases(target: Extract<TemplateTarget, { ok: true }>): Promise<ShardDatabase[]> {
   const maintenance = connect(target.maintenanceUrl, { max: 1 });
@@ -535,6 +538,103 @@ export async function ownShardDatabases(target: Extract<TemplateTarget, { ok: tr
   } finally {
     await maintenance.close();
   }
+}
+
+/** True for a schema template (marked, exact name) of one of the shard databases of `database`. */
+export function isShardTemplate(database: string, name: string, comment: string | null | undefined): boolean {
+  const marker = parseTemplateComment(comment);
+  return Boolean(marker && isShardDatabase(database, marker.database) && isOwnTemplate(marker.database, name, comment));
+}
+
+export interface ShardTemplate extends OwnTemplate {
+  /** The shard database the template belongs to (from its marker); that database may no longer exist. */
+  shard: string;
+}
+
+/**
+ * The schema templates of every shard database of the test database, found by name and marker on the server rather
+ * than through the shard databases, so that templates whose shard database is gone are still listed and dropped. With
+ * `drop`, each is dropped unless a session is connected to it.
+ */
+export async function ownShardTemplates(
+  target: Extract<TemplateTarget, { ok: true }>,
+  { drop = false }: { drop?: boolean } = {},
+): Promise<ShardTemplate[]> {
+  const maintenance = connect(target.maintenanceUrl, { max: 1 });
+  try {
+    const rows = await maintenance.sql<{ name: string; comment: string | null; bytes: string }[]>`
+      select d.datname as name, shobj_description(d.oid, 'pg_database') as comment,
+        pg_database_size(d.oid)::text as bytes
+      from pg_database d where starts_with(d.datname, ${`${target.database}${SHARD_INFIX}`}) order by 1`;
+    const own = rows
+      .filter((row) => isShardTemplate(target.database, row.name, row.comment))
+      .map((row) => {
+        const marker = parseTemplateComment(row.comment);
+        return {
+          name: row.name,
+          shard: marker?.database ?? '',
+          usedAt: marker?.usedAt ?? new Date(0),
+          bytes: Number(row.bytes),
+        };
+      })
+      .sort((a, b) => a.shard.localeCompare(b.shard) || a.usedAt.getTime() - b.usedAt.getTime());
+    if (!drop) return own;
+    const result: ShardTemplate[] = [];
+    for (const template of own) {
+      try {
+        await maintenance.sql.unsafe(`DROP DATABASE IF EXISTS ${quote(template.name)}`);
+        result.push({ ...template, dropped: true });
+      } catch (error) {
+        if (errorCode(error) !== OBJECT_IN_USE) throw error;
+        result.push({ ...template, dropped: false });
+      }
+    }
+    return result;
+  } finally {
+    await maintenance.close();
+  }
+}
+
+export interface ShardCleanup {
+  name: string;
+  /** False when only templates of this shard database are left. */
+  exists: boolean;
+  bytes: number;
+  templates: ShardTemplate[];
+  /** Set by the cleanup for an existing shard database: dropped, or kept (`kept` says why). */
+  dropped?: boolean;
+  kept?: string;
+}
+
+/**
+ * The shard databases of the test database and their templates (`pnpm test:db:templates`). With `drop`, the templates
+ * are dropped first, then each shard database whose templates are all gone (one kept in use keeps its database, so that
+ * its templates stay findable by the next cleanup) unless a session is connected to it.
+ */
+export async function ownShards(
+  target: Extract<TemplateTarget, { ok: true }>,
+  { drop = false }: { drop?: boolean } = {},
+): Promise<ShardCleanup[]> {
+  const databases = await ownShardDatabases(target);
+  const templates = await ownShardTemplates(target, { drop });
+  const index = (name: string) => Number(name.slice(target.database.length + SHARD_INFIX.length));
+  const names = [...new Set([...databases.map((entry) => entry.name), ...templates.map((entry) => entry.shard)])].sort(
+    (a, b) => index(a) - index(b),
+  );
+  const result: ShardCleanup[] = [];
+  for (const name of names) {
+    const database = databases.find((entry) => entry.name === name);
+    const own = templates.filter((entry) => entry.shard === name);
+    const entry: ShardCleanup = { name, exists: Boolean(database), bytes: database?.bytes ?? 0, templates: own };
+    if (drop && database) {
+      const inUse = own.filter((template) => template.dropped === false).length;
+      if (inUse) Object.assign(entry, { dropped: false, kept: `${inUse} template(s) in use` });
+      else if (await dropShardDatabase(target, name)) entry.dropped = true;
+      else Object.assign(entry, { dropped: false, kept: 'in use' });
+    }
+    result.push(entry);
+  }
+  return result;
 }
 
 /**

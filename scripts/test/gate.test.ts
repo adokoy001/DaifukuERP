@@ -12,12 +12,13 @@ import {
   existsSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   ALWAYS_DB_SUITES,
   CHANGED_FILES_IN_TABLE,
   DEFAULT_SUITE_SECONDS,
+  DURATIONS_FILE,
   ESCALATION_RULES,
   E2E_DATABASE_NAME,
   FILE_ARGUMENT_LIMIT,
@@ -25,6 +26,7 @@ import {
   GateUsageError,
   IDENTITY_DATABASE_NAME,
   MAX_DB_SHARDS,
+  MAX_FAILED_TESTS,
   MAX_REPORTED_FILES,
   ROOT,
   SHARD_DATABASE_NAME,
@@ -33,19 +35,24 @@ import {
   TEST_DATABASE_NAME,
   applyPreflight,
   applySelection,
+  availableShards,
   browserFixtureEnv,
   browserPrerequisites,
   buildReport,
   buildsSchemaFromMigrations,
+  captureSuiteDurations,
   classifyChanges,
   collectChangeSet,
   commandSummary,
   commandText,
+  createSession,
   databaseUrl,
   declaresSchema,
   defaultDbShards,
   deferSchemaSuites,
   detectEscalation,
+  failedFiles,
+  failedTests,
   formatTable,
   gitRunner,
   globToRegExp,
@@ -53,6 +60,7 @@ import {
   loadWorkspacePackages,
   packageOf,
   parseCli,
+  parseGateDurations,
   parseGateScript,
   parseSuiteDurations,
   parseWorkspacePatterns,
@@ -63,10 +71,13 @@ import {
   provisionDatabaseName,
   provisionGuard,
   provisionTargets,
+  readSuiteDurations,
+  recordSuiteDurations,
   referenceTriggers,
   reportFileName,
   resolveBase,
   resolveConcurrency,
+  runShardedDb,
   runSteps,
   scopeOf,
   scrubbedEnv,
@@ -79,11 +90,23 @@ import {
   smokePrerequisites,
   spawnsProcesses,
   subprocessEntries,
+  testDatabaseLabel,
   testDatabaseProblems,
   testSummary,
   workspaceClosure,
 } from '../gate.mjs';
-import type { Base, Change, Git, GitResult, Options, Report, Step, Tier } from '../gate.mjs';
+import type {
+  Base,
+  Change,
+  CommandOutcome,
+  Git,
+  GitResult,
+  Options,
+  Report,
+  RunCommand,
+  Step,
+  Tier,
+} from '../gate.mjs';
 
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
 const gateScripts = parseGateScript(manifest.scripts.gate ?? '');
@@ -2001,9 +2024,15 @@ describe('light-tier-speed AC-3 shard databases', () => {
       'daifuku_test_x_shard_3',
     ]);
   });
-  it('AC-3 AC-7 mirrors the shard infix of the kernel template cleanup', () => {
+  it('AC-3 AC-7 mirrors the shard names of the kernel template cleanup (infix, base name rule, highest index)', () => {
     const kernel = readFileSync(join(ROOT, 'kernel/src/test-database.ts'), 'utf8');
     expect(kernel).toContain(`export const SHARD_INFIX = '${SHARD_INFIX}';`);
+    // The cleanup recognises exactly the shard databases this runner creates.
+    expect(kernel).toContain(`export const SHARD_BASE_NAME = ${TEST_DATABASE_NAME.toString()};`);
+    expect(kernel).toContain(`export const MAX_SHARD_INDEX = ${MAX_DB_SHARDS};`);
+    expect(SHARD_DATABASE_NAME.source).toBe(
+      `${TEST_DATABASE_NAME.source.slice(0, -1)}${SHARD_INFIX}[2-${MAX_DB_SHARDS}]$`,
+    );
     expect(SHARD_NAME_LIMIT).toBe(63 - '_tpl_'.length - 16);
   });
 });
@@ -2192,7 +2221,8 @@ describe('light-tier-speed AC-6 report', () => {
       expect(table).toMatch(new RegExp(`^${item.id.replace(':', '\\:')}\\s+${item.result}`, 'm'));
     expect(table).toMatch(/^ {2}db\[1\/2\]\s+passed\s+150\.5\s+2 files\s+daifuku_test_x, estimated 120s$/m);
     expect(table).toMatch(/^ {2}db\[2\/2\]\s+failed\s+200\.0\s+1 files\s+daifuku_test_x_shard_2/m);
-    expect(table).toMatch(/^concurrency: lanes side by side \(static 90\.0s, db 200\.0s\); DB shards up to 2/m);
+    // The shards the DB step used, of the number asked for.
+    expect(table).toMatch(/^concurrency: lanes side by side \(static 90\.0s, db 200\.0s\); DB shards 2 of 2/m);
     expect(formatTable(buildReport({ ...input, steps: [], result: 'passed' }))).not.toMatch(/concurrency:/);
   });
   it('AC-6 counts a cancelled step as stopped in the report', () => {
@@ -2399,4 +2429,627 @@ describe('light-tier-speed AC-5 AC-6 parallel light runs as processes', () => {
       cleanup(dir, ['db-pids', 'format-pids'], [child?.pid]);
     }
   }, 60_000);
+});
+
+// ---- light-tier-speed: the sharded DB step as run by the runner (process work replaced by fakes) ----------------
+
+describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 the sharded DB step', () => {
+  const fileA = 'kernel/test/a.db.test.ts';
+  const fileB = 'modules/x/test/b.db.test.ts';
+  const fileC = 'modules/x/test/c.db.test.ts';
+  const files = [fileA, fileB, fileC];
+  const shardOwner = fullEnv.TEST_DATABASE_URL_OWNER.replace(/daifuku_test_x$/, 'daifuku_test_x_shard_2');
+  const shardApp = fullEnv.TEST_DATABASE_URL.replace(/daifuku_test_x$/, 'daifuku_test_x_shard_2');
+  const workdir = () => mkdtempSync(join(tmpdir(), 'daifuku-gate-shards-'));
+  // The escalated laned DB step after preflight and selection, as the runner hands it to runShardedDb.
+  const dbItem = (root: string) => {
+    const planned = find(parallel(['kernel/src/decimal.ts']).steps, 'db');
+    const checked = find(applyPreflight([planned], { env: fullEnv, options: options({ tier: 'light' }) }), 'db');
+    return applySelection(
+      checked,
+      { project: 'db', total: files.length, selected: files.map((file) => ({ file, via: 'all' })) },
+      root,
+    );
+  };
+  type Call = { args: string[]; env: Record<string, string | undefined>; log?: string | undefined; owner?: unknown };
+  // A fake runCommand: each call is recorded, then `behave` writes its log (and vitest's results cache) and decides.
+  const recorder = (
+    root: string,
+    behave: (call: Call, files: string[]) => Promise<CommandOutcome> | CommandOutcome = () => ({ ok: true }),
+  ) => {
+    const calls: Call[] = [];
+    const run: RunCommand = async (command, env, _session, { log, owner }) => {
+      const call = { args: command.args, env, log, owner };
+      calls.push(call);
+      const ran = command.args.filter((arg) => arg.startsWith(`${root}/`)).map((arg) => relative(root, arg));
+      return await behave(call, ran);
+    };
+    return { calls, run };
+  };
+  const writeLog = (log: string | undefined, lines: string[]) => {
+    if (!log) return;
+    mkdirSync(dirname(log), { recursive: true });
+    writeFileSync(log, `${lines.join('\n')}\n`);
+  };
+  // vitest writes its results cache at the end from the copy it read at the start: the last process wins.
+  const cacheFile = (root: string) => join(root, 'node_modules/.vite/vitest/x/results.json');
+  const writeCache = (root: string, entries: [string, number][]) => {
+    mkdirSync(dirname(cacheFile(root)), { recursive: true });
+    const results = entries.map(([file, ms]) => [`db:${file}`, { duration: ms, failed: false }]);
+    writeFileSync(cacheFile(root), JSON.stringify({ version: '5.0.0', results }));
+  };
+  const later = (ms: number) => new Promise((done) => setTimeout(done, ms));
+  const ensureCreating = (seen: string[][]) => async (shards: readonly { database: string }[]) => {
+    seen.push(shards.map((shard) => shard.database));
+    return shards.map((shard) => shard.database);
+  };
+  const scriptArgs = (args: string[], root: string) => args.filter((arg) => !arg.startsWith(`${root}/`));
+
+  it('AC-2 AC-6 runs one vitest process per shard database with its own URLs, files and log, and prints a start line per shard', async () => {
+    const root = workdir();
+    try {
+      const session = createSession(join(root, '.runtime/gate/run'));
+      const ensured: string[][] = [];
+      const lines: string[] = [];
+      const { calls, run } = recorder(root, async (call, ran) => {
+        // Shard 2 ends first; each writes the cache with only its own files, as the last writer would leave it.
+        await later(call.env.TEST_DATABASE_URL === shardApp ? 0 : 60);
+        writeLog(call.log, [` Test Files  ${ran.length} passed (${ran.length})`]);
+        writeCache(
+          root,
+          ran.map((file, index) => [file, 1000 * (index + 2)]),
+        );
+        return { ok: true, reason: null };
+      });
+      const item = dbItem(root);
+      const outcome = await runShardedDb(item, session, {
+        env: fullEnv,
+        run,
+        ensure: ensureCreating(ensured),
+        root,
+        print: (line) => lines.push(line),
+      });
+      expect(ensured).toEqual([['daifuku_test_x_shard_2']]);
+      expect(calls.map((call) => [call.env.TEST_DATABASE_URL_OWNER, call.env.TEST_DATABASE_URL, call.owner])).toEqual([
+        [fullEnv.TEST_DATABASE_URL_OWNER, fullEnv.TEST_DATABASE_URL, 'db'],
+        [shardOwner, shardApp, 'db'],
+      ]);
+      expect(calls.map((call) => relative(root, call.log ?? ''))).toEqual([
+        '.runtime/gate/run/db-1.log',
+        '.runtime/gate/run/db-2.log',
+      ]);
+      for (const call of calls)
+        expect(scriptArgs(call.args, root)).toEqual(['exec', 'vitest', 'run', '--project', 'db']);
+      const ran = calls.map((call) =>
+        call.args.filter((arg) => arg.startsWith(`${root}/`)).map((arg) => relative(root, arg)),
+      );
+      expect(ran).toEqual([[fileA, fileC], [fileB]]);
+      expect(outcome).toMatchObject({ ok: true, interrupted: false, cancelled: false, reason: null });
+      expect(
+        outcome.details.shardResults?.map((shard) => [shard.index, shard.database, shard.files, shard.result]),
+      ).toEqual([
+        [1, 'daifuku_test_x', 2, 'passed'],
+        [2, 'daifuku_test_x_shard_2', 1, 'passed'],
+      ]);
+      expect(outcome.details.shardResults?.map((shard) => shard.log)).toEqual([
+        '.runtime/gate/run/db-1.log',
+        '.runtime/gate/run/db-2.log',
+      ]);
+      // The shard note comes before the preflight note, which names every shard database.
+      expect(outcome.details.note).toBe(
+        'created empty shard database daifuku_test_x_shard_2; escalated: every DB suite (see escalation reasons); ' +
+          'recreates daifuku_test_x, daifuku_test_x_shard_2 on 127.0.0.1:5432',
+      );
+      expect(session.notes).toEqual(['created empty shard database daifuku_test_x_shard_2']);
+      expect(lines).toEqual([
+        '    db: created empty shard database daifuku_test_x_shard_2',
+        `    db[1/2] daifuku_test_x: 2 files, estimated ${2 * DEFAULT_SUITE_SECONDS}s, log .runtime/gate/run/db-1.log`,
+        `    db[2/2] daifuku_test_x_shard_2: 1 files, estimated ${DEFAULT_SUITE_SECONDS}s, log .runtime/gate/run/db-2.log`,
+      ]);
+      // vitest's cache kept only the last writer (shard 1); light kept what both shards measured.
+      expect([...parseSuiteDurationsOf(cacheFile(root)).keys()].sort()).toEqual([fileA, fileC]);
+      const kept = parseGateDurations(readFileSync(join(root, DURATIONS_FILE), 'utf8'));
+      expect(Object.fromEntries(kept)).toEqual({ [fileA]: 2, [fileC]: 3, [fileB]: 2 });
+      expect(readSuiteDurations(root).get(fileB)).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('AC-5 runs every shard to the end when another fails and names the failing suite and test', async () => {
+    const root = workdir();
+    try {
+      const session = createSession(join(root, '.runtime/gate/run'));
+      const finished: string[] = [];
+      const { run } = recorder(root, async (call, ran) => {
+        if (call.env.TEST_DATABASE_URL === shardApp) {
+          // A long diff pushes the FAIL line out of the printed tail.
+          writeLog(call.log, [
+            '',
+            ` FAIL  |db| ${ran[0]} > probe > fails on purpose with a long diff`,
+            ...Array.from({ length: 120 }, (_, index) => `+ diff line ${index}`),
+            ' Test Files  1 failed (1)',
+          ]);
+          finished.push('shard 2');
+          return { ok: false, reason: 'exit 1' };
+        }
+        await later(40);
+        writeLog(call.log, [' Test Files  2 passed (2)']);
+        finished.push('shard 1');
+        return { ok: true, reason: null };
+      });
+      const outcome = await runShardedDb(dbItem(root), session, {
+        env: fullEnv,
+        run,
+        ensure: async () => [],
+        root,
+        print: () => undefined,
+      });
+      expect(finished).toEqual(['shard 2', 'shard 1']);
+      expect(outcome).toMatchObject({ ok: false, cancelled: false });
+      expect(outcome.reason).toBe(`shard 2 (daifuku_test_x_shard_2) exit 1: ${fileB}`);
+      expect(outcome.details.shardResults?.map((shard) => [shard.result, shard.failed])).toEqual([
+        ['passed', []],
+        ['failed', [`${fileB} > probe > fails on purpose with a long diff`]],
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('AC-5 reports the step cancelled when every unpassed shard was cancelled, and starts none once it is cancelled', async () => {
+    const root = workdir();
+    try {
+      const session = createSession(join(root, '.runtime/gate/run'));
+      const { run } = recorder(root, (call) =>
+        call.env.TEST_DATABASE_URL === shardApp
+          ? { ok: false, cancelled: true, reason: 'exit SIGTERM' }
+          : { ok: true, reason: null },
+      );
+      const deps = { env: fullEnv, run, ensure: async () => [], root, print: () => undefined };
+      const outcome = await runShardedDb(dbItem(root), session, deps);
+      expect(outcome).toMatchObject({ ok: false, cancelled: true });
+      expect(outcome.details.shardResults?.map((shard) => shard.result)).toEqual(['passed', 'cancelled']);
+      // Cancelled between the selection and the shards (fail-fast elsewhere): no database is prepared, no shard runs.
+      session.cancelled.add('db');
+      const idle = recorder(root);
+      let ensured = false;
+      const stopped = await runShardedDb(dbItem(root), session, {
+        ...deps,
+        run: idle.run,
+        ensure: async () => {
+          ensured = true;
+          return [];
+        },
+      });
+      expect(stopped).toMatchObject({ ok: false, cancelled: true, reason: 'cancelled before the DB shards started' });
+      expect(idle.calls).toEqual([]);
+      expect(ensured).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('AC-3 runs one process on the test database and says why when the shard databases cannot be prepared', async () => {
+    const root = workdir();
+    try {
+      const session = createSession(join(root, '.runtime/gate/run'));
+      const lines: string[] = [];
+      const { calls, run } = recorder(root, (call) => {
+        writeLog(call.log, [' FAIL  |db| kernel/test/a.db.test.ts [ kernel/test/a.db.test.ts ]']);
+        return { ok: false, reason: 'exit 1' };
+      });
+      const item = dbItem(root);
+      const outcome = await runShardedDb(item, session, {
+        env: fullEnv,
+        run,
+        ensure: async () => {
+          throw new Error('permission denied to create database');
+        },
+        root,
+        print: (line) => lines.push(line),
+      });
+      const note = 'one DB process (could not prepare the shard databases: permission denied to create database)';
+      expect(lines).toEqual([`    db: ${note}`]);
+      expect(session.notes).toEqual([note]);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.args).toEqual(item.command?.args);
+      expect(calls[0]?.env.TEST_DATABASE_URL).toBe(fullEnv.TEST_DATABASE_URL);
+      expect(outcome).toMatchObject({ ok: false, reason: 'exit 1: kernel/test/a.db.test.ts' });
+      expect(outcome.details).toMatchObject({
+        log: '.runtime/gate/run/db.log',
+        failed: ['kernel/test/a.db.test.ts [ kernel/test/a.db.test.ts ]'],
+      });
+      expect(outcome.details.note?.startsWith(`${note}; escalated`)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('AC-3 AC-6 prepares no shard database in a dry-run, for a single file or for a name outside the rule', async () => {
+    let ensured = 0;
+    const ensure = async () => {
+      ensured++;
+      return [];
+    };
+    const two = { shards: 2, selectedFiles: files };
+    const dry = await availableShards(two, { dryRun: true }, { env: fullEnv, ensure });
+    expect(dry.available.map((shard) => shard.database)).toEqual(['daifuku_test_x', 'daifuku_test_x_shard_2']);
+    const single = await availableShards({ shards: 2, selectedFiles: [fileA] }, {}, { env: fullEnv, ensure });
+    expect(single.available).toHaveLength(2);
+    expect(ensured).toBe(0);
+    const other = await availableShards(
+      two,
+      {},
+      {
+        env: {
+          TEST_DATABASE_URL_OWNER: 'postgres://o:o@127.0.0.1:5432/scratch_test',
+          TEST_DATABASE_URL: 'postgres://daifuku_app:a@127.0.0.1:5432/scratch_test',
+        },
+        ensure,
+      },
+    );
+    expect(other.available.map((shard) => shard.database)).toEqual(['scratch_test']);
+    expect(other.notes).toEqual([
+      'one DB process (shard databases are derived only from daifuku_test[_suffix] or daifuku_ci_test, not scratch_test)',
+    ]);
+    expect(ensured).toBe(0);
+  });
+  it('AC-5 hands every running step to the cancellation, also one that has no command running at that moment', async () => {
+    const session = createSession(join(tmpdir(), 'daifuku-gate-never-created'));
+    session.cancelOthers('format', ['db', 'format']);
+    expect([...session.cancelled]).toEqual(['db']);
+    const laned = parallel(['modules/sales/src/settings.ts']).steps.map((item) =>
+      item.id === 'db' ? { ...item, selection: null, command: { program: 'pnpm' as const, args: ['test:db'] } } : item,
+    );
+    const db = deferred();
+    const handed: [string, string[]][] = [];
+    await runSteps(laned, {
+      cancel: (failedId, ids) => {
+        handed.push([failedId, ids]);
+        db.resolve({ ok: false });
+      },
+      execute: async (item) => (item.id === 'db' ? db.promise : { ok: item.id !== 'format' }),
+    });
+    expect(handed).toEqual([['format', ['db']]]);
+  });
+});
+
+function parseSuiteDurationsOf(file: string) {
+  return parseSuiteDurations([readFileSync(file, 'utf8')]);
+}
+
+describe('light-tier-speed AC-6 failure output and durations', () => {
+  it('AC-6 picks the failed suites and tests out of a vitest log and names their files', () => {
+    const escape = String.fromCharCode(27);
+    const log = [
+      ' ❯ |db| apps/api/test/identity-rate-limit.db.test.ts (5 tests | 1 failed) 75305ms',
+      '     × retains failed login limits 4132ms',
+      `⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯`,
+      '',
+      ` ${escape}[31mFAIL${escape}[39m  |db| apps/api/test/identity-rate-limit.db.test.ts > budgets > retains failed login limits`,
+      'AssertionError: expected 401 to be 429',
+      ' FAIL  |db| kernel/test/x.db.test.ts [ kernel/test/x.db.test.ts ]',
+      ' FAIL  |db| kernel/test/x.db.test.ts [ kernel/test/x.db.test.ts ]',
+      ' FAIL  |unit| scripts/test/y.test.ts > z',
+      'not a FAIL line',
+    ].join('\n');
+    const tests = failedTests(log);
+    expect(tests).toEqual([
+      'apps/api/test/identity-rate-limit.db.test.ts > budgets > retains failed login limits',
+      'kernel/test/x.db.test.ts [ kernel/test/x.db.test.ts ]',
+      'scripts/test/y.test.ts > z',
+    ]);
+    expect(failedFiles(tests)).toEqual([
+      'apps/api/test/identity-rate-limit.db.test.ts',
+      'kernel/test/x.db.test.ts',
+      'scripts/test/y.test.ts',
+    ]);
+    expect(failedTests('Test Files  3 passed (3)')).toEqual([]);
+    expect(MAX_FAILED_TESTS).toBeGreaterThan(0);
+  });
+  it('AC-2 prefers the durations light measured over the vitest results cache and merges new measurements', () => {
+    const root = mkdtempSync(join(tmpdir(), 'daifuku-gate-durations-'));
+    try {
+      expect(readSuiteDurations(root).size).toBe(0);
+      const cache = join(root, 'node_modules/.vite/vitest/h/results.json');
+      mkdirSync(dirname(cache), { recursive: true });
+      writeFileSync(
+        cache,
+        JSON.stringify({
+          results: [
+            ['db:a.db.test.ts', { duration: 9000 }],
+            ['db:b.db.test.ts', { duration: 4000 }],
+          ],
+        }),
+      );
+      recordSuiteDurations(new Map([['a.db.test.ts', 2.5]]), root);
+      expect(Object.fromEntries(readSuiteDurations(root))).toEqual({ 'a.db.test.ts': 2.5, 'b.db.test.ts': 4 });
+      expect(Object.fromEntries(captureSuiteDurations(['b.db.test.ts', 'c.db.test.ts'], root))).toEqual({
+        'b.db.test.ts': 4,
+      });
+      recordSuiteDurations(new Map([['c.db.test.ts', 1]]), root);
+      expect(Object.fromEntries(parseGateDurations(readFileSync(join(root, DURATIONS_FILE), 'utf8')))).toEqual({
+        'a.db.test.ts': 2.5,
+        'c.db.test.ts': 1,
+      });
+      expect(parseGateDurations('{not json').size).toBe(0);
+      expect(parseGateDurations(JSON.stringify({ db: { x: -1, y: 'slow', z: 3 } }))).toEqual(new Map([['z', 3]]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('AC-3 AC-6 names every shard database the step may recreate and reports the shards it used', () => {
+    expect(testDatabaseLabel(fullEnv)).toBe('daifuku_test_x on 127.0.0.1:5432');
+    expect(testDatabaseLabel(fullEnv, 3)).toBe(
+      'daifuku_test_x, daifuku_test_x_shard_2, daifuku_test_x_shard_3 on 127.0.0.1:5432',
+    );
+    const laned = applyPreflight(parallel(['modules/banking/src/matching.ts']).steps, {
+      env: fullEnv,
+      options: options({ tier: 'light' }),
+    });
+    expect(find(laned, 'db').note).toBe('recreates daifuku_test_x, daifuku_test_x_shard_2 on 127.0.0.1:5432');
+    expect(GUIDANCE.testDb).toMatch(/<db>_shard_2.*CREATEDB.*GATE_DB_SHARDS=1.*test:db:templates -- --drop/);
+    const run = parallel(['modules/sales/src/settings.ts']);
+    const report = buildReport({
+      tier: 'light',
+      options: options({ tier: 'light' }),
+      base,
+      changes: run.changes,
+      cls: run.cls,
+      escalation: run.escalation,
+      startedAt: new Date(0),
+      finishedAt: new Date(1000),
+      result: 'passed',
+      steps: run.steps.map((item) => ({ ...item, result: 'passed', seconds: 1 })),
+      concurrency: {
+        parallel: true,
+        dbShards: 2,
+        notes: ['one DB process (could not prepare the shard databases: x)'],
+      },
+    });
+    expect(formatTable(report)).toMatch(
+      /^concurrency: lanes side by side \(static 9\.0s, db 1\.0s\); DB shards 1 of 2; one DB process \(could not/m,
+    );
+    expect(report.steps.find((item) => item.id === 'db')?.failed).toEqual([]);
+  });
+});
+
+describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes', () => {
+  // A sandbox light run with GATE_DB_SHARDS=2 and a kernel change (every DB suite over two shards). Fakes stand in for
+  // gate-select (FAKE_FILES), vitest (records each run in vitest-runs.jsonl, fails files named *fail* at once, passes
+  // others after 1.5 s per file, writes vitest's results cache from the copy it read at its start) and the postgres
+  // driver of ensureShardDatabases (FAKE_PG: create or foreign). The URLs name a port nothing listens on, so even a real driver could not reach a server.
+  const owner = 'postgres://daifuku_owner:owner@127.0.0.1:1/daifuku_test_x';
+  const app = 'postgres://daifuku_app:app@127.0.0.1:1/daifuku_test_x';
+  const { NODE_PATH: _nodePath, ...inherited } = process.env;
+  const env = {
+    ...inherited,
+    GATE_BASE: 'HEAD',
+    GATE_DB_SHARDS: '2',
+    GATE_PARALLEL: '',
+    TEST_DATABASE_URL_OWNER: owner,
+    TEST_DATABASE_URL: app,
+  };
+  const ok = 'node -e "console.log(\'done\')"';
+  const scripts = {
+    gate: 'pnpm format:check',
+    'format:check': ok,
+    'docs:check': ok,
+    typecheck: ok,
+    lint: ok,
+    test: ok,
+    'test:db': ok,
+    'test:deploy': ok,
+  };
+  const select = [
+    "import { readFileSync, writeFileSync } from 'node:fs';",
+    "const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));",
+    "if (process.env.FAKE_SELECT === 'fail') { console.error('vitest could not list the db project'); process.exit(4); }",
+    "const files = process.env.FAKE_FILES.split(',');",
+    'writeFileSync(input.output, JSON.stringify({ project: input.project, total: files.length,',
+    "  selected: files.map((file) => ({ file, via: 'all' })) }));",
+    '',
+  ].join('\n');
+  const vitest = [
+    '#!/usr/bin/env node',
+    "const { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');",
+    "const { relative } = require('node:path');",
+    "const files = process.argv.slice(2).filter((arg) => arg.endsWith('.ts')).map((arg) => relative(process.cwd(), arg));",
+    "const cache = 'node_modules/.vite/vitest/x/results.json';",
+    "const start = existsSync(cache) ? JSON.parse(readFileSync(cache, 'utf8')).results : [];",
+    "const failing = files.filter((file) => file.includes('fail'));",
+    'setTimeout(() => {',
+    '  const results = new Map(start.map(([key, value]) => [key, value]));',
+    "  for (const file of files) results.set('db:' + file, { duration: 1500, failed: failing.includes(file) });",
+    "  mkdirSync('node_modules/.vite/vitest/x', { recursive: true });",
+    "  writeFileSync(cache, JSON.stringify({ version: '5.0.0', results: [...results] }));",
+    '  appendFileSync("vitest-runs.jsonl", JSON.stringify({ files, args: process.argv.slice(2),',
+    '    owner: process.env.TEST_DATABASE_URL_OWNER, app: process.env.TEST_DATABASE_URL }) + "\\n");',
+    '  if (failing.length) {',
+    "    console.log(' FAIL  |db| ' + failing[0] + ' > probe > fails on purpose');",
+    "    for (let index = 0; index < 120; index++) console.log('+ diff line ' + index);",
+    "    console.log(' Test Files  1 failed | ' + (files.length - 1) + ' passed (' + files.length + ')');",
+    '    process.exit(1);',
+    '  }',
+    "  console.log(' Test Files  ' + files.length + ' passed (' + files.length + ')');",
+    // A failing run ends at once and a passing one after 1.5 s per file, so that two shards end well apart.
+    '}, failing.length ? 0 : files.length * 1500);',
+    '',
+  ].join('\n');
+  const driver = [
+    "const { appendFileSync } = require('node:fs');",
+    'module.exports = function postgres(url) {',
+    "  const record = (entry) => appendFileSync('pg-calls.jsonl', JSON.stringify({ url, ...entry }) + '\\n');",
+    '  const sql = (strings, ...values) => {',
+    "    record({ query: strings.join('?'), values });",
+    "    return Promise.resolve(process.env.FAKE_PG === 'foreign' ? [{ owned: false }] : []);",
+    '  };',
+    '  sql.unsafe = (text) => {',
+    '    record({ unsafe: text });',
+    '    return Promise.resolve([]);',
+    '  };',
+    '  sql.end = () => Promise.resolve();',
+    '  return sql;',
+    '};',
+    '',
+  ].join('\n');
+  const appFiles = Object.fromEntries(
+    ['api', 'web'].map((name) => [
+      `${name}.json`,
+      JSON.stringify({ name: `@daifuku/${name}`, private: true, scripts: { typecheck: ok } }),
+    ]),
+  );
+  const prepare = () => {
+    const dir = sandbox(scripts, { ...appFiles, '.gitignore': '.runtime/\nnode_modules/\n' });
+    writeFileSync(join(dir, 'scripts/gate-select.mjs'), select);
+    writeFileSync(join(dir, 'scripts/check-assurance.mjs'), '');
+    mkdirSync(join(dir, 'kernel'), { recursive: true });
+    writeFileSync(join(dir, 'kernel/changed.ts'), 'export const y = 2;\n');
+    for (const name of ['api', 'web']) {
+      mkdirSync(join(dir, `apps/${name}`), { recursive: true });
+      copyFileSync(join(dir, `${name}.json`), join(dir, `apps/${name}/package.json`));
+    }
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n");
+    mkdirSync(join(dir, 'node_modules/.bin'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules/.bin/vitest'), vitest, { mode: 0o755 });
+    mkdirSync(join(dir, 'apps/api/node_modules/postgres'), { recursive: true });
+    writeFileSync(join(dir, 'apps/api/node_modules/postgres/package.json'), '{"name":"postgres","main":"index.js"}\n');
+    writeFileSync(join(dir, 'apps/api/node_modules/postgres/index.js'), driver);
+    return dir;
+  };
+  const lines = (dir: string, name: string) =>
+    existsSync(join(dir, name))
+      ? readFileSync(join(dir, name), 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+      : [];
+  const light = (dir: string, extra: Record<string, string>) =>
+    spawnSync(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'light'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...env, ...extra },
+      timeout: 60_000,
+    });
+
+  it('AC-2 AC-3 AC-6 creates the missing shard database and runs each shard on its own database and log', () => {
+    const dir = prepare();
+    try {
+      const result = light(dir, { FAKE_PG: 'create', FAKE_FILES: 'a.db.test.ts,b.db.test.ts,c.db.test.ts' });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(lines(dir, 'pg-calls.jsonl').map((call) => call.unsafe ?? call.values)).toEqual([
+        ['daifuku_test_x_shard_2'],
+        'CREATE DATABASE "daifuku_test_x_shard_2"',
+      ]);
+      const runs = lines(dir, 'vitest-runs.jsonl');
+      expect(runs.map((run) => [run.owner, run.app]).sort()).toEqual([
+        [owner, app],
+        [`${owner}_shard_2`, `${app}_shard_2`],
+      ]);
+      expect(runs.flatMap((run) => run.files as string[]).sort()).toEqual([
+        'a.db.test.ts',
+        'b.db.test.ts',
+        'c.db.test.ts',
+      ]);
+      expect(result.stdout).toMatch(/^ {4}db: created empty shard database daifuku_test_x_shard_2$/m);
+      expect(result.stdout).toMatch(
+        /^ {4}db\[1\/2\] daifuku_test_x: 2 files, estimated 12s, log \.runtime\/gate\/\S+\/db-1\.log$/m,
+      );
+      expect(result.stdout).toMatch(
+        /^ {4}db\[2\/2\] daifuku_test_x_shard_2: 1 files, estimated 6s, log \S+\/db-2\.log$/m,
+      );
+      expect(result.stdout).toMatch(/^<== gate:light db: passed \d+(\.\d)?s$/m);
+      expect(result.stdout).toMatch(
+        /^==> gate:light format \[static lane\]: pnpm format:check \(log \S+\/format\.log\)$/m,
+      );
+      expect(result.stdout).toMatch(
+        /^concurrency: lanes side by side .*; DB shards 2 of 2; created empty shard database/m,
+      );
+      const report = sandboxReport(dir, 'light');
+      const db = report?.steps.find((item) => item.id === 'db');
+      expect(db?.shards?.map((shard) => [shard.database, shard.result])).toEqual([
+        ['daifuku_test_x', 'passed'],
+        ['daifuku_test_x_shard_2', 'passed'],
+      ]);
+      for (const shard of db?.shards ?? []) expect(existsSync(join(dir, shard.log ?? '')), shard.log ?? '').toBe(true);
+      expect(report?.concurrency.notes).toContain('created empty shard database daifuku_test_x_shard_2');
+      expect(Object.keys(JSON.parse(readFileSync(join(dir, DURATIONS_FILE), 'utf8')).db).sort()).toEqual([
+        'a.db.test.ts',
+        'b.db.test.ts',
+        'c.db.test.ts',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
+  it('AC-3 refuses a shard database of another role and runs one process on the test database, saying so', () => {
+    const dir = prepare();
+    try {
+      const result = light(dir, { FAKE_PG: 'foreign', FAKE_FILES: 'a.db.test.ts,b.db.test.ts' });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(lines(dir, 'pg-calls.jsonl').some((call) => call.unsafe)).toBe(false);
+      const runs = lines(dir, 'vitest-runs.jsonl');
+      expect(runs.map((run) => [run.owner, run.app, run.files])).toEqual([
+        [owner, app, ['a.db.test.ts', 'b.db.test.ts']],
+      ]);
+      const reason = 'could not prepare the shard databases: daifuku_test_x_shard_2 exists but belongs to another role';
+      expect(result.stdout).toContain(`    db: one DB process (${reason})`);
+      expect(result.stdout).toMatch(/^concurrency: lanes side by side .*; DB shards 1 of 2; one DB process \(could/m);
+      const db = sandboxReport(dir, 'light')?.steps.find((item) => item.id === 'db');
+      expect(db?.note?.startsWith(`one DB process (${reason})`)).toBe(true);
+      expect(db?.log).toMatch(/\/db\.log$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
+  it('AC-5 AC-6 lets the other shard finish when one fails, names the failing test and keeps every duration', () => {
+    const dir = prepare();
+    try {
+      const result = light(dir, { FAKE_PG: 'create', FAKE_FILES: 'a.db.test.ts,fail.db.test.ts,z.db.test.ts' });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      // Both shards ran to their end: the passing one (3 s) after the failing one.
+      expect(lines(dir, 'vitest-runs.jsonl').map((run) => run.files)).toEqual([
+        ['fail.db.test.ts'],
+        ['a.db.test.ts', 'z.db.test.ts'],
+      ]);
+      const db = sandboxReport(dir, 'light')?.steps.find((item) => item.id === 'db');
+      expect(db).toMatchObject({
+        result: 'failed',
+        reason: 'shard 2 (daifuku_test_x_shard_2) exit 1: fail.db.test.ts',
+      });
+      expect(db?.shards?.map((shard) => [shard.result, shard.failed])).toEqual([
+        ['passed', []],
+        ['failed', ['fail.db.test.ts > probe > fails on purpose']],
+      ]);
+      // The FAIL line is printed although the 80-line tail no longer reaches it.
+      expect(result.stdout).toMatch(/^ {4}FAIL fail\.db\.test\.ts > probe > fails on purpose$/m);
+      const tail = result.stdout.slice(result.stdout.indexOf('---- last lines of'));
+      expect(tail).not.toMatch(/\|db\| fail\.db\.test\.ts/);
+      // Light kept what each shard wrote into vitest's cache when it ended, the failing shard included (whether the
+      // cache itself still holds it depends on when the other shard read it; the unit test above shows the loss).
+      expect(Object.keys(JSON.parse(readFileSync(join(dir, DURATIONS_FILE), 'utf8')).db).sort()).toEqual([
+        'a.db.test.ts',
+        'fail.db.test.ts',
+        'z.db.test.ts',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
+  it('AC-6 prints the end of the selection log and records it when the DB test selection fails', () => {
+    const dir = prepare();
+    try {
+      const result = light(dir, { FAKE_PG: 'create', FAKE_FILES: 'a.db.test.ts', FAKE_SELECT: 'fail' });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stdout).toMatch(
+        /^<== gate:light db: failed \d+(\.\d)?s \(test selection for db failed \(exit 4\)\)$/m,
+      );
+      expect(result.stdout).toMatch(
+        /---- last lines of \.runtime\/gate\/\S+\/db-select\.log ----\nvitest could not list the db project/,
+      );
+      const db = sandboxReport(dir, 'light')?.steps.find((item) => item.id === 'db');
+      expect(db).toMatchObject({ result: 'failed', reason: 'test selection for db failed (exit 4)' });
+      expect(db?.log).toMatch(/\/db-select\.log$/);
+      expect(lines(dir, 'vitest-runs.jsonl')).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
 });

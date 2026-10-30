@@ -13,7 +13,7 @@
 
 | 案 | 内容 | 判断 |
 | --- | --- | --- |
-| (1) 静的検査と DB 工程の並行 | 静的検査を 1 本の lane（計画順に 1 工程ずつ）、DB 工程を別の lane とし、2 つを同時に実行する。工程ごとの結果・時間・報告の形は従来どおり | **採用**。静的検査（実測 約 160〜190 秒）が DB 工程の裏に隠れる。静的検査は読取専用（`noEmit`、`.runtime/` 以外へ書かない）で DB に接続しない（下の「並行実行の安全性」） |
+| (1) 静的検査と DB 工程の並行 | 静的検査を 1 本の lane（計画順に 1 工程ずつ）、DB 工程を別の lane とし、2 つを同時に実行する。工程ごとの結果・時間・報告の形は従来どおり | **採用**。静的検査（実測 約 170〜205 秒、load 2.6〜4.0）が DB 工程の裏に隠れる。静的検査は読取専用（`noEmit`、`.runtime/` 以外へ書かない）で DB に接続しない（下の「並行実行の安全性」） |
 | (2) DB suite の shard 分割 | 選ばれた DB suite を 2 つ以上の試験 DB（`<db>` と `<db>_shard_<k>`）に分け、shard ごとに 1 つの vitest process（各 shard の中は `fileParallelism: false` のまま）で同時に実行する | **採用**。DB 工程は suite の直列実行で、1 suite の大半は import・PostgreSQL の待ち・試験本体であり、別 DB なら互いに干渉しない。shard DB は owner role が作る（CREATEDB は A3 のテンプレートと同じ前提） |
 | (3) 関連 suite の選択の絞り込み | import グラフで影響し得ないと証明できる suite だけ外す | **不採用**。現在の選択はすでに vitest のモジュールグラフ（＝import グラフで到達し得るもの）であり、さらに外すには「到達するが影響しない」ことの証明が要る。証明の無い絞り込みは被覆を下げるため、この spec では行わない（スコープ外） |
 
@@ -24,8 +24,8 @@
 | 変更 | 実装前（1 工程ずつ・1 DB process） | 実装後（lane 並行・2 shard） |
 | --- | --- | --- |
 | banking | 490 秒（load 2.6、04:59）、761 秒（load 11.9、05:47） | **328 秒**（load 9.4、05:41）、**304 秒**（load 8.9、07:01） |
-| sales | 674 秒（load 2.6、05:07）、813 秒（load 5.2、06:16） | **462 秒**（load 10.7、06:00）、**440 秒**（load 8.7、07:06）、3 shard 492 秒（load 13.1、shard 3 は初回） |
-| kernel（DB 全件） | 1,143 秒（cold、load 4.0、04:39）、1,260 秒（warm、load 5.3、06:40） | 1,045 秒（shard 2 が初回、load 11.8、05:23）、**655 秒**（warm、load 7.1、06:29。`identity-rate-limit` の時間依存の 1 件が失敗） |
+| sales | 674 秒（load 2.6、05:07）、813 秒（load 5.2、06:16） | **462 秒**（load 10.7、06:00）、**440 秒**（load 8.7、07:06。作業ツリーに文書の変更 5 件があり、DB suite は 64 件）、3 shard 492 秒（load 13.1、shard 3 は初回） |
+| kernel（DB 全件） | 1,143 秒（cold、load 4.0、04:39）、1,260 秒（warm、load 5.3、06:40） | 1,045 秒（shard 2 が初回、load 11.8、05:23）、**655 秒**（warm、load 7.1、06:29。`identity-rate-limit` の時間依存の 1 件が失敗）、**815 秒**（成功。最終状態 `8172758`、基準 `origin/main`@`431dda5` で変更 292 件、load 7〜9、07:18）、**639 秒**（成功。レビュー後の最終状態、load 平均 6.5（2.5〜10.0）、09:14） |
 
 工程ごと（同じ時間帯の組。秒）:
 
@@ -38,27 +38,27 @@
 | kernel 実装前 06:40（131 suite） | 201.6 | 1,058.7 | 1,260 |
 | kernel 実装後 06:29 | 316.2（lane） | 654.3（shard 653.8 / 634.1） | 655 |
 
-- 同じ時間帯の組で、light は banking 57%、sales 43%、kernel 48% 短くなった。静的工程は DB 工程と CPU を分け合うため単独より 1.1〜1.6 倍遅くなるが、DB 工程の裏に入る（banking では静的 lane が全体を決めた）。
+- 同じ時間帯の組で、light は banking 57%、sales 43%、kernel 48% 短くなった。ただし kernel の 655 秒の回は試験 1 件が失敗しており、成功した 815 秒の回（別の時間帯）で比べると 1,260 秒から 35% である（参考: レビュー後の 639 秒の回、load 平均 6.5 では 49%）。静的工程は DB 工程と CPU を分け合うため単独より 1.1〜1.6 倍遅くなるが、DB 工程の裏に入る（banking では静的 lane が全体を決めた）。
 - shard の見積り（vitest の results cache）による割り当ては、実測の差が 1〜23% だった（banking 282.8 / 230.0 秒、sales 447.8 / 453.6 秒、kernel 653.8 / 634.1 秒）。
 - 目標 6 分（360 秒）: banking は達成（304〜328 秒）。sales は load average 9〜11 の下で 440〜462 秒で**未達**。負荷の低い時間帯の実装後の sales は測れていない（未決事項）。
 
 ## 受入基準（EARS）
 
 - AC-1 WHEN `pnpm gate:light` が `--serial` も `GATE_PARALLEL=0` も無く実行された THE SYSTEM SHALL 静的工程（format・docs・assurance・typecheck・typecheck:api・typecheck:web・lint・unit・deploy）を計画順に 1 つずつ実行する static lane と、DB 工程だけの db lane を同時に実行し、`--with-smoke` の工程は両 lane の終了後に実行する。報告の工程は従来と同じ id・計画順の 1 行ずつで、各工程に `lane` と、最初の工程の開始からの `offset`（秒）を加える。
-- AC-2 WHEN DB 工程の shard 数 n が 2 以上で、選んだ試験ファイルがある THE SYSTEM SHALL ファイルを min(n, ファイル数) 個の shard に、vitest の results cache（`node_modules/.vite/vitest/*/results.json` の `db:<path>`）の所要時間の長い順に、その時点で合計の最も小さい shard へ割り当て（未計測のファイルは計測済みの中央値、無ければ 6 秒とみなす）、各ファイルを 1 回だけ実行する。shard 1 は `TEST_DATABASE_URL*` の DB、shard k は `<db>_shard_k` を使い、shard ごとに `vitest run --project db <files>` を 1 process で実行する（vitest の設定は不変、shard 内は `fileParallelism: false`）。DB 全件への昇格（test-tiers の AC-4）で n ≥ 2 のときは `gate-select.mjs` が db project の全試験ファイル（`vitest run --project db` が実行するもの）を列挙して分割する。n = 1 のときの DB 工程は従来と同一（`pnpm test:db` または選んだファイルの 1 process）。
-- AC-3 THE SYSTEM SHALL shard DB の名前を、`TEST_DATABASE_NAME`（`daifuku_test[_suffix]`・`daifuku_ci_test`）を満たす DB からだけ `<db>_shard_<k>`（k = 2..8）として作り、その名前自体は `TEST_DATABASE_NAME` を満たさない（別の checkout が自分の試験 DB として使えない）。名前はテンプレート名の余地（`SHARD_NAME_LIMIT` = 42 文字）に収まること。無い shard DB は owner role が保守用 DB（`postgres`、`TEST_DATABASE_MAINTENANCE_DB`）から `CREATE DATABASE`（template1 から、owner role の所有）で作り、ある場合は owner role の所有であることを確かめる。条件を満たさない・作れないときは失敗せず shard 1 だけで実行し、理由を工程の注記に書く。
+- AC-2 WHEN DB 工程の shard 数 n が 2 以上で、選んだ試験ファイルがある THE SYSTEM SHALL ファイルを min(n, ファイル数) 個の shard に、vitest の results cache（`node_modules/.vite/vitest/*/results.json` の `db:<path>`）の所要時間の長い順に、その時点で合計の最も小さい shard へ割り当て（未計測のファイルは計測済みの中央値、無ければ 6 秒とみなす。light が各 DB process の終了直後に results cache から読んで `.runtime/gate/durations.json` に残した値があれば、そちらを優先する）、各ファイルを 1 回だけ実行する。shard 1 は `TEST_DATABASE_URL*` の DB、shard k は `<db>_shard_k` を使い、shard ごとに `vitest run --project db <files>` を 1 process で実行する（vitest の設定は不変、shard 内は `fileParallelism: false`）。DB 全件への昇格（test-tiers の AC-4）で n ≥ 2 のときは `gate-select.mjs` が db project の全試験ファイル（`vitest run --project db` が実行するもの）を列挙して分割する。n = 1 のときの DB 工程は従来と同一（`pnpm test:db` または選んだファイルの 1 process）。
+- AC-3 THE SYSTEM SHALL shard DB の名前を、`TEST_DATABASE_NAME`（`daifuku_test[_suffix]`・`daifuku_ci_test`）を満たす DB からだけ `<db>_shard_<k>`（k = 2..8）として作り、その名前自体は `TEST_DATABASE_NAME` を満たさない（別の checkout が自分の試験 DB として使えない）。名前はテンプレート名の余地（`SHARD_NAME_LIMIT` = 42 文字）に収まること。無い shard DB は owner role が保守用 DB（`postgres`、`TEST_DATABASE_MAINTENANCE_DB`）から `CREATE DATABASE`（template1 から、owner role の所有）で作り、ある場合は owner role の所有であることを確かめる。条件を満たさない・作れないときは失敗せず shard 1 だけで実行し、理由をその時点の標準出力（`db: one DB process (<理由>)`）、工程の注記の先頭、報告の `concurrency.notes` に書く（shard DB を作ったときも同じ）。DB 工程の注記は、使いうるすべての shard DB を `recreates <db>, <db>_shard_2 on <host>` のように名指しする。
 - AC-4 THE SYSTEM SHALL light の並行度を次で決める: 既定は lane 並行、DB shard は CPU（`os.availableParallelism()`）が 4 以上なら 2、未満なら 1。`--db-shards <n>` か `GATE_DB_SHARDS`（1〜8、CLI が優先）で shard 数を、`--serial` か `GATE_PARALLEL=0` で従来の 1 工程ずつ・1 DB process に戻す。範囲外・不正な値、`--serial` と `--db-shards` の併用、light 以外での指定は使い方エラー（終了コード 2）とする。quick と full は常に従来どおり 1 工程ずつ・1 DB process である。
-- AC-5 WHEN lane 並行の実行中に工程が失敗した（`--keep-going` なし） THE SYSTEM SHALL 以後の工程を起動せず（`not-run`）、他の lane で実行中の工程の process group 全体を停止して `cancelled`（理由 `stopped after <id> failed`）と報告する（停止が終了と競合して終了コード 0 で終わった工程は `passed`）。DB 工程の shard どうしは、1 つの vitest process が全ファイルを実行するのと同じく、他の shard が失敗しても最後まで実行する。`--keep-going` では止めない。中断（SIGINT・SIGTERM・SIGHUP・親の変化）では、test-tiers AC-9 のとおり実行中のすべての工程・shard の process group に signal を送り（猶予 10 秒後に SIGKILL）、実行中の工程を失敗、残りを `not-run`、結果を `interrupted` とする。
-- AC-6 WHEN lane 並行で工程が実行された THE SYSTEM SHALL その工程の標準出力・標準エラーを `.runtime/gate/<UTC時刻>-light/<step>.log`（DB shard は `db-<k>.log`、選択は `db-select.log`）に書き、工程（と shard）ごとに開始と終了の行、vitest の `Test Files` / `Tests` の行、失敗した log の末尾 80 行を標準出力に出す。報告 JSON は工程ごとの `lane`・`offset`・`log`・`shards`（index・database・files・paths・estimate・seconds・result・reason・log）と全体の `concurrency`（parallel・dbShards・notes）を持ち、表は shard ごとの行と lane ごとの合計時間を出す。`--dry-run` は shard DB を作らずに shard ごとの DB とファイルと見積りを表示する。
-- AC-7 WHEN `pnpm test:db:templates` が実行された THE SYSTEM SHALL 試験 DB のテンプレートに加えて、owner role が所有する shard DB（`<db>_shard_<n>`、n ≥ 2）と各 shard DB のテンプレートを一覧し、`-- --drop` では各テンプレートを消した後に shard DB を消す（接続中のものは残す）。それ以外の DB には触れない。
+- AC-5 WHEN lane 並行の実行中に工程が失敗した（`--keep-going` なし） THE SYSTEM SHALL 以後の工程を起動せず（`not-run`）、他の lane で実行中のすべての工程（command の合間、例えば選択の後で shard の起動前の工程を含む。以後の command を起動しない）の process group 全体を停止して `cancelled`（理由 `stopped after <id> failed`）と報告する（停止が終了と競合して終了コード 0 で終わった工程は `passed`）。DB 工程の shard どうしは、1 つの vitest process が全ファイルを実行するのと同じく、他の shard が失敗しても最後まで実行する。`--keep-going` では止めない。中断（SIGINT・SIGTERM・SIGHUP・親の変化）では、test-tiers AC-9 のとおり実行中のすべての工程・shard の process group に signal を送り（猶予 10 秒後、その command がまだ終わっていなければ SIGKILL）、実行中の工程を失敗、残りを `not-run`、結果を `interrupted` とする。
+- AC-6 WHEN lane 並行で工程が実行された THE SYSTEM SHALL その工程の標準出力・標準エラーを `.runtime/gate/<UTC時刻>-light/<step>.log`（DB shard は `db-<k>.log`、選択は `db-select.log`）に書き、工程（と shard）ごとに開始と終了の行（工程の開始行に log の場所、shard の開始行に DB・ファイル数・見積り・log、終了行に秒）、vitest の `Test Files` / `Tests` の行、失敗した log の vitest の `FAIL` 行（失敗した suite と試験。最大 20 件）と末尾 80 行を標準出力に出し、失敗した試験ファイルを工程の理由に加える。試験の選択が失敗したときも `db-select.log` の末尾を出し、報告の `log` に記録する。報告 JSON は工程ごとの `lane`・`offset`・`log`・`failed`・`shards`（index・database・files・paths・estimate・seconds・result・reason・failed・log）と全体の `concurrency`（parallel・dbShards・notes）を持ち、表は shard ごとの行、lane ごとの合計時間、DB 工程が使った shard 数（`DB shards <使った数> of <指定数>`）を出す。`--dry-run` は shard DB を作らずに shard ごとの DB とファイルと見積りを表示する。
+- AC-7 WHEN `pnpm test:db:templates` が実行された THE SYSTEM SHALL 試験 DB のテンプレートに加えて、owner role が所有する shard DB（`<db>_shard_<n>`、n = 2〜8、`<db>` が `daifuku_test[_suffix]`・`daifuku_ci_test` のとき。gate が作る名前だけ）と、shard DB のテンプレート（名前と印で見つける。shard DB が無くなったものも）を一覧し、`-- --drop` では各テンプレートを消した後、テンプレートがすべて消えた shard DB を消す（接続中のもの、使用中のテンプレートが残るものは残す）。shard DB は試験 DB として使われ、DB 単位のコメントを持つ試験 DB はテンプレートを使えないため、印を付けず名前と所有者で判別する。それ以外の DB には触れない。
 - AC-8 THE SYSTEM SHALL 試験の被覆を変えない: quick・full・`pnpm gate`・`pnpm test:db`・vitest の設定は不変、light が選ぶ DB suite の集合（関連・常時実行・後回しの規則）は不変で、shard のファイルの和集合はその集合に等しい。試験名フィルタ・skip・only を加えない。
 
 ## 関係するファイル・インターフェース（名指し）
 
-- `scripts/gate.mjs`: `resolveConcurrency`・`defaultDbShards`（並行度）、`planLight` の `lane`、`dbStep` の `shards` と昇格時の `selection.all`、`planPhases`（lane の段）、`runSteps`（lane 並行・`cancel`・`cancelled`・`offset`・`details`）、`shardDatabaseName`・`shardDatabases`・`SHARD_DATABASE_NAME`・`SHARD_NAME_LIMIT`、`parseSuiteDurations`・`readSuiteDurations`・`partitionShards`・`planShards`、`buildReport`・`formatTable`（`concurrency`・shard の行）、`testSummary`。実行部: `createSession`（実行中の command と所有工程の対応、`cancelOthers`）、`runCommand` の `owner`、`runShardedDb`・`availableShards`・`ensureShardDatabases`、工程 log、`reportFinished`。CLI: `--serial`、`--db-shards <n>`
+- `scripts/gate.mjs`: `resolveConcurrency`・`defaultDbShards`（並行度）、`planLight` の `lane`、`dbStep` の `shards` と昇格時の `selection.all`、`planPhases`（lane の段）、`runSteps`（lane 並行・`cancel`・`cancelled`・`offset`・`details`）、`shardDatabaseName`・`shardDatabases`・`SHARD_DATABASE_NAME`・`SHARD_NAME_LIMIT`、`parseSuiteDurations`・`readSuiteDurations`・`partitionShards`・`planShards`、`buildReport`・`formatTable`（`concurrency`・shard の行）、`testSummary`。実行部: `createSession`（実行中の command と所有工程の対応、`cancelOthers`、`notes`）、`runCommand` の `owner`、`runShardedDb`・`availableShards`（試験のため process の処理を引数で差し替えられる）・`ensureShardDatabases`、`runLogged`（工程 log）、`failedTests`・`failedFiles`、`StepError`（選択の失敗の log）、`parseGateDurations`・`captureSuiteDurations`・`recordSuiteDurations`・`DURATIONS_FILE`、`reportFinished`。CLI: `--serial`、`--db-shards <n>`
 - `scripts/gate-select.mjs`: `all`（db project の全試験ファイル）
 - `scripts/gate.d.mts`: 型。`scripts/test/gate.test.ts`: `light-tier-speed AC-1〜AC-8`
-- `kernel/src/test-database.ts`: `SHARD_INFIX`・`shardDatabaseName`・`isShardDatabase`・`ownShardDatabases`。`kernel/src/test-database-cli.ts`: shard DB とそのテンプレートの一覧・削除。`kernel/test/test-database.test.ts`: AC-7
+- `kernel/src/test-database.ts`: `SHARD_INFIX`・`SHARD_BASE_NAME`・`MAX_SHARD_INDEX`・`shardDatabaseName`・`isShardDatabase`・`isShardTemplate`・`ownShardDatabases`・`ownShardTemplates`・`ownShards`・`dropShardDatabase`。`kernel/src/test-database-cli.ts`: shard DB とそのテンプレートの一覧・削除。`kernel/test/test-database.test.ts`: AC-7
 - 環境変数（すべて任意）: `GATE_PARALLEL`（`0` で 1 工程ずつ）、`GATE_DB_SHARDS`（1〜8）
 - 文書: [test-tiers](test-tiers.md)、`CONTRIBUTING.md`、[テスト規約](../conventions/testing.md)、[検証と公開](../architecture/verification-and-release.md)、`scripts/check-doc-links.mjs`
 
@@ -71,7 +71,7 @@
 | 待ち受けポート | DB suite のサーバーは `port: 0`（`apps/api/test/edge-relay.db.test.ts` など） |
 | ファイル | DB suite が書くのは `mkdtemp` の一時ディレクトリ（証憑・旧 migration の複製）。静的工程は `noEmit` と一時ディレクトリ（`deploy/test`）だけ |
 | テンプレート | shard DB ごとに自分のテンプレート（`<db>_shard_k_tpl_*`）を持つ。template1 からの同時 `CREATE DATABASE` は PostgreSQL の共有ロックで両立する（他エージェントの試験 DB で既に同時に起きている） |
-| vitest の results cache | 各 process が終了時に同じ `results.json` を書く。読み書きは vitest 側で例外を握りつぶすため失敗にはならず、最後に書いた process の値が残る（所要時間の見積りが古くなるだけ） |
+| vitest の results cache | 各 process（DB shard と unit）が終了時に、開始時に読んだ内容へ自分の結果を足して同じ `results.json` を書く。読み書きは vitest 側で例外を握りつぶすため失敗にはならないが、最後に書いた process の値しか残らず、他の shard と unit のその回の更新は失われる（実測: 2 shard の light の後、cache の db 項目は 1 shard 分だけ）。vitest はこの cache をファイルの実行順にしか使わず、結果は変わらない。light は各 DB process の終了直後に cache からその process のファイルの値を読み、`.runtime/gate/durations.json` に残して割り当てに優先して使う（unit の値は戻さない） |
 | 接続数 | shard ごとに suite が使う接続（owner 2・app 4・保守 1 と試験が起こすサーバー）。`max_connections` 100 に対し 2 shard で十分余る |
 
 ## 実装時に確認した前提（ソース確認と実測）
@@ -82,6 +82,7 @@
 | `vitest list --project db --filesOnly` と `gate-select` の `all` | 同じ 131 ファイル | unit 試験（AC-2 AC-8） |
 | 2 shard の見積りの均衡 | 全 131 suite で 351.9 / 352.0 秒（cache の値） | `partitionShards` を cache で実行 |
 | shard DB の作成 | owner role が `CREATE DATABASE daifuku_test_w9_shard_2`（初回の light で自動）、その後の suite はテンプレートを作って複製（作り直しへの退避の通知なし） | 実測 |
+| 複数 process の results cache | 2 shard の light の後、cache の db 項目は 1 shard 分しか残らない（レビューの実測）。各 process の終了直後に読めば、その process の値は取れる | 実測（レビュー）、vitest 5.0.0 のソース、単体試験 |
 | 実リポジトリでの中断 | 実行中の light（静的 lane の format と DB 2 shard）の外側 pnpm に SIGTERM: 終了コード 143、12 秒後に worktree のプロセス 0、報告は `interrupted`（format・db が失敗、残りは not-run） | 実測（検証手順 5） |
 
 ## スコープ外（明記）
@@ -102,8 +103,9 @@
 5. 実行中の light に SIGTERM を送り、両 lane と全 shard の子孫が残らないことを確認する（unit 試験の sandbox と、実リポジトリでの手動実行）。
 6. `pnpm test:db:templates` と `-- --drop` で shard DB とそのテンプレートが一覧・削除され、試験 DB 自身と他の DB が残ることを確認する。
 7. `pnpm gate:light` を最終状態で実行する（`kernel/` を変えたため DB 全件に昇格する）。
+8. （レビュー後に追加）`scripts/test/gate.test.ts` の shard 実行の試験（fake の runCommand による `runShardedDb`・`availableShards` の単体試験と、fake の gate-select・vitest・postgres driver を置いた sandbox で `GATE_DB_SHARDS=2` の light を実プロセスで実行する試験）と、`kernel/test/test-template.db.test.ts` の AC-7（使い捨ての基名の shard DB、規則外の名前、shard DB の無いテンプレート、使用中のテンプレート）が成功する。
 
-結果は [作業記録](../log/2026-10-30-light-tier-speed.md) に記す。手順 1〜7 は実施した（手順 3 は同居負荷の高い時間帯で、負荷の低い時間帯の実装後は未計測。手順 7 は 814.7 秒で成功、DB 131 ファイルを 2 shard で実行）。
+結果は [作業記録](../log/2026-10-30-light-tier-speed.md) に記す。手順 1〜7 は実施した（手順 3 は同居負荷の高い時間帯で、負荷の低い時間帯の実装後は未計測。手順 7 は 814.7 秒で成功、DB 131 ファイルを 2 shard で実行）。手順 8 はレビュー後に実施し、修正後の最終状態で手順 7 を再実行した639.4 秒で成功、load average 平均 6.5。
 
 ## 未決事項（利用者の判断待ち）
 

@@ -6,9 +6,12 @@ import type { Database } from '../src/db/client.ts';
 import { RESET_STATEMENTS, dropAll, enforcePolicies, policyStatements } from '../src/db/migrate.ts';
 import {
   DEFAULT_TEMPLATE_LIMIT,
+  MAX_SHARD_INDEX,
+  SHARD_BASE_NAME,
   SHARD_INFIX,
   isOwnTemplate,
   isShardDatabase,
+  isShardTemplate,
   shardDatabaseName,
   parseTemplateComment,
   targetProblem,
@@ -201,15 +204,22 @@ describe('db-test-startup AC-1 AC-2 keys, names and markers', () => {
 });
 
 describe('light-tier-speed AC-7 shard databases of the light tier (docs/specs/light-tier-speed.md)', () => {
-  it('AC-7 recognises only <db>_shard_<n>, n >= 2, of the same test database as its shard databases', () => {
+  it('AC-7 recognises only what the tier runner creates: <db>_shard_2..8 of a daifuku_test[_suffix] database', () => {
     expect(SHARD_INFIX).toBe('_shard_');
+    expect(MAX_SHARD_INDEX).toBe(8);
     expect(shardDatabaseName('daifuku_test_w9', 1)).toBe('daifuku_test_w9');
     expect(shardDatabaseName('daifuku_test_w9', 3)).toBe('daifuku_test_w9_shard_3');
-    expect(isShardDatabase('daifuku_test_w9', 'daifuku_test_w9_shard_2')).toBe(true);
-    expect(isShardDatabase('daifuku_test_w9', 'daifuku_test_w9_shard_12')).toBe(true);
+    for (let index = 2; index <= MAX_SHARD_INDEX; index++)
+      expect(isShardDatabase('daifuku_test_w9', shardDatabaseName('daifuku_test_w9', index)), String(index)).toBe(true);
+    expect(isShardDatabase('daifuku_test', 'daifuku_test_shard_2')).toBe(true);
+    expect(isShardDatabase('daifuku_ci_test', 'daifuku_ci_test_shard_8')).toBe(true);
     for (const name of [
       'daifuku_test_w9',
       'daifuku_test_w9_shard_1',
+      'daifuku_test_w9_shard_9',
+      'daifuku_test_w9_shard_12',
+      'daifuku_test_w9_shard_42',
+      'daifuku_test_w9_shard_97',
       'daifuku_test_w9_shard_02',
       'daifuku_test_w9_shard_',
       'daifuku_test_w9_shard_2x',
@@ -219,6 +229,29 @@ describe('light-tier-speed AC-7 shard databases of the light tier (docs/specs/li
       'daifuku_test_w9_tpl_0123456789abcdef',
     ])
       expect(isShardDatabase('daifuku_test_w9', name), name).toBe(false);
+    // A base the tier runner never shards (another disposable name, or a shard database itself).
+    expect(SHARD_BASE_NAME.test('scratch_test')).toBe(false);
+    expect(isShardDatabase('scratch_test', 'scratch_test_shard_2')).toBe(false);
+    expect(isShardDatabase('daifuku_test_w9_shard_2', 'daifuku_test_w9_shard_2_shard_2')).toBe(false);
+  });
+  it('AC-7 finds a shard template by its name and marker, whether or not its shard database still exists', () => {
+    const shard = shardDatabaseName('daifuku_test_w9', 3);
+    const name = templateName(shard, KEY);
+    expect(isShardTemplate('daifuku_test_w9', name, templateComment(shard, KEY, new Date(0)))).toBe(true);
+    // Unmarked, marked for another database, a shard outside 2..8, or a template of the test database itself.
+    expect(isShardTemplate('daifuku_test_w9', name, null)).toBe(false);
+    expect(isShardTemplate('daifuku_test_w9', name, templateComment('daifuku_test_w9', KEY, new Date(0)))).toBe(false);
+    const far = shardDatabaseName('daifuku_test_w9', 42);
+    expect(isShardTemplate('daifuku_test_w9', templateName(far, KEY), templateComment(far, KEY, new Date(0)))).toBe(
+      false,
+    );
+    expect(
+      isShardTemplate(
+        'daifuku_test_w9',
+        templateName('daifuku_test_w9', KEY),
+        templateComment('daifuku_test_w9', KEY, new Date(0)),
+      ),
+    ).toBe(false);
   });
   it('AC-7 gives a shard database room for its own schema templates', () => {
     const shard = shardDatabaseName('daifuku_test_w9', 8);

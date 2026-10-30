@@ -118,6 +118,12 @@ export const SHARD_NAME_LIMIT = 63 - '_tpl_'.length - 16;
 export const DEFAULT_SUITE_SECONDS = 6;
 // Lines of a failed step's log printed when its output went to a file (parallel light).
 export const FAILURE_TAIL_LINES = 80;
+// vitest "FAIL" lines (failed suites and tests) printed and reported per failed log, at most this many.
+export const MAX_FAILED_TESTS = 20;
+// Seconds per DB suite measured by light's own vitest processes. Several processes (the DB shards and the unit step)
+// write vitest's results cache at their end, each from the copy it read when it started, so the cache keeps only the
+// last writer's updates; light keeps what each of its DB processes measured here and reads it before the cache.
+export const DURATIONS_FILE = '.runtime/gate/durations.json';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const SYNTHETIC_JWT_SECRET = 'synthetic-local-gate-only-not-for-deployment';
 const PLAYWRIGHT = ['--filter', '@daifuku/web', 'exec', 'playwright', 'test'];
@@ -127,7 +133,10 @@ export const GUIDANCE = Object.freeze({
     'DB suites drop and recreate the test database they use (or rebuild its schema in place with TEST_DATABASE_TEMPLATE=off) ' +
     'and keep up to 80 <db>_tpl_* schema template databases on the same server (pnpm test:db:templates lists or drops ' +
     'them). Export TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
-    'for a dedicated disposable test database (CONTRIBUTING.md, section "型・単体・DB・Web の検証"). The tier runner never ' +
+    'for a dedicated disposable test database (CONTRIBUTING.md, section "型・単体・DB・Web の検証"). With two or more DB ' +
+    'shards (the default of pnpm gate:light on 4+ CPUs) light also creates <db>_shard_2.. with the owner role (CREATEDB) ' +
+    'and recreates them with their own templates; --serial or GATE_DB_SHARDS=1 keeps it on the test database alone, and ' +
+    'pnpm test:db:templates -- --drop removes them. The tier runner never ' +
     'falls back to the default daifuku_test database. Both URLs must be loopback postgres URLs for the same database ' +
     'named daifuku_test, daifuku_ci_test or daifuku_test_<suffix>, with separate owner and daifuku_app roles; set ' +
     'GATE_ALLOW_DB_URL=1 only for another disposable database.',
@@ -148,6 +157,14 @@ export const GUIDANCE = Object.freeze({
 });
 
 export class GateUsageError extends Error {}
+
+// A step failure that carries fields for the step result (the log of a failed test selection).
+export class StepError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.details = details;
+  }
+}
 
 // ---- small pure helpers ----------------------------------------------------------------------------------------
 
@@ -802,7 +819,7 @@ export function parseSuiteDurations(texts, project = 'db') {
   return durations;
 }
 
-export function readSuiteDurations(root = ROOT, project = 'db') {
+function readCacheDurations(root, project) {
   const directory = join(root, 'node_modules/.vite/vitest');
   const texts = [];
   try {
@@ -813,6 +830,64 @@ export function readSuiteDurations(root = ROOT, project = 'db') {
     /* no cache yet */
   }
   return parseSuiteDurations(texts, project);
+}
+
+// Light's own durations (DURATIONS_FILE): { schema: 1, <project>: { <path>: seconds } }. Unreadable files are ignored.
+export function parseGateDurations(text, project = 'db') {
+  const durations = new Map();
+  let entries;
+  try {
+    entries = JSON.parse(text)?.[project];
+  } catch {
+    return durations;
+  }
+  if (!entries || typeof entries !== 'object') return durations;
+  for (const [path, seconds] of Object.entries(entries))
+    if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0) durations.set(path, seconds);
+  return durations;
+}
+
+function readTextOrEmpty(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// Seconds per suite for balancing: vitest's results cache, overlaid by what light's own DB processes measured.
+export function readSuiteDurations(root = ROOT, project = 'db') {
+  const durations = readCacheDurations(root, project);
+  for (const [path, seconds] of parseGateDurations(readTextOrEmpty(join(root, DURATIONS_FILE)), project))
+    durations.set(path, seconds);
+  return durations;
+}
+
+// The durations of `files` in vitest's results cache right after a process that ran them exited (what it wrote).
+export function captureSuiteDurations(files, root = ROOT, project = 'db') {
+  const cache = readCacheDurations(root, project);
+  return new Map(files.filter((file) => cache.has(file)).map((file) => [file, cache.get(file)]));
+}
+
+// Merges measured durations into DURATIONS_FILE. A failure to write only leaves the estimates older.
+export function recordSuiteDurations(measured, root = ROOT, project = 'db') {
+  if (!measured.size) return;
+  const file = join(root, DURATIONS_FILE);
+  let store = {};
+  try {
+    const parsed = JSON.parse(readTextOrEmpty(file) || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) store = parsed;
+  } catch {
+    /* rewritten below */
+  }
+  const entries = Object.fromEntries(parseGateDurations(JSON.stringify(store), project));
+  for (const [path, seconds] of measured) entries[path] = Math.round(seconds * 1000) / 1000;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `${JSON.stringify({ ...store, schema: 1, [project]: entries }, null, 2)}\n`);
+  } catch {
+    /* estimates stay as they were */
+  }
 }
 
 // Splits the selected files over `count` shards, longest suite first onto the least loaded shard (ties: lower index,
@@ -917,10 +992,13 @@ export function testDatabaseProblems(env) {
   return problems;
 }
 
-export function testDatabaseLabel(env) {
+// The test database, and with `shards` > 1 every shard database light may use, on its server.
+export function testDatabaseLabel(env, shards = 1) {
   try {
     const url = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
-    return `${url.pathname.slice(1)} on ${url.host}`;
+    const derived = shards > 1 ? shardDatabases(env, shards) : { shards: [], reason: 'one shard' };
+    const names = derived.reason ? [url.pathname.slice(1)] : derived.shards.map((shard) => shard.database);
+    return `${names.join(', ')} on ${url.host}`;
   } catch {
     return 'an unparsable TEST_DATABASE_URL_OWNER';
   }
@@ -953,7 +1031,7 @@ export function applyPreflight(steps, { env, options, reach = {} }) {
     if (item.id === 'db') {
       const problems = testDatabaseProblems(env);
       if (problems.length) return block(item, GUIDANCE.testDb, problems, 'Problems');
-      const recreates = `recreates ${testDatabaseLabel(env)}`;
+      const recreates = `recreates ${testDatabaseLabel(env, item.shards ?? 1)}`;
       return { ...item, note: item.note ? `${item.note}; ${recreates}` : recreates };
     }
     if (item.special === 'browser:prepare' && !provision) return block(item, GUIDANCE.provision);
@@ -1014,7 +1092,7 @@ export function applySelection(item, selection, root = ROOT) {
 // Runs planned steps in plan order, lane by lane (planPhases): steps of one lane run one after another, lanes of one
 // phase run side by side, and results are reported in plan order. Fail-fast by default: a missing prerequisite fails
 // before anything runs, and after the first failure no further step starts ("not-run") and the steps still running in
-// other lanes are stopped through `cancel(failedId)` ("cancelled", unless they pass anyway). --keep-going runs every
+// other lanes are stopped through `cancel(failedId, runningIds)` ("cancelled", unless they pass anyway). --keep-going runs every
 // runnable step and still fails. An interruption (isInterrupted) stops the run under either mode: the steps in
 // progress fail, even when their own error came from selection or fixture preparation, and the rest are "not-run".
 export async function runSteps(
@@ -1077,7 +1155,12 @@ export async function runSteps(
       item = await prepare(planned);
       outcome = item.skip ? { ok: true, result: item.skip.result, reason: item.skip.reason } : await execute(item);
     } catch (error) {
-      outcome = { ok: false, reason: error instanceof Error ? error.message : String(error) };
+      // A StepError carries what the failed preparation left behind (the selection log).
+      outcome = {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+        ...(error instanceof StepError ? { details: error.details } : {}),
+      };
     }
     running.delete(planned.id);
     if (outcome.interrupted || isInterrupted()) {
@@ -1101,7 +1184,8 @@ export async function runSteps(
     if (!outcome.ok && !outcome.interrupted && !keepGoing && failure === null && result !== 'cancelled') {
       failure = planned.id;
       for (const id of running) cancelled.add(id);
-      if (running.size) cancel(planned.id);
+      // Every step still running is cancelled, also one between two commands (selection done, shards not started).
+      if (running.size) cancel(planned.id, [...running]);
     }
   };
   for (const lanes of planPhases(steps))
@@ -1189,6 +1273,7 @@ export function buildReport({
       command: commandText(item.command),
       summary: commandSummary(item.command),
       log: item.log ?? null,
+      failed: item.failed ?? [],
       note: item.note ?? null,
       reason: item.reason ?? item.skip?.reason ?? item.blocked ?? null,
     })),
@@ -1268,8 +1353,13 @@ export function formatTable(report) {
     for (const item of report.steps)
       if (item.lane && timed(item.result)) lanes.set(item.lane, (lanes.get(item.lane) ?? 0) + item.seconds);
     const spent = [...lanes].map(([lane, seconds]) => `${lane} ${seconds.toFixed(1)}s`).join(', ');
+    // The shards the DB step used (fewer than asked for with few files or when shard databases were unavailable; the
+    // notes say why), or the number asked for when it did not run.
+    const db = report.steps.find((item) => item.id === 'db' && item.lane);
+    const used = db?.shards?.length || (db && timed(db.result) ? 1 : 0);
+    const shards = used ? `DB shards ${used} of ${concurrency.dbShards}` : `DB shards up to ${concurrency.dbShards}`;
     lines.push(
-      `concurrency: lanes side by side${spent ? ` (${spent})` : ''}; DB shards up to ${concurrency.dbShards}` +
+      `concurrency: lanes side by side${spent ? ` (${spent})` : ''}; ${shards}` +
         (concurrency.notes.length ? `; ${concurrency.notes.join('; ')}` : ''),
     );
   } else if (concurrency?.notes.length) lines.push(`concurrency: one step at a time; ${concurrency.notes.join('; ')}`);
@@ -1533,15 +1623,23 @@ export function createSession(runDir) {
   const children = [];
   const running = new Map();
   const cancelled = new Set();
+  // SIGKILL follows only while the command is still tracked: runCommand stops the rest of its group and forgets it on
+  // exit, after which its process group id may belong to another process.
   const stopLater = (child, name) => {
     signalGroup(child, name);
-    globalThis.setTimeout(() => signalGroup(child, 'SIGKILL'), STOP_GRACE_MS).unref();
+    globalThis
+      .setTimeout(() => {
+        if (running.has(child)) signalGroup(child, 'SIGKILL');
+      }, STOP_GRACE_MS)
+      .unref();
   };
   return {
     runDir,
     children,
     running,
     cancelled,
+    // Notes of this run for the report's concurrency (shard databases created, one DB process and why).
+    notes: [],
     databases: [],
     ports: {},
     browserEnv: null,
@@ -1560,10 +1658,12 @@ export function createSession(runDir) {
     interruptCurrent(name) {
       for (const child of running.keys()) stopLater(child, name);
     },
-    // Fail-fast in parallel light: stops the commands of every step other than the one that failed.
-    cancelOthers(failedId) {
+    // Fail-fast in parallel light: marks every other running step cancelled (`ids`, also a step that has no command
+    // running at this moment, so that it starts none) and stops the commands of every step other than the failed one.
+    cancelOthers(failedId, ids = []) {
+      for (const id of ids) if (id !== failedId) cancelled.add(id);
       for (const [child, owner] of running)
-        if (owner !== failedId) {
+        if (owner !== null && owner !== failedId) {
           cancelled.add(owner);
           stopLater(child, 'SIGTERM');
         }
@@ -1701,7 +1801,41 @@ function stepLog(session, item, suffix = '') {
   return item.lane ? join(session.runDir, `${item.id.replace(/[^\w.-]+/g, '-')}${suffix}.log`) : undefined;
 }
 
-const relativeLog = (path) => relative(ROOT, path).split('\\').join('/');
+const relativeLog = (path, root = ROOT) => relative(root, path).split('\\').join('/');
+
+// vitest's "FAIL" lines of a log ("<file> > <suite> > <test>", or "<file> [ <file> ]" for a suite that failed as a
+// whole), without the project label and colour codes, in order and without repeats.
+const COLOUR_CODE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+export function failedTests(text) {
+  const found = [];
+  for (const line of text.split('\n')) {
+    const match = /^\s*FAIL\s+(?:\|[^|\s]+\|\s+)?(\S.*?)\s*$/.exec(line.replace(COLOUR_CODE, ''));
+    if (match?.[1] && !found.includes(match[1])) found.push(match[1]);
+  }
+  return found;
+}
+
+// The test files named by failedTests() lines.
+export function failedFiles(tests) {
+  return [...new Set(tests.map((test) => test.split(/ > | \[ /)[0]?.trim()).filter(Boolean))];
+}
+
+const failedIn = (log) => failedTests(readTextOrEmpty(log)).slice(0, MAX_FAILED_TESTS);
+const withFiles = (reason, failed) => (failed.length ? `${reason}: ${failedFiles(failed).join(', ')}` : reason);
+
+// One command of a step. With a lane its output goes to the step log, and a failed log's FAIL lines are kept in the
+// result and their files named in the reason.
+async function runLogged(item, session, { env = process.env, run = runCommand, root = ROOT } = {}) {
+  const log = stepLog(session, item);
+  const result = await run(item.command, env, session, { log, owner: item.id });
+  if (!log) return result;
+  const failed = result.ok || result.cancelled || result.interrupted ? [] : failedIn(log);
+  return {
+    ...result,
+    ...(failed.length ? { reason: withFiles(result.reason ?? 'failed', failed) } : {}),
+    details: { log: relativeLog(log, root), ...(failed.length ? { failed } : {}) },
+  };
+}
 
 async function executeStep(item, session) {
   const guard = provisionGuard(item, session);
@@ -1710,10 +1844,9 @@ async function executeStep(item, session) {
   if (item.special === 'identity') return await runCommand(item.command, await identityEnv(session), session);
   if (item.special === 'browser' || item.special === 'smoke')
     return await runCommand(item.command, session.browserEnv ?? process.env, session);
-  if ((item.shards ?? 1) > 1 && item.selectedFiles?.length) return await runShardedDb(item, session);
-  const log = stepLog(session, item);
-  const result = await runCommand(item.command, process.env, session, { log, owner: item.id });
-  return log ? { ...result, details: { log: relativeLog(log) } } : result;
+  // A laned DB step with selected files (parallel light) runs over its shards, one shard included.
+  if (item.lane && item.id === 'db' && item.selectedFiles?.length) return await runShardedDb(item, session);
+  return await runLogged(item, session);
 }
 
 // Shard databases that do not exist yet are created empty (from template1, owned by the TEST_DATABASE_URL_OWNER role,
@@ -1743,49 +1876,69 @@ async function ensureShardDatabases(shards, env) {
   return created;
 }
 
-// The available shard databases for a DB step: shardDatabases() and, for shards >= 2, ensureShardDatabases(). When a
-// shard database cannot be prepared the step runs on the configured test database alone and says why.
-async function availableShards(item, session) {
+// The available shard databases for a DB step: shardDatabases() and, for shards >= 2, `ensure` (ensureShardDatabases;
+// not in a dry-run). When a shard database cannot be prepared the step runs on the configured test database alone and
+// a note says why.
+export async function availableShards(item, session, { env = process.env, ensure = ensureShardDatabases } = {}) {
   const notes = [];
-  const derived = shardDatabases(process.env, item.shards ?? 1);
-  if (derived.reason) notes.push(derived.reason);
+  const derived = shardDatabases(env, item.shards ?? 1);
+  if (derived.reason) notes.push(`one DB process (${derived.reason})`);
   let available = derived.shards;
   const wanted = Math.min(available.length, item.selectedFiles?.length ?? 0);
   if (wanted > 1 && !session.dryRun)
     try {
-      const created = await ensureShardDatabases(available.slice(1, wanted), process.env);
+      const created = await ensure(available.slice(1, wanted), env);
       if (created.length)
         notes.push(`created empty shard database${created.length === 1 ? '' : 's'} ${created.join(', ')}`);
     } catch (error) {
-      notes.push(
-        `could not prepare the shard databases (${error instanceof Error ? error.message : String(error)}); one DB process`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      notes.push(`one DB process (could not prepare the shard databases: ${message})`);
       available = available.slice(0, 1);
     }
   return { available, notes };
 }
 
-// Runs the DB step's shards side by side, one vitest process per shard database, each with fileParallelism false as
-// configured. Every shard runs to the end even when another fails (as one vitest process runs every file); the step
-// passes only when every shard passed, and its time is the slowest shard's.
-async function runShardedDb(item, session) {
-  const { available, notes } = await availableShards(item, session);
-  const plan = planShards(item, readSuiteDurations(ROOT), available);
-  const note = [item.note, ...notes].filter(Boolean).join('; ') || null;
+// Runs a laned DB step over its shards side by side, one vitest process per shard database, each with
+// fileParallelism false as configured. Every shard runs to the end even when another fails (as one vitest process runs
+// every file); the step passes only when every shard passed, is "cancelled" when every unpassed shard was cancelled, and
+// its time is the slowest shard's. Each shard prints a start line; the suite durations each process wrote into vitest's
+// results cache are kept in DURATIONS_FILE. `deps` replace the process work in tests.
+export async function runShardedDb(item, session, deps = {}) {
+  const { env = process.env, run = runCommand, ensure = ensureShardDatabases, root = ROOT, print = console.log } = deps;
+  if (session.cancelled.has(item.id))
+    return { ok: false, cancelled: true, reason: 'cancelled before the DB shards started' };
+  const { available, notes } = await availableShards(item, session, { env, ensure });
+  for (const text of notes) print(`    ${item.id}: ${text}`);
+  session.notes?.push(...notes);
+  const plan = planShards(item, readSuiteDurations(root), available);
+  // Shard notes first: the table cuts the detail column, and they explain a slower run.
+  const note = [...notes, item.note].filter(Boolean).join('; ') || null;
+  const measured = new Map();
+  const measure = (files, outcome) => {
+    if (outcome.cancelled || outcome.interrupted) return;
+    for (const [file, seconds] of captureSuiteDurations(files, root)) measured.set(file, seconds);
+  };
   if (plan.length <= 1) {
-    const log = stepLog(session, item);
-    const result = await runCommand(item.command, process.env, session, { log, owner: item.id });
-    return { ...result, details: { note, ...(log ? { log: relativeLog(log) } : {}) } };
+    const result = await runLogged(item, session, { env, run, root });
+    measure(item.selectedFiles ?? [], result);
+    recordSuiteDurations(measured, root);
+    return { ...result, details: { ...result.details, note } };
   }
   let interrupted = false;
   const shardResults = await Promise.all(
     plan.map(async (shard) => {
       const started = globalThis.performance.now();
       const log = join(session.runDir, `${item.id}-${shard.index}.log`);
-      const env = { ...process.env, TEST_DATABASE_URL_OWNER: shard.ownerUrl, TEST_DATABASE_URL: shard.appUrl };
-      const command = pnpm('exec', 'vitest', 'run', '--project', 'db', ...shard.files.map((file) => join(ROOT, file)));
-      const outcome = await runCommand(command, env, session, { log, owner: item.id });
+      const shardEnv = { ...env, TEST_DATABASE_URL_OWNER: shard.ownerUrl, TEST_DATABASE_URL: shard.appUrl };
+      const command = pnpm('exec', 'vitest', 'run', '--project', 'db', ...shard.files.map((file) => join(root, file)));
+      print(
+        `    ${item.id}[${shard.index}/${plan.length}] ${shard.database}: ${shard.files.length} files, ` +
+          `estimated ${shard.estimate}s, log ${relativeLog(log, root)}`,
+      );
+      const outcome = await run(command, shardEnv, session, { log, owner: item.id });
       if (outcome.interrupted) interrupted = true;
+      measure(shard.files, outcome);
+      const result = outcome.ok ? 'passed' : outcome.cancelled ? 'cancelled' : 'failed';
       return {
         index: shard.index,
         database: shard.database,
@@ -1793,37 +1946,48 @@ async function runShardedDb(item, session) {
         paths: shard.files,
         estimate: shard.estimate,
         seconds: Math.round((globalThis.performance.now() - started) / 100) / 10,
-        result: outcome.ok ? 'passed' : outcome.cancelled ? 'cancelled' : 'failed',
+        result,
         reason: outcome.ok ? null : (outcome.reason ?? null),
-        log: relativeLog(log),
+        failed: result === 'failed' && !outcome.interrupted ? failedIn(log) : [],
+        log: relativeLog(log, root),
       };
     }),
   );
+  recordSuiteDurations(measured, root);
   const failed = shardResults.filter((shard) => shard.result !== 'passed');
   return {
     ok: !failed.length,
     interrupted,
     cancelled: failed.length > 0 && failed.every((shard) => shard.result === 'cancelled'),
     reason: failed.length
-      ? failed.map((shard) => `shard ${shard.index} (${shard.database}) ${shard.reason ?? shard.result}`).join('; ')
+      ? failed
+          .map((shard) =>
+            withFiles(`shard ${shard.index} (${shard.database}) ${shard.reason ?? shard.result}`, shard.failed),
+          )
+          .join('; ')
       : null,
     details: { note, shardResults },
   };
 }
 
-// Selection runs as an interruptible child step (own process group) and reads its input from a file.
+// Selection runs as an interruptible child step (own process group) and reads its input from a file. A failed
+// selection of a laned step carries its log (StepError) so that the runner prints its end and the report names it.
 async function selectTests(selection, session, item = null) {
   const output = join(session.runDir, `select-${selection.project}.json`);
   const input = join(session.runDir, `select-${selection.project}.input.json`);
+  const log = item ? stepLog(session, item, '-select') : undefined;
   mkdirSync(session.runDir, { recursive: true });
   writeFileSync(input, JSON.stringify({ ...selection, output }));
   const result = await runCommand({ program: 'node', args: ['scripts/gate-select.mjs', input] }, process.env, session, {
     owner: item?.id ?? null,
-    log: item ? stepLog(session, item, '-select') : undefined,
+    log,
   });
   if (result.interrupted) throw new Error('interrupted during test selection');
   if (result.cancelled) throw new Error('test selection cancelled');
-  if (!result.ok) throw new Error(`test selection for ${selection.project} failed (${result.reason})`);
+  if (!result.ok) {
+    const message = `test selection for ${selection.project} failed (${result.reason})`;
+    throw log ? new StepError(message, { log: relativeLog(log) }) : new Error(message);
+  }
   return JSON.parse(readFileSync(output, 'utf8'));
 }
 
@@ -1832,9 +1996,9 @@ async function resolveSelection(item, session) {
 }
 
 // The last `count` lines of a step log (failure output in parallel light).
-function logTail(path, count = FAILURE_TAIL_LINES) {
+function logTail(path, count = FAILURE_TAIL_LINES, root = ROOT) {
   try {
-    const lines = readFileSync(join(ROOT, path), 'utf8').trimEnd().split('\n');
+    const lines = readFileSync(join(root, path), 'utf8').trimEnd().split('\n');
     return lines.slice(-count).join('\n');
   } catch {
     return '(log not readable)';
@@ -1843,7 +2007,6 @@ function logTail(path, count = FAILURE_TAIL_LINES) {
 
 // vitest's closing "Test Files" and "Tests" lines of a step log, joined (empty for other tools). Colour codes, if a
 // tool forced them into the file, are removed.
-const COLOUR_CODE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 export function testSummary(text) {
   return text
     .split('\n')
@@ -1853,20 +2016,21 @@ export function testSummary(text) {
     .join(' | ');
 }
 
-function summaryOf(path) {
-  try {
-    return testSummary(readFileSync(join(ROOT, path), 'utf8'));
-  } catch {
-    return '';
-  }
+function summaryOf(path, root = ROOT) {
+  return testSummary(readTextOrEmpty(join(root, path)));
 }
 
-// Parallel light: one line per finished step (and shard), and the end of each failed log.
-function reportFinished(item, result) {
+// Parallel light: one line per finished step (with its seconds) and shard, and for each failed log its FAIL lines and
+// its last lines.
+function reportFinished(item, result, seconds = null) {
   const details = result.details ?? {};
   const status = result.ok ? 'passed' : result.cancelled ? 'cancelled' : 'failed';
-  const logs = details.shardResults ?? (details.log ? [{ log: details.log, result: status }] : []);
-  console.log(`<== gate:light ${item.id}: ${status}${result.reason ? ` (${result.reason})` : ''}`);
+  const logs =
+    details.shardResults ?? (details.log ? [{ log: details.log, result: status, failed: details.failed }] : []);
+  console.log(
+    `<== gate:light ${item.id}: ${status}${seconds === null ? '' : ` ${seconds}s`}` +
+      (result.reason ? ` (${result.reason})` : ''),
+  );
   for (const entry of logs) {
     const label = entry.index ? `${item.id}[${entry.index}/${logs.length}] ${entry.database}` : item.id;
     const summary = summaryOf(entry.log);
@@ -1874,8 +2038,9 @@ function reportFinished(item, result) {
       `    ${label}: ${entry.result}${entry.seconds !== undefined ? ` ${entry.seconds}s` : ''}, ${entry.log}`,
     );
     if (summary) console.log(`    ${summary}`);
-    if (entry.result === 'failed')
-      console.log(`---- last lines of ${entry.log} ----\n${logTail(entry.log)}\n---- end of ${entry.log} ----`);
+    if (entry.result !== 'failed') continue;
+    for (const test of entry.failed ?? []) console.log(`    FAIL ${test}`);
+    console.log(`---- last lines of ${entry.log} ----\n${logTail(entry.log)}\n---- end of ${entry.log} ----`);
   }
 }
 
@@ -1956,7 +2121,7 @@ async function main(argv) {
       finishedAt: new Date(),
       result,
       provisioned: session.databases.length ? { databases: session.databases, ports: session.ports } : null,
-      concurrency,
+      concurrency: { ...concurrency, notes: [...concurrency.notes, ...session.notes] },
     });
     const directory = join(ROOT, '.runtime/gate');
     mkdirSync(directory, { recursive: true });
@@ -2020,16 +2185,44 @@ async function main(argv) {
     }
     session.planned = steps.map((item) => item.id);
     const lane = (item) => (item.lane ? ` [${item.lane} lane]` : '');
+    // A laned step's log; a sharded DB step prints one line per shard with its log instead.
+    const logText = (item) => {
+      const log = (item.shards ?? 1) > 1 ? undefined : stepLog(session, item);
+      return log ? ` (log ${relativeLog(log)})` : '';
+    };
+    const stepStarted = new Map();
+    const elapsed = (item) =>
+      Math.round((globalThis.performance.now() - (stepStarted.get(item.id) ?? globalThis.performance.now())) / 100) /
+      10;
     const outcome = await runSteps(steps, {
       keepGoing: options.keepGoing,
       now: () => globalThis.performance.now() / 1000,
       isInterrupted: () => Boolean(session.interrupted),
-      cancel: (failedId) => session.cancelOthers(failedId),
+      cancel: (failedId, ids) => session.cancelOthers(failedId, ids),
       prepare: async (item) => {
+        stepStarted.set(item.id, globalThis.performance.now());
         console.log(
-          `\n==> gate:${options.tier} ${item.id}${lane(item)}${item.command ? `: ${commandText(item.command)}` : ''}`,
+          `\n==> gate:${options.tier} ${item.id}${lane(item)}${item.command ? `: ${commandText(item.command)}` : ''}` +
+            logText(item),
         );
-        const resolved = await resolveSelection(item, session);
+        let resolved;
+        try {
+          resolved = await resolveSelection(item, session);
+        } catch (error) {
+          // A failed selection of a laned step: its end line and the end of its log, as for a failed command.
+          if (item.lane && !session.interrupted)
+            reportFinished(
+              item,
+              {
+                ok: false,
+                cancelled: session.cancelled.has(item.id),
+                reason: error instanceof Error ? error.message : String(error),
+                details: error instanceof StepError ? error.details : {},
+              },
+              elapsed(item),
+            );
+          throw error;
+        }
         if (resolved !== item && resolved.command)
           console.log(
             `    ${item.id} selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}` +
@@ -2042,7 +2235,7 @@ async function main(argv) {
       execute: async (item) => {
         const result = await executeStep(item, session);
         if (result.ok && !session.interrupted) session.passed.push(item.id);
-        if (item.lane) reportFinished(item, result);
+        if (item.lane) reportFinished(item, result, elapsed(item));
         return session.interrupted ? { ...result, ok: false, interrupted: true } : result;
       },
     });
@@ -2070,8 +2263,9 @@ async function planDryRun(steps, session) {
       // The shard plan of the DB step, without creating any shard database.
       if ((resolved.shards ?? 1) > 1 && resolved.selectedFiles?.length) {
         const { available, notes } = await availableShards(resolved, session);
+        session.notes.push(...notes);
         const plan = planShards(resolved, readSuiteDurations(ROOT), available);
-        const note = [resolved.note, ...notes].filter(Boolean).join('; ') || null;
+        const note = [...notes, resolved.note].filter(Boolean).join('; ') || null;
         resolved = {
           ...resolved,
           note,
