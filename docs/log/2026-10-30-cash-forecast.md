@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 資金繰り表と入出金予定（E3）
 
 - セッション: 完成度向上計画 E3（workflow の作業項目、worktree `wip/cash-forecast`、基点 `ffc2f42`）／ 担当: agent（実装担当） ／ 対象: [docs/specs/cash-forecast.md](../specs/cash-forecast.md)
-- 計測: tokens=null（未計測）, agent_minutes=約150（spec の指摘対応 約15、backend と試験 約30、画面と試験 約35、計測・回帰・文書 約70。待ち時間を含む）, human_minutes=0, rework_lines=約20（下の「見つけた問題と修正」）, gate_failures=1（gate:quick の unit。負荷による時間切れとポート競合で、本変更と無関係。単独の再実行で成功）
+- 計測: tokens=null（未計測）, agent_minutes=約120（spec の指摘対応 約15、backend と試験 約30、画面と試験 約35、計測・回帰・文書 約40）＋待ち時間 約50（計測のデータ作成 18 分、gate:light 33 分）, human_minutes=0, rework_lines=約20（下の「見つけた問題と修正」）, gate_failures=1（gate:quick の unit。負荷による時間切れとポート競合で、本変更と無関係。単独の再実行で成功）
 
 ## 決めたこと（と理由）
 
@@ -36,10 +36,12 @@
 - [実測] 計測（`cash-forecast-benchmark.ts`、未決済の請求書 5,000 件（売上 2,500・仕入 2,500）と月次契約 500 件、90 日間、admin、3 回）: `banking.cash_forecast` 1,480 / 677 / 1,108 ms（中央値 1,108 ms、90 行）、`banking.cash_schedule` 731 / 965 / 1,545 ms（中央値 965 ms、9,590 行、打ち切りなし）。データ作成に 1,053 秒。計測中のロードアベレージは 12〜18（4 CPU を他の作業と共有）なので、専有環境の値ではない。
 - [実測] export 経路: DB 試験で `checkActionExport` と repeatable read（`snapshot: true`）の中で実行した結果が通常の実行と同じであることを確認（2 action）。`canExportAction` は accounting で false、admin で true。
 - [実測] `pnpm gate:quick`: format・docs・assurance・eslint・boundaries・typecheck（全体・api・web）は成功、unit は 3 件失敗（`kernel/test/password-hash.test.ts` の 5 秒の時間切れ、`apps/api/test/identity-runner.test.ts` の 127.0.0.1:3109 の使用中（他の作業の browser slot 9 と重なる固定ポート））。2 ファイルを単独で再実行して 8 件成功。本変更と無関係。
-- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 結果は下に追記する。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`（自分の DB、コミット `a0a6163`）: 成功、33 分（ロードアベレージ 6〜18）。format・docs・assurance・typecheck（全体・api・web）・lint・unit（165 ファイル 1,740 件）・deploy・DB（137 ファイル 902 件、1,981 秒。lockfile の変更で全件）。基点からの unit +47 件、DB +19 件。
 - [レビュー] すべての読取が呼出者の `Context` の `Repository` を通ること（`systemContext` なし）、modules から drizzle・fastify・node:fs を import しないこと（`lint:boundaries` も成功）、金額が `Decimal` であること（Web は十進文字列のまま、グラフの座標だけ比率を数値にする）。
 - [未検証] API の目視（spec の検証手順 7、`pnpm dev:api` に admin のトークンで 2 経路を送る）は行っていない。DB 試験の export 比較とブラウザ試験の CSV 取得で代えた。
 - [未検証] `pnpm gate:full`（統合担当が実行）。共有の `a11y.spec.ts` の画面一覧には足していない（画面の試験の中で `judge()` を実行）。
+
+- [実測] 後片付け: `pnpm test:db:templates -- --drop` で自分の DB の template 68 個（777 MB）を削除し、自分で作った DB `daifuku_test_e3cf` も削除した。ブラウザ試験の fixture DB は補助スクリプトが終了時に削除した。
 
 ## 見つけた問題と修正（発見経路つき）
 
