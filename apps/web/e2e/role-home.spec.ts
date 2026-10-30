@@ -594,12 +594,14 @@ test('role-home AC-12: an admin gets the setup card above the general home and n
   await login(page, ADMIN, ADMIN_PASSWORD);
   const admin = page.getByTestId('home-admin');
   await expect(admin.getByRole('heading', { name: '導入・管理', level: 2 })).toBeVisible();
-  // B3 (setup-health) is merged: its catalog entry adds the setup check link; the home still only links to it.
+  // B3 (setup-health) and B4 (setup-wizard) are merged: their catalog entries add the setup check and wizard links;
+  // the home only links to them (the wizard's own card is SetupCard above the views, outside this card).
   await expect(admin.getByTestId('home-admin-link')).toHaveText([
     '会社設定',
     '利用者と権限',
     '業界テンプレート',
     '導入チェックを開く',
+    'セットアップを開く',
   ]);
   await expect(tablist(page)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '業務分野から始める' })).toBeVisible();

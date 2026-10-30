@@ -26,7 +26,8 @@ export function AdminHome({ general }: { general: ReactNode }) {
             en: 'Review company settings, users and access, and industry templates.',
           })}
         </p>
-        {/* B3 (setup-health) / B4 (setup-wizard): the setup check and the wizard's "continue setup" card go here. */}
+        {/* B3 (setup-health) / B4 (setup-wizard): their links come from the catalog. The wizard's "continue setup" card
+            is SetupCard, mounted by HomePage above the view switch so admins on a business view see it too. */}
         {links.length ? (
           <ul className="role-home-links">
             {links.map((link) => (
