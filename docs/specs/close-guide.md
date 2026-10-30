@@ -48,7 +48,7 @@
 ## 検証手順（E2E、実行して記録する）
 
 1. `pnpm gate:light`
-2. DB（`apps/api/test/close-readiness.db.test.ts`）: 下書き売上請求書 1 件を期間内に作ると blocking 件数 1・`ready` false、確定後に 0・true。期間外の下書きは数えない。仕訳の下書きは blocking、入出庫伝票の下書きは注意。別会社の下書きは数えない。未配分の入出金と未照合の銀行明細の件数。直前期間未締めの注意と締め後の 0。`periodId` 省略時の既定期間。accounting ロールで読めない entity と未適用 pack の document が出ないこと。関連レポートの入力。締め済み期間は `ready` false（AC-1〜AC-8）
+2. DB（`apps/api/test/close-readiness.db.test.ts`）: 下書き売上請求書 1 件を期間内に作ると blocking 件数 1・`ready` false、確定後に 0・true。期間外の下書きは数えない。仕訳の下書きは blocking、入出庫伝票の下書きは注意。別会社の下書きは数えない。未配分の入出金と未照合の銀行明細の件数。直前期間未締めの注意と締め後の 0。`periodId` 省略時の既定期間。accounting ロールで読めない entity と未適用 pack の document が出ないこと、pack を適用するとその document が出ること。関連レポートの入力。締め済み期間は `ready` false（AC-1〜AC-8）
 3. ブラウザ（`apps/web/e2e/close-guide.spec.ts`）: 画面検索から開く、既定期間、期間選択、下書きが残る状態で締めボタンが無効、レポートリンクの期間と試算表の初期値、確定後に締めを実行して締め済み表示、締める直前の再点検、再開の確認、390px、英語表示（AC-8〜AC-13）
 4. `pnpm gate:full`（統合担当が実行）
 

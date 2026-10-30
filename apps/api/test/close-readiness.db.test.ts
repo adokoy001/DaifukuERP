@@ -5,6 +5,7 @@
 // apps/api/src/db/reset.ts.
 import { AUTO_ISSUE_ON_SALES_KEY, AUTO_RECEIPT_ON_PURCHASE_KEY, boolSettingSchema } from '@daifuku/mod-inventory';
 import {
+  applyPack,
   can,
   companies,
   newId,
@@ -315,5 +316,14 @@ describe('accounting.close_readiness (docs/specs/close-guide.md)', () => {
     expect(await september()).toMatchObject({ ready: true, period: { isClosed: false } });
     const period = await run((ctx) => repo(ctx, FiscalPeriod).get(periods['2026-09'] ?? ''));
     expect(period.isClosed).toBe(false);
+  });
+
+  it('AC-2 AC-7 a pack document is counted once the company applies the pack (last: it changes the company)', async () => {
+    expect(registry.hasEntity('farm_work')).toBe(true);
+    expect(item(await september({}), 'draft:farm_work')).toBeUndefined();
+    await run((ctx) => applyPack(ctx, 'farm'));
+    const applied = await september({});
+    expect(item(applied, 'draft:farm_work')).toMatchObject({ count: 0, blocking: false, href: '/e/farm_work' });
+    expect(item(applied, 'draft:retail_closing')).toBeUndefined();
   });
 });

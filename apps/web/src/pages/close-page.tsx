@@ -256,7 +256,8 @@ function CloseGuide({ meta }: { meta: AppMeta }) {
           </span>
         }
         actions={
-          <Button onClick={() => void readiness.refetch()} disabled={readiness.isFetching || busy}>
+          // Not disabled while fetching: a disabled button drops keyboard focus; refetch restarts the request.
+          <Button onClick={() => void readiness.refetch()} disabled={busy} aria-busy={readiness.isFetching}>
             {t({ ja: '再点検', en: 'Check again' })}
           </Button>
         }
