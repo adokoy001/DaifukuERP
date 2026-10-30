@@ -11,6 +11,11 @@ export interface AssistStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
+/** A storage that can list its keys (window.localStorage); only the sign-out clean-up needs this. */
+export interface AssistKeyedStorage extends AssistStorage {
+  readonly length: number;
+  key(index: number): string | null;
+}
 export type AssistKind = 'recent' | 'favorites';
 
 /** Upper bound on what is parsed; both lists are small (30 records, 20 screens), anything larger is not ours. */
@@ -22,8 +27,44 @@ export function assistStorageKey(kind: AssistKind, scope: AssistScope | undefine
   return `daifuku.${kind}.v1.${JSON.stringify([scope.tenantId, scope.userId, scope.companyId])}`;
 }
 
+/**
+ * The stored keys of one kind that belong to a tenant's user, across all of that user's companies. Empty when the
+ * storage cannot be listed. Keys of other users, and keys that do not parse, are never returned.
+ */
+export function assistKeysOf(
+  storage: AssistKeyedStorage | undefined,
+  kind: AssistKind,
+  tenantId: string,
+  userId: string,
+): string[] {
+  if (!storage || !tenantId || !userId) return [];
+  const prefix = `daifuku.${kind}.v1.`;
+  const keys: string[] = [];
+  try {
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      const scope = parseScope(key.slice(prefix.length));
+      if (scope?.[0] === tenantId && scope[1] === userId) keys.push(key);
+    }
+  } catch {
+    return [];
+  }
+  return keys;
+}
+function parseScope(text: string): unknown[] | undefined {
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) && value.length === 3 && value.every((part) => typeof part === 'string')
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Reading `localStorage` itself throws when site data is blocked; that is "no storage", not an error. */
-export function browserStorage(): AssistStorage | undefined {
+export function browserStorage(): AssistKeyedStorage | undefined {
   try {
     return globalThis.localStorage ?? undefined;
   } catch {

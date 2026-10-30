@@ -11,7 +11,7 @@ import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { buildPalette, movePaletteSelection, type PaletteGroup, type PaletteOption } from '../lib/command-palette.ts';
 import { WORKSPACES } from '../lib/navigation.ts';
-import { recentRecordText } from '../lib/recent-records.ts';
+import { recentRecordDetail, recentRecordText } from '../lib/recent-records.ts';
 import { S } from '../strings.ts';
 import { Dialog } from '../ui/index.ts';
 import { Icon } from './icon.tsx';
@@ -29,8 +29,8 @@ const PALETTE_TITLE: Label = { ja: '画面と記録を開く', en: 'Open a scree
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
-  const { catalog } = useNavigation();
-  const recent = useRecentRecords(catalog);
+  const { catalog, meta } = useNavigation();
+  const recent = useRecentRecords(catalog, meta.data?.entities);
   const favorites = useFavorites(catalog);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -65,9 +65,30 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   let index = -1;
+  // The catalog is empty while the screen metadata loads or after it failed: say so instead of "no match".
+  const loading = meta.isPending;
+  const failed = !loading && meta.isError && !catalog.entries.length;
+  const empty: Label = loading
+    ? S.loading
+    : failed
+      ? {
+          ja: '画面の一覧を読み込めませんでした。画面を再読み込みしてから開き直してください。',
+          en: 'The list of screens could not be loaded. Reload the page and open this again.',
+        }
+      : query.trim()
+        ? {
+            ja: '一致する画面や開いた記録がありません。語を減らすか、すべての画面から探してください。',
+            en: 'No matching screen or recent record. Use fewer words, or search all screens.',
+          }
+        : {
+            ja: 'お気に入りや最近開いた記録はまだありません。画面名を入力して探してください。',
+            en: 'No favourites or recent records yet. Type a screen name to search.',
+          };
   const count = options.length
     ? t({ ja: `${options.length} 件の候補`, en: `${options.length} suggestions` })
-    : t({ ja: '候補はありません', en: 'No suggestions' });
+    : loading || failed
+      ? t(empty)
+      : t({ ja: '候補はありません', en: 'No suggestions' });
   return (
     <Dialog title={t(PALETTE_TITLE)} onClose={onClose} closeLabel={t(S.close)} className="command-palette">
       <div className="palette-search">
@@ -101,6 +122,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         role="listbox"
         className="palette-list"
         aria-label={t({ ja: '候補', en: 'Suggestions' })}
+        aria-busy={loading || undefined}
         hidden={!options.length}
       >
         {palette.groups.map((group) => (
@@ -111,6 +133,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             {group.options.map((option) => {
               index += 1;
               const position = index;
+              const detail = option.kind === 'record' ? recentRecordDetail(option.record) : undefined;
               return (
                 <div
                   key={option.key}
@@ -139,7 +162,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   ) : (
                     <span className="palette-option-text">
                       <span>{recentRecordText(option.record, locale)}</span>
-                      <small>{t(option.record.entityLabel)}</small>
+                      {detail ? <small>{t(detail)}</small> : null}
                     </span>
                   )}
                 </div>
@@ -149,11 +172,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         ))}
       </div>
       {!options.length ? (
-        <div className="palette-empty">
-          {t({
-            ja: '一致する画面や開いた記録がありません。語を減らすか、すべての画面から探してください。',
-            en: 'No matching screen or recent record. Use fewer words, or search all screens.',
-          })}
+        <div className="palette-empty" data-state={loading ? 'loading' : failed ? 'error' : 'empty'}>
+          {t(empty)}
         </div>
       ) : null}
       <div className="palette-footer">

@@ -1,13 +1,13 @@
 // navigation-assist AC-2: the command palette's candidates. Screens come from the existing catalog search
 // (searchNavigation, permission-filtered metadata), then recent records. Pure; rendering is command-palette.tsx.
 import type { Locale } from '../api/types.ts';
-import { searchNavigation } from './navigation.ts';
+import { searchNavigation, WORKSPACES } from './navigation.ts';
 import type { NavigationCatalog, NavigationEntry } from './navigation-types.ts';
 import { searchRecentRecords, type RecentRecordView } from './recent-records.ts';
 
 export const PALETTE_SCREEN_LIMIT = 20;
 export const PALETTE_RECORD_LIMIT = 10;
-/** Featured screens offered before anything is typed. */
+/** Dedicated screens offered before anything is typed. */
 export const PALETTE_START_SCREENS = 8;
 
 export type PaletteOption =
@@ -32,8 +32,29 @@ const record = (item: RecentRecordView): PaletteOption => ({
 });
 
 /**
+ * The main screens offered before typing: the dedicated (featured) screens, one per business area in the areas'
+ * order, round after round, so one large area (people and work alone has five) cannot fill the list.
+ */
+export function startScreens(
+  catalog: NavigationCatalog,
+  exclude: ReadonlySet<string>,
+  limit: number = PALETTE_START_SCREENS,
+): NavigationEntry[] {
+  const queues = WORKSPACES.map((workspace) =>
+    catalog.entries.filter((entry) => entry.featured && entry.workspace === workspace.id && !exclude.has(entry.href)),
+  );
+  const picked: NavigationEntry[] = [];
+  for (let round = 0; picked.length < limit && queues.some((queue) => queue.length > round); round++)
+    for (const queue of queues) {
+      const entry = queue[round];
+      if (entry && picked.length < limit) picked.push(entry);
+    }
+  return picked;
+}
+
+/**
  * With a query: matching screens, then matching recent records. Without one: favourites, recent records and the
- * first featured screens, so the palette is useful before typing.
+ * main dedicated screens (startScreens), so the palette is useful before typing.
  */
 export function buildPalette(input: {
   catalog: NavigationCatalog;
@@ -60,13 +81,7 @@ export function buildPalette(input: {
     groups = [
       { id: 'favorites', options: favorites.map(screen) },
       { id: 'records', options: records.slice(0, PALETTE_RECORD_LIMIT).map(record) },
-      {
-        id: 'screens',
-        options: catalog.entries
-          .filter((entry) => entry.featured && !favorite.has(entry.href))
-          .slice(0, PALETTE_START_SCREENS)
-          .map(screen),
-      },
+      { id: 'screens', options: startScreens(catalog, favorite).map(screen) },
     ];
   }
   groups = groups.filter((group) => group.options.length > 0);

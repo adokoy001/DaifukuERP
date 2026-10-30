@@ -4,15 +4,23 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AppMeta, EntityMeta, Label, RecordJson } from '../api/types.ts';
 import {
+  assistKeysOf,
   assistStorageKey,
   browserStorage,
   envelope,
   parseEnvelope,
   readRaw,
   writeRaw,
+  type AssistKeyedStorage,
   type AssistStorage,
 } from './assist-storage.ts';
-import { buildPalette, movePaletteSelection, PALETTE_SCREEN_LIMIT } from './command-palette.ts';
+import {
+  buildPalette,
+  movePaletteSelection,
+  PALETTE_SCREEN_LIMIT,
+  PALETTE_START_SCREENS,
+  startScreens,
+} from './command-palette.ts';
 import {
   isFavoriteHref,
   MAX_FAVORITES,
@@ -21,12 +29,15 @@ import {
   toggleStoredFavorite,
   visibleFavorites,
 } from './favorites.ts';
-import { buildNavigation } from './navigation.ts';
+import { buildNavigation, WORKSPACES } from './navigation.ts';
+import type { NavigationCatalog, NavigationEntry, WorkspaceId } from './navigation-types.ts';
 import {
   addRecentRecord,
+  forgetRecentLabels,
   isPersonalDataEntity,
   MAX_RECENT_RECORDS,
   parseRecentRecords,
+  recentRecordDetail,
   recentRecordLabel,
   recentRecordText,
   recordVisit,
@@ -57,7 +68,7 @@ const catalog = buildNavigation(
   false,
 );
 
-function memory(): AssistStorage & { values: Map<string, string> } {
+function memory(): AssistKeyedStorage & { values: Map<string, string> } {
   const values = new Map<string, string>();
   return {
     values,
@@ -65,6 +76,10 @@ function memory(): AssistStorage & { values: Map<string, string> } {
     setItem: (key, value) => {
       values.set(key, value);
     },
+    get length() {
+      return values.size;
+    },
+    key: (index) => [...values.keys()][index] ?? null,
   };
 }
 const throwing = (what: 'read' | 'write'): AssistStorage => ({
@@ -149,16 +164,93 @@ describe('navigation-assist AC-3: recent records per user, tenant and company', 
   it('AC-3: the label is the display field, else the document number; field values are not stored', () => {
     const partner = entity('partner');
     const row = { id: uuid(1), version: 1, name: '  株式会社みどり ', phone: '03-0000-0000' } as unknown as RecordJson;
-    expect(recentRecordLabel(partner, row)).toBe('株式会社みどり');
+    expect(recentRecordLabel(partner, row)).toEqual({ label: '株式会社みどり', labelSource: 'display' });
     const invoice = entity('sales_invoice', { displayField: undefined });
-    expect(recentRecordLabel(invoice, { id: uuid(2), number: 'INV-2026-000001' } as unknown as RecordJson)).toBe(
-      'INV-2026-000001',
-    );
+    expect(recentRecordLabel(invoice, { id: uuid(2), number: 'INV-2026-000001' } as unknown as RecordJson)).toEqual({
+      label: 'INV-2026-000001',
+      labelSource: 'number',
+    });
     expect(recentRecordLabel(invoice, { id: uuid(3) } as unknown as RecordJson)).toBeUndefined();
     const storage = memory();
     const key = assistStorageKey('recent', scope);
-    recordVisit(storage, key, { ...visit(1), label: recentRecordLabel(partner, row) ?? '' });
+    recordVisit(storage, key, { ...visit(1), ...recentRecordLabel(partner, row) });
     expect(storage.values.get(key ?? '')).not.toContain('03-0000-0000');
+    expect(parseRecentRecords(readRaw(storage, key))[0]).toMatchObject({
+      label: '株式会社みどり',
+      labelSource: 'display',
+    });
+  });
+
+  it('AC-3: a stored display-field name is hidden once that field is masked; a document number stays', () => {
+    const stored = parseRecentRecords(
+      envelope([
+        { ...visit(1, 'partner', '山田 太郎'), labelSource: 'display' },
+        { ...visit(2, 'sales_invoice', 'INV-2026-000002'), labelSource: 'number' },
+        // Written without a source (by hand or by another build): treated as a display-field name.
+        visit(3, 'partner', '佐藤 次郎'),
+      ]),
+    );
+    const visibleNow = [entity('partner'), entity('sales_invoice', { displayField: undefined })];
+    expect(visibleRecentRecords(stored, catalog, visibleNow).map((item) => item.label)).toEqual([
+      '山田 太郎',
+      'INV-2026-000002',
+      '佐藤 次郎',
+    ]);
+    // The partner's display field became masked (kernel meta sets displayField to undefined).
+    const masked = [
+      entity('partner', { displayField: undefined }),
+      entity('sales_invoice', { displayField: undefined }),
+    ];
+    const items = visibleRecentRecords(stored, catalog, masked);
+    expect(items.map((item) => item.label)).toEqual([undefined, 'INV-2026-000002', undefined]);
+    expect(items[0] && recentRecordText(items[0], 'ja')).toBe('取引先 00000000…');
+    expect(items[0] && searchRecentRecords([items[0]], '山田', 'ja')).toEqual([]);
+  });
+
+  it('AC-3: a record without a name shows the entity once, not again on the second line', () => {
+    const [named, unnamed] = visibleRecentRecords(
+      [visit(1, 'partner', '株式会社みどり'), visit(2, 'partner')],
+      catalog,
+    );
+    expect(named && recentRecordDetail(named)).toEqual(label('取引先', 'Partners'));
+    expect(unnamed && recentRecordText(unnamed, 'en')).toBe('Partners 00000000…');
+    expect(unnamed && recentRecordDetail(unnamed)).toBeUndefined();
+  });
+
+  it("AC-3: signing out drops the user's stored names in every company, keeps the records and other users' lists", () => {
+    const storage = memory();
+    const companyA = assistStorageKey('recent', scope);
+    const companyB = assistStorageKey('recent', { ...scope, companyId: 'company-b' });
+    const otherUser = assistStorageKey('recent', { ...scope, userId: 'user-b' });
+    const otherTenant = assistStorageKey('recent', { ...scope, tenantId: 'tenant-b' });
+    for (const key of [companyA, companyB, otherUser, otherTenant])
+      recordVisit(storage, key, { ...visit(1, 'partner', '株式会社みどり'), labelSource: 'display' });
+    recordVisit(storage, companyA, { ...visit(2, 'sales_invoice', 'INV-1'), labelSource: 'number' });
+    storage.setItem('daifuku.recent.v1.not-json', 'x');
+    storage.setItem(assistStorageKey('favorites', scope) ?? '', envelope(['/e/partner']));
+    expect(assistKeysOf(storage, 'recent', 'tenant-a', 'user-a')).toEqual([companyA, companyB]);
+    expect(assistKeysOf(storage, 'recent', '', 'user-a')).toEqual([]);
+
+    expect(forgetRecentLabels(storage, 'tenant-a', 'user-a')).toBe(2);
+    for (const key of [companyA, companyB]) {
+      expect(storage.values.get(key ?? '')).not.toContain('株式会社みどり');
+      expect(storage.values.get(key ?? '')).not.toContain('labelSource');
+    }
+    expect(parseRecentRecords(readRaw(storage, companyA)).map((item) => item.id)).toEqual([uuid(2), uuid(1)]);
+    expect(storage.values.get(otherUser ?? '')).toContain('株式会社みどり');
+    expect(storage.values.get(otherTenant ?? '')).toContain('株式会社みどり');
+    expect(parseFavorites(readRaw(storage, assistStorageKey('favorites', scope)))).toEqual(['/e/partner']);
+    // Nothing to drop the second time; an unusable storage is a no-op, never an exception.
+    expect(forgetRecentLabels(storage, 'tenant-a', 'user-a')).toBe(0);
+    expect(forgetRecentLabels(undefined, 'tenant-a', 'user-a')).toBe(0);
+    const broken = {
+      ...memory(),
+      key: () => {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+      length: 1,
+    };
+    expect(() => forgetRecentLabels(broken, 'tenant-a', 'user-a')).not.toThrow();
   });
 
   it('AC-3: only records of entities in the current catalog are listed; invalid items are dropped one by one', () => {
@@ -321,6 +413,63 @@ describe('navigation-assist AC-2: palette candidates', () => {
     expect(new Set(palette.options.map((option) => option.key)).size).toBe(palette.options.length);
   });
 
+  it('AC-2: before typing, the main screens take one dedicated screen per business area, round after round', () => {
+    const dedicated = (href: string, workspace: WorkspaceId): NavigationEntry => ({
+      id: href,
+      href,
+      label: label(href),
+      workspace,
+      kind: 'workspace',
+      featured: true,
+      aliases: [],
+    });
+    // Definition order puts five people-and-work screens first, as navigation-data.ts does.
+    const entries = [
+      ...['/me', '/workforce', '/workforce/shifts', '/workforce/payroll', '/workforce/systems'].map((href) =>
+        dedicated(href, 'workforce'),
+      ),
+      dedicated('/commerce/trade', 'sales'),
+      dedicated('/finance/banking', 'finance'),
+      dedicated('/finance/filing', 'finance'),
+      dedicated('/analytics', 'reports'),
+      dedicated('/reports', 'reports'),
+      dedicated('/templates', 'admin'),
+      dedicated('/settings', 'admin'),
+      { ...dedicated('/e/partner', 'sales'), kind: 'record' as const, featured: false },
+    ];
+    const wide: NavigationCatalog = { entries, workspaces: [] };
+    const start = startScreens(wide, new Set());
+    expect(start.map((entry) => entry.href)).toEqual([
+      '/commerce/trade',
+      '/me',
+      '/finance/banking',
+      '/analytics',
+      '/templates',
+      '/workforce',
+      '/finance/filing',
+      '/reports',
+    ]);
+    expect(start).toHaveLength(PALETTE_START_SCREENS);
+    // Areas keep the WORKSPACES order; favourites are left out; a small catalog gives fewer than eight.
+    expect(WORKSPACES.map((workspace) => workspace.id).slice(0, 4)).toEqual([
+      'sales',
+      'inventory',
+      'workforce',
+      'finance',
+    ]);
+    expect(
+      startScreens(wide, new Set(['/commerce/trade', '/me']))
+        .map((entry) => entry.href)
+        .slice(0, 3),
+    ).toEqual(['/workforce', '/finance/banking', '/analytics']);
+    expect(startScreens({ entries: entries.slice(8), workspaces: [] }, new Set()).map((entry) => entry.href)).toEqual([
+      '/analytics',
+      '/templates',
+      '/reports',
+      '/settings',
+    ]);
+  });
+
   it('AC-2: arrow keys wrap around and do nothing without candidates', () => {
     expect(movePaletteSelection(0, 3, 1)).toBe(1);
     expect(movePaletteSelection(2, 3, 1)).toBe(0);
@@ -341,6 +490,12 @@ describe('navigation-assist AC-8: palette layout contract', () => {
     expect(rule).toContain('width: 100%;');
     // The UA's dialog max-width is lifted for every size, so 100% really is the viewport.
     expect(/\n\.action-dialog\.command-palette \{([^}]*)\}/.exec(css)?.[1]).toContain('max-width: none;');
+  });
+
+  it('AC-8: the highlighted option keeps AA contrast on its second line', () => {
+    // text-muted on accent-soft is 4.34:1; the selected row switches its small text to accent-on-soft (8.2:1).
+    const rule = /\.palette-option\[aria-selected='true'\] \.palette-option-text small \{([^}]*)\}/.exec(css)?.[1];
+    expect(rule).toContain('color: var(--accent-on-soft);');
   });
 
   it('AC-8: only the 480 / 768 px breakpoints and defined colour tokens are used', () => {

@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-29 コマンドパレット・最近の記録・お気に入り・画面の説明（D2）
 
 - セッション: 完成度向上計画 D2（workflow の作業項目、worktree `wip/navigation-assist`、基点 `0dded55`）／ 担当: agent ／ 対象: [docs/specs/navigation-assist.md](../specs/navigation-assist.md)
-- 計測: tokens=null（未計測）, agent_minutes=約75（実装・単体 約35、ブラウザ試験と修正 約20、文書 約20。gate の待ち時間を除く）, human_minutes=0, rework_lines=約15（ブラウザ試験 2 件の判定の修正）, gate_failures=0
+- 計測: tokens=null（未計測）, agent_minutes=約75（実装・単体 約35、ブラウザ試験と修正 約20、文書 約20。gate の待ち時間を除く）+ レビュー後の修正 約60, human_minutes=0, rework_lines=約15（ブラウザ試験 2 件の判定の修正）+ 約52（レビュー後の修正で置き換えた試験以外の行）, gate_failures=0
 
 ## 決めたこと（と理由）
 
@@ -39,13 +39,40 @@
 - [実測] ブラウザ試験の全件（slot 24、新しい fixture DB、industry → chromium、コミット `07bbbcf` の内容）: 93 件すべて成功（既存 87 件 + 新規 6 件、13.3 分）。
 - [未検証] `pnpm gate:full`（統合担当が実行。認証試験 3 件はこのブランチでは未実行）。
 - [未検証] 実機のスクリーンリーダーでの読み上げ（combobox と `aria-activedescendant`、候補数の live region）、macOS の `⌘+K`（Linux の Chromium で `Control+K` のみ実行）、Safari / Firefox。
-- [未検証] 別タブでの更新の反映（`storage` イベント）。コードレビューのみ。
+- [済・2026-10-30] 別タブでの更新の反映（`storage` イベント）。レビュー後の修正でブラウザ試験を足した（下記）。
 
 ## 見つけた問題と修正（発見経路つき）
 
 - 新しいブラウザ試験の従業員の名前を API の戻り値（`register_employee` の出力に `name` が無い）から取っていた — 発見: E2E、修正: 画面の題名から読む。
 - 会社を戻す手順で、会社一覧の読込前に選択値（空）を読んでいた（1 回目は偶然通った）— 発見: E2E（2 回目の全件で失敗）、修正: 値が UUID になるのを待ってから読む。修正後に `--repeat-each=2` で成功。
 - fixture の作成が 1 回、理由の出ない失敗（`undefined`）で止まった。負荷平均 8 前後の時間帯で、再実行で成功した。製品の不具合ではないと判断したが原因は未確認。
+
+## レビュー後の修正（2026-10-30、fixer）
+
+3 つの観点（spec・safety・ux）のレビュー指摘 16 件をコードと照合した。すべて実際の挙動として確認でき、却下は無い（同じ内容の重複指摘は 1 件として直した）。
+
+- **ログアウトで記録の名前を消す（safety・minor）。** 取引先名・伝票の摘要などの表示名が、ログアウト後も `localStorage` に残っていた（セッションと会社選択は tab 内の `sessionStorage`、業務データのキャッシュはログアウトで `qc.clear()` しているのに対して不釣合い）。`forgetRecentNames()`（`api/navigation-assist.ts`）を足し、明示的なログアウトの 3 経路（router の logout、アカウント画面の全端末ログアウトとパスワード変更、認証設定の変更による切断）で `clearSession()` の前に呼ぶ。その利用者・tenant の全会社の `daifuku.recent.v1.` から表示名だけを消し、記録は entity と短い id で残す（他の利用者の分は触らない）。期限切れ（401）の自動の切断では呼ばない（利用者の操作ではなく、次のログインで名前が戻らないと不便なため）。キーの列挙は `assist-storage.ts` の `assistKeysOf`（キーの JSON を解析し tenant と利用者が一致するものだけ）。
+- **マスクされた表示項目の名前を出さない（safety・nit）。** 保存時に表示名の出どころ（`labelSource`: 表示項目か伝票番号か）を持たせ、表示時に現在の metadata の `displayField` が無い entity は表示項目由来の名前を捨てる。出どころの無い保存内容は厳しい側（表示項目）として扱う。現時点で field group を宣言する module は無いので、今までに漏れていたものは無い。行の権限が後から狭まった場合は表示時に記録を読み直さないので隠せず、spec のスコープ外に明記した。
+- **配布物でもマニュアルの基点を指定できるようにし、既定を commit に固定（spec・minor、ux・major、ux・minor）。** `deploy/build.mjs` の build 環境は許可した変数だけで組み立てるので、`VITE_MANUAL_URL` は正式な配布物に届かず、マニュアルの記述（「構築時に指定」）が効かなかった。また既定の `blob/main` は、古い配布物から新しい `main` の章へ飛ぶ。`scripts/build-release.mjs --manual-url` を足し、`releaseManualUrl(commit, manualUrl)` が既定で `blob/<commit>/docs/manual/`、指定があればその URL（help.ts と同じ規則で検証し、違反なら構築前に止める）を Web の構築にだけ渡し、manifest に `manualBase` として残す。実行者の環境変数を引き継ぐ方式にはしなかった（build は許可した変数だけという方針を保つ）。公開リポジトリに無い commit から作ると既定のリンクは見つからないので、配備手順に明記した。
+- **入力前の主要画面を選び方のある 8 件に（ux・minor）。** 定義順の先頭 8 件だと人事・労務の 5 画面が先に並び、分析・レポートや設定が出なかった。`startScreens` で業務分野の順（`WORKSPACES`）に分野ごと 1 画面ずつ巡って 8 件まで選ぶ。明示の一覧にしなかったのは、専用画面を足すたびに保守が要るため。
+- **パレットの読込中・失敗・候補なし（ux・minor）。** `/meta` の読込中と失敗はカタログが空になり、「一致する画面がありません」と出ていた。読込中は「読み込み中…」（listbox に `aria-busy`）、失敗は再読込を促す文、入力前に候補が無いときは「お気に入りや最近開いた記録はまだありません」に分けた。
+- **選択中の候補の 2 行目のコントラスト（ux・minor）。** `--text-muted` と `--accent-soft` は 4.34:1（11px の文字に AA の 4.5:1 未満、手計算で確認）。選択中は `--accent-on-soft`（8.2:1）にし、CSS の契約試験に足した。
+- **英語表示の説明リンク（ux・minor）。** マニュアルは日本語だけなので、英語の文言を「Help for this screen (Japanese)」にし、`hreflang="ja"` を付けた。
+- **ショートカットの修飾キー（spec・nit、ux・nit）。** どの端末でも Ctrl と ⌘ の両方を受けていた。macOS の入力欄の `Ctrl+K`（行末まで削除）を奪わないよう、macOS は `⌘+K`、それ以外は `Ctrl+K` だけにし、`aria-keyshortcuts` も 1 つにした。
+- **名前の無い記録で種類が 2 回出る（ux・nit）。** 「従業員 1a2b3c4d…」の下に「従業員」と重ねていた。名前の無い記録は 2 行目を出さない（`recentRecordDetail`）。
+- **マニュアルの「閉じる」（ux・nit）。** ボタンは × の図だけなので「右上の ×（閉じる）」に直した。
+- **試験の不足（spec・minor、ux・minor）。** 次の受入基準の部分をブラウザ試験に足した: 小画面のメニューと記録の削除確認（kit の `Dialog`）の上では `Ctrl+K` で開かない、パレットの中で押しても 2 つ目を開かない（AC-1）、読込中と読込失敗の表示（AC-2）、ログアウトで名前が消え再ログイン後は短い id で出る（AC-3）、見えるお気に入り 20 件で追加を断る通知と、カタログに無いお気に入りから空きを作る、別タブの追加が再読込なしで出る（AC-4）、説明リンクの `hreflang` と英語の文言（AC-6）、お気に入りの書込み拒否の通知（AC-7）、390px で y=0、768px 未満でアイコンだけ（AC-8）。レビューの試し書き（作業用の probe）をもとにし、AC 番号を付けた。
+
+### 修正の検証
+
+- [実測] 単体（`navigation-assist.test.ts`、`help.test.ts`、`navigation.test.ts`）127 件成功。新しい試験: 表示名の出どころとマスク、名前の無い記録の 2 行目、ログアウトで自分の全会社分だけ名前を消す（他の利用者・tenant・お気に入りは残る、2 回目は 0 件、列挙できない保存領域でも例外なし）、入力前の主要画面の選び方（定義順で人事・労務が先に 5 件並ぶ catalog から分野を巡る）、選択中の 2 行目の色。
+- [実測] `node --test deploy/test/release.test.mjs` 9 件成功。新しい試験: 既定の基点が commit 固定、`--manual-url` の正規化と拒否（相対・`javascript:`・query・fragment・資格情報）、不正な指定は source を触る前に構築を止める。既存の「実際の Web 構築」の試験に、構築環境の `VITE_MANUAL_URL` が bundle の JS に文字列として入ることの確認を足した。`buildRelease` 全体（clean な commit からの配布物の生成）は gate に含まれず、今回も実行していない。
+- [実測] ブラウザ試験（slot 24、新しい fixture DB、`--project=chromium --no-deps`）: 1 回目は 12 件中 2 件が試験側の誤りで失敗（ログアウトのボタンを `メニュー` の nav の中で探した。`/account` は共通の shell の外なので、そこでの確認ダイアログはパレットの判定を試せていなかった）。locator と、確認ダイアログを記録の削除確認に替えて再実行した結果は下記。
+  - `navigation-assist.spec.ts` 12 件すべて成功（1.4 分）。
+  - 感度の確認: `router.tsx` で他のモーダルの判定と logout の `forgetRecentNames()` を一時的に外すと、AC-1（モーダルの上で開かない）と AC-3（ログアウトで名前が消える）の 2 件がどちらも失敗した（`--retries=0`。外した変更は戻した）。
+  - 変更した shell・アカウント画面に関わる既存の試験と合わせて（industry → chromium、新しい fixture DB）: `industry-templates` 3・`navigation` 5・`account-security` 3・`company-context` 2・`ui-kit` 10・`smoke` 2・`foundation-ui` 1・`navigation-assist` 12 の 38 件すべて成功（5.0 分）。全件（93 件 + 新規 6 件）は再実行していない。
+- [実測] `pnpm gate:light`: 成功（`TEST_DATABASE_URL_*` = `daifuku_test_w33`、ブラウザ試験と同時に実行した負荷平均 7〜10 の共有コンテナで約 24 分）。format・docs・assurance・typecheck（全体・api・web）・lint（警告 4 件は既存ファイルの関数行数）・unit 133 ファイル 1,288 件・DB 116 ファイル 701 件（基点 `431dda5` からの変更に CI 定義などが含まれ全 suite に拡大、1,131 秒）・deploy 17 件（新しい 1 件を含む）。
+- [未検証] `pnpm gate:full`（統合担当）、`buildRelease` の通しの実行、macOS の `⌘+K`、Safari / Firefox、実機のスクリーンリーダー（変わらず）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

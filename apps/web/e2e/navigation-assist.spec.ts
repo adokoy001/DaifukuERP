@@ -24,6 +24,13 @@ async function selectedOption(page: Page) {
   await expect(option).toHaveAttribute('aria-selected', 'true');
   return option;
 }
+async function storedFavorites(page: Page, items: string[]) {
+  await page.evaluate((hrefs) => {
+    const key = Object.keys(localStorage).find((name) => name.startsWith('daifuku.favorites.'));
+    if (!key) throw new Error('no favourites key');
+    localStorage.setItem(key, JSON.stringify({ version: 1, items: hrefs }));
+  }, items);
+}
 async function selectCompany(page: Page, name: string) {
   await page.goto('/templates');
   await page.getByLabel('対象の会社', { exact: true }).selectOption({ label: name });
@@ -109,7 +116,8 @@ test('navigation-assist AC-1/AC-8: the top-bar button opens a full-width palette
 }) => {
   await login(page);
   const button = page.getByRole('button', { name: '画面と記録を検索', exact: true });
-  await expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
+  // Linux/Windows advertise Ctrl+K only; ⌘+K is the macOS shortcut (Ctrl+K stays the text-field key there).
+  await expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+K');
   await button.click();
   await expect(palette(page)).toBeVisible();
   await expect(combobox(page)).toBeFocused();
@@ -123,6 +131,7 @@ test('navigation-assist AC-1/AC-8: the top-bar button opens a full-width palette
   await expect(combobox(page)).toBeFocused();
   const box = await palette(page).boundingBox();
   expect(box?.x).toBe(0);
+  expect(box?.y).toBe(0);
   expect(box?.width).toBe(390);
   await combobox(page).fill('取引先');
   await expect(palette(page).locator('[role="option"][data-href="/e/partner"]')).toBeVisible();
@@ -140,6 +149,11 @@ test('navigation-assist AC-1/AC-8: the top-bar button opens a full-width palette
   await expect(dialog.getByRole('listbox', { name: 'Suggestions', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(english).toBeFocused();
+  await page.goto('/e/partner');
+  await expect(page.getByRole('link', { name: /^Help for this screen \(Japanese\)/ })).toHaveAttribute(
+    'hreflang',
+    'ja',
+  );
 });
 
 test('navigation-assist AC-3/AC-5: opened records appear under Recent per company, five in the menu, no employee names', async ({
@@ -210,6 +224,22 @@ test('navigation-assist AC-3/AC-5: opened records appear under Recent per compan
   await page.getByLabel('対象の会社', { exact: true }).selectOption(original);
   await expect(page.locator('.company-name')).not.toContainText(FARM);
   await expect(recentGroup(page).getByRole('link')).toHaveCount(5);
+
+  // Signing out drops the stored names (a shared computer shows none afterwards); the records stay by short id.
+  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  const afterSignOut = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('daifuku.recent.'))
+      .map((key) => localStorage.getItem(key) ?? '')
+      .join(''),
+  );
+  expect(afterSignOut).toContain(String(partners[0]?.id));
+  expect(afterSignOut).not.toContain(tag);
+  await login(page);
+  const partnerLink = recentGroup(page).locator(`a[href="/e/partner/${partners[0]?.id}"]`);
+  await expect(partnerLink).toHaveText(`取引先 ${String(partners[0]?.id).slice(0, 8)}…`);
+  await expect(recentGroup(page)).not.toContainText(tag);
 });
 
 test('navigation-assist AC-4/AC-5/AC-6: a favourite screen is added, listed, kept and removed; help opens its chapter', async ({
@@ -246,6 +276,8 @@ test('navigation-assist AC-4/AC-5/AC-6: a favourite screen is added, listed, kep
   );
   await expect(help).toHaveAttribute('target', '_blank');
   await expect(help).toHaveAttribute('rel', 'noreferrer');
+  // The manual is written in Japanese only; the link says so to the browser (and in English to the reader).
+  await expect(help).toHaveAttribute('hreflang', 'ja');
   // At phone width the trail tools wrap under the breadcrumb without a horizontal scroll.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: 'お気に入り', exact: true })).toBeVisible();
@@ -265,6 +297,166 @@ test('navigation-assist AC-4/AC-5/AC-6: a favourite screen is added, listed, kep
   await page.goto('/a/sales.record_payment');
   await expect(page.getByRole('navigation', { name: '現在位置', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /この画面の説明/ })).toHaveCount(0);
+});
+
+test('navigation-assist AC-1: Ctrl+K does not open the palette over the phone menu or a confirmation dialog', async ({
+  page,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, `モーダル中の確認 ${suffix()}`);
+  const settle = () =>
+    page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 100))));
+  await login(page);
+  await page.goto(`/e/partner/${partner.id}`);
+  await expect(page.getByTestId('record-title')).toHaveText(String(partner.name));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'メニューを開く', exact: true }).click();
+  await expect(page.locator('#app-navigation[aria-modal="true"]')).toBeVisible();
+  await page.keyboard.press('Control+k');
+  // Nothing to wait for when the key is ignored: give the handler a frame, then expect no palette.
+  await settle();
+  await expect(page.locator('dialog.command-palette')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#app-navigation[aria-modal="true"]')).toHaveCount(0);
+
+  // A kit confirmation inside the shell (record delete): the palette does not open over it.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole('button', { name: '削除', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: '削除', exact: true });
+  await expect(confirm.getByRole('button', { name: '戻る', exact: true })).toBeFocused();
+  await page.keyboard.press('Control+k');
+  await settle();
+  await expect(page.locator('dialog.command-palette')).toHaveCount(0);
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '戻る', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  // With no other modal open the same key opens it, and pressing it again inside does not stack a second one.
+  await openPaletteByKey(page);
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('dialog.command-palette')).toHaveCount(1);
+  await expect(combobox(page)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('record-title')).toHaveText(String(partner.name));
+});
+
+test('navigation-assist AC-2: while the screen list loads, and after it failed, the palette says so', async ({
+  page,
+}) => {
+  await login(page);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.endsWith('/meta'),
+    async (route) => {
+      await held;
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":{"code":"INTERNAL"}}' });
+    },
+  );
+  await page.reload();
+  await page.getByRole('button', { name: '画面と記録を検索', exact: true }).click();
+  await expect(palette(page).locator('.palette-empty')).toHaveText('読み込み中…');
+  await expect(palette(page).getByText('一致する画面や開いた記録がありません。', { exact: false })).toHaveCount(0);
+  release();
+  await expect(palette(page).locator('.palette-empty')).toContainText('画面の一覧を読み込めませんでした。');
+  await expect(combobox(page)).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('navigation-assist AC-8: the top-bar search button shows its label from 768px and only the icon below', async ({
+  page,
+}) => {
+  await login(page);
+  const button = page.getByRole('button', { name: '画面と記録を検索', exact: true });
+  await page.setViewportSize({ width: 768, height: 800 });
+  await expect(button.getByText('検索', { exact: true })).toBeVisible();
+  await expect(button.locator('kbd')).toBeVisible();
+  await page.setViewportSize({ width: 767, height: 800 });
+  await expect(button.getByText('検索', { exact: true })).toBeHidden();
+  await expect(button.locator('kbd')).toBeHidden();
+  await expect(button.locator('svg')).toBeVisible();
+  await expect(button).toHaveAccessibleName('画面と記録を検索');
+});
+
+test('navigation-assist AC-4: twenty visible favourites refuse a new one with a notice; a hidden one makes room', async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto('/e/partner');
+  await page.getByRole('button', { name: 'お気に入り', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'お気に入り', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // Twenty record lists the user may open, from the palette's own search (capped at 20 screens).
+  await openPaletteByKey(page);
+  await combobox(page).fill('/e/');
+  const hrefs = await palette(page)
+    .locator('[role="option"][data-href^="/e/"]')
+    .evaluateAll((items) => items.map((item) => item.getAttribute('data-href') ?? ''));
+  expect(hrefs).toHaveLength(20);
+  expect(hrefs).not.toContain('/analytics');
+  await page.keyboard.press('Escape');
+  await storedFavorites(page, hrefs);
+  await page.goto('/analytics');
+  await expect(favoriteGroup(page).getByRole('link')).toHaveCount(20);
+  const star = page.getByRole('button', { name: 'お気に入り', exact: true });
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await star.click();
+  await expect(page.getByRole('status').filter({ hasText: 'お気に入りは 20 画面までです' })).toBeVisible();
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await expect(favoriteGroup(page).getByRole('link')).toHaveCount(20);
+
+  // A favourite the user can no longer open (not in the catalog) is dropped first to make room.
+  await storedFavorites(page, ['/e/no_such_entity', ...hrefs.slice(1)]);
+  await page.reload();
+  await expect(favoriteGroup(page).getByRole('link')).toHaveCount(19);
+  await page.getByRole('button', { name: 'お気に入り', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'お気に入り', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(favoriteGroup(page).getByRole('link')).toHaveCount(20);
+  await expect(favoriteGroup(page).locator('a[href="/analytics"]')).toBeVisible();
+});
+
+test('navigation-assist AC-4: a favourite added in another tab appears without a reload', async ({ browser }) => {
+  const context = await browser.newContext();
+  try {
+    const first = await context.newPage();
+    const second = await context.newPage();
+    await login(first);
+    await login(second);
+    await first.goto('/e/partner');
+    await second.goto('/e/product');
+    await second.getByRole('button', { name: 'お気に入り', exact: true }).click();
+    await expect(favoriteGroup(second).locator('a[href="/e/product"]')).toBeVisible();
+    // The other tab learns about it from the browser's storage event.
+    await expect(favoriteGroup(first).locator('a[href="/e/product"]')).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('navigation-assist AC-7: a refused favourite write shows a notice and nothing else breaks', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key.startsWith('daifuku.favorites.') || key.startsWith('daifuku.recent.'))
+        throw new DOMException('full', 'QuotaExceededError');
+      return original.call(this, key, value);
+    };
+  });
+  await login(page);
+  await page.goto('/e/partner');
+  const star = page.getByRole('button', { name: 'お気に入り', exact: true });
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await star.click();
+  await expect(page.getByRole('status').filter({ hasText: 'お気に入りを保存できませんでした' })).toBeVisible();
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await expect(favoriteGroup(page)).toHaveCount(0);
+  await openPaletteByKey(page);
+  await combobox(page).fill('ぴぼっと');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/analytics');
+  expect(errors).toEqual([]);
 });
 
 test('navigation-assist AC-7: blocked browser storage hides Recent and Favourites and nothing else breaks', async ({

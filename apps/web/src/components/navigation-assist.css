@@ -120,6 +120,10 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+/* The highlighted row's second line: text-muted on accent-soft is 4.34:1, below AA for 11px text. */
+.palette-option[aria-selected='true'] .palette-option-text small {
+  color: var(--accent-on-soft);
+}
 .palette-empty {
   padding: 18px 6px;
   font-size: 12px;

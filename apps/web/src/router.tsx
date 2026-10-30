@@ -35,6 +35,7 @@ import { canRetainData } from './lib/read-recovery.ts';
 import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
 import { CommandPalette } from './components/command-palette.tsx';
+import { forgetRecentNames } from './api/navigation-assist.ts';
 import { parseDirectorySearch } from './lib/menu-search.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
 import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
@@ -42,6 +43,8 @@ import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
 
 const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+/** The platform's own modifier only: on macOS Ctrl+K stays "delete to end of line" in text fields. */
+const PALETTE_SHORTCUT = MAC ? 'Meta+K' : 'Control+K';
 
 /**
  * navigation-assist AC-1: Ctrl+K (⌘+K on macOS) opens the command palette anywhere in the shell, also from a form
@@ -50,7 +53,8 @@ const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 function usePaletteShortcut(open: () => void) {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey)) return;
+      const primary = MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      if (event.isComposing || event.altKey || event.shiftKey || !primary) return;
       if (event.key.toLowerCase() !== 'k' && event.code !== 'KeyK') return;
       if (document.querySelector('dialog.command-palette[open]')) {
         event.preventDefault();
@@ -97,6 +101,7 @@ function AppLayout() {
   const logout = () => {
     void navigate({ to: '/login' }).then(() => {
       if (router.state.location.pathname !== '/login') return;
+      forgetRecentNames();
       clearSession();
       qc.clear();
     });
@@ -141,7 +146,7 @@ function AppLayout() {
               className="topbar-search"
               aria-label={t({ ja: '画面と記録を検索', en: 'Search screens and records' })}
               aria-haspopup="dialog"
-              aria-keyshortcuts="Control+K Meta+K"
+              aria-keyshortcuts={PALETTE_SHORTCUT}
               onClick={openPalette}
             >
               <Icon name="search" size={16} />

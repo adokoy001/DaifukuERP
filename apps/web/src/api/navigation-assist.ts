@@ -5,7 +5,13 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { assistStorageKey, browserStorage, readRaw, type AssistKind } from '../lib/assist-storage.ts';
 import { parseFavorites, toggleStoredFavorite, visibleFavorites, MAX_FAVORITES } from '../lib/favorites.ts';
 import type { NavigationCatalog } from '../lib/navigation-types.ts';
-import { parseRecentRecords, recentRecordLabel, recordVisit, visibleRecentRecords } from '../lib/recent-records.ts';
+import {
+  forgetRecentLabels,
+  parseRecentRecords,
+  recentRecordLabel,
+  recordVisit,
+  visibleRecentRecords,
+} from '../lib/recent-records.ts';
 import { getCompanyId, getUser } from './client.ts';
 import type { EntityMeta, RecordJson } from './types.ts';
 
@@ -46,12 +52,15 @@ function useStored(kind: AssistKind): string | null | undefined {
   return snapshot === UNAVAILABLE ? undefined : snapshot;
 }
 
-/** Recent records of the current company whose entity is still in the catalog, newest first. */
-export function useRecentRecords(catalog: NavigationCatalog) {
+/**
+ * Recent records of the current company whose entity is still in the catalog, newest first. `entities` is the
+ * current metadata (useNavigation().meta.data?.entities): a stored name of a field now masked is not shown.
+ */
+export function useRecentRecords(catalog: NavigationCatalog, entities: readonly EntityMeta[] | undefined) {
   const raw = useStored('recent');
   const items = useMemo(
-    () => (raw === undefined ? [] : visibleRecentRecords(parseRecentRecords(raw), catalog)),
-    [raw, catalog],
+    () => (raw === undefined ? [] : visibleRecentRecords(parseRecentRecords(raw), catalog, entities ?? [])),
+    [raw, catalog, entities],
   );
   return { available: raw !== undefined, items };
 }
@@ -59,12 +68,32 @@ export function useRecentRecords(catalog: NavigationCatalog) {
 /** Remembers an opened record (entity, id, display name, time). Silent when the storage refuses. */
 export function useRecordVisit(entity: EntityMeta, record: RecordJson | undefined): void {
   const id = record?.id;
-  const label = record ? recentRecordLabel(entity, record) : undefined;
+  const name = record ? recentRecordLabel(entity, record) : undefined;
+  const label = name?.label;
+  const labelSource = name?.labelSource;
   useEffect(() => {
     if (!id) return;
-    const visit = { entity: entity.name, id, openedAt: new Date().toISOString(), ...(label ? { label } : {}) };
+    const visit = {
+      entity: entity.name,
+      id,
+      openedAt: new Date().toISOString(),
+      ...(label && labelSource ? { label, labelSource } : {}),
+    };
     if (recordVisit(browserStorage(), storageKey('recent'), visit)) notify();
-  }, [entity.name, id, label]);
+  }, [entity.name, id, label, labelSource]);
+}
+
+/**
+ * Explicit sign-out (navigation-assist AC-3): drops the signed-in user's stored record names in this browser, for
+ * every company. Call it before clearSession(); never on the automatic 401 clean-up. Never throws.
+ */
+export function forgetRecentNames(): void {
+  try {
+    const user = getUser();
+    if (user?.tenantId && user.id && forgetRecentLabels(browserStorage(), user.tenantId, user.id) > 0) notify();
+  } catch {
+    // Signing out must never fail because of the browser storage.
+  }
 }
 
 /** Favourite screens of the current company, limited to the catalog; `toggle` reports what happened. */

@@ -12,6 +12,8 @@ node scripts/build-release.mjs   --source /home/builder/DaifukuERP   --output /h
 
 出力先は未作成ディレクトリに限る。実行者の環境から DB URL、JWT、SMTP、OIDC、Square、機器 token 等は build 子プロセスへ渡さない。個人の npm 設定を読み込まず、公開 registry を指定する。tracked の `.env`・秘密鍵・DB dump・運用ディレクトリ・外部へ出る symlink は拒否する。ただし名前による拒否は内容の秘密検査の代替ではなく、公開前の source/履歴 scan が必要である。build 自体は OS sandbox ではないため、実行する source をレビューし、秘密を置かない専用 build ユーザー/環境を用いる。
 
+Web の各画面の「この画面の説明」は、既定でこの配布物の commit の公開リポジトリ `docs/manual/`（`https://github.com/adokoy001/DaifukuERP/blob/<commit>/docs/manual/`）を開く。社内の写しを使う場合は `--manual-url https://docs.example.jp/daifuku/manual/` を加える（絶対 http(s) URL、query・fragment・資格情報なし。違反は構築前に停止）。章ファイル名は `docs/manual/` と同じに保つ。使った基点は manifest の `manualBase` に残る。公開リポジトリに無い commit から作る場合は、`--manual-url` を指定しないとリンク先が見つからない。
+
 生成される archive は `bundle/source`（source + lockfile + docs/license）、`bundle/web`（Web成果物 + LICENSE + THIRD_PARTY_NOTICES.txt + 依存版一覧）、`bundle/runtime`（API と実行依存）、`bundle/edge/`（edge.mjs とライセンス通知）、`bundle/manifest.json` を持つ。`SHA256SUMS` と `manifest.sha256` を別の信頼できる経路でも確認する。`--candidate` は検証用の未公開候補であることを manifest とファイル名に明示し、通常の配備計画では拒否する。候補の許可は受入環境だけで行う。
 
 Node 本体・Caddy・PostgreSQL・systemd は含まない。同じ CPU architecture の両配備先へ**同じ archive**を持ち込み、接続先の違いを秘密設定と profile で表す。archive の SHA256 を確認してから、新しい空ディレクトリへ一般ユーザーで展開し、直後に manifest を確認する。既存 release へ上書き展開しない。

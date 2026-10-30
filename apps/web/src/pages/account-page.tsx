@@ -3,6 +3,7 @@ import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent } from 'react';
 import { changeOwnPassword, logoutAllSessions } from '../api/account.ts';
 import { clearSession, getToken, getUser, isApiError } from '../api/client.ts';
+import { forgetRecentNames } from '../api/navigation-assist.ts';
 import { ControlDialog } from '../components/control-dialog.tsx';
 import { IdentitySecurity } from '../components/identity-security.tsx';
 import { Icon } from '../components/icon.tsx';
@@ -48,6 +49,7 @@ function useAccountSecurity() {
       if (result?.ok !== true) throw new Error('Invalid response');
       exitAllowed.current = true;
       setPasswords(EMPTY);
+      forgetRecentNames();
       clearSession();
       qc.clear();
       await navigate({ to: '/login', search: { reason }, replace: true });

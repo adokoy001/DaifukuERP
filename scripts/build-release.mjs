@@ -4,7 +4,7 @@ import { buildRelease } from '../deploy/build.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.stdout.write(
-    'Build a clean committed Linux/Node22 release using the pinned offline dependency store.\nUsage: node scripts/build-release.mjs --source /absolute/clean/repo --output /absolute/new/directory [--candidate]\nNo database access, source writes, service operations or inherited runtime secrets.\n',
+    'Build a clean committed Linux/Node22 release using the pinned offline dependency store.\nUsage: node scripts/build-release.mjs --source /absolute/clean/repo --output /absolute/new/directory [--candidate] [--manual-url https://mirror/docs/manual/]\nNo database access, source writes, service operations or inherited runtime secrets.\n',
   );
   process.exit(0);
 }
@@ -14,6 +14,7 @@ try {
       source: { type: 'string', default: root },
       output: { type: 'string' },
       candidate: { type: 'boolean', default: false },
+      'manual-url': { type: 'string' },
     },
   });
   if (!values.output)
@@ -22,6 +23,7 @@ try {
     source: values.source,
     output: values.output,
     candidate: values.candidate,
+    manualUrl: values['manual-url'],
     progress: (stage) => process.stdout.write(`release: ${stage}\n`),
   });
   process.stdout.write(JSON.stringify(result) + '\n');

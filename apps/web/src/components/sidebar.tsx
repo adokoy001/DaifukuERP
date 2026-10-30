@@ -2,11 +2,11 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useId, useRef } from 'react';
 import { useFavorites, useRecentRecords } from '../api/navigation-assist.ts';
 import { useNavigation } from '../api/navigation.ts';
-import type { Locale } from '../api/types.ts';
+import type { EntityMeta, Locale } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { findNavigationWorkspace } from '../lib/navigation.ts';
 import type { NavigationCatalog } from '../lib/navigation-types.ts';
-import { recentRecordText, SIDEBAR_RECENT_RECORDS } from '../lib/recent-records.ts';
+import { recentRecordDetail, recentRecordText, SIDEBAR_RECENT_RECORDS } from '../lib/recent-records.ts';
 import { S } from '../strings.ts';
 import { Icon } from './icon.tsx';
 import { WORKSPACE_ICONS } from './workspace-cards.tsx';
@@ -63,10 +63,16 @@ function FavoriteLinks({ catalog }: { catalog: NavigationCatalog }) {
 }
 
 /** navigation-assist AC-3/AC-5: the five most recent records of this company; hidden when there are none. */
-function RecentLinks({ catalog }: { catalog: NavigationCatalog }) {
+function RecentLinks({
+  catalog,
+  entities,
+}: {
+  catalog: NavigationCatalog;
+  entities: readonly EntityMeta[] | undefined;
+}) {
   const { t, locale } = useLocale();
   const id = useId();
-  const recent = useRecentRecords(catalog);
+  const recent = useRecentRecords(catalog, entities);
   if (!recent.available || !recent.items.length) return null;
   return (
     <div role="group" aria-labelledby={id}>
@@ -75,6 +81,7 @@ function RecentLinks({ catalog }: { catalog: NavigationCatalog }) {
       </div>
       {recent.items.slice(0, SIDEBAR_RECENT_RECORDS).map((item) => {
         const text = recentRecordText(item, locale);
+        const detail = recentRecordDetail(item);
         return (
           <Link
             key={`${item.entity}/${item.id}`}
@@ -87,7 +94,7 @@ function RecentLinks({ catalog }: { catalog: NavigationCatalog }) {
             <Icon name="clock" size={16} />
             <span>
               <span>{text}</span>
-              <small>{t(item.entityLabel)}</small>
+              {detail ? <small>{t(detail)}</small> : null}
             </span>
           </Link>
         );
@@ -132,7 +139,7 @@ function Navigation() {
         </Link>
       ))}
       <FavoriteLinks catalog={catalog} />
-      <RecentLinks catalog={catalog} />
+      <RecentLinks catalog={catalog} entities={meta.data?.entities} />
       {meta.isPending ? <p className="nav-help">{t(S.loading)}</p> : null}
       <p className="nav-help">
         {t({ ja: '業務を選ぶと、操作画面やマスターを探せます。', en: 'Choose an area to find workflows and records.' })}

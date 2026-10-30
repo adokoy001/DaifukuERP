@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBlocker, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { clearSession, getToken, getUser } from '../api/client.ts';
+import { forgetRecentNames } from '../api/navigation-assist.ts';
 import { accountSecurity, identityPost, identityProviders, type MfaSetup } from '../api/identity.ts';
 import { rememberRecoveryCodes, startSso } from '../lib/identity-flow.ts';
 import { useLocale } from '../i18n.tsx';
@@ -44,6 +45,7 @@ export function IdentitySecurity() {
   const signedOut = async (codes?: string[]) => {
     setLeaving(true);
     await qc.cancelQueries();
+    forgetRecentNames();
     clearSession();
     qc.clear();
     setOperation(null);

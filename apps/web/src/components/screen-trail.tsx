@@ -104,9 +104,10 @@ export function ScreenTrail() {
         <div className="screen-tools">
           {favorite ? <FavoriteToggle entry={favorite} catalog={catalog} /> : null}
           {help ? (
-            <a className="screen-help" href={helpUrl(help, MANUAL_BASE)} target="_blank" rel="noreferrer">
+            <a className="screen-help" href={helpUrl(help, MANUAL_BASE)} hrefLang="ja" target="_blank" rel="noreferrer">
               <Icon name="help" size={14} />
-              {t({ ja: 'この画面の説明', en: 'Help for this screen' })}
+              {/* The manual exists in Japanese only; the English label says so. */}
+              {t({ ja: 'この画面の説明', en: 'Help for this screen (Japanese)' })}
               <span className="sr-only">{t({ ja: '（新しいタブで開きます）', en: ' (opens in a new tab)' })}</span>
             </a>
           ) : null}

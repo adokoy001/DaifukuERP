@@ -15,6 +15,29 @@ function run(command, args, cwd, env) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
+const PUBLIC_MANUAL = 'https://github.com/adokoy001/DaifukuERP/blob/';
+/**
+ * The manual base behind the Web's "help for this screen" links (navigation-assist AC-6), baked in as
+ * VITE_MANUAL_URL. By default the public repository's docs/manual/ at the released commit, so a deployed release
+ * links to its own version of the manual; `manualUrl` (an operator's mirror) replaces it.
+ */
+export function releaseManualUrl(commit, manualUrl) {
+  if (manualUrl) return mirrorManualUrl(manualUrl);
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('The release commit must be a full Git hash.');
+  return `${PUBLIC_MANUAL}${commit}/docs/manual/`;
+}
+/** Same rule as apps/web/src/lib/help.ts manualBaseUrl, but a bad value stops the build instead of falling back. */
+function mirrorManualUrl(manualUrl) {
+  let url;
+  try {
+    url = new URL(manualUrl);
+  } catch {
+    url = undefined;
+  }
+  if (!url || !['https:', 'http:'].includes(url.protocol) || url.search || url.hash || url.username || url.password)
+    throw new Error('Use --manual-url with an absolute http(s) URL without query, fragment or credentials.');
+  return url.href.endsWith('/') ? url.href : `${url.href}/`;
+}
 function buildEnvironment() {
   const env = {
     CI: '1',
@@ -49,9 +72,10 @@ async function prepareSource(source, temporary, env) {
   await inventory(stage); // Reject escaping/broken links; preserve internal tracked aliases.
   return { commit, stage };
 }
-export async function buildRelease({ source, output, candidate = false, progress = () => undefined }) {
+export async function buildRelease({ source, output, candidate = false, manualUrl, progress = () => undefined }) {
   source = safePath(source);
   output = safePath(output);
+  if (manualUrl) mirrorManualUrl(manualUrl); // Reject a bad mirror before anything is built.
   if (!process.version.startsWith('v22.') || process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch))
     throw new Error('Build on the Linux target architecture.');
   const env = buildEnvironment();
@@ -69,7 +93,8 @@ export async function buildRelease({ source, output, candidate = false, progress
     progress('offline-dependencies');
     run('pnpm', ['install', '--offline', '--frozen-lockfile', '--ignore-scripts'], stage, env);
     progress('web');
-    run('pnpm', ['--filter', '@daifuku/web', 'build'], stage, env);
+    const manualBase = releaseManualUrl(commit, manualUrl);
+    run('pnpm', ['--filter', '@daifuku/web', 'build'], stage, { ...env, VITE_MANUAL_URL: manualBase });
     await writeWebNotices(stage, join(stage, 'apps/web/dist'));
     await cp(join(stage, 'apps/web/dist'), join(bundle, 'web'), { recursive: true });
     progress('api-runtime');
@@ -90,6 +115,7 @@ export async function buildRelease({ source, output, candidate = false, progress
       node: process.version,
       packageManager: packageInfo.packageManager,
       apiBase: '/api',
+      manualBase,
       lockSha256: digest(await readFile(join(stage, 'pnpm-lock.yaml'))),
       files: await inventory(bundle),
     };

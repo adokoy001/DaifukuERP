@@ -2,7 +2,15 @@
 // Only the entity name, the id, a display name and the time are kept, never field values. Entities whose display name
 // is personal data (employees and their payroll) keep no name at all. Pure; the React side is api/navigation-assist.ts.
 import type { EntityMeta, Label, Locale, RecordJson } from '../api/types.ts';
-import { envelope, parseEnvelope, readRaw, writeRaw, type AssistStorage } from './assist-storage.ts';
+import {
+  assistKeysOf,
+  envelope,
+  parseEnvelope,
+  readRaw,
+  writeRaw,
+  type AssistKeyedStorage,
+  type AssistStorage,
+} from './assist-storage.ts';
 import { shortId } from './format.ts';
 import { normalizeSearchText } from './navigation.ts';
 import type { NavigationCatalog } from './navigation-types.ts';
@@ -12,8 +20,11 @@ export interface RecentRecord {
   id: string;
   /** Display field or document number when the record was opened; absent for personal-data entities. */
   label?: string;
+  /** Where the label came from. A display-field name is hidden once that field is masked for the user. */
+  labelSource?: RecentLabelSource;
   openedAt: string;
 }
+export type RecentLabelSource = 'display' | 'number';
 /** A recent record whose entity list is reachable in the current catalog, with that list's label. */
 export interface RecentRecordView extends RecentRecord {
   entityLabel: Label;
@@ -33,12 +44,14 @@ export function isPersonalDataEntity(entity: string): boolean {
 
 function parseRecent(value: unknown): RecentRecord | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const { entity, id, label, openedAt } = value as Record<string, unknown>;
+  const { entity, id, label, labelSource, openedAt } = value as Record<string, unknown>;
   if (typeof entity !== 'string' || !ENTITY.test(entity) || typeof id !== 'string' || !UUID.test(id)) return undefined;
   if (typeof openedAt !== 'string' || openedAt.length > 40 || Number.isNaN(Date.parse(openedAt))) return undefined;
   // Applied on every read too, so a name written by an older build or by hand never reaches the screen.
   const name = typeof label === 'string' && !isPersonalDataEntity(entity) ? label.trim().slice(0, MAX_LABEL) : '';
-  return { entity, id, openedAt, ...(name ? { label: name } : {}) };
+  if (!name) return { entity, id, openedAt };
+  // Anything but a known document-number source counts as a display-field name, the stricter case.
+  return { entity, id, openedAt, label: name, labelSource: labelSource === 'number' ? 'number' : 'display' };
 }
 
 /** Lenient: invalid or duplicate items are dropped one by one, so one bad entry never hides the rest. */
@@ -74,28 +87,65 @@ export function recordVisit(storage: AssistStorage | undefined, key: string | un
 }
 
 /** The name worth remembering: the entity's display field, else the document number. Never for personal data. */
-export function recentRecordLabel(entity: Pick<EntityMeta, 'name' | 'displayField'>, record: RecordJson) {
+export function recentRecordLabel(
+  entity: Pick<EntityMeta, 'name' | 'displayField'>,
+  record: RecordJson,
+): { label: string; labelSource: RecentLabelSource } | undefined {
   if (isPersonalDataEntity(entity.name)) return undefined;
   const display = entity.displayField ? record[entity.displayField] : undefined;
-  if (typeof display === 'string' && display.trim()) return display.trim().slice(0, MAX_LABEL);
-  return typeof record.number === 'string' && record.number ? record.number : undefined;
+  if (typeof display === 'string' && display.trim())
+    return { label: display.trim().slice(0, MAX_LABEL), labelSource: 'display' };
+  return typeof record.number === 'string' && record.number
+    ? { label: record.number.slice(0, MAX_LABEL), labelSource: 'number' }
+    : undefined;
 }
 
 /**
  * Records of entities whose list is in the current catalog. Losing read permission on an entity hides its records;
- * a single record that became unreadable still shows and gets the normal permission error when opened.
+ * a single record that became unreadable still shows and gets the normal permission error when opened. With the
+ * current entity metadata, a display-field name is dropped when that field is no longer visible to the user (a
+ * masked field group), so the record falls back to "<entity> <short id>".
  */
-export function visibleRecentRecords(items: readonly RecentRecord[], catalog: NavigationCatalog): RecentRecordView[] {
+export function visibleRecentRecords(
+  items: readonly RecentRecord[],
+  catalog: NavigationCatalog,
+  entities?: readonly Pick<EntityMeta, 'name' | 'displayField'>[],
+): RecentRecordView[] {
   const lists = new Map(catalog.entries.filter((entry) => entry.kind === 'record').map((entry) => [entry.href, entry]));
+  const displayFields = entities && new Map(entities.map((entity) => [entity.name, entity.displayField]));
   return items.flatMap((item) => {
     const list = lists.get(`/e/${item.entity}`);
-    return list ? [{ ...item, entityLabel: list.label }] : [];
+    if (!list) return [];
+    const masked = displayFields && item.labelSource !== 'number' && !displayFields.get(item.entity);
+    if (!masked) return [{ ...item, entityLabel: list.label }];
+    const { label: _label, labelSource: _source, ...rest } = item;
+    return [{ ...rest, entityLabel: list.label }];
   });
 }
 
-/** What a recent record is called on screen: its stored name, else "<entity> <short id>". */
+/** What a recent record is called (link title, search): its stored name, else "<entity> <short id>". */
 export function recentRecordText(item: RecentRecordView, locale: Locale): string {
   return item.label ?? `${item.entityLabel[locale] || item.entityLabel.en} ${shortId(item.id)}`;
+}
+/** The small second line under a recent record: the entity label, left out when the main text already has it. */
+export function recentRecordDetail(item: RecentRecordView): Label | undefined {
+  return item.label ? item.entityLabel : undefined;
+}
+
+/**
+ * Explicit sign-out: the user's stored names are dropped in every company of this browser, so a shared computer
+ * shows no record names after the user left. The records stay, listed as "<entity> <short id>". Never throws.
+ */
+export function forgetRecentLabels(storage: AssistKeyedStorage | undefined, tenantId: string, userId: string): number {
+  let changed = 0;
+  for (const key of assistKeysOf(storage, 'recent', tenantId, userId)) {
+    const raw = readRaw(storage, key);
+    const items = parseRecentRecords(raw);
+    if (!items.some((item) => item.label)) continue;
+    const unnamed = items.map(({ label: _label, labelSource: _source, ...rest }) => rest);
+    if (writeRaw(storage, key, envelope(unnamed))) changed += 1;
+  }
+  return changed;
 }
 
 /** Same normalization and all-terms rule as the screen search; matches the name, the entity's labels and the id. */
