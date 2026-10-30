@@ -1,0 +1,293 @@
+{
+  "description": "資金繰り表の決定論的出力（docs/specs/cash-forecast.md の golden の例）。today 2026-11-10、期間 11-09〜11-12、下書き表示、期日超過は残高に入れない。11-09 の現金→普通預金の預入（e2）は資金科目間の振替なので入出金に数えない。C は支払ファイルの振込指定日 11-11 に置き、表示の期日は請求書の 11-12。G は返品で残高が負の売上請求。",
+  "input": {
+    "today": "2026-11-10",
+    "from": "2026-11-09",
+    "to": "2026-11-12",
+    "includeDrafts": true,
+    "includeOverdue": false,
+    "ledgerBalance": "1000000",
+    "posted": [
+      { "entryDate": "2026-11-09", "entryId": "e1", "debit": "50000", "credit": "0" },
+      { "entryDate": "2026-11-09", "entryId": "e2", "debit": "30000", "credit": "30000" }
+    ],
+    "items": [
+      {
+        "key": "A",
+        "source": "sales_invoice",
+        "state": "submitted",
+        "dueDate": "2026-11-11",
+        "amount": "200000",
+        "number": "INV-A"
+      },
+      {
+        "key": "B",
+        "source": "sales_invoice",
+        "state": "submitted",
+        "dueDate": "2026-11-05",
+        "amount": "80000",
+        "number": "INV-B"
+      },
+      {
+        "key": "C",
+        "source": "bank_transfer",
+        "state": "submitted",
+        "dueDate": "2026-11-11",
+        "documentDueDate": "2026-11-12",
+        "amount": "150000",
+        "number": "PINV-C"
+      },
+      {
+        "key": "D",
+        "source": "purchase_invoice",
+        "state": "submitted",
+        "dueDate": "2026-11-12",
+        "amount": "300000",
+        "number": "PINV-D"
+      },
+      {
+        "key": "2026-11-10",
+        "source": "payroll",
+        "state": "submitted",
+        "dueDate": "2026-11-10",
+        "amount": "250000",
+        "count": 2
+      },
+      {
+        "key": "E:2026-11",
+        "source": "contract",
+        "state": "submitted",
+        "dueDate": "2026-11-12",
+        "amount": "110000",
+        "number": "CTR-E",
+        "period": "2026-11"
+      },
+      {
+        "key": "G",
+        "source": "sales_invoice",
+        "state": "submitted",
+        "dueDate": "2026-11-12",
+        "amount": "-20000",
+        "number": "INV-G"
+      },
+      {
+        "key": "F",
+        "source": "sales_invoice",
+        "state": "draft",
+        "dueDate": "2026-11-12",
+        "amount": "40000",
+        "number": null
+      }
+    ]
+  },
+  "forecast": {
+    "rows": [
+      {
+        "date": "2026-11-09",
+        "postedIn": "50000",
+        "postedOut": "0",
+        "receivables": "0",
+        "contracts": "0",
+        "payables": "0",
+        "transfers": "0",
+        "payroll": "0",
+        "inflow": "50000",
+        "outflow": "0",
+        "net": "50000",
+        "balance": "1050000",
+        "draftInflow": "0",
+        "draftOutflow": "0",
+        "balanceWithDrafts": "1050000"
+      },
+      {
+        "date": "2026-11-10",
+        "postedIn": "0",
+        "postedOut": "0",
+        "receivables": "0",
+        "contracts": "0",
+        "payables": "0",
+        "transfers": "0",
+        "payroll": "250000",
+        "inflow": "0",
+        "outflow": "250000",
+        "net": "-250000",
+        "balance": "800000",
+        "draftInflow": "0",
+        "draftOutflow": "0",
+        "balanceWithDrafts": "800000"
+      },
+      {
+        "date": "2026-11-11",
+        "postedIn": "0",
+        "postedOut": "0",
+        "receivables": "200000",
+        "contracts": "0",
+        "payables": "0",
+        "transfers": "150000",
+        "payroll": "0",
+        "inflow": "200000",
+        "outflow": "150000",
+        "net": "50000",
+        "balance": "850000",
+        "draftInflow": "0",
+        "draftOutflow": "0",
+        "balanceWithDrafts": "850000"
+      },
+      {
+        "date": "2026-11-12",
+        "postedIn": "0",
+        "postedOut": "0",
+        "receivables": "-20000",
+        "contracts": "110000",
+        "payables": "300000",
+        "transfers": "0",
+        "payroll": "0",
+        "inflow": "90000",
+        "outflow": "300000",
+        "net": "-210000",
+        "balance": "640000",
+        "draftInflow": "40000",
+        "draftOutflow": "0",
+        "balanceWithDrafts": "680000"
+      }
+    ],
+    "totals": {
+      "postedIn": "50000",
+      "postedOut": "0",
+      "inflow": "340000",
+      "outflow": "700000",
+      "net": "-360000",
+      "receivables": "180000",
+      "contracts": "110000",
+      "payables": "300000",
+      "transfers": "150000",
+      "payroll": "250000",
+      "balance": "640000",
+      "openingBalance": "1000000",
+      "draftInflow": "40000",
+      "draftOutflow": "0",
+      "balanceWithDrafts": "680000",
+      "openingBalanceWithDrafts": "1000000"
+    },
+    "meta": {
+      "openingBalance": "1000000",
+      "openingBasis": "ledger",
+      "closingBalance": "640000",
+      "openingBalanceWithDrafts": "1000000",
+      "closingBalanceWithDrafts": "680000",
+      "minBalance": { "date": "2026-11-12", "balance": "640000" },
+      "overdue": {
+        "count": 1,
+        "inflow": "80000",
+        "outflow": "0",
+        "draftCount": 0,
+        "draftInflow": "0",
+        "draftOutflow": "0"
+      },
+      "beforeFrom": {
+        "count": 0,
+        "inflow": "0",
+        "outflow": "0",
+        "draftCount": 0,
+        "draftInflow": "0",
+        "draftOutflow": "0"
+      }
+    }
+  },
+  "withOverdue": {
+    "balances": ["1050000", "880000", "930000", "720000"]
+  },
+  "schedule": {
+    "order": ["2026-11-10", "A", "C", "G", "F", "E:2026-11", "D", "B"],
+    "rows": [
+      {
+        "key": "2026-11-10",
+        "date": "2026-11-10",
+        "dueDate": "2026-11-10",
+        "direction": "out",
+        "overdue": false,
+        "inBalance": true,
+        "count": 2,
+        "amount": "250000"
+      },
+      {
+        "key": "A",
+        "date": "2026-11-11",
+        "dueDate": "2026-11-11",
+        "direction": "in",
+        "overdue": false,
+        "inBalance": true,
+        "count": 1,
+        "amount": "200000"
+      },
+      {
+        "key": "C",
+        "date": "2026-11-11",
+        "dueDate": "2026-11-12",
+        "direction": "out",
+        "overdue": false,
+        "inBalance": true,
+        "count": 1,
+        "amount": "150000"
+      },
+      {
+        "key": "G",
+        "date": "2026-11-12",
+        "dueDate": "2026-11-12",
+        "direction": "in",
+        "overdue": false,
+        "inBalance": true,
+        "count": 1,
+        "amount": "-20000"
+      },
+      {
+        "key": "F",
+        "date": "2026-11-12",
+        "dueDate": "2026-11-12",
+        "direction": "in",
+        "overdue": false,
+        "inBalance": false,
+        "count": 1,
+        "amount": "40000"
+      },
+      {
+        "key": "E:2026-11",
+        "date": "2026-11-12",
+        "dueDate": "2026-11-12",
+        "direction": "in",
+        "overdue": false,
+        "inBalance": true,
+        "count": 1,
+        "amount": "110000"
+      },
+      {
+        "key": "D",
+        "date": "2026-11-12",
+        "dueDate": "2026-11-12",
+        "direction": "out",
+        "overdue": false,
+        "inBalance": true,
+        "count": 1,
+        "amount": "300000"
+      },
+      {
+        "key": "B",
+        "date": "2026-11-05",
+        "dueDate": "2026-11-05",
+        "direction": "in",
+        "overdue": true,
+        "inBalance": false,
+        "count": 1,
+        "amount": "80000"
+      }
+    ],
+    "totals": {
+      "inflow": "290000",
+      "outflow": "700000",
+      "overdueInflow": "80000",
+      "overdueOutflow": "0",
+      "draftInflow": "40000",
+      "draftOutflow": "0"
+    }
+  }
+}

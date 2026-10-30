@@ -22,3 +22,4 @@ export {
   supportedPayrollTaxYears,
   validatePayrollCondition,
 } from './payroll-rules/resolver.ts';
+export { payrollCashSchedule, type PayrollCashSchedule, type PayrollCashDay } from './payroll-cash.ts';

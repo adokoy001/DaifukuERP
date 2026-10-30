@@ -39,6 +39,14 @@ export {
   type ScheduleRow,
 } from './actions/schedule.ts';
 
+export {
+  plannedContractReceipts,
+  contractCashWindowStart,
+  CONTRACT_CASH_WINDOW_MONTHS,
+  type PlannedContractReceipt,
+  type ContractCashPlan,
+} from './cash-plan.ts';
+
 export { SYSTEM_OWNED_FIELDS, DATE_RANGE_HINT, assertDateRange } from './hooks/recalc.ts';
 export { FROZEN_HINT } from './hooks/lines.ts';
 export { NO_LINES_HINT } from './hooks/submit.ts';

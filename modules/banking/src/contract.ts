@@ -215,3 +215,155 @@ export type BankSource = z.infer<typeof bankStatementSource>;
 export type BankBoard = z.infer<typeof bankBoardOutput>;
 export type BankCandidate = z.infer<typeof bankCandidate>;
 export type BankTransferSnapshot = z.infer<typeof bankTransferSnapshot>;
+
+// Cash forecast (docs/specs/cash-forecast.md): the input and the result `meta` / rows shared by the server actions
+// banking.cash_forecast / banking.cash_schedule and the web screen /finance/cash-forecast. Day arithmetic below is on
+// calendar dates only (UTC day numbers of Y-M-D), never on money.
+export const CASH_SOURCES = ['sales_invoice', 'contract', 'purchase_invoice', 'bank_transfer', 'payroll'] as const;
+export type CashSource = (typeof CASH_SOURCES)[number];
+export const cashSource = z.enum(CASH_SOURCES);
+export const cashDirection = z.enum(['in', 'out']);
+export type CashDirection = z.infer<typeof cashDirection>;
+export const cashState = z.enum(['submitted', 'draft']);
+export type CashState = z.infer<typeof cashState>;
+export const CASH_NOTICES = ['payroll_posted_overlap'] as const;
+export type CashNotice = (typeof CASH_NOTICES)[number];
+/** Longest period, both ends included (AC-17). */
+export const CASH_MAX_DAYS = 366;
+/** `to` may be at most this many days after today (AC-17). */
+export const CASH_MAX_AHEAD_DAYS = 730;
+/** Direction of a scheduled source (D-4): receipts for invoices to customers and contracts, payments otherwise. */
+export const CASH_SOURCE_DIRECTION: Readonly<Record<CashSource, CashDirection>> = {
+  sales_invoice: 'in',
+  contract: 'in',
+  purchase_invoice: 'out',
+  bank_transfer: 'out',
+  payroll: 'out',
+};
+/** UTC day number of a valid `YYYY-MM-DD` (calendar arithmetic only). */
+export function cashDayNumber(date: string): number {
+  return Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / 86_400_000;
+}
+/** `date` shifted by `days` calendar days. */
+export function cashAddDays(date: string, days: number): string {
+  return new Date((cashDayNumber(date) + days) * 86_400_000).toISOString().slice(0, 10);
+}
+export const cashDate = z.iso.date();
+export const cashForecastInput = z
+  .object({
+    from: cashDate,
+    to: cashDate,
+    includeDrafts: z.boolean().optional(),
+    includeOverdue: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((input, issues) => {
+    if (input.from > input.to)
+      issues.addIssue({ code: 'custom', path: ['to'], message: '終了日は開始日以後にしてください。' });
+    else if (cashDayNumber(input.to) - cashDayNumber(input.from) + 1 > CASH_MAX_DAYS)
+      issues.addIssue({
+        code: 'custom',
+        path: ['to'],
+        message: `期間は${CASH_MAX_DAYS}日以内にしてください。`,
+      });
+  });
+export type CashForecastInput = z.infer<typeof cashForecastInput>;
+const cashMoney = z.string();
+const cashCount = z.number().int().min(0);
+const cashFlowSummary = z.object({ count: cashCount, inflow: cashMoney, outflow: cashMoney });
+const cashDraftSummary = {
+  draftCount: cashCount.optional(),
+  draftInflow: cashMoney.optional(),
+  draftOutflow: cashMoney.optional(),
+};
+export const cashSourceStatus = z.object({
+  source: cashSource,
+  included: z.boolean(),
+  reason: z.literal('permission').optional(),
+});
+export const cashOverdue = cashFlowSummary.extend(cashDraftSummary);
+export const cashCountAmount = z.object({ count: cashCount, amount: cashMoney });
+export const cashScheduleMeta = z.object({
+  from: cashDate,
+  to: cashDate,
+  today: cashDate,
+  includeDrafts: z.boolean(),
+  includeOverdue: z.boolean(),
+  sources: z.array(cashSourceStatus),
+  overdue: cashOverdue,
+  beforeFrom: cashFlowSummary.extend(cashDraftSummary),
+  truncated: z.boolean(),
+  rowCount: cashCount,
+});
+export const cashForecastMeta = cashScheduleMeta.omit({ rowCount: true }).extend({
+  openingBalance: cashMoney,
+  openingBasis: z.enum(['ledger', 'projected']),
+  ledgerBalance: cashMoney,
+  closingBalance: cashMoney,
+  openingBalanceWithDrafts: cashMoney.optional(),
+  closingBalanceWithDrafts: cashMoney.optional(),
+  minBalance: z.object({ date: cashDate, balance: cashMoney }),
+  cashAccounts: z.array(z.object({ accountId: z.string(), code: z.string(), name: z.string(), balance: cashMoney })),
+  missingAccountCodes: z.array(z.string()),
+  unscheduledPayroll: z.object({ count: cashCount, netPay: cashMoney }).optional(),
+  contractBacklog: z.object({ count: cashCount, subtotal: cashMoney }).optional(),
+  unallocated: z.object({ receive: cashCountAmount, pay: cashCountAmount }),
+  uncountedPaymentAccounts: z.array(
+    z.object({
+      accountId: z.string(),
+      code: z.string(),
+      name: z.string(),
+      count: cashCount,
+      receive: cashMoney,
+      pay: cashMoney,
+    }),
+  ),
+  notices: z.array(z.enum(CASH_NOTICES)),
+});
+export type CashForecastMeta = z.infer<typeof cashForecastMeta>;
+export type CashScheduleMeta = z.infer<typeof cashScheduleMeta>;
+/** Day columns that belong to a scheduled source (left out of the result when the source is not included). */
+export const CASH_SOURCE_COLUMN: Readonly<Record<CashSource, string>> = {
+  sales_invoice: 'receivables',
+  contract: 'contracts',
+  purchase_invoice: 'payables',
+  bank_transfer: 'transfers',
+  payroll: 'payroll',
+};
+export const cashForecastRow = z.object({
+  date: cashDate,
+  postedIn: cashMoney,
+  postedOut: cashMoney,
+  receivables: cashMoney.optional(),
+  contracts: cashMoney.optional(),
+  payables: cashMoney.optional(),
+  transfers: cashMoney.optional(),
+  payroll: cashMoney.optional(),
+  inflow: cashMoney,
+  outflow: cashMoney,
+  net: cashMoney,
+  balance: cashMoney,
+  draftInflow: cashMoney.optional(),
+  draftOutflow: cashMoney.optional(),
+  balanceWithDrafts: cashMoney.optional(),
+});
+export type CashForecastRow = z.infer<typeof cashForecastRow>;
+export const cashScheduleRow = z.object({
+  date: cashDate,
+  dueDate: cashDate,
+  direction: cashDirection,
+  source: cashSource,
+  state: cashState,
+  overdue: z.boolean(),
+  inBalance: z.boolean(),
+  number: z.string().nullable(),
+  period: z.string().nullable(),
+  partnerName: z.string().nullable(),
+  count: cashCount,
+  amount: cashMoney,
+  partnerId: z.string().nullable(),
+  salesInvoiceId: z.string().nullable(),
+  purchaseInvoiceId: z.string().nullable(),
+  contractId: z.string().nullable(),
+});
+export type CashScheduleRow = z.infer<typeof cashScheduleRow>;

@@ -8,6 +8,7 @@ import { candidates } from './matching.ts';
 import { reconcile, undoReconciliation } from './reconcile.ts';
 import { prepareTransfer, transferDetail, exportTransfer, cancelTransfer } from './transfers.ts';
 import { bankTodo } from './todo.ts';
+export { cashForecastAction, cashScheduleAction } from './cash-forecast.ts';
 const permission = { roles: ['accounting'] };
 export const board = defineAction({
   name: 'banking.board',

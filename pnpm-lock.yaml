@@ -586,6 +586,9 @@ importers:
       '@daifuku/mod-accounting':
         specifier: workspace:*
         version: link:../accounting
+      '@daifuku/mod-contract':
+        specifier: workspace:*
+        version: link:../contract
       '@daifuku/mod-partner':
         specifier: workspace:*
         version: link:../partner
@@ -598,6 +601,12 @@ importers:
       '@daifuku/mod-sales':
         specifier: workspace:*
         version: link:../sales
+      '@daifuku/mod-tax':
+        specifier: workspace:*
+        version: link:../tax
+      '@daifuku/mod-workforce':
+        specifier: workspace:*
+        version: link:../workforce
       zod:
         specifier: 4.6.1
         version: 4.6.1
