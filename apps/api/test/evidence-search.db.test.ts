@@ -1,8 +1,10 @@
 // docs/specs/evidence-search.md over REST with every module registered: POST /actions/attachment.evidence_search and
 // attachment.history answer 200 / 400 / 403; evidence linked to a purchase invoice (and to one of its lines) shows the
 // document's number to roles that may read it and `readable: false` to sales, which still gets the evidence row (AC-5,
-// AC-6, the current visibility of evidence rows); a deleted draft target turns unreadable; an older version listed by
-// the history downloads through GET /api/attachments/:id/download (AC-10).
+// AC-6, the current visibility of evidence rows); evidence linked to payments follows payment's row rules in the link
+// summary (sales sees receipts, purchasing disbursements) while the rows, their history and their files stay readable to
+// both (AC-6's known gap, measured); a deleted draft target turns unreadable; an older version listed by the history
+// downloads through GET /api/attachments/:id/download (AC-10).
 import {
   companyMemberships,
   configureStorage,
@@ -99,6 +101,7 @@ beforeAll(async () => {
   tokens.admin = app.jwt.sign({ sub: db.adminUserId, tenantId: db.tenantId, sessionVersion: 1 });
   await addUser('accounting', ['accounting']);
   await addUser('sales', ['sales']);
+  await addUser('purchasing', ['purchasing']);
   await addUser('viewer', ['viewer']);
   await addUser('nobody', []);
   supplierId = (await act('partner.create', { name: 'Evidence supplier', isSupplier: true })).id;
@@ -168,6 +171,54 @@ describe('attachment.evidence_search over REST (docs/specs/evidence-search.md)',
         docstatus: null,
       });
     expect(sales.get(onLine.id)?.linked?.kind).toBe('line');
+  });
+
+  it('AC-5 AC-6 a role whose row rule hides the linked payment gets readable: false, yet still sees the row, its history and its file', async () => {
+    const partner = (
+      await act('partner.create', { name: 'Evidence payment partner', isCustomer: true, isSupplier: true })
+    ).id;
+    const payment = (direction: 'receive' | 'pay', amount: string) =>
+      act('payment.create', { direction, partnerId: partner, date: '2026-10-06', amount, method: 'bank_transfer' });
+    const receipt = await payment('receive', '500');
+    const disbursement = await payment('pay', '600');
+    const onReceipt = await upload({
+      kind: 'receipt',
+      partnerId: partner,
+      linkedEntity: 'payment',
+      linkedId: receipt.id,
+    });
+    const onPay = await upload({
+      kind: 'receipt',
+      partnerId: partner,
+      linkedEntity: 'payment',
+      linkedId: disbursement.id,
+    });
+    const visible = { kind: 'document', readable: true, docstatus: 0, target: { entity: 'payment' } };
+    const hidden = { kind: 'document', readable: false, target: null, title: null, number: null, docstatus: null };
+    const cases: [string, string, string][] = [
+      // role, the evidence whose payment its row rule shows, the one it hides
+      ['sales', onReceipt.id, onPay.id],
+      ['purchasing', onPay.id, onReceipt.id],
+    ];
+    for (const [role, shown, hiddenId] of cases) {
+      const res = await post('attachment.evidence_search', { partnerId: partner }, role);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const rows = new Map((res.body.items as EvidenceItem[]).map((i) => [i.id, i]));
+      expect(rows.get(shown)?.linked, role).toMatchObject(visible);
+      expect(rows.get(hiddenId)?.linked, role).toMatchObject(hidden);
+      // AC-6 (known gap, open question 1): the row itself, its history and its file follow attachment's own read rule
+      expect([...rows.keys()].sort(), role).toEqual([onReceipt.id, onPay.id].sort());
+      expect((await post('attachment.history', { id: hiddenId }, role)).status, role).toBe(200);
+      const file = await app.inject({
+        method: 'GET',
+        url: `/api/attachments/${hiddenId}/download`,
+        headers: { authorization: `Bearer ${tokens[role]}` },
+      });
+      expect(file.statusCode, role).toBe(200);
+    }
+    // accounting reads both payments
+    const both = await post('attachment.evidence_search', { partnerId: partner }, 'accounting');
+    for (const row of both.body.items as EvidenceItem[]) expect(row.linked).toMatchObject(visible);
   });
 
   it('AC-5 a draft target deleted by the admin becomes readable: false', async () => {

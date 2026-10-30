@@ -46,16 +46,16 @@ JWTは利用者を識別する情報です。所属や権限を長期間固定�
 
 ## 各入口の確認項目
 
-| 入口 | 境界を守る場所 | 回帰で確かめること |
-| --- | --- | --- |
-| list/get/search | Repository scope + row filter | IDを知っていても他社/他拠点/他人へ届かない |
-| create/update | 参照先の所属・serverOwned・版 | 別user/siteへ移す入力、承認状態の偽造を拒否 |
-| action | runAction + business guard | 自己承認、二重処理、状態/期限の変化を再確認 |
-| CSV/集計 | export権限 + 元行の条件 | 非表示行の件数・合計・給与を推定できない |
-| audit/添付 | 元行の可視性 + field制約 | 過去値や証憑で通常の非表示項目が漏れない |
-| UI | meta + roleに応じた導線 | サーバー側の拒否を見える形で扱い、旧会社のデータを残さない |
+| 入口            | 境界を守る場所                | 回帰で確かめること                                         |
+| --------------- | ----------------------------- | ---------------------------------------------------------- |
+| list/get/search | Repository scope + row filter | IDを知っていても他社/他拠点/他人へ届かない                 |
+| create/update   | 参照先の所属・serverOwned・版 | 別user/siteへ移す入力、承認状態の偽造を拒否                |
+| action          | runAction + business guard    | 自己承認、二重処理、状態/期限の変化を再確認                |
+| CSV/集計        | export権限 + 元行の条件       | 非表示行の件数・合計・給与を推定できない                   |
+| audit/添付      | 元行の可視性 + field制約      | 過去値や証憑で通常の非表示項目が漏れない                   |
+| UI              | meta + roleに応じた導線       | サーバー側の拒否を見える形で扱い、旧会社のデータを残さない |
 
-**既知の差（未達、2026-10-30 記録）**: 「audit/添付: 元行の可視性」は、監査ログ（`auditTrail`）と記録画面の添付欄（`attachment.for_record`）、リンクの書込（`assertLinkTarget`）には当たりますが、証憑（`attachment`）の行そのものには当たっていません。証憑の list / get（`GET /api/attachment`）、`attachment.search`、`attachment.evidence_search`、`GET /api/attachments/:id/download`、証憑の検索画面 `/finance/evidence` は、attachment の role 表（経理・営業・購買・閲覧・管理者の read）と tenant・会社の境界だけで行の可視性が決まり、リンク先の記録の読取規則を継承しません。たとえば sales は purchase_invoice を読めませんが、purchase_invoice にリンクされた証憑のファイル名・金額・取引先は読めます（リンク先の番号や名前は、リンク先の権限で `readable: false` として隠します）。この差を閉じるかは利用者の確認待ちです（[evidence-search の未決事項 1](../specs/evidence-search.md)）。閉じるには、多相リンクを行の規則として評価する kernel の拡張と ADR が要り、権限マトリクスの横断表示（[完成度向上の計画](../completion-plan.md) F3）と合わせて検討します。改善候補一覧への登録は統合時に行います。
+**既知の差（未達、2026-10-30 記録）**: 「audit/添付: 元行の可視性」は、監査ログ（`auditTrail`）と記録画面の添付欄（`attachment.for_record`）、リンクの書込（`assertLinkTarget`）には当たりますが、証憑（`attachment`）の行そのものには当たっていません。証憑の list / get（`GET /api/attachment`）、`attachment.search`、`attachment.evidence_search`、`attachment.history`、`GET /api/attachments/:id/download`、証憑の検索画面 `/finance/evidence` は、attachment の role 表（経理・営業・購買・閲覧・管理者の read）と tenant・会社の境界だけで行の可視性が決まり、リンク先の記録の読取規則を継承しません。たとえば sales は purchase_invoice を読めませんが、purchase_invoice にリンクされた証憑のファイル名・金額・取引先は読めます（リンク先の番号や名前は、リンク先の権限で `readable: false` として隠します）。entity の read はあっても行の規則で隠れる記録も同じで、payment の行の規則（sales は入金、purchasing は支払だけ）で隠れる入出金に結び付いた証憑の行・`attachment.history`・ダウンロードは、その役割に 200 で返ります（2026-10-30、`apps/api/test/evidence-search.db.test.ts` で実測）。この差を閉じるかは利用者の確認待ちです（[evidence-search の未決事項 1](../specs/evidence-search.md)）。閉じるには、多相リンクを行の規則として評価する kernel の拡張と ADR が要り、権限マトリクスの横断表示（[完成度向上の計画](../completion-plan.md) F3）と合わせて検討します。改善候補一覧への登録は統合時に行います。
 
 ## 失敗時の設計
 

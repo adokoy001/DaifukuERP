@@ -235,8 +235,20 @@ export async function download(path: string, signal?: AbortSignal): Promise<Down
     { method: 'GET', headers: authHeaders(false), cache: 'no-store', ...(signal ? { signal } : {}) },
     false,
   );
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch (e) {
+    // The body broke off after the headers arrived: a transport failure like send()'s (status 0), unless stopped.
+    if (signal?.aborted) throw e;
+    throw new ApiError(0, {
+      code: 'INTERNAL',
+      message: e instanceof Error ? e.message : 'network error',
+      hint: 'The download was interrupted. Check the connection and try again.',
+    });
+  }
   return {
-    blob: await res.blob(),
+    blob,
     contentDisposition: res.headers.get('content-disposition'),
     contentType: res.headers.get('content-type'),
   };

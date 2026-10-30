@@ -1,7 +1,10 @@
 // The supersede history of one piece of evidence (docs/specs/evidence-search.md AC-16): attachment.history in a kit
 // Dialog, latest version first; every version downloads through the existing route. The actor is shown as in the audit
 // panel (`actorType:short id`), since most roles cannot read the user directory. Closing returns focus to the opener
-// (the kit Dialog does that).
+// (the kit Dialog does that). Notices are <div>s: the dialog's unlayered `.action-dialog p` rule would turn a <p> grey
+// and small on the notice's tinted background (contrast below 4.5:1).
+import { Link } from '@tanstack/react-router';
+import { useRef } from 'react';
 import { downloadAttachment } from '../api/attachments.ts';
 import { useEvidenceHistory } from '../api/evidence.ts';
 import type { FieldMeta } from '../api/types.ts';
@@ -97,6 +100,12 @@ export function EvidenceHistoryDialog({
   const { t } = useLocale();
   const history = useEvidenceHistory(id);
   const view = history.isError ? describeError(history.error) : undefined;
+  const body = useRef<HTMLDivElement>(null);
+  // "Retry" disappears once the history loads: focus goes to the dialog's Close button first (docs/conventions/ui.md).
+  const retry = () => {
+    body.current?.closest('dialog')?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
+    void history.refetch();
+  };
   return (
     <Dialog
       title={t({ ja: `差替の履歴: ${filename}`, en: `Supersede history: ${filename}` })}
@@ -106,21 +115,25 @@ export function EvidenceHistoryDialog({
       })}
       onClose={onClose}
       closeLabel={t(S.close)}
-      className="evidence-history-dialog"
       actions={
         <Button data-autofocus onClick={onClose}>
           {t(S.close)}
         </Button>
       }
     >
-      <div data-testid="evidence-history" aria-busy={history.isPending}>
+      <div data-testid="evidence-history" aria-busy={history.isPending} ref={body}>
         {history.isPending ? (
           <SkeletonCard lines={4} />
         ) : view ? (
-          <div className="ui-notice ui-notice-danger flex flex-col gap-1" role="alert">
-            <p>{view.explanation ? t(view.explanation) : view.message}</p>
+          <div
+            className="ui-notice ui-notice-danger flex flex-col items-start gap-1"
+            role="alert"
+            data-testid="evidence-history-error"
+          >
+            <div>{view.explanation ? t(view.explanation) : view.message}</div>
+            {view.explanation ? <div className="text-xs">{view.message}</div> : null}
             <ErrorDetails view={view} />
-            <Button size="sm" onClick={() => void history.refetch()}>
+            <Button size="sm" onClick={retry}>
               {t(S.retry)}
             </Button>
           </div>
@@ -132,12 +145,16 @@ export function EvidenceHistoryDialog({
               ))}
             </ol>
             {history.data?.truncated ? (
-              <p className="ui-notice ui-notice-info text-xs" data-testid="evidence-history-truncated">
+              <div className="ui-notice ui-notice-info text-xs" data-testid="evidence-history-truncated">
                 {t({
-                  ja: '版が多いため一部だけを表示しています（この証憑から最新版までの版は必ず表示します）。残りは証憑の一覧（/e/attachment）で確認してください。',
-                  en: 'Only part of the history is shown (the versions from this evidence to the latest are always included). Find the rest in the attachment list (/e/attachment).',
+                  ja: '版が多いため一部だけを表示しています（この証憑から最新版までの版は必ず表示します）。残りは',
+                  en: 'Only part of the history is shown (the versions from this evidence to the latest are always included). Find the rest in ',
                 })}
-              </p>
+                <Link to="/e/$entity" params={{ entity: 'attachment' }} className="ui-link">
+                  {t({ ja: '証憑の一覧', en: 'the attachment list' })}
+                </Link>
+                {t({ ja: 'で確認してください。', en: '.' })}
+              </div>
             ) : null}
           </>
         )}

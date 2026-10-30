@@ -6,7 +6,10 @@ import { Attachment } from '../entities/attachment.ts';
 /** Rows per evidence search page (AC-1). */
 export const EVIDENCE_PAGE_MAX = 100;
 export const EVIDENCE_PAGE_DEFAULT = 50;
-/** Rows returned by attachment.history besides the always-kept path from the requested row to the latest (AC-10). */
+/**
+ * Rows returned by attachment.history in total, the always-kept path from the requested row to the latest included; more
+ * only when that path alone is longer (AC-10).
+ */
 export const HISTORY_LIMIT = 50;
 /** Hops followed along supersededById, and levels walked down the tree; a safety bound (chains are acyclic). */
 export const HISTORY_MAX_HOPS = 500;

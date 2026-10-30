@@ -14,12 +14,14 @@ import {
   linkView,
   normalizeAmount,
   parseEvidenceSearch,
+  runEvidenceZip,
   safeFilename,
   searchFromCriteria,
   searchInput,
   selectionState,
   summarizeCriteria,
   truncateUtf8,
+  withTypeExtension,
   ZIP_MAX_BYTES,
   ZIP_MAX_FILES,
   zipEntryNames,
@@ -93,7 +95,10 @@ describe('URL search and criteria (AC-13, AC-14)', () => {
     expect(parseEvidenceSearch({ amountFrom: Number('12345678901234567890') }).amountFrom).toBe('invalid-number');
     expect(parseEvidenceSearch({ amountFrom: 12.5 }).amountFrom).toBe('12.5');
     expect(parseEvidenceSearch({ page: 1 })).toEqual({});
-    expect(parseEvidenceSearch({ page: 'x', kind: {} })).toEqual({ kind: 'invalid' });
+    expect(parseEvidenceSearch({ page: '4' })).toEqual({ page: 4 });
+    expect(parseEvidenceSearch({ page: 'x', kind: {} })).toEqual({ kind: 'invalid', pageInvalid: true });
+    for (const page of [0, -2, 1.5, 1_000_000, 'abc', '0'])
+      expect(parseEvidenceSearch({ page }), String(page)).toEqual({ pageInvalid: true });
   });
 
   it('AC-13 criteria round-trip through the URL; amounts stay strings; the default supersede value is left out', () => {
@@ -160,6 +165,22 @@ describe('URL search and criteria (AC-13, AC-14)', () => {
     );
     expect(reversed.criteria).toEqual(EMPTY_CRITERIA);
     expect(reversed.ignored).toEqual(['from', 'to', 'amountFrom', 'amountTo']);
+    // a page that is not a whole number from 1 is reported with the other ignored values and the first page is shown
+    expect(criteriaFromSearch(parseEvidenceSearch({ page: 'abc', kind: 'receipt' }), KINDS)).toEqual({
+      criteria: { ...EMPTY_CRITERIA, kind: 'receipt' },
+      page: 1,
+      ignored: ['page'],
+    });
+    expect(criteriaFromSearch(parseEvidenceSearch({ page: 0 }), KINDS).ignored).toEqual(['page']);
+    // the router spreads this route's validated search over the raw one, so a raw page the validator dropped arrives too
+    const merged = (raw: Record<string, unknown>) =>
+      ({ ...raw, ...parseEvidenceSearch(raw) }) as unknown as Parameters<typeof criteriaFromSearch>[0];
+    for (const page of ['abc', 0, -1, 2.5])
+      expect(criteriaFromSearch(merged({ page }), KINDS), String(page)).toMatchObject({ page: 1, ignored: ['page'] });
+    expect(criteriaFromSearch(merged({ page: 1 }), KINDS)).toMatchObject({ page: 1, ignored: [] });
+    expect(criteriaFromSearch(merged({ page: 7 }), KINDS)).toMatchObject({ page: 7, ignored: [] });
+    // an empty value is "not given", not an invalid one
+    expect(criteriaFromSearch(merged({ from: '', kind: '' }), KINDS)).toMatchObject({ ignored: [] });
   });
 
   it('AC-14 the form check gives a reason per field, in form order; separators are removed, nothing becomes a number', () => {
@@ -218,6 +239,13 @@ describe('URL search and criteria (AC-13, AC-14)', () => {
         kind: 'Receipt',
       }),
     ).toEqual(['Amount: 5,000', 'Kind: Receipt']);
+    // English ranges use an en dash, or "from" / "up to" for one-sided ranges; never the Japanese wave dash
+    expect(summarizeCriteria(c, 'en', { partner: 'Partner A' }).slice(0, 2)).toEqual([
+      'Date: 2026-01-01 – 2026-01-31',
+      'Amount: from 1,000',
+    ]);
+    expect(summarizeCriteria({ ...EMPTY_CRITERIA, to: '2026-03-31' }, 'en')).toEqual(['Date: up to 2026-03-31']);
+    expect(summarizeCriteria({ ...EMPTY_CRITERIA, to: '2026-03-31' }, 'ja')).toEqual(['取引年月日: 〜2026-03-31']);
     expect(summarizeCriteria(EMPTY_CRITERIA, 'ja')).toEqual([]);
     expect(criteriaKey(c)).toBe(criteriaKey({ ...c }));
     expect(criteriaKey(c)).not.toBe(criteriaKey({ ...c, incomplete: false }));
@@ -297,7 +325,7 @@ describe('zip entry names (AC-17)', () => {
     expect(
       zipEntryNames([
         item({ txnDate: '2026-01-15', filename: '請求書.pdf' }),
-        item({ txnDate: null, filename: 'receipt.png' }),
+        item({ txnDate: null, filename: 'receipt.png', contentType: 'image/png' }),
         item({ txnDate: '2026-01-15', filename: 'old.pdf', supersededById: 'x' }),
         item({ txnDate: '2026-02-01', filename: 'a/b\\c:d*e?f"g<h>i|j\u0001.pdf' }),
         item({ txnDate: '2026-02-01', filename: 'trailing. ' }),
@@ -307,7 +335,7 @@ describe('zip entry names (AC-17)', () => {
       'no-date_receipt.png',
       'superseded_2026-01-15_old.pdf',
       '2026-02-01_a_b_c_d_e_f_g_h_i_j_.pdf',
-      '2026-02-01_trailing__',
+      '2026-02-01_trailing__.pdf', // the trailing dot and space replaced, then the content type's extension added
     ]);
     expect(safeFilename('CON')).toBe('_CON');
     expect(safeFilename('nul.txt')).toBe('_nul.txt');
@@ -315,14 +343,54 @@ describe('zip entry names (AC-17)', () => {
     expect(safeFilename('console.pdf')).toBe('console.pdf');
   });
 
+  it('AC-17 C1 controls and invisible bidi / format characters are replaced, so an extension cannot be spoofed', () => {
+    expect(safeFilename('a\u0085b\u009fc')).toBe('a_b_c');
+    for (const ch of [
+      '\u061c',
+      '\u200b',
+      '\u200e',
+      '\u200f',
+      '\u202a',
+      '\u202e',
+      '\u2066',
+      '\u2069',
+      '\ufeff',
+      '\u2028',
+    ])
+      expect(safeFilename(`x${ch}y.pdf`), ch.codePointAt(0)?.toString(16)).toBe('x_y.pdf');
+    const [spoof] = zipEntryNames([item({ txnDate: '2026-01-01', filename: '請求書\u202efdp.exe' })]);
+    expect(spoof).toBe('2026-01-01_請求書_fdp.exe.pdf');
+    expect([...(spoof ?? '')].some((ch) => /[\p{Cc}\p{Cf}]/u.test(ch))).toBe(false);
+    expect(safeFilename('../../etc/passwd')).toBe('.._.._etc_passwd');
+    expect(safeFilename('日本語 ファイル.pdf')).toBe('日本語 ファイル.pdf');
+  });
+
+  it('AC-17 the stored content type decides the extension: a name that does not end with it gets it added', () => {
+    expect(withTypeExtension('invoice.exe', 'application/pdf')).toBe('invoice.exe.pdf');
+    expect(withTypeExtension('scan.PDF', 'application/pdf')).toBe('scan.PDF');
+    expect(withTypeExtension('photo.jpeg', 'image/jpeg')).toBe('photo.jpeg');
+    expect(withTypeExtension('photo', 'image/jpeg')).toBe('photo.jpg');
+    expect(withTypeExtension('data.tsv', 'text/plain')).toBe('data.tsv.txt');
+    expect(withTypeExtension('feed.xml', 'text/xml')).toBe('feed.xml');
+    expect(withTypeExtension('a.bin', 'application/octet-stream')).toBe('a.bin'); // not an allowed type: unchanged
+    expect(withTypeExtension('a.bin', undefined)).toBe('a.bin');
+    expect(
+      zipEntryNames([
+        item({ txnDate: '2026-01-01', filename: 'receipt', contentType: 'image/png' }),
+        item({ txnDate: '2026-01-01', filename: 'receipt.png', contentType: 'image/png' }),
+      ]),
+    ).toEqual(['2026-01-01_receipt.png', '2026-01-01_receipt (2).png']);
+  });
+
   it('AC-17 same names get (2), (3) before the extension, case-insensitively', () => {
+    const noType = (filename: string) => ({ txnDate: '2026-01-01', filename, supersededById: null });
     expect(
       zipEntryNames([
         item({ txnDate: '2026-01-01', filename: 'a.pdf' }),
         item({ txnDate: '2026-01-01', filename: 'A.pdf' }),
         item({ txnDate: '2026-01-01', filename: 'a.pdf' }),
-        item({ txnDate: '2026-01-01', filename: 'noext' }),
-        item({ txnDate: '2026-01-01', filename: 'noext' }),
+        noType('noext'), // no known content type: the name keeps having no extension
+        noType('noext'),
       ]),
     ).toEqual([
       '2026-01-01_a.pdf',
@@ -418,6 +486,87 @@ describe('fetching the selected files (AC-17, AC-19)', () => {
       stop.signal,
     );
     expect(aborted).toMatchObject({ aborted: true, files: [] });
+  });
+
+  describe('runEvidenceZip: one press of the download button, start to finish', () => {
+    const steps = (over: Partial<Parameters<typeof runEvidenceZip>[1]> = {}) => {
+      const saved: { size: number; filename: string }[] = [];
+      return {
+        saved,
+        steps: {
+          fetchOne: async (it: EvidenceItem) => blob(it.size),
+          build: async (entries: { name: string; data: Blob }[]) => new Blob(entries.map((e) => e.data)),
+          save: (zip: Blob, filename: string) => void saved.push({ size: zip.size, filename }),
+          now: () => new Date('2026-10-30T01:02:03Z'),
+          ...over,
+        },
+      };
+    };
+
+    it('AC-17 saves the zip under the timestamped name and reports the files and failures', async () => {
+      const items = [item({ size: 2 }), item({ size: 3 })];
+      const { saved, steps: s } = steps({
+        fetchOne: async (it) => {
+          if (it === items[1]) throw failing(404);
+          return blob(it.size);
+        },
+      });
+      const outcome = await runEvidenceZip(items, s, new AbortController().signal);
+      expect(outcome).toMatchObject({ kind: 'saved', saved: 1, failures: [{ reason: 'denied' }] });
+      expect(saved).toEqual([{ size: 2, filename: 'evidence_20261030010203.zip' }]);
+    });
+
+    it('AC-17 AC-19 a zip that cannot be built or saved is a reported failure, never an unhandled rejection', async () => {
+      const items = [item({ size: 1 }), item({ size: 1 })];
+      const memory = new RangeError('Array buffer allocation failed');
+      const { saved, steps: s } = steps({
+        build: async () => {
+          throw memory;
+        },
+      });
+      await expect(runEvidenceZip(items, s, new AbortController().signal)).resolves.toEqual({
+        kind: 'failed',
+        error: memory,
+        failures: [],
+      });
+      expect(saved).toEqual([]);
+      const blocked = steps({
+        save: () => {
+          throw new Error('download blocked');
+        },
+      });
+      await expect(runEvidenceZip(items, blocked.steps, new AbortController().signal)).resolves.toMatchObject({
+        kind: 'failed',
+        error: { message: 'download blocked' },
+      });
+    });
+
+    it('AC-19 nothing fetched, a 401 and "stop" save nothing', async () => {
+      const items = [item({ size: 1 })];
+      const none = steps({
+        fetchOne: async () => {
+          throw failing(403);
+        },
+      });
+      expect(await runEvidenceZip(items, none.steps, new AbortController().signal)).toMatchObject({ kind: 'none' });
+      const expired = steps({
+        fetchOne: async () => {
+          throw failing(401);
+        },
+      });
+      expect(await runEvidenceZip(items, expired.steps, new AbortController().signal)).toEqual({
+        kind: 'unauthorized',
+      });
+      const stop = new AbortController();
+      const stopped = steps({
+        build: async (entries) => {
+          stop.abort();
+          return new Blob(entries.map((e) => e.data));
+        },
+      });
+      expect(await runEvidenceZip(items, stopped.steps, stop.signal)).toEqual({ kind: 'aborted' });
+      for (const run of [none, expired, stopped]) expect(run.saved).toEqual([]);
+    });
   });
 });
 

@@ -414,13 +414,19 @@ describe('company isolation, permissions and validation (AC-7, AC-8, AC-9)', () 
     expect((await history({ companyId: companyB }, rowB.id)).items.map((i) => i.id)).toEqual([rowB.id]);
   });
 
-  it('AC-8 callers without attachment read, or limited to stores, are refused; viewer may search', async () => {
+  it('AC-8 callers without attachment read, or limited to stores or sites, are refused; viewer may search', async () => {
     const co = { companyId: companyA };
     await expect(search(asRole(['nobody'], co), {})).rejects.toBeInstanceOf(PermissionDenied);
     await expect(history(asRole(['nobody'], co), rowA.id)).rejects.toBeInstanceOf(PermissionDenied);
-    const storeScoped = asRole(['accounting'], { ...co, accessScope: 'stores', storeIds: [newId()] });
-    await expect(search(storeScoped, {})).rejects.toBeInstanceOf(PermissionDenied);
-    await expect(history(storeScoped, rowA.id)).rejects.toBeInstanceOf(PermissionDenied);
+    const limited = [
+      { accessScope: 'stores' as const, storeIds: [newId()] },
+      { accessScope: 'sites' as const, siteIds: [newId()] },
+    ];
+    for (const scope of limited) {
+      const scoped = asRole(['accounting'], { ...co, ...scope });
+      await expect(search(scoped, {}), scope.accessScope).rejects.toBeInstanceOf(PermissionDenied);
+      await expect(history(scoped, rowA.id), scope.accessScope).rejects.toBeInstanceOf(PermissionDenied);
+    }
     for (const role of ['viewer', 'accounting', 'sales', 'purchasing'])
       expect((await search(asRole([role], co), {})).items.map((i) => i.id)).toContain(rowA.id);
   });

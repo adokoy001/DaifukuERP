@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 証憑の横断検索（E4）
 
 - セッション: 完成度向上計画 E4（workflow の作業項目、worktree `wip/evidence-search`、基準 `4afa6d1`）／ 担当: agent（spec 担当の後の実装担当）／ 対象: [docs/specs/evidence-search.md](../specs/evidence-search.md)
-- 計測: tokens=null（未計測）, agent_minutes=約 85（spec 批評の反映 10 分、実装と試験 45 分、ブラウザ・計測・gate の待ち時間 30 分）, human_minutes=0, rework_lines=約 40（DB 試験の差替の順序、型・lint の指摘、試験の型、クリアの不具合）, gate_failures=5（gate:quick 3 回: 作業記録への文書リンクが未作成、eslint 2 件、API の型検査 1 件。gate:light 2 回: `GATE_BASE` 環境変数で基準を渡したため、`scripts/test/gate.test.ts` の AC-9 が起動する子の gate にその変数が漏れて 30 秒で失敗。`--base 4afa6d1` で渡し直して成功）
+- 計測: tokens=null（未計測）, agent_minutes=約 150（実装担当 約 85: spec 批評の反映 10 分、実装と試験 45 分、ブラウザ・計測・gate の待ち時間 30 分。修正担当 約 65: 指摘の確認と修正 35 分、試験と gate の待ち時間 30 分）, human_minutes=0, rework_lines=約 525（実装担当 約 40: DB 試験の差替の順序、型・lint の指摘、試験の型、クリアの不具合。修正担当 約 485: 製品のコード 366 行の追加と 119 行の削除。試験と文書を除く）, gate_failures=5（修正担当の gate の失敗は 0。以下は実装担当の分。gate:quick 3 回: 作業記録への文書リンクが未作成、eslint 2 件、API の型検査 1 件。gate:light 2 回: `GATE_BASE` 環境変数で基準を渡したため、`scripts/test/gate.test.ts` の AC-9 が起動する子の gate にその変数が漏れて 30 秒で失敗。`--base 4afa6d1` で渡し直して成功）
 
 ## 決めたこと（と理由）
 
@@ -47,6 +47,42 @@
 - module の型 `EvidenceItem` の `linked` が開いた記録型の推論で `{}` になり、API の試験の型検査で失敗 — 発見: `typecheck:api`、修正: 足した項目を TypeScript の型で明示。
 - 禁止文字の正規表現の制御文字が lint（`no-control-regex`）に掛かった — 発見: eslint、修正: コードポイントで判定。
 - `GATE_BASE` の環境変数が `scripts/test/gate.test.ts` の AC-9 の子の gate に漏れて失敗する（試験の隔離の不足。製品の不具合ではない）— 発見: gate:light の実測と単独の再実行、対応: `--base` で渡した。試験側で子の環境から `GATE_BASE` を除くのは A4（gate）の担当範囲なので、統合担当に申し送る。
+
+## 実装レビューの修正（2026-10-30、修正担当）
+
+レビューの指摘 16 件（重大 1・軽微 10・指摘 5）を、指摘ごとにコードと照らして確かめた。重大の 1 件（証憑の行の可視性）は事実として正しいが、利用者の確認と kernel の拡張・ADR が要るため、この項目では変えず実測と記録だけを足した。残りの 15 件（同じ内容の 2 件を含む）はすべて正しく、修正した。採否の一覧は spec の「実装レビューへの対応」。
+
+### 決めたこと（と理由）
+
+- **頁の番号**: 最後の頁より後の `?page=` は、件数と食い違う「0 件」の空状態と頁送りを出さず、「この頁に表示する証憑はありません」と「最後の頁へ」を出す（自動で移動はしない。利用者が URL の食い違いに気付けるように）。1〜999,999 の整数でない頁は「頁」を無視した値として示す。router の型は全画面で共有されるので、`page` に別の型（`'invalid'`）を足さず、`pageInvalid` という別の鍵にした（足すと汎用一覧の `ListSearch` の型検査が通らなくなった）。
+- **router が検証前の値を重ねる**: TanStack Router は画面の検証済みの search を、検証前（root の生の値）の上に重ねて渡す（`router-core` の `{ ...parentSearch, ...strictSearch }` を読んで確認）。そのため `?page=abc` では頁が文字列のまま画面に届き、検索の `offset` が `NaN` になって検索自体が失敗していた。レビューは「黙って落ちる」と書いていたが、ブラウザ試験で実際には検索エラーになることが分かった。`criteriaFromSearch` で頁と各条件を型に頼らず検査し直す。空の値（`?from=`）は不正ではなく未指定として扱う。
+- **zip の組立て・保存の失敗**: 取得から保存までを純粋な `runEvidenceZip`（取得・組立て・保存・時刻を注入）に移し、失敗を `failed` の結果として返す。画面はその結果をライブ領域に出す。component の試験の仕組みが無いため、純粋関数にして unit 試験で確かめる方を選んだ。
+- **受信中の通信の失敗**: `collectFiles` で型を推し量るより、`api/client.ts` の `download` で本文の受信の失敗を状態 0 の `ApiError` にする方を選んだ（`send` の通信失敗と同じ扱いになり、1 件のダウンロードのエラー表示も揃う）。
+- **zip 内の名前**: 制御文字（C0・DEL・C1）、Unicode の書式文字（Cf。双方向の制御・幅の無い文字・BOM）、行と段落の区切りを `_` に置き換える（Unicode のプロパティで判定。個別の列挙より漏れが少ない。絵文字の結合子 U+200D も置き換わるが、名前が読めなくなるだけで安全側）。あわせて、記録の `contentType` に合う拡張子で終わらない名前に拡張子を足した（指摘の任意の多重の防御。`invoice.exe` と記録された PDF は zip で `invoice.exe.pdf` になり、展開しても実行形式として開かれない）。既存の単体試験の期待値のうち、拡張子の無い名前・末尾が `.` と空白の名前の 2 件は、この仕様の変更に合わせて期待値を直した（`.pdf` が付く）。拡張子の無い名前の連番の試験は、型の無い入力で続けて確かめる（試験を弱めていない）。
+- **焦点**: ダウンロード → 「中止」、「中止」・完了 → ダウンロードのボタン（押せなければ結果の見出し）、「選択を解除」→ 結果の見出し、検索の再試行 → 最初の検索欄（UI の規約の「表の中の再試行」）、履歴の再試行 → Dialog の「閉じる」。kit の `Button` は ref を受けないので、kit を変えずに `data-evidence-button` で探す。
+- **選択の上限**: C1 と同じく、50 件に達したら選ばれていない行のチェックと（その頁を選びきれない）見出しのチェックを無効にし、上限の文を出し続ける。上限と合計サイズの超過の文は常に置いた `role="status"` に入れて読み上げる。
+- **権限の無い利用者への説明**: 店舗・拠点に限定された所属でも使えないことを足した。利用者の情報（`LoginUser.accessScope`）はログイン時の既定の会社のもので、会社を切り替えると違いうるため、範囲で文を選ばず両方を書く。
+- **履歴の Dialog の注意書き**: `<p>` を `<div>` にした。Dialog の `.action-dialog p`（層の外の規則）が kit の注意書きの色に勝つため。axe は開いた modal の中の対比を手動確認に回す（背景を判定できない）ので、ブラウザ試験で対比そのものを測る（`contrastOf`。計算した色は oklch のことがあるので 1×1 の canvas で sRGB に直す）。
+- **小さな整理**: `useEvidenceSearch` の使わない `enabled`、CSS の無い class 名を外した。選択行は kit に `.ui-row-selected` を足して色を付ける（`ui-row-link` はリンクの行の `cursor: pointer` を伴うため）。適用中の条件は操作できないので、外せる札の `ui-chip` ではなく `Badge`。英語の副題の日本語と、英語の範囲の「〜」を直した（`–`、片側は `from` / `up to`）。空状態の 3 通りを `ResultsEmpty` に分けた（`EvidenceSearch` が 300 行を超えたためだけではなく、理由ごとの文が 1 か所で読めるため）。
+- **証憑の行の可視性（重大）**: レビューの実測（入出金の行の規則で隠れる記録の証憑の行・履歴・ダウンロードが 200）を API の DB 試験に足して記録した。Repository の外で結果を後から絞る暫定の対応は入れない（件数と頁が壊れ、権限の経路が 2 つになるため。レビューの推奨どおり）。
+
+### 検証（何を・どう確認したか）
+
+- [実測] Web unit `apps/web/src/lib/evidence-search.test.ts`（19 件。新規: 不正な頁と検証前の値が重なった場合、英語の範囲、C1・双方向の制御文字・`../../`、拡張子の付与、`runEvidenceZip` の保存・組立て失敗・保存失敗・0 件・401・中止）、`apps/web/src/api/client.test.ts`（5 件。新規: 本文の受信中の失敗が状態 0、中止なら元の例外のまま）、`zip.test.ts`、`ui/` の試験（kit と `token-usage`）がすべて成功。
+- [実測] DB（daifuku_test_e4fx、`modules/attachments/test/evidence-search.db.test.ts` と `apps/api/test/evidence-search.db.test.ts`、21 件成功、23.9 秒）: 拠点に限定された accounting の Context が `attachment.evidence_search` と `attachment.history` で PermissionDenied。入出金の下書き（入金・支払）に結び付けた証憑で、sales は入金側だけ・purchasing は支払側だけ `readable: true`、隠れた側は `target` / `title` / `number` / `docstatus` が null。隠れた側の証憑の行・`attachment.history`・`GET /api/attachments/:id/download` は両方の役割に 200（AC-6 の既知の差）。accounting は両方 `readable: true`。
+- [実測] ブラウザ `apps/web/e2e/evidence-search.spec.ts`（slot 53、新しい fixture DB、`--project=chromium --no-deps`、2 件成功、26.7 秒）: 既存の手順に加えて、履歴の読込失敗（500 に差し替え）の表示と axe、注意書きの対比 4.5:1 以上、再試行で「閉じる」に焦点、390px で履歴の Dialog を開いた状態のはみ出しなしと axe、閉じた後に「履歴」へ焦点、「選択を解除」の後に結果の見出しへ焦点、`?page=99` で範囲外の表示と頁送りなし・「最後の頁へ」で 1–6 / 6 件、`?page=abc` で「頁」を無視した表示と先頭頁。最初の実行で `?page=abc` の検索が「invalid input for attachment.evidence_search」で失敗し、上の router の重なりを見つけた。
+- [実測] 対比の試験の確かめ: 履歴の読込失敗の文を修正前の `<p>` に一時的に戻して同じ試験を実行し、対比 4.05:1 で失敗すること（レビューの値と一致）、`<div>` に戻して成功することを確かめた。色を `rgb()` の文字列として読む最初の実装は、背景が `oklch()` で返るため誤った値（4.69）で通ってしまい、canvas で変換する形に直した。
+- [実測] `pnpm gate:quick --base 4afa6d1`: format・docs・assurance・eslint・boundaries・typecheck・API/Web typecheck・関係する unit 32 ファイルが成功（123 秒）。
+- [実測] `pnpm gate:light --base 4afa6d1`（daifuku_test_e4fx、999 秒＝16.7 分、load average 5〜10）: format・docs・assurance・typecheck・API/Web typecheck・lint・unit 全件（157 ファイル 1,592 件）・DB（選ばれた 43 / 133 ファイル、250 件）・deploy すべて成功。
+- [実測] 関係するブラウザ試験（slot 53、新しい fixture DB、`--project=chromium` と依存の `industry`、23 件すべて成功、3.6 分）: `evidence-search`（2）、`csv-import`（4。`download` を使う取込テンプレートの取得）、`list-workbench`（4。選択行の色の kit の規則を共有）、`ui-kit`（10）、依存の `industry-templates`（3）。
+- [レビュー] `EvidenceSearch` の max-lines の警告は空状態を分けて解消した。modules の import の境界は変えていない（`lint:boundaries` 成功）。新しい文言はすべて `{ ja, en }`。
+- [未検証] 50 件に達したときのチェックの無効化の画面上の動き（判定 `selectionState().full` は単体試験、配線はコードレビュー）。`truncated` の注意書きの対比（50 行を超える履歴をブラウザ試験で作っていない。読込失敗の注意書きと同じ `<div>` と kit の class）。kit の Dialog の説明文（`.action-dialog p`、白地で約 4.43:1）は全 Dialog に共通の既存の問題で、この項目では直していない（統合担当へ）。Windows・macOS での zip の展開とスマートフォン実機の 100 MB は従前どおり未検証。
+
+### 見つけた問題と修正（発見経路つき）
+
+- `?page=abc` で検索自体が失敗する（router が検証前の値を重ねるため）— 発見: 追加したブラウザ試験の最初の実行、修正: 画面の解釈で頁を検査し直す。
+- 頁に `'invalid'` の型を足すと汎用一覧の型検査が通らない — 発見: `typecheck:web`、修正: 別の鍵 `pageInvalid` にした。
+- 対比の試験が oklch の色を読めずに誤って通る — 発見: 修正前の `<p>` に戻した確かめの実行で通ってしまった、修正: canvas で sRGB に直す。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

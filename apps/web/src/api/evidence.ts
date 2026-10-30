@@ -30,7 +30,7 @@ const READ_OPTIONS = {
   networkMode: 'always',
 } as const;
 
-export function useEvidenceSearch(input: Record<string, unknown>, enabled: boolean) {
+export function useEvidenceSearch(input: Record<string, unknown>) {
   return useQuery({
     queryKey: evidenceSearchKey(input),
     queryFn: ({ signal }) =>
@@ -40,7 +40,6 @@ export function useEvidenceSearch(input: Record<string, unknown>, enabled: boole
         signal,
         cache: 'no-store',
       }),
-    enabled,
     ...READ_OPTIONS,
   });
 }

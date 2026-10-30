@@ -1,12 +1,13 @@
 // Evidence search in the browser (docs/specs/evidence-search.md AC-12..AC-21): open it from the screen search, narrow
 // to one piece of evidence by date range x amount range x partner, open the linked purchase invoice and come back with
 // the criteria restored, refuse an invalid range, the supersede history dialog and its focus, a zip of two selected
-// files read back here, a partial failure (one download answered 409), ignored URL values, English, 390px and axe.
+// files read back here, a partial failure (one download answered 409), ignored URL values, English, 390px and axe; the
+// history's error state and the history at 390px under axe; focus after "Clear selection"; a page past the last one.
 // Data: a fresh synthetic company (financeFixture) with a submitted purchase invoice and evidence uploaded via the API.
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { WCAG_TAGS, formatJudgement, judge, parseExceptions, type A11yLocale, type A11yWidth } from './a11y-policy.ts';
 import { financeFixture, financeInvoice } from './finance-helpers.ts';
 import { openScreen } from './navigation-helpers.ts';
@@ -82,6 +83,45 @@ async function downloadZip(page: Page): Promise<Buffer> {
   const path = await file.path();
   if (!path) throw new Error('No download file');
   return readFile(path);
+}
+
+/**
+ * WCAG contrast ratio of an element's text against the first opaque background behind it. axe leaves text inside the
+ * open modal <dialog> to manual review (the backdrop hides the background from it), so the dialog's notices are measured.
+ */
+async function contrastOf(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    // Computed colours may be oklch(); a 1x1 canvas turns any CSS colour into sRGB bytes.
+    const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('no 2d canvas');
+    const srgb = (css: string) => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      return [...ctx.getImageData(0, 0, 1, 1).data];
+    };
+    const luminance = (rgba: number[]) => {
+      const [r = 0, g = 0, b = 0] = rgba.map((c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    let node: Element | null = element;
+    let background = [255, 255, 255, 255];
+    while (node) {
+      const value = srgb(getComputedStyle(node).backgroundColor);
+      if ((value[3] ?? 0) === 255) {
+        background = value;
+        break;
+      }
+      node = node.parentElement;
+    }
+    const [hi = 0, lo = 0] = [luminance(srgb(getComputedStyle(element).color)), luminance(background)].sort(
+      (a, b) => b - a,
+    );
+    return (hi + 0.05) / (lo + 0.05);
+  });
 }
 
 async function axe(page: Page, locale: A11yLocale, width: A11yWidth) {
@@ -216,6 +256,28 @@ test('AC-12..AC-21 evidence search: three keys AND, linked invoice, history, zip
   await expect(dialog).toHaveCount(0);
   await expect(historyButton).toBeFocused();
 
+  // AC-16: a failed history read is explained inside the dialog (axe sees the notice); "Retry" hands focus to Close
+  await page.route('**/actions/attachment.history', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'INTERNAL', message: 'History read failed (synthetic)', hint: 'Retry.' } }),
+    }),
+  );
+  await historyButton.click();
+  await expect(dialog.getByTestId('evidence-history-error')).toContainText('History read failed (synthetic)');
+  await axe(page, 'ja', 1280);
+  // the notice's text keeps the kit colour on its tinted background (the dialog's `p` rule used to turn it grey)
+  expect(
+    await contrastOf(dialog.getByTestId('evidence-history-error').locator('> :first-child')),
+  ).toBeGreaterThanOrEqual(4.5);
+  await page.unroute('**/actions/attachment.history');
+  await dialog.getByRole('button', { name: '再試行', exact: true }).click();
+  await expect(dialog.getByTestId('evidence-version')).toHaveCount(2);
+  await expect(dialog.getByRole('button', { name: '閉じる', exact: true }).last()).toBeFocused();
+  await dialog.getByRole('button', { name: '閉じる', exact: true }).last().click();
+  await expect(dialog).toHaveCount(0);
+
   // AC-17: two selected files -> one zip with dated names and the stored bytes
   await row(page, otherPartner.id).getByRole('checkbox').check();
   await row(page, v2.id).getByRole('checkbox').check();
@@ -229,6 +291,8 @@ test('AC-12..AC-21 evidence search: three keys AND, linked invoice, history, zip
 
   // AC-19: one download answered 409 -> the others are zipped, the failure is listed
   await page.getByRole('button', { name: '選択を解除', exact: true }).click();
+  // the pressed button disappears with the selection: focus goes to the results heading, not <body>
+  await expect(page.getByRole('heading', { level: 2, name: '検索結果', exact: true })).toBeFocused();
   await page.route(`**/api/attachments/${v1.id}/download`, (route) =>
     route.fulfill({
       status: 409,
@@ -254,6 +318,13 @@ test('AC-12..AC-21 evidence search: three keys AND, linked invoice, history, zip
   await page.setViewportSize({ width: 390, height: 844 });
   await assertNoOverflow(page);
   await axe(page, 'ja', 390);
+  // the history is usable at 390px too: no page overflow and no axe failure with the dialog open
+  await historyButton.click();
+  await expect(dialog.getByTestId('evidence-version')).toHaveCount(2);
+  await assertNoOverflow(page);
+  await axe(page, 'ja', 390);
+  await dialog.getByRole('button', { name: '閉じる', exact: true }).last().click();
+  await expect(historyButton).toBeFocused();
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'en'));
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: 'Evidence search', exact: true })).toBeVisible();
@@ -269,6 +340,19 @@ test('AC-12..AC-21 evidence search: three keys AND, linked invoice, history, zip
   await expect(page.getByTestId('evidence-ignored')).toContainText('取引年月日（開始）');
   await expect(page.getByTestId('evidence-ignored')).toContainText('取引金額（下限）');
   await expect(page.getByTestId('evidence-summary')).toHaveText('条件なし（すべての証憑）: 6 件');
+
+  // AC-15: a page past the last one says so (not "no match", no contradictory pager) and leads to the last page
+  await page.goto('/finance/evidence?page=99');
+  await expect(page.getByText('この頁に表示する証憑はありません', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('evidence-summary')).toHaveText('条件なし（すべての証憑）: 6 件');
+  await expect(page.getByTestId('evidence-pager')).toHaveCount(0);
+  await page.getByTestId('evidence-last-page').click();
+  await expect(page.getByTestId('evidence-pager')).toContainText('1–6 / 6');
+  expect(new URL(page.url()).searchParams.get('page')).toBeNull();
+  // AC-14: a page that is not a whole number is reported with the other ignored URL values
+  await page.goto('/finance/evidence?page=abc');
+  await expect(page.getByTestId('evidence-ignored')).toContainText('頁');
+  await expect(page.getByTestId('evidence-pager')).toContainText('1–6 / 6');
 });
 
 test('AC-12 a user without attachment read who opens the URL gets an explanation', async ({ page, request }) => {

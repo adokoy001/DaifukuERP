@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, clearSession, getToken, getUser, onUnauthorized, request, setSession } from './client.ts';
+import { ApiError, clearSession, download, getToken, getUser, onUnauthorized, request, setSession } from './client.ts';
 import type { LoginUser } from './types.ts';
 
 const user: LoginUser = {
@@ -74,5 +74,32 @@ describe('quality-foundation AC-3: session identity on delayed unauthorized resp
     await expect(pending).rejects.toMatchObject({ status: 401 });
     expect(getToken()).toBeNull();
     expect(unauthorized).not.toHaveBeenCalled();
+  });
+});
+
+describe('evidence-search AC-19: a download whose body breaks off is a transport failure', () => {
+  const brokenBody = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+        blob: async () => {
+          throw new TypeError('network error');
+        },
+      })),
+    );
+
+  it('reports status 0 (like a request that never reached the API), so the zip lists it as a connection failure', async () => {
+    brokenBody();
+    await expect(download('/api/attachments/x/download')).rejects.toMatchObject({ name: 'ApiError', status: 0 });
+  });
+
+  it('rethrows as is when the caller stopped the download', async () => {
+    brokenBody();
+    const stop = new AbortController();
+    stop.abort();
+    await expect(download('/api/attachments/x/download', stop.signal)).rejects.toBeInstanceOf(TypeError);
   });
 });

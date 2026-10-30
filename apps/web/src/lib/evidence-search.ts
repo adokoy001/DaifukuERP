@@ -90,7 +90,13 @@ export interface EvidenceSearchParams {
   kind?: string;
   superseded?: string;
   incomplete?: string;
+  /** A page past the first (whole numbers up to 999,999). */
   page?: number;
+  /**
+   * The URL had a page that is not a whole number from 1 to 999,999 (reported as ignored, AC-14). A separate key, not a
+   * second type of `page`: every route's search shares one type in the router, and other screens read `page` as a number.
+   */
+  pageInvalid?: true;
 }
 
 const TEXT_KEYS = ['from', 'to', 'amountFrom', 'amountTo', 'partnerId', 'kind', 'superseded', 'incomplete'] as const;
@@ -111,8 +117,11 @@ export function parseEvidenceSearch(raw: Record<string, unknown>): EvidenceSearc
       out[key] = Number.isSafeInteger(value) || /^-?\d+\.\d{1,6}$/.test(text) ? text : 'invalid-number';
     } else if (value !== undefined && value !== null && value !== '') out[key] = 'invalid';
   }
-  const page = typeof raw.page === 'number' ? raw.page : typeof raw.page === 'string' ? Number(raw.page) : NaN;
-  if (Number.isInteger(page) && page > 1 && page < 1_000_000) out.page = page;
+  if (raw.page !== undefined && raw.page !== null && raw.page !== '') {
+    const page = typeof raw.page === 'number' ? raw.page : typeof raw.page === 'string' ? Number(raw.page) : NaN;
+    if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) out.pageInvalid = true;
+    else if (page > 1) out.page = page;
+  }
   return out;
 }
 
@@ -152,6 +161,11 @@ export const FIELD_LABELS: Record<CriteriaField, Label> = {
   superseded: { ja: '差替の表示', en: 'Superseded evidence' },
   incomplete: { ja: '未入力のみ', en: 'Missing keys only' },
 };
+
+/** A URL value that the screen ignored (AC-14): a criterion, or the page number. */
+export type IgnoredField = CriteriaField | 'page';
+
+export const IGNORED_LABELS: Record<IgnoredField, Label> = { ...FIELD_LABELS, page: { ja: '頁', en: 'Page' } };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AMOUNT = /^-?\d+(?:\.\d+)?$/;
@@ -213,20 +227,25 @@ export function checkDraft(draft: EvidenceCriteria): DraftCheck {
   };
 }
 
+/** Largest page number taken from a URL. */
+const MAX_PAGE = 999_999;
+
 /**
  * AC-13/AC-14: the URL search -> criteria and page. Invalid values (and both ends of a reversed range) are ignored and
- * reported by field, as the list workbench does with `?f=`.
+ * reported by field, as the list workbench does with `?f=`. The router hands over this route's validated search spread
+ * over the root route's raw one, so a raw value the validator left out (`?page=abc`, `?page=0`) can still arrive here:
+ * every value is checked again rather than trusted by type.
  */
 export function criteriaFromSearch(
   search: EvidenceSearchParams,
   kinds: readonly string[],
-): { criteria: EvidenceCriteria; page: number; ignored: CriteriaField[] } {
-  const ignored: CriteriaField[] = [];
+): { criteria: EvidenceCriteria; page: number; ignored: IgnoredField[] } {
+  const ignored: IgnoredField[] = [];
   const c: EvidenceCriteria = { ...EMPTY_CRITERIA };
   const take = (key: TextKey, ok: (v: string) => boolean): string => {
-    const v = search[key];
-    if (v === undefined) return '';
-    if (ok(v)) return v;
+    const v: unknown = search[key];
+    if (v === undefined || v === null || v === '') return '';
+    if (typeof v === 'string' && ok(v)) return v;
     ignored.push(key);
     return '';
   };
@@ -249,7 +268,10 @@ export function criteriaFromSearch(
   const superseded = take('superseded', (v) => (SUPERSEDED_VALUES as readonly string[]).includes(v));
   c.superseded = (superseded || 'include') as SupersededValue;
   c.incomplete = take('incomplete', (v) => v === '1') === '1';
-  return { criteria: c, page: search.page ?? 1, ignored: [...new Set(ignored)] };
+  const raw: unknown = search.page;
+  const pageOk = typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= MAX_PAGE;
+  if (search.pageInvalid || (raw !== undefined && !pageOk)) ignored.push('page');
+  return { criteria: c, page: pageOk ? raw : 1, ignored: [...new Set(ignored)] };
 }
 
 /** Criteria -> route search for a new search (page reset; defaults left out). */
@@ -293,14 +315,22 @@ export function sameCriteria(a: EvidenceCriteria, b: EvidenceCriteria): boolean 
   return criteriaKey(a) === criteriaKey(b);
 }
 
-/** AC-13: the applied criteria as short phrases ("取引年月日: 2026-01-01〜2026-01-31"); empty when nothing is applied. */
+/**
+ * AC-13: the applied criteria as short phrases ("取引年月日: 2026-01-01〜2026-01-31", "Date: from 2026-01-01"); empty when
+ * nothing is applied. Japanese writes ranges with 〜, English with an en dash or "from" / "up to".
+ */
 export function summarizeCriteria(
   c: EvidenceCriteria,
   locale: Locale,
   names: { partner?: string | undefined; kind?: string | undefined } = {},
 ): string[] {
   const ja = locale === 'ja';
-  const range = (a: string, b: string) => (a && b && a === b ? a : `${a}〜${b}`);
+  const range = (a: string, b: string) => {
+    if (a && b && a === b) return a;
+    if (ja) return `${a}〜${b}`;
+    if (a && b) return `${a} – ${b}`;
+    return a ? `from ${a}` : `up to ${b}`;
+  };
   const out: string[] = [];
   if (c.from || c.to) out.push(`${ja ? '取引年月日' : 'Date'}: ${range(c.from, c.to)}`);
   if (c.amountFrom || c.amountTo)
@@ -379,6 +409,12 @@ export function selectionState(selected: readonly Pick<EvidenceItem, 'size'>[]):
 
 /** Characters Windows does not allow in a file name (control characters are checked by code point). */
 const FORBIDDEN = new Set(['/', '\\', ':', '*', '?', '"', '<', '>', '|']);
+/**
+ * Control (C0, DEL, C1) and invisible format characters, and the line/paragraph separators. The format class covers the
+ * bidi controls (U+061C, U+200E/U+200F, U+202A..U+202E, U+2066..U+2069), the zero-width characters and U+FEFF, which
+ * could make an extracted `請求書<U+202E>fdp.exe` read as `…exe.pdf` (right-to-left override spoofing).
+ */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const encoder = new TextEncoder();
 
@@ -411,7 +447,7 @@ export function safeFilename(name: string): string {
   let out = [...name]
     .map((ch) => {
       const code = ch.codePointAt(0) ?? 0;
-      return code < 0x20 || code === 0x7f || FORBIDDEN.has(ch) ? '_' : ch;
+      return code < 0x20 || code === 0x7f || FORBIDDEN.has(ch) || INVISIBLE.test(ch) ? '_' : ch;
     })
     .join('')
     .replace(/[. ]+$/, (m) => '_'.repeat(m.length));
@@ -421,10 +457,38 @@ export function safeFilename(name: string): string {
   return out;
 }
 
-/** `<date or no-date>_<filename>`, `superseded_` first for superseded evidence (before uniqueness and length limits). */
-export function zipBaseName(item: Pick<EvidenceItem, 'txnDate' | 'filename' | 'supersededById'>): string {
+/**
+ * File extensions that match each stored content type (attachments AC-2's allowlist); the first is added when a name does
+ * not end with one. The server checks the declared type against the allowlist but does not tie it to the name, so a row
+ * named `invoice.exe` and declared `application/pdf` becomes `invoice.exe.pdf` in the zip and opens as what it claims.
+ */
+const TYPE_EXTENSIONS: Readonly<Record<string, readonly string[]>> = {
+  'application/pdf': ['.pdf'],
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg', '.jpe', '.jfif'],
+  'text/csv': ['.csv'],
+  'application/xml': ['.xml'],
+  'text/xml': ['.xml'],
+  'text/plain': ['.txt'],
+};
+
+/** `name` with the content type's extension added when it does not already end with one (unknown types: unchanged). */
+export function withTypeExtension(name: string, contentType: string | undefined): string {
+  const known = contentType ? TYPE_EXTENSIONS[contentType.toLowerCase()] : undefined;
+  if (!known) return name;
+  const lower = name.toLowerCase();
+  return known.some((ext) => lower.endsWith(ext)) ? name : `${name}${known[0] ?? ''}`;
+}
+
+type ZipNameSource = Pick<EvidenceItem, 'txnDate' | 'filename' | 'supersededById'> & { contentType?: string };
+
+/**
+ * `<date or no-date>_<filename>`, `superseded_` first for superseded evidence, with the extension of the stored content
+ * type (before uniqueness and length limits).
+ */
+export function zipBaseName(item: ZipNameSource): string {
   const prefix = item.supersededById ? 'superseded_' : '';
-  return safeFilename(`${prefix}${item.txnDate ?? 'no-date'}_${item.filename}`);
+  return withTypeExtension(safeFilename(`${prefix}${item.txnDate ?? 'no-date'}_${item.filename}`), item.contentType);
 }
 
 /** Fits `stem + suffix + ext` into ZIP_NAME_MAX_BYTES, cutting the stem (the extension is kept). */
@@ -434,9 +498,7 @@ function fitName(stem: string, suffix: string, ext: string): string {
 }
 
 /** AC-17: entry names in selection order, unique (case-insensitively, as Windows compares) and at most 255 bytes. */
-export function zipEntryNames(
-  items: readonly Pick<EvidenceItem, 'txnDate' | 'filename' | 'supersededById'>[],
-): string[] {
+export function zipEntryNames(items: readonly ZipNameSource[]): string[] {
   const used = new Set<string>();
   return items.map((item) => {
     const { stem, ext } = splitExtension(zipBaseName(item));
@@ -527,4 +589,52 @@ export async function collectFiles(
     onProgress?.(index + 1, items.length);
   }
   return result;
+}
+
+/** What one press of "download as zip" ended with (AC-17, AC-19). */
+export type ZipOutcome =
+  | { kind: 'saved'; saved: number; failures: CollectResult['failures'] }
+  | { kind: 'none'; failures: CollectResult['failures'] }
+  | { kind: 'aborted' }
+  /** A 401 ended the session: nothing is saved and nothing is shown (the client went to the login screen). */
+  | { kind: 'unauthorized' }
+  /** Building or saving the zip threw (for example out of memory near the size cap): nothing is saved. */
+  | { kind: 'failed'; error: unknown; failures: CollectResult['failures'] };
+
+export interface ZipSteps {
+  /** One file through the existing download route. */
+  fetchOne: (item: EvidenceItem, signal: AbortSignal) => Promise<Blob>;
+  build: (entries: { name: string; data: Blob; date: Date }[]) => Promise<Blob>;
+  save: (zip: Blob, filename: string) => void;
+  now: () => Date;
+}
+
+/**
+ * AC-17/AC-19: fetches the selected files, builds the zip and saves it. Never rejects: a failure while building or
+ * saving becomes `failed` (with the per-file failures collected so far), so the screen can say that nothing was saved.
+ */
+export async function runEvidenceZip(
+  items: readonly EvidenceItem[],
+  steps: ZipSteps,
+  signal: AbortSignal,
+  onProgress?: (done: number, total: number) => void,
+): Promise<ZipOutcome> {
+  let failures: CollectResult['failures'] = [];
+  try {
+    const result = await collectFiles(items, steps.fetchOne, signal, onProgress);
+    failures = result.failures;
+    if (result.unauthorized) return { kind: 'unauthorized' };
+    if (result.aborted) return { kind: 'aborted' };
+    if (result.files.length === 0) return { kind: 'none', failures };
+    const names = zipEntryNames(result.files.map((f) => f.item));
+    const zip = await steps.build(
+      result.files.map((f, i) => ({ name: names[i] as string, data: f.blob, date: new Date(f.item.createdAt) })),
+    );
+    if (signal.aborted) return { kind: 'aborted' };
+    steps.save(zip, zipFilename(steps.now()));
+    return { kind: 'saved', saved: result.files.length, failures };
+  } catch (error) {
+    if (signal.aborted) return { kind: 'aborted' };
+    return { kind: 'failed', error, failures };
+  }
 }

@@ -1,6 +1,7 @@
 // attachment.history (docs/specs/evidence-search.md AC-10): the supersede tree of one attachment (訂正削除履歴). The
 // root is the latest version; a row's children are the rows it replaced. The path from the requested row up to the latest
-// is always returned, then the rest breadth-first up to HISTORY_LIMIT rows. The reason/time/actor of each supersede come
+// is always returned, then the rest breadth-first until HISTORY_LIMIT rows in total (more only when that path alone is
+// longer). The reason/time/actor of each supersede come
 // from the audit trail (the only place the reason is kept), read with the caller's Context. Reads only.
 import { auditTrail, defineAction, label, repo, type Context, type Infer } from '@daifuku/kernel';
 import { z } from 'zod';
@@ -45,8 +46,8 @@ async function pathToLatest(ctx: Context, self: Row): Promise<{ path: Row[]; cut
 export const historyAction = defineAction({
   name: 'attachment.history',
   description: label(
-    '証憑の差替の履歴（訂正削除履歴）を返します。最新版を根とする木で、指定した証憑から最新版までの版を必ず含み、残りを最大 50 行まで足します。差し替えられた版には差替の理由・日時・実行者（監査ログ）が付きます。どの版も削除されずダウンロードできます。',
-    'Return the supersede history of an attachment as a tree rooted at the latest version: always the path from the requested attachment to the latest, then up to 50 more rows. Superseded versions carry the reason, time and actor of the supersede (from the audit trail). No version is deleted; each can be downloaded.',
+    '証憑の差替の履歴（訂正削除履歴）を返します。最新版を根とする木で、指定した証憑から最新版までの版を必ず含み、合計 50 行に達するまで残りの版を足します（50 行を超えるのは、指定した証憑から最新版までの経路だけで 50 行を超えるときだけ）。返さなかった版があれば truncated が true です。差し替えられた版には差替の理由・日時・実行者（監査ログ）が付きます。どの版も削除されずダウンロードできます。',
+    'Return the supersede history of an attachment as a tree rooted at the latest version: up to 50 rows in total, always including the path from the requested attachment to the latest (more than 50 only when that path alone is longer). truncated is true when rows were left out. Superseded versions carry the reason, time and actor of the supersede (from the audit trail). No version is deleted; each can be downloaded.',
   ),
   input: z.object({ id: z.uuid() }),
   output: z.object({ id: z.uuid(), items: z.array(historyItemSchema), truncated: z.boolean() }),
@@ -65,7 +66,6 @@ export const historyAction = defineAction({
       kept.set(row.id, nodeOf(row, path.length - 1 - index));
     });
     const newerIds = new Set(path.slice(1).map((row) => row.id));
-    const budget = Math.max(HISTORY_LIMIT, kept.size);
     const latest = path[path.length - 1] as Row;
     let frontier = [latest.id];
     for (let depth = 0; frontier.length > 0; depth++) {
@@ -83,7 +83,7 @@ export const historyAction = defineAction({
       const level = takeLevel(
         res.items.map((row) => nodeOf(row, depth + 1)),
         kept,
-        budget,
+        HISTORY_LIMIT, // the path rows are already in `kept`: they count toward the limit but are never left out
       );
       if (level.skipped) truncated = true;
       frontier = level.next;

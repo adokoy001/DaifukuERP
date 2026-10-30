@@ -431,7 +431,9 @@
   .ui-row-check:disabled {
     cursor: not-allowed;
   }
-  .ui-row-link.is-selected > td {
+  /* `.ui-row-selected`: the same tint on a row that is not itself a link (the evidence search's result rows). */
+  .ui-row-link.is-selected > td,
+  .ui-row-selected > td {
     background: var(--accent-soft);
   }
 

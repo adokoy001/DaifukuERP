@@ -5,7 +5,7 @@
 // existing download route. No new read or write path: attachment.evidence_search / attachment.history and
 // GET /api/attachments/:id/download, all with the caller's permissions.
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { downloadAttachment } from '../api/attachments.ts';
 import { useCurrencyScale } from '../api/company.tsx';
 import { useEvidenceSearch } from '../api/evidence.ts';
@@ -27,10 +27,12 @@ import {
   EVIDENCE_PAGE_SIZE,
   EVIDENCE_SEARCH_ACTION,
   FIELD_LABELS,
+  IGNORED_LABELS,
   linkView,
   sameCriteria,
   searchFromCriteria,
   searchInput,
+  selectionState,
   SUPERSEDED_LABELS,
   SUPERSEDED_VALUES,
   summarizeCriteria,
@@ -65,8 +67,8 @@ export function EvidencePage() {
           titleAs="h1"
           title={t({ ja: '証憑の検索を使う権限がありません', en: 'You cannot use the evidence search' })}
           description={t({
-            ja: '証憑（添付）を読む権限（経理・営業・購買・閲覧・管理者のいずれかの役割）が必要です。必要なら管理者に役割の追加を依頼してください。',
-            en: 'Reading evidence (attachments) requires the accounting, sales, purchasing, viewer or admin role. Ask your administrator to add one if you need it.',
+            ja: '証憑（添付）を読む権限（経理・営業・購買・閲覧・管理者のいずれかの役割）と、全社の所属が必要です。店舗・拠点に限定された所属では使えません。必要なら管理者に役割の追加か所属の範囲の変更を依頼してください。',
+            en: 'Reading evidence (attachments) requires the accounting, sales, purchasing, viewer or admin role and a company-wide membership; a membership limited to stores or sites cannot use it. Ask your administrator to add a role or widen the membership if you need it.',
           })}
           action={
             <Link to="/" className={buttonClass()}>
@@ -233,6 +235,7 @@ function SearchForm({
 function ResultRow({
   item,
   selected,
+  selectDisabled,
   onSelect,
   onHistory,
   partnerField,
@@ -244,6 +247,8 @@ function ResultRow({
 }: {
   item: EvidenceItem;
   selected: boolean;
+  /** The selection is full (AC-18): an unselected row cannot be added, as in the list workbench. */
+  selectDisabled: boolean;
   onSelect: (on: boolean) => void;
   onHistory: () => void;
   partnerField: FieldMeta | undefined;
@@ -262,12 +267,13 @@ function ResultRow({
       ? ''
       : formatValue(partnerField, item.partnerId, locale, partnerLabel ? { refLabel: partnerLabel } : {}).text;
   return (
-    <tr className={selected ? 'ui-row-link is-selected' : undefined} data-testid={`evidence-row-${item.id}`}>
+    <tr className={selected ? 'ui-row-selected' : undefined} data-testid={`evidence-row-${item.id}`}>
       <td className="ui-select-cell">
         <input
           type="checkbox"
           className="ui-row-check"
           checked={selected}
+          disabled={!selected && selectDisabled}
           onChange={(e) => onSelect(e.target.checked)}
           aria-label={t({ ja: `選択: ${item.filename}`, en: `Select ${item.filename}` })}
         />
@@ -360,6 +366,60 @@ function ResultRow({
   );
 }
 
+/**
+ * AC-15: why the table is empty. Three cases, so the text never contradicts the count: a page past the last one (a stale
+ * or shared `?page=`), a company with no evidence at all, and criteria that match nothing.
+ */
+function ResultsEmpty({
+  pastEnd,
+  hasCriteria,
+  total,
+  pages,
+  onLastPage,
+}: {
+  pastEnd: boolean;
+  hasCriteria: boolean;
+  total: number;
+  pages: number;
+  onLastPage: () => void;
+}) {
+  const { t } = useLocale();
+  if (pastEnd)
+    return (
+      <EmptyState
+        title={t({ ja: 'この頁に表示する証憑はありません', en: 'This page is past the last page' })}
+        description={t({
+          ja: `条件に合う証憑は ${total} 件（${pages} 頁）です。頁の番号が範囲を超えています。`,
+          en: `${total} pieces of evidence match (${pages} page(s)); the page number is out of range.`,
+        })}
+        action={
+          <Button onClick={onLastPage} data-testid="evidence-last-page">
+            {t({ ja: '最後の頁へ', en: 'Go to the last page' })}
+          </Button>
+        }
+      />
+    );
+  if (!hasCriteria)
+    return (
+      <EmptyState
+        title={t({ ja: '証憑はまだありません', en: 'No evidence yet' })}
+        description={t({
+          ja: '証憑は各記録（仕入請求書など）の添付欄からアップロードします。登録すると、ここで取引年月日・取引金額・取引先で探せます。',
+          en: 'Upload evidence from the attachment panel of a record (a purchase invoice, for example). It can then be found here by date, amount and partner.',
+        })}
+      />
+    );
+  return (
+    <EmptyState
+      title={t({ ja: '条件に合う証憑はありません', en: 'No evidence matches these criteria' })}
+      description={t({
+        ja: '条件を減らすか範囲を広げて、もう一度検索してください。取引年月日・取引金額・取引先が未入力の証憑は、その項目の検索には出ません（「検索項目が未入力の証憑のみ」で探せます）。',
+        en: 'Remove a criterion or widen a range and search again. Evidence missing a date, amount or partner never matches a search on that key (use "Only evidence missing a search key" to find it).',
+      })}
+    />
+  );
+}
+
 function EvidenceSearch({ meta }: { meta: AppMeta }) {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
@@ -372,7 +432,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
   const { criteria, page, ignored } = useMemo(() => criteriaFromSearch(search, kinds ?? []), [search, kinds]);
   const appliedKey = criteriaKey(criteria);
   const input = useMemo(() => searchInput(criteria, page), [criteria, page]);
-  const result = useEvidenceSearch(input, true);
+  const result = useEvidenceSearch(input);
   const items = result.isError ? [] : (result.data?.items ?? []);
 
   // The form edits a draft; it follows the URL whenever the applied criteria change (back/forward, a shared link).
@@ -415,8 +475,17 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
     setSelection({ key: appliedKey, rows: next, refused: on && items.some((item) => !next.has(item.id)) });
   };
   const pageSelected = items.length > 0 && items.every((item) => rows.has(item.id));
+  const selectionFull = selectionState(selected).full;
 
   const [history, setHistory] = useState<{ id: string; filename: string } | null>(null);
+  // Where focus goes when the pressed control disappears (docs/conventions/ui.md): the results heading, or the first
+  // search field after "Retry" (the convention for a retry inside the results).
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  const focusResults = useCallback(() => resultsHeading.current?.focus(), []);
+  const retrySearch = () => {
+    formRef.current?.querySelector<HTMLElement>('input')?.focus();
+    void result.refetch();
+  };
 
   const labelRows = useMemo(
     () =>
@@ -460,17 +529,19 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
   });
   const total = result.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / EVIDENCE_PAGE_SIZE));
+  // A page past the last one (a stale or shared ?page=): there are results, just not on this page.
+  const pastEnd = !result.isPending && !result.isError && total > 0 && items.length === 0;
   const firstRow = total === 0 ? 0 : (page - 1) * EVIDENCE_PAGE_SIZE + 1;
   const lastRow = Math.min(total, page * EVIDENCE_PAGE_SIZE);
   const view = result.isError ? describeError(result.error) : undefined;
 
   return (
-    <div className="workspace-page evidence-page flex flex-col gap-4" data-testid="evidence-page">
+    <div className="workspace-page flex flex-col gap-4" data-testid="evidence-page">
       <PageHeader
         title={t(TITLE)}
         subtitle={t({
           ja: '取引年月日・取引金額・取引先で証憑を探します。指定した条件はすべて満たす（AND）ものだけを表示します（電子帳簿保存法の検索要件）。',
-          en: 'Find evidence by transaction date, amount and partner. Only evidence matching every given criterion (AND) is shown (the 電子帳簿保存法 search requirement).',
+          en: "Find evidence by transaction date, amount and partner. Only evidence matching every given criterion (AND) is shown (the search requirement of Japan's Electronic Bookkeeping Act).",
         })}
       />
       <div ref={formRef}>
@@ -487,12 +558,17 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
       {ignored.length > 0 ? (
         <p className="ui-notice ui-notice-warning text-sm" data-testid="evidence-ignored">
           {t({ ja: 'URL の条件のうち、正しくない値を無視しました: ', en: 'Invalid values in the URL were ignored: ' })}
-          {ignored.map((key) => t(FIELD_LABELS[key])).join(locale === 'ja' ? '、' : ', ')}
+          {ignored.map((key) => t(IGNORED_LABELS[key])).join(locale === 'ja' ? '、' : ', ')}
         </p>
       ) : null}
       <section className="flex flex-col gap-2" aria-labelledby="evidence-results-heading">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="evidence-results-heading" className="text-base font-bold text-text-heading">
+          <h2
+            id="evidence-results-heading"
+            ref={resultsHeading}
+            tabIndex={-1}
+            className="text-base font-bold text-text-heading"
+          >
             {t({ ja: '検索結果', en: 'Results' })}
           </h2>
           <p className="text-sm text-text-secondary" data-testid="evidence-summary" aria-live="polite">
@@ -508,13 +584,15 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
         </div>
         {summary.length ? (
           <ul
-            className="ui-chips"
+            className="flex flex-wrap gap-1.5"
             data-testid="evidence-criteria"
             aria-label={t({ ja: '適用中の条件', en: 'Applied criteria' })}
           >
             {summary.map((phrase) => (
-              <li key={phrase} className="ui-chip">
-                {phrase}
+              <li key={phrase} className="min-w-0 max-w-full">
+                <Badge tone="accent" className="max-w-full whitespace-normal [overflow-wrap:anywhere]">
+                  {phrase}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -523,6 +601,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
           selected={selected}
           refused={refused}
           onClear={() => setSelection({ key: appliedKey, rows: NO_SELECTION, refused: false })}
+          onFocusResults={focusResults}
         />
         {view ? (
           <div
@@ -534,7 +613,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
             <p>{view.explanation ? t(view.explanation) : view.message}</p>
             {view.explanation ? <p className="text-xs">{view.message}</p> : null}
             <ErrorDetails view={view} />
-            <Button size="sm" onClick={() => void result.refetch()}>
+            <Button size="sm" onClick={retrySearch}>
               {t(S.retry)}
             </Button>
           </div>
@@ -549,12 +628,12 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
               loadingLabel={t(S.loading)}
               isEmpty={!result.isPending && items.length === 0}
               empty={
-                <EmptyState
-                  title={t({ ja: '条件に合う証憑はありません', en: 'No evidence matches these criteria' })}
-                  description={t({
-                    ja: '条件を減らすか範囲を広げて、もう一度検索してください。取引年月日・取引金額・取引先が未入力の証憑は、その項目の検索には出ません（「検索項目が未入力の証憑のみ」で探せます）。',
-                    en: 'Remove a criterion or widen a range and search again. Evidence missing a date, amount or partner never matches a search on that key (use "Only evidence missing a search key" to find it).',
-                  })}
+                <ResultsEmpty
+                  pastEnd={pastEnd}
+                  hasCriteria={summary.length > 0}
+                  total={total}
+                  pages={pages}
+                  onLastPage={() => goPage(pages)}
                 />
               }
               head={
@@ -564,7 +643,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
                       type="checkbox"
                       className="ui-row-check"
                       checked={pageSelected}
-                      disabled={items.length === 0}
+                      disabled={items.length === 0 || (!pageSelected && selectionFull)}
                       onChange={(e) => selectPage(e.target.checked)}
                       aria-label={t({ ja: 'この頁の証憑をすべて選択', en: 'Select all evidence on this page' })}
                     />
@@ -587,6 +666,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
                   key={item.id}
                   item={item}
                   selected={rows.has(item.id)}
+                  selectDisabled={selectionFull}
                   onSelect={(on) => select(item, on)}
                   onHistory={() => setHistory({ id: item.id, filename: item.filename })}
                   partnerField={partnerField}
@@ -598,7 +678,7 @@ function EvidenceSearch({ meta }: { meta: AppMeta }) {
                 />
               ))}
             </DataTableShell>
-            {total > 0 ? (
+            {total > 0 && !pastEnd ? (
               <div
                 className="flex flex-wrap items-center gap-2 text-xs text-text-secondary"
                 data-testid="evidence-pager"
