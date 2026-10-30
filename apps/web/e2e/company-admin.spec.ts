@@ -1,5 +1,6 @@
 // company-admin (docs/specs/company-admin.md AC-2, AC-3, AC-7..AC-9, AC-11): a tenant administrator creates a second
-// company on /admin/companies, switches to it, fills the company profile (first card of the company tab), and the
+// company on /admin/companies, switches to it, fills the company profile (step 1 of the setup wizard, the same card as
+// the company tab; setup-wizard AC-27 replaced the planned destinations with /setup), and the
 // printed invoice carries it; the keyboard flow keeps focus, a duplicate code is explained on its field, and the company
 // picker re-fetches after create and rename; a user who is not a tenant administrator gets no entry and a refusal; 390px
 // and axe on the new screen. AC-10 (seed rollback) is covered by kernel/test/company-admin.db.test.ts. Each run creates
@@ -50,7 +51,7 @@ test('company-admin AC-9/AC-8/AC-7: create a second company, switch to it, fill 
   await expect(page.getByTestId('company-created')).toContainText(`${name} を作成しました`);
   // The form is gone; focus is on the result's heading (AC-11).
   await expect(page.getByTestId('company-created').getByRole('heading', { level: 2 })).toBeFocused();
-  await expect(page.getByTestId('company-switch-setup')).toHaveText('切り替えて会社プロフィールを入力');
+  await expect(page.getByTestId('company-switch-setup')).toHaveText('切り替えてセットアップを始める');
   await expect(page.getByTestId(`company-row-${code}`)).toContainText('管理者として所属');
   await page.screenshot({ path: test.info().outputPath('company-created-desktop.png'), fullPage: true });
 
@@ -59,17 +60,13 @@ test('company-admin AC-9/AC-8/AC-7: create a second company, switch to it, fill 
   const picker = await api<{ items: { id: string }[] }>(request, headers, '/auth/companies');
   expect(picker.items.map((c) => c.id)).toContain(company.id);
 
-  // Switch: a fresh page in the new company, on the company tab of the settings console (AC-8).
+  // Switch: a fresh page in the new company, on the setup wizard (AC-8; setup-wizard AC-27). Its first open step is the
+  // company profile, edited with the same setting card as the company tab of the settings console.
   await page.getByTestId('company-switch-setup').click();
-  await expect(page).toHaveURL(/\/settings\?tab=company$/);
+  await expect(page).toHaveURL(/\/setup(\?step=company_profile)?$/);
   await expect(page.locator('.company-name')).toContainText(name);
-  const tabs = page.getByRole('tablist', { name: '設定の分類' }).getByRole('tab');
-  await expect(tabs.first()).toHaveText('会社');
-  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
-  const panel = page.getByRole('tabpanel', { name: '会社' });
-  const cards = panel.locator('form[data-testid^="setting-"]');
-  await expect(cards.first()).toHaveAttribute('data-testid', 'setting-company.profile');
-  const profile = page.getByTestId('setting-company.profile');
+  await expect(page.getByTestId('setup-step-panel')).toHaveAttribute('data-step', 'company_profile');
+  const profile = page.getByTestId('setup-step-panel').getByTestId('setting-company.profile');
   await expect(profile).toContainText('未設定');
   await profile.getByLabel('正式名称', { exact: true }).fill(`株式会社E2E第二 ${suffix}`);
   await profile.getByLabel('登録番号（適格請求書）', { exact: true }).fill('T9999999999999');

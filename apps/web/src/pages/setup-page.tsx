@@ -232,6 +232,12 @@ function SetupView({ meta }: { meta: AppMeta }) {
     (id: SetupStepId) => void navigate({ to: '/setup', search: { step: id }, replace: true }),
     [navigate],
   );
+  // AC-1: once the first status decides the step to open, pin it in `?step=` so a later save (which may finish this
+  // step and change the "first todo step") never moves the open step on its own.
+  const pinned = search.step !== undefined;
+  useEffect(() => {
+    if (!pinned && data) open(current);
+  }, [pinned, data, current, open]);
   const refused = status.isError && isApiError(status.error) && status.error.status === 403;
   if (refused) return <Forbidden />;
   if (status.isError && !data) return <MetaError error={status.error} retry={() => void status.refetch()} />;
