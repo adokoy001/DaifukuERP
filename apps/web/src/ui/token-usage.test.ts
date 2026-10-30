@@ -72,6 +72,8 @@ const CONVERTED = [
   'components/setup-setting-steps.tsx',
   'components/setup-fiscal-step.tsx',
   'components/setup-people-steps.tsx',
+  // print-templates (docs/specs/print-templates.md)
+  'components/print-button.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

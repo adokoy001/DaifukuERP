@@ -1,8 +1,8 @@
 // docs/specs/print-templates.md AC-9, AC-16, AC-17, AC-19, AC-21: workforce.render_payslip_html against Postgres with
-// the workforce row rules (ADR-0019) — the employee prints only their own confirmed payslip (from a site-limited
-// context), other people's and other companies' payslips are NOT_FOUND, payroll prints the company's, drafts are
-// refused (INVALID_STATE for payroll, NOT_FOUND for the employee), cancelled ones carry the banner, and the issuer is
-// the company profile without a registration number. Test DB: TEST_DATABASE_URL*.
+// the workforce row rules (ADR-0019) — employees, managers and HR print only their own confirmed payslip (the employee
+// and the manager from a site-limited context), other people's and other companies' payslips are NOT_FOUND, payroll
+// prints the company's, drafts are refused (INVALID_STATE for payroll, NOT_FOUND for the employee), cancelled ones
+// carry the banner, and the issuer is the company profile without a registration number. Test DB: TEST_DATABASE_URL*.
 import {
   appMeta,
   companies,
@@ -31,9 +31,8 @@ const render = (person: Partial<ContextParams>, id: string) =>
     async (ctx) => ((await runAction(ctx, PAYSLIP, { id })) as { html: string }).html,
   );
 
-beforeAll(async () => {
-  ensureCompanyProfileSetting();
-  f = await fixture();
+/** Confirmed hourly pay terms for an employee (payroll headquarters). */
+async function payTerms(employeeId: string): Promise<void> {
   await f.db.run(f.payroll.params, async (ctx) => {
     const policy = (
       await repo(ctx, WorkforcePayPolicy).list({
@@ -42,7 +41,7 @@ beforeAll(async () => {
     ).items[0];
     if (!policy) throw new Error('Missing fixture policy');
     await repo(ctx, WorkforcePayTerms).create({
-      employeeId: f.employee.id,
+      employeeId,
       policyId: policy.id,
       validFrom: '2026-01-01',
       validTo: policy.validTo < '2026-12-31' ? policy.validTo : '2026-12-31',
@@ -55,6 +54,38 @@ beforeAll(async () => {
       basis: '雇用契約確認済み',
     });
   });
+}
+
+/** Registers `person` as an employee of the fixture site and confirms their August payroll; returns its id. */
+async function confirmedPayslipOf(person: Fixture['manager'], code: string, name: string): Promise<string> {
+  const employee = await call(f.db, f.hr.params, 'register_employee', {
+    userId: person.id,
+    siteId: f.siteId,
+    code,
+    name,
+    hiredOn: '2026-01-01',
+  });
+  await payTerms(employee.id);
+  const draft = await call(f.db, f.payroll.params, 'calculate_payroll', {
+    employeeId: employee.id,
+    period: '2026-08',
+    attendanceCompleteConfirmed: true,
+  });
+  const confirmed = await call(f.db, f.payroll.params, 'confirm_payroll', {
+    payrollId: draft.id,
+    expectedVersion: draft.version,
+    deductions: deductionKinds.map((kind) => ({ kind, amount: '0', basis: '該当なしを確認', confirmed: true })),
+    allowances: [],
+    calculationConfirmed: true,
+    reason: '帳票の試験で確定',
+  });
+  return confirmed.id;
+}
+
+beforeAll(async () => {
+  ensureCompanyProfileSetting();
+  f = await fixture();
+  await payTerms(f.employee.id);
   const input = (kind: string, expectedVersion: number) => ({ kind, expectedVersion, idempotencyKey: newId() });
   const opened = await call(f.db, f.alice.params, 'punch', input('clock_in', 0), '2026-08-03T09:00:00+09:00');
   const closed = await call(
@@ -132,6 +163,24 @@ describe('workforce.render_payslip_html (docs/specs/print-templates.md)', () => 
     for (const person of [f.bob, f.manager, f.remote, f.hr])
       await expect(render(person.params, august.id)).rejects.toBeInstanceOf(NotFound);
     expect(await render(f.payroll.params, august.id)).toContain('Alice 様');
+  });
+
+  it("AC-21 managers and HR print their own confirmed payslip (the same self row rule), not each other's", async () => {
+    const own = {
+      manager: await confirmedPayslipOf(f.manager, 'M', 'Manager'),
+      hr: await confirmedPayslipOf(f.hr, 'H', 'HR'),
+    };
+    expect(f.manager.params.accessScope).toBe('sites');
+    const managerSlip = await render(f.manager.params, own.manager);
+    expect(managerSlip).toContain('Manager 様');
+    expect(managerSlip).toContain('従業員コード: M');
+    const hrSlip = await render(f.hr.params, own.hr);
+    expect(hrSlip).toContain('HR 様');
+    expect(hrSlip).toContain('従業員コード: H');
+    await expect(render(f.manager.params, own.hr)).rejects.toBeInstanceOf(NotFound);
+    await expect(render(f.hr.params, own.manager)).rejects.toBeInstanceOf(NotFound);
+    await expect(render(f.alice.params, own.manager)).rejects.toBeInstanceOf(NotFound);
+    expect(await render(f.payroll.params, own.hr)).toContain('HR 様');
   });
 
   it('AC-19 another company is NOT_FOUND; a role outside workforce is refused and has no print declaration', async () => {

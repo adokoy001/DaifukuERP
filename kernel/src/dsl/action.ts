@@ -16,7 +16,8 @@ function inputProperties(input: z.ZodType): string[] | undefined {
 
 /**
  * AC-1 definition-time checks of a print declaration (developer mistakes). Entity registration may come later, so the
- * entity name, `when` fields and the id property type are checked by apps/runtime/test/print-bindings.test.ts.
+ * entity name, `when` fields, the id property type and the read permission are checked by
+ * apps/api/test/print-bindings.test.ts.
  */
 function checkPrintBinding(cfg: ActionConfig<z.ZodType, z.ZodType>, print: ActionPrintBinding): void {
   const fail = (why: string) => {

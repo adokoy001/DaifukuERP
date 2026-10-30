@@ -39,6 +39,24 @@ export const STATEMENT_HTML_OVERRIDE = 'sales.statement_html';
 /** AC-15: more invoices than this in one period is refused (open question 7). */
 export const STATEMENT_MAX_INVOICES = 500;
 
+/** AC-15: a period with more than `max` submitted invoices is INVALID_STATE; exactly `max` is still printed. */
+export function assertStatementSize(total: number, max: number = STATEMENT_MAX_INVOICES): void {
+  if (total > max)
+    throw new StateError(
+      `The period has ${total} submitted invoices; a statement lists at most ${max}`,
+      'Print the invoices individually, or ask for paging of statements (docs/specs/print-templates.md open question 7).',
+    );
+}
+
+/**
+ * The VALIDATION issue under 締め日 when the day is not one of the partner's closing dates (AC-25). Bilingual like the
+ * status banners: the request locale follows the browser's Accept-Language, not the language chosen in the web app,
+ * so a single-language message could appear in the other language under the field.
+ */
+export function notClosingDateMessage(previous: LocalDate, next: LocalDate): string {
+  return `締め日ではありません（直近の締め日: ${previous} または ${next}） / not a closing date; nearest: ${previous} or ${next}`;
+}
+
 function ymd(date: LocalDate): { y: number; m: number } {
   return { y: Number(date.slice(0, 4)), m: Number(date.slice(5, 7)) };
 }
@@ -135,7 +153,7 @@ export async function buildStatementRenderData(
     const previous = previousClosingDate(next, closingDay);
     throw new ValidationError(
       `${input.closingDate} is not a closing date of this partner (closing day ${closingDay})`,
-      [{ path: 'closingDate', message: `not a closing date; nearest: ${previous} or ${next}` }],
+      [{ path: 'closingDate', message: notClosingDateMessage(previous, next) }],
       `Use a closing date of the partner: ${previous} or ${next}, or leave it blank for the latest one.`,
     );
   } else closingDate = input.closingDate;
@@ -152,11 +170,7 @@ export async function buildStatementRenderData(
     ],
     limit: STATEMENT_MAX_INVOICES,
   });
-  if (result.total > STATEMENT_MAX_INVOICES)
-    throw new StateError(
-      `The period has ${result.total} submitted invoices; a statement lists at most ${STATEMENT_MAX_INVOICES}`,
-      'Print the invoices individually, or ask for paging of statements (docs/specs/print-templates.md open question 7).',
-    );
+  assertStatementSize(result.total);
   // closingDateOf is the defining rule (AC-15); the date range above is the same set, this guards the boundary.
   const invoices = result.items.filter((inv) => closingDateOf(inv.date, closingDay) === closingDate);
   const dueDates = new Set(invoices.map((inv) => inv.dueDate ?? ''));

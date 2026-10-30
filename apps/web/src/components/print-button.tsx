@@ -28,17 +28,35 @@ import { Icon } from './icon.tsx';
 import { SchemaFields, useSchemaForm } from './schema-form.tsx';
 import { useToast } from './toast.tsx';
 
-interface RenderInput {
+interface RenderJob {
   action: string;
   input: Record<string, unknown>;
+  /** The tab opened inside the click; the hook-level callbacks fill or close it. */
+  win: Window;
 }
 
 /** Opens a tab, runs the render action and shows its HTML there; failures close the tab (AC-4). */
 function usePrint(action: PrintAction) {
   const { t } = useLocale();
   const toast = useToast();
+  // The tab is filled or closed in the hook-level callbacks: TanStack Query runs them on the mutation even after this
+  // component has unmounted (the dialog closed, or the page left, while rendering). The per-call callbacks of mutate()
+  // are skipped then and would leave the tab on 「帳票を作成しています…」.
   const render = useMutation({
-    mutationFn: (r: RenderInput) => request<unknown>(`/actions/${r.action}`, { method: 'POST', body: r.input }),
+    mutationFn: (job: RenderJob) => request<unknown>(`/actions/${job.action}`, { method: 'POST', body: job.input }),
+    onSuccess: (raw, job) => {
+      const html = htmlOf(raw);
+      if (!html) {
+        job.win.close();
+        toast.push({ kind: 'error', title: t(S.printNoHtml) });
+        return;
+      }
+      showHtmlIn(job.win, withPrintBar(html, { print: t(S.print), close: t(S.close) }, globalThis.location.origin));
+    },
+    onError: (e, job) => {
+      job.win.close();
+      toast.error(e);
+    },
   });
   /** Must be called synchronously from a user gesture. `onValidation` keeps the dialog open with field errors. */
   const open = (
@@ -53,23 +71,15 @@ function usePrint(action: PrintAction) {
     }
     win.document.title = t(S.rendering);
     win.document.body.textContent = t(S.rendering);
+    // Dialog follow-ups only; they are skipped (harmlessly) when the dialog is gone by the time the render ends.
     render.mutate(
-      { action: action.name, input: printInputOf(action, recordId, extra) },
+      { action: action.name, input: printInputOf(action, recordId, extra), win },
       {
         onSuccess: (raw) => {
-          const html = htmlOf(raw);
-          if (!html) {
-            win.close();
-            toast.push({ kind: 'error', title: t(S.printNoHtml) });
-            return;
-          }
-          showHtmlIn(win, withPrintBar(html, { print: t(S.print), close: t(S.close) }, globalThis.location.origin));
-          handlers.onDone?.();
+          if (htmlOf(raw)) handlers.onDone?.();
         },
         onError: (e) => {
-          win.close();
           if (handlers.onValidation && isApiError(e) && e.code === 'VALIDATION') handlers.onValidation(e.issues());
-          toast.error(e);
         },
       },
     );
@@ -130,7 +140,6 @@ function PrintInputDialog({
           <Icon name="document" />
         </span>
       }
-      className="print-input-dialog"
       actions={
         <>
           <Button onClick={onClose} data-autofocus>
@@ -160,7 +169,7 @@ export function PrintActionButton({ action, recordId }: { action: PrintAction; r
       <Button
         disabled={pending}
         onClick={() => (needsInput ? setAsking(true) : open(recordId, {}))}
-        title={t(action.description)}
+        aria-haspopup={needsInput ? 'dialog' : undefined}
         data-testid="print-button"
         data-print-action={action.name}
       >

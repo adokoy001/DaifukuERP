@@ -105,11 +105,11 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | 名前と形 | `defineAction({ name: '<module>.render_<document>_html', input: z.object({ id: z.uuid() }), output: z.object({ html: z.string() }), tx: 'none', mutates: false, print: { entity, label } })`。入力の記録 id の property 名が `id` でなければ `print.idInput`（例: 合計請求書の `partnerId`）。`defineAction` が命名・`tx`・`mutates`・`internal`・入力の形を検査する |
 | どこに出すか | `print.entity` の記録画面。`when`（例 `{ direction: 'receive' }`）の値が記録とすべて一致するときだけ。document は確定済み（docstatus 1）だけ。1 つの entity に複数の帳票があってよい（入出金の領収書と支払通知書）。並びは `/meta` の順 |
 | 追加の入力 | `idInput` 以外の property があると、押したときに入力ダイアログ（`SchemaFields`）を開く。ラベルと補助文は `print.fields` の日英（設定画面と同じ presentation）。VALIDATION はダイアログを閉じずに該当欄の下へ出す |
-| 開き方 | クリック（またはダイアログの「表示」）の処理内で新しいタブを同期的に開き（ポップアップ対策）、`POST /actions/<name>` の `html` に印刷・閉じるバー（`withPrintBar`、紙には出ない）を付けて表示する。失敗したらタブを閉じてトースト |
+| 開き方 | クリック（またはダイアログの「表示」）の処理内で新しいタブを同期的に開き（ポップアップ対策）、`POST /actions/<name>` の `html` に印刷・閉じるバー（`withPrintBar`、紙には出ない）を付けて表示する。失敗したらタブを閉じてトースト。タブの表示・閉じる処理は `useMutation` の hook 側の callback で行い、描画中にダイアログが閉じても（部品が外れても）タブが「作成しています…」のまま残らないようにする。ボタンに `title` で action の説明（開発者・MCP 向け）を出さない |
 | 権限 | `permission: { entity, op: 'read' }`。対象と付随する記録は要求者の `Context` で `repo()` から読む。`/meta` に出ない（実行できない）ロールにはボタンも出ない |
 | 帳票の HTML | 共通部品 `@daifuku/mod-print-layout`（発行者・宛先・明細表・税率別内訳・合計・備考・状態の帯・`printDocument`）で組み立てる。保存値を表示するだけで再計算しない。`<script>`・外部資源・イベント属性を出さず、記録の文字列はすべてエスケープする。日付は会社設定 `print_layout.date_style` |
 | 差し替え | レイアウトは `registry.override('<module>.<document>_html', 既定の関数)`（引数 `(data, tools)`）。状態の帯は差し替え後にも action が入れる |
-| 他の入口 | 一覧ではない画面から開くときは `PrintActionButton`（例: `/me`・`/workforce` の給与明細）に `/meta` の action と記録 id を渡す |
+| 他の入口 | 記録画面以外から開くときは `PrintActionButton`（例: `/me`・`/workforce`・`/workforce/payroll` の給与明細）に `/meta` の action と記録 id を渡す |
 
 ## 2026-09-12 UI更新の規約
 

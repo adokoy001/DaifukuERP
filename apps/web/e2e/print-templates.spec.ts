@@ -1,15 +1,17 @@
 // print-templates (docs/specs/print-templates.md AC-3, AC-4, AC-23〜AC-25): the record page offers the print buttons
-// that /meta declares (quotation, receipt or payment notice by direction, statement on a customer, payslip on /me),
-// each opens the document in a new tab, sales orders and drafts get no button, the statement asks for its closing
-// date in a bilingual dialog (a day that is not a closing date is explained under the field), 390px without horizontal
-// scroll (record page, dialog and the printed document), and axe with the dialog open. Data is created through the
-// API in synthetic companies (financeFixture) and a fresh employee (qualityEmployee).
+// that /meta declares (quotation, purchase order, delivery note, receipt or payment notice by direction, statement on a
+// customer, payslip on /me and on the /workforce payroll tab), each opens the document in a new tab, sales orders,
+// goods receipts and drafts get no button, the statement asks for its closing date in a bilingual dialog (a day that
+// is not a closing date is explained under the field in the screen's language; closing the dialog while the document
+// renders still fills the tab), 390px without horizontal scroll (record page, dialog and the printed document), and axe
+// with the dialog open. Data is created through the API in synthetic companies (financeFixture) and a fresh employee
+// (qualityEmployee).
 import { existsSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { formatJudgement, judge, parseExceptions, WCAG_TAGS, type A11yRun } from './a11y-policy.ts';
 import { BUSINESS_DATE } from './environment.ts';
-import { financeFixture, financeInvoice, financeOrder, submitFinance } from './finance-helpers.ts';
+import { financeFixture, financeInvoice, financeOrder, submitFinance, type FinanceFixture } from './finance-helpers.ts';
 import { api, PASSWORD, type Row } from './operations-helpers.ts';
 import { assertNoOverflow, qualityEmployee, signInQuality } from './quality-helpers.ts';
 
@@ -21,8 +23,8 @@ const exceptions = parseExceptions(
   { documentExists: (path) => existsSync(new URL(path, repoRoot)) },
 ).exceptions;
 
-const printButton = (page: Page, action: string) =>
-  page.locator(`[data-testid="print-button"][data-print-action="${action}"]`);
+const printButton = (scope: Page | Locator, action: string) =>
+  scope.locator(`[data-testid="print-button"][data-print-action="${action}"]`);
 
 /** Clicks a print button and returns the opened tab once its document has rendered. */
 async function openPrint(page: Page, click: () => Promise<void>, heading: string): Promise<Page> {
@@ -40,13 +42,34 @@ function monthEnd(date: string): string {
   return `${date.slice(0, 7)}-${String(last).padStart(2, '0')}`;
 }
 
-test('print-templates AC-3/AC-23: quotation, receipt and payment notice open from their record pages; sales orders and drafts get none', async ({
+/** Ships (sales) or receives (purchase) two of the order's first line through trade.fulfill_order. */
+async function fulfill(request: APIRequestContext, fixture: FinanceFixture, orderId: string): Promise<Row> {
+  const detail = await api<{ order: { version: number }; lines: Array<{ id: string }> }>(
+    request,
+    fixture.headers,
+    '/actions/trade.order_detail',
+    { orderId },
+  );
+  return api(request, fixture.headers, '/actions/trade.fulfill_order', {
+    orderId,
+    expectedVersion: detail.order.version,
+    date: BUSINESS_DATE,
+    warehouseId: fixture.warehouse.id,
+    lines: [{ orderLineId: detail.lines[0]?.id, quantity: '2' }],
+    requestId: crypto.randomUUID(),
+  });
+}
+
+test('print-templates AC-3/AC-23: quotation, purchase order, delivery note, receipt and payment notice open from their record pages; sales orders, goods receipts and drafts get none', async ({
   page,
   request,
 }) => {
   const fixture = await financeFixture(request);
   const quotation = await financeOrder(request, fixture, 'sales', true);
   const salesOrder = await financeOrder(request, fixture, 'sales');
+  const purchaseOrder = await financeOrder(request, fixture, 'purchase');
+  const shipment = await fulfill(request, fixture, salesOrder.id);
+  const goodsReceipt = await fulfill(request, fixture, purchaseOrder.id);
   const draftQuote = await api(request, fixture.headers, '/api/trade_quotation', {
     partnerId: fixture.partner.id,
     date: BUSINESS_DATE,
@@ -107,8 +130,24 @@ test('print-templates AC-3/AC-23: quotation, receipt and payment notice open fro
   await expect(notice.locator('body')).toContainText('3,000円');
   await notice.close();
 
-  // A sales order has no printed document (注文請書 is out of scope); a draft quotation gets no button.
+  await page.goto(`/e/trade_order/${purchaseOrder.id}`);
+  await expect(printButton(page, 'trade.render_order_html')).toHaveText('注文書を表示');
+  const order = await openPrint(page, () => printButton(page, 'trade.render_order_html').click(), '注文書');
+  await expect(order.locator('body')).toContainText(String(purchaseOrder.number));
+  await order.close();
+
+  await page.goto(`/e/trade_fulfillment/${shipment.id}`);
+  await expect(printButton(page, 'trade.render_delivery_note_html')).toHaveText('納品書を表示');
+  const note = await openPrint(page, () => printButton(page, 'trade.render_delivery_note_html').click(), '納品書');
+  await expect(note.locator('body')).toContainText(String(shipment.number));
+  await note.close();
+
+  // A sales order (注文請書 is out of scope) and a goods receipt have no printed document; a draft quotation gets no
+  // button.
   await page.goto(`/e/trade_order/${salesOrder.id}`);
+  await expect(page.getByTestId('record-form')).toBeVisible();
+  await expect(page.getByTestId('print-button')).toHaveCount(0);
+  await page.goto(`/e/trade_fulfillment/${goodsReceipt.id}`);
   await expect(page.getByTestId('record-form')).toBeVisible();
   await expect(page.getByTestId('print-button')).toHaveCount(0);
   await page.goto(`/e/trade_quotation/${draftQuote.id}`);
@@ -143,7 +182,29 @@ test('print-templates AC-4/AC-23/AC-25: the statement dialog asks for a closing 
   await dialog.getByTestId('print-dialog-submit').click();
   expect((await refused).status()).toBe(400);
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('not a closing date');
+  await expect(dialog).toContainText('締め日ではありません（直近の締め日:');
+
+  // Closing the dialog while the document renders still fills the tab (it does not stay on 「帳票を作成しています…」).
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/actions/sales.render_statement_html', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await closing.fill(monthEnd(BUSINESS_DATE));
+  const latePopup = page.waitForEvent('popup');
+  await dialog.getByTestId('print-dialog-submit').click();
+  const late = await latePopup;
+  await expect(late.locator('body')).toHaveText('帳票を作成しています…');
+  await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  release();
+  await expect(late.locator('h1')).toHaveText('合計請求書');
+  await expect(late.locator('body')).toContainText(invoice.number);
+  await late.close();
+  await page.unroute('**/actions/sales.render_statement_html');
+  await button.click();
+  await expect(dialog).toBeVisible();
 
   // The month end of the business month: the statement lists the invoice of this period.
   await closing.fill(monthEnd(BUSINESS_DATE));
@@ -173,6 +234,9 @@ test('print-templates AC-4/AC-23/AC-25: the statement dialog asks for a closing 
       await expect(open.getByLabel('Closing date', { exact: true })).toBeVisible();
       await expect(open).toContainText('Leave blank to use the latest closing date up to today');
       await expect(open.getByTestId('print-dialog-submit')).toHaveText('View');
+      await open.getByLabel('Closing date', { exact: true }).fill(`${BUSINESS_DATE.slice(0, 7)}-15`);
+      await open.getByTestId('print-dialog-submit').click();
+      await expect(open).toContainText('not a closing date; nearest:');
     } else await expect(open.getByLabel('締め日', { exact: true })).toBeVisible();
     await page.waitForLoadState('networkidle');
     const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
@@ -183,7 +247,10 @@ test('print-templates AC-4/AC-23/AC-25: the statement dialog asks for a closing 
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'ja'));
 });
 
-test('print-templates AC-24: an employee opens their confirmed payslip from /me', async ({ page, request }) => {
+test('print-templates AC-24: an employee opens their confirmed payslip from /me, payroll from the /workforce payroll tab', async ({
+  page,
+  request,
+}) => {
   const own = await qualityEmployee(request);
   const suffix = crypto.randomUUID().slice(0, 8);
   const payrollEmail = `print-payroll-${suffix}@example.com`;
@@ -259,4 +326,16 @@ test('print-templates AC-24: an employee opens their confirmed payslip from /me'
   await expect(slip.locator('body')).toContainText('品質検証');
   await expect(slip.locator('body')).toContainText('差引支給額');
   await slip.close();
+
+  // Payroll headquarters opens the same payslip from the payroll tab of /workforce.
+  const employee = await api<{ name: string }>(request, own.headers, `/api/workforce_employee/${own.employee.id}`);
+  await signInQuality(page, payrollEmail, PASSWORD);
+  await page.goto('/workforce');
+  await page.getByLabel('表示する月').fill(period);
+  await page.getByRole('navigation', { name: '従業員業務' }).getByRole('button', { name: '給与', exact: true }).click();
+  const row = page.locator('article.workforce-record').filter({ hasText: employee.name });
+  await expect(printButton(row, 'workforce.render_payslip_html')).toHaveText('給与明細を表示');
+  const hqSlip = await openPrint(page, () => printButton(row, 'workforce.render_payslip_html').click(), '給与明細');
+  await expect(hqSlip.locator('body')).toContainText(employee.name);
+  await hqSlip.close();
 });

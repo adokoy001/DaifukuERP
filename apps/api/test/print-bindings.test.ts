@@ -1,8 +1,9 @@
-// docs/specs/print-templates.md AC-1: what defineAction cannot check at definition time (entities may register later)
-// is checked here over the whole runtime catalog: every `print` declaration names a registered entity, `when` keys are
-// fields of it, the id property is a uuid string and `fields` keys are input properties — on the same JSON Schema
-// that /meta sends to the web (apps/api toJsonSchema).
-import { registry } from '@daifuku/kernel';
+// docs/specs/print-templates.md AC-1, AC-19: what defineAction cannot check at definition time (entities may register
+// later) is checked here over the whole runtime catalog: every `print` declaration names a registered entity, `when`
+// keys are fields of it, the id property is a uuid string and `fields` keys are input properties — on the same JSON
+// Schema that /meta sends to the web (apps/api toJsonSchema) —, its permission is `{ entity, op: 'read' }` on a
+// registered entity, and no action named like a render action lacks the declaration.
+import { PRINT_ACTION_RE, registry } from '@daifuku/kernel';
 import { loadRuntime } from '@daifuku/runtime';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { toJsonSchema } from '../src/routes/meta.ts';
@@ -32,9 +33,14 @@ describe('print declarations of the runtime catalog (AC-1)', () => {
         'workforce.render_payslip_html',
       ]),
     );
+    const undeclared = registry
+      .actions()
+      .filter((a) => PRINT_ACTION_RE.test(a.name) && !a.print)
+      .map((a) => a.name);
+    expect(undeclared).toEqual([]);
   });
 
-  it('AC-1 every print declaration names a registered entity, its fields and a uuid id property', () => {
+  it('AC-1 AC-19 every print declaration names a registered entity, its fields, a uuid id property and a read permission', () => {
     const problems: string[] = [];
     for (const action of registry.actions()) {
       const print = action.print;
@@ -53,6 +59,12 @@ describe('print declarations of the runtime catalog (AC-1)', () => {
         problems.push(`${action.name}: ${idInput} is not a uuid string`);
       for (const key of Object.keys(print.fields ?? {}))
         if (!schema?.properties?.[key]) problems.push(`${action.name}: fields.${key} is not an input property`);
+      // AC-19: the button follows /meta, which lists an action only for callers with read on its entity.
+      const permission = action.permission;
+      if (permission === 'authenticated' || !('entity' in permission) || permission.op !== 'read')
+        problems.push(`${action.name}: permission must be { entity, op: 'read' } (AC-19)`);
+      else if (!registry.hasEntity(permission.entity))
+        problems.push(`${action.name}: permission entity ${permission.entity} is not registered`);
     }
     expect(problems).toEqual([]);
   });

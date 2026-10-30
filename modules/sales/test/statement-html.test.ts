@@ -5,9 +5,12 @@ import { closingDateOf } from '@daifuku/mod-partner';
 import { printTools } from '@daifuku/mod-print-layout';
 import { describe, expect, it } from 'vitest';
 import {
+  assertStatementSize,
   isClosingDate,
   latestClosingDate,
+  notClosingDateMessage,
   previousClosingDate,
+  STATEMENT_MAX_INVOICES,
   statementPeriod,
   sumTaxSummaries,
 } from '../src/actions/render-statement-html.ts';
@@ -159,6 +162,24 @@ describe('closing periods (AC-15, D-8)', () => {
     expect(latestClosingDate('2026-10-19', 20)).toBe('2026-09-20');
     expect(latestClosingDate('2026-10-30', 31)).toBe('2026-09-30');
     expect(latestClosingDate('2026-10-31', 31)).toBe('2026-10-31');
+  });
+});
+
+describe('statement limits and messages (AC-15, AC-25)', () => {
+  it('AC-15 500 invoices in one period are printed; 501 are INVALID_STATE', () => {
+    expect(STATEMENT_MAX_INVOICES).toBe(500);
+    expect(() => assertStatementSize(0)).not.toThrow();
+    expect(() => assertStatementSize(500)).not.toThrow();
+    expect(() => assertStatementSize(501)).toThrow(
+      expect.objectContaining({ code: 'INVALID_STATE', message: expect.stringMatching(/501 .* at most 500/) }),
+    );
+    expect(() => assertStatementSize(3, 2)).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+  });
+
+  it('AC-25 the message under 締め日 is in Japanese and English', () => {
+    expect(notClosingDateMessage('2026-09-20', '2026-10-20')).toBe(
+      '締め日ではありません（直近の締め日: 2026-09-20 または 2026-10-20） / not a closing date; nearest: 2026-09-20 or 2026-10-20',
+    );
   });
 });
 

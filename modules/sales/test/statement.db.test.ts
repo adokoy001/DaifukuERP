@@ -154,7 +154,16 @@ describe('sales.render_statement_html (docs/specs/print-templates.md)', () => {
   it('AC-15 a day that is not a closing date is VALIDATION on closingDate with the nearest closing dates', async () => {
     await expect(statement({}, { partnerId: customer20, closingDate: '2026-10-19' })).rejects.toMatchObject({
       code: 'VALIDATION',
-      details: { issues: [expect.objectContaining({ path: 'closingDate' })] },
+      details: {
+        issues: [
+          expect.objectContaining({
+            path: 'closingDate',
+            message: expect.stringMatching(
+              /^締め日ではありません（直近の締め日: 2026-09-20 または 2026-10-20） \/ not a closing date/,
+            ),
+          }),
+        ],
+      },
       hint: expect.stringMatching(/2026-09-20.*2026-10-20/),
     });
   });
