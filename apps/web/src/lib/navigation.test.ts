@@ -64,6 +64,8 @@ describe('authorized navigation catalog', () => {
       ['trade.board', '/commerce/trade', 'sales'],
       ['banking.board', '/finance/banking', 'finance'],
       ['tax_filing.board', '/finance/filing', 'finance'],
+      // docs/specs/recurring-journals.md AC-24: hidden from search and the workspace without the generation action
+      ['accounting.generate_recurring', '/finance/recurring', 'finance'],
       ['pos_integration.inbox', '/commerce/pos', 'operations'],
       ['group_accounting.companies', '/commerce/group', 'finance'],
       ['franchise.board', '/commerce/franchise', 'finance'],

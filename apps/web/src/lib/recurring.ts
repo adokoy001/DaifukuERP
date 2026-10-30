@@ -7,7 +7,6 @@ import type { Label, RecordJson } from '../api/types.ts';
 export const GENERATE_RECURRING_ACTION = 'accounting.generate_recurring';
 export const RECURRING_SCHEDULE_ACTION = 'accounting.recurring_schedule';
 export const RECURRING_ENTITY = 'recurring_journal';
-export const RECURRING_PATH = '/finance/recurring';
 
 export const PLAN_STATUSES = ['due', 'blocked', 'after_blocked', 'invalid_template'] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
@@ -151,6 +150,19 @@ export function stopHint(reason: StopReason, allocation: boolean): Label {
   }
 }
 
+/**
+ * What to do about a schedule row that stops (blocked or invalid_template), shown under the row so a template that
+ * cannot generate explains itself even while the run button is disabled. An allocation row carries `k/N`.
+ */
+export function scheduleRowHint(row: Pick<ScheduleRow, 'reason' | 'occurrence'>): Label | undefined {
+  return row.reason ? stopHint(row.reason, row.occurrence !== '') : undefined;
+}
+
+/** A period code after a reason: full-width parentheses in Japanese, a space and ASCII ones in English. */
+export function periodSuffix(code: string | undefined): Label | undefined {
+  return code ? { ja: `（${code}）`, en: ` (${code})` } : undefined;
+}
+
 export function runButtonLabel(autoSubmit: boolean): Label {
   return autoSubmit ? { ja: '生成して確定', en: 'Generate and submit' } : { ja: '下書きを生成', en: 'Generate drafts' };
 }
@@ -171,13 +183,6 @@ export const dueRows = (schedule: Schedule): ScheduleRow[] => schedule.rows.filt
 
 /** The run is worth starting when an occurrence would be generated (a blocked one is reported again, nothing new). */
 export const canGenerate = (schedule: Schedule | undefined): boolean => !!schedule && dueRows(schedule).length > 0;
-
-export function entryHref(entryId: string): string {
-  return `/e/journal_entry/${entryId}`;
-}
-export function templateHref(templateId: string): string {
-  return `/e/${RECURRING_ENTITY}/${templateId}`;
-}
 
 /** Links shown after a run: the journal list and, when drafts were made, the close guide that counts them (AC-23). */
 export function resultLinks(result: GenerateResult): { href: string; label: Label }[] {

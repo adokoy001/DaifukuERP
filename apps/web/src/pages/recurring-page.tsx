@@ -3,7 +3,7 @@
 // accounting.generate_recurring runs after a kit Dialog confirmation, and the result links to the created entries.
 // The templates themselves are edited in the generic list/form (/e/recurring_journal).
 import { Link } from '@tanstack/react-router';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type Ref } from 'react';
 import { useCurrencyScale } from '../api/company.tsx';
 import { financeIdentity } from '../api/finance.ts';
 import { useMeta } from '../api/queries.ts';
@@ -22,12 +22,14 @@ import {
   dueRows,
   GENERATE_RECURRING_ACTION,
   NO_PERMISSION,
+  periodSuffix,
   PLAN_STATUS_LABEL,
   RECURRING_ENTITY,
   resultLinks,
   resultSummary,
   runButtonLabel,
   RUN_STATUS_LABEL,
+  scheduleRowHint,
   STOP_REASON_LABEL,
   stopHint,
   type GenerateResult,
@@ -119,14 +121,37 @@ function ScheduleList({ rows, scale }: { rows: readonly ScheduleRow[]; scale: nu
           <Badge tone={PLAN_TONE[row.status]} data-testid="recurring-schedule-status">
             {t(PLAN_STATUS_LABEL[row.status])}
           </Badge>
+          <ScheduleRowHelp row={row} />
         </li>
       ))}
     </ul>
   );
 }
 
+/** A stopping row explains what to do even while the run button is disabled (nothing due), plus the check summary. */
+function ScheduleRowHelp({ row }: { row: ScheduleRow }) {
+  const { t } = useLocale();
+  const hint = scheduleRowHint(row);
+  if (!hint) return null;
+  return (
+    <div className="flex basis-full flex-col gap-1" data-testid="recurring-schedule-hint">
+      <p className="text-xs text-text-secondary">{t(hint)}</p>
+      {row.detail ? (
+        <details className="ui-error-details">
+          <summary>{t(S.technicalDetails)}</summary>
+          <dl>
+            <dt>{t({ ja: '検査の要約', en: 'Check summary' })}</dt>
+            <dd className="code">{row.detail}</dd>
+          </dl>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function TemplateResult({ run, scale }: { run: TemplateRun; scale: number }) {
   const { t } = useLocale();
+  const period = periodSuffix(run.stop?.periodCode);
   return (
     <li
       className="flex flex-col gap-2 border-b border-border-subtle py-3 last:border-b-0"
@@ -161,7 +186,8 @@ function TemplateResult({ run, scale }: { run: TemplateRun; scale: number }) {
               >
                 {entry.number ?? t({ ja: `${entry.occurrenceDate} の下書き`, en: `Draft of ${entry.occurrenceDate}` })}
               </Link>
-              <span className="text-text-muted">{entry.occurrenceDate}</span>
+              {/* a draft's link already names its date */}
+              {entry.number ? <span className="text-text-muted">{entry.occurrenceDate}</span> : null}
               <span className="tabular-nums">{formatDecimal(entry.amount, scale)}</span>
             </li>
           ))}
@@ -175,7 +201,7 @@ function TemplateResult({ run, scale }: { run: TemplateRun; scale: number }) {
               en: `Stopped at ${run.stop.occurrenceDate}: `,
             })}
             {t(STOP_REASON_LABEL[run.stop.reason])}
-            {run.stop.periodCode ? `（${run.stop.periodCode}）` : ''}
+            {period ? t(period) : ''}
           </p>
           <p>{t(stopHint(run.stop.reason, run.kind === 'allocation'))}</p>
           <details className="ui-error-details">
@@ -204,12 +230,25 @@ function TemplateResult({ run, scale }: { run: TemplateRun; scale: number }) {
   );
 }
 
-function RunResult({ result, scale }: { result: GenerateResult; scale: number }) {
+function RunResult({
+  result,
+  scale,
+  headingRef,
+}: {
+  result: GenerateResult;
+  scale: number;
+  headingRef: Ref<HTMLHeadingElement>;
+}) {
   const { t } = useLocale();
   const links = resultLinks(result);
   return (
     <Card data-testid="recurring-result-card">
-      <FormSection landmark title={t({ ja: '生成の結果', en: 'Result' })} description={t(resultSummary(result))}>
+      <FormSection
+        landmark
+        headingRef={headingRef}
+        title={t({ ja: '生成の結果', en: 'Result' })}
+        description={t(resultSummary(result))}
+      >
         {result.templates.length ? (
           <ul className="flex flex-col">
             {result.templates.map((run) => (
@@ -235,6 +274,8 @@ function RecurringRun({ meta }: { meta: AppMeta }) {
   const { t } = useLocale();
   const toast = useToast();
   const dateId = useId();
+  const dateErrorId = useId();
+  const resultHeading = useRef<HTMLHeadingElement>(null);
   const scale = useCurrencyScale();
   const [asOf, setAsOf] = useState(() => businessToday());
   const [confirm, setConfirm] = useState(false);
@@ -248,6 +289,12 @@ function RecurringRun({ meta }: { meta: AppMeta }) {
   const autoSubmit = data?.autoSubmit ?? false;
   const canList = meta.entities.some((e) => e.name === RECURRING_ENTITY);
   const due = data ? dueRows(data) : [];
+
+  // After a run the schedule is read again before onSuccess, so the dialog's opener ("Generate drafts") is usually
+  // disabled (nothing due) and cannot take focus back: move keyboard focus to the result heading instead.
+  useEffect(() => {
+    if (result) resultHeading.current?.focus();
+  }, [result]);
 
   const run = () => {
     if (busy || !validAsOf) return;
@@ -311,6 +358,7 @@ function RecurringRun({ meta }: { meta: AppMeta }) {
                   value={asOf}
                   disabled={busy}
                   aria-invalid={!validAsOf}
+                  aria-describedby={validAsOf ? undefined : dateErrorId}
                   onChange={(event) => {
                     setAsOf(event.target.value);
                     setResult(undefined);
@@ -328,7 +376,9 @@ function RecurringRun({ meta }: { meta: AppMeta }) {
               </Button>
             </div>
             {!validAsOf ? (
-              <p className="ui-field-error">{t({ ja: '日付を入れてください。', en: 'Enter a date.' })}</p>
+              <p id={dateErrorId} className="ui-field-error">
+                {t({ ja: '日付を入れてください。', en: 'Enter a date.' })}
+              </p>
             ) : null}
             {data ? (
               <p
@@ -348,7 +398,7 @@ function RecurringRun({ meta }: { meta: AppMeta }) {
             <ErrorDetails view={runErrorView} />
           </div>
         ) : null}
-        {result ? <RunResult result={result} scale={scale} /> : null}
+        {result ? <RunResult result={result} scale={scale} headingRef={resultHeading} /> : null}
         {!validAsOf ? null : schedule.isError ? (
           <MetaError error={schedule.error} retry={() => void schedule.refetch()} />
         ) : !data ? (

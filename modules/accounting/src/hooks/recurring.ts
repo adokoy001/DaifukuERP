@@ -149,9 +149,14 @@ async function lineUpdate(ctx: Context, { row, previous }: HookArgs): Promise<vo
     if (!sameValue(row[field], previous?.[field])) refuseAfterGeneration(`the allocation's line ${field}`, parent.id);
 }
 
-function runGuard(op: string) {
+/**
+ * AC-17: run rows are written only by generation's module-private capability, which grants `create` only. A generic
+ * create normally stops earlier (server-owned input is PERMISSION_DENIED, an input without it fails validation), so the
+ * create guard is defence in depth; update and delete are refused here for every role.
+ */
+function runGuard(op: 'create' | 'update' | 'delete') {
   return (ctx: Context): void => {
-    if (isRecurringRunWrite(ctx)) return;
+    if (isRecurringRunWrite(ctx, op)) return;
     throw new StateError(`recurring_journal_run cannot be written directly (${op})`, RECURRING_RUN_HINT, { op });
   };
 }

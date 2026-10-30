@@ -47,7 +47,9 @@ const recurringCursor = defineWriteCapability({
 
 export const withRecurringRun = <T>(ctx: Context, work: (ctx: Context) => Promise<T>): Promise<T> =>
   withWriteCapability(ctx, recurringRun, work);
-export const isRecurringRunWrite = (ctx: Context): boolean => hasWriteCapability(ctx, recurringRun.entity, 'create');
+/** The run capability grants `create` only, so update and delete of a run row are refused even inside generation. */
+export const isRecurringRunWrite = (ctx: Context, operation: 'create' | 'update' | 'delete'): boolean =>
+  hasWriteCapability(ctx, recurringRun.entity, operation);
 export const withRecurringCursor = <T>(ctx: Context, work: (ctx: Context) => Promise<T>): Promise<T> =>
   withWriteCapability(ctx, recurringCursor, work);
 export const isRecurringCursorWrite = (ctx: Context): boolean =>

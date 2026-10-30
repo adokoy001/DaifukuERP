@@ -123,6 +123,12 @@ describe('ui-kit AC-1: exported building blocks', () => {
     );
   });
 
+  it('FormSection makes its heading a script focus target only when a headingRef is given', () => {
+    expect(html(h(FormSection, { title: '結果' }, 'x'))).not.toContain('tabindex');
+    const focusable = html(h(FormSection, { title: '結果', landmark: true, headingRef: { current: null } }, 'x'));
+    expect(focusable).toMatch(/<h2 id="[^"]+" tabindex="-1" class="ui-section-title">結果<\/h2>/);
+  });
+
   it('AC-1: Badge colours by semantic tone and passes data attributes', () => {
     // JSX passes data-* through; createElement needs the props widened explicitly.
     const props = { tone: 'success', 'data-testid': 'docstatus', 'data-docstatus': 1 } as BadgeProps;

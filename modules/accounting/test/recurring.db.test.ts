@@ -6,6 +6,7 @@ import {
   companies,
   DaifukuError,
   Decimal,
+  f,
   newId,
   registerCrudActions,
   registry,
@@ -55,6 +56,14 @@ type TemplateJson = Row & {
   lines: { recurring_journal_line: LineJson[] };
 };
 type Table = { columns: { key: string }[]; rows: Row[]; meta?: Row };
+
+// AC-9: extension fields. Each side has one key shared with the journal side and one key of its own; generation copies
+// only the shared keys (postingDimensions).
+const EXT_SOURCE = { source: 'test:recurring' };
+registry.registerExt(RecurringJournal.name, { department: f.text(), templateNote: f.text() }, EXT_SOURCE);
+registry.registerExt(JournalEntry.name, { department: f.text() }, EXT_SOURCE);
+registry.registerExt(RecurringJournalLine.name, { costCenter: f.text(), lineNote: f.text() }, EXT_SOURCE);
+registry.registerExt(JournalLine.name, { costCenter: f.text() }, EXT_SOURCE);
 
 const FIXED_NOW = new Date('2026-10-15T03:00:00Z');
 const ACCOUNTING = { roles: ['accounting'], actor: { type: 'user' as const, id: newId() } };
@@ -107,6 +116,14 @@ async function entryWithLines(id: string): Promise<Row & { lines: { journal_line
 }
 async function entriesOf(templateId: string): Promise<Row[]> {
   return run(async (ctx) => (await repo(ctx, RecurringJournalRun).list({ where: { templateId }, limit: 500 })).items);
+}
+/** Payloads of recurring_journal.generated in the outbox for one template, oldest first (AC-20). */
+async function eventsOf(templateId: string): Promise<Row[]> {
+  const rows = await db.owner.sql<{ payload: Row }[]>`
+    select payload from outbox
+    where topic = ${RECURRING_GENERATED_EVENT} and tenant_id = ${db.tenantId} and payload->>'templateId' = ${templateId}
+    order by created_at, id`;
+  return rows.map((r) => r.payload);
 }
 async function deactivateAll(): Promise<void> {
   await run(async (ctx) => {
@@ -313,12 +330,21 @@ describe('recurring journal template (AC-4, AC-5, AC-7, AC-8)', () => {
 });
 
 describe('accounting.generate_recurring (AC-9..AC-20)', () => {
-  it('AC-9 one draft entry per due occurrence with the template description, lines, partner and tax; no source; next run advanced', async () => {
+  it('AC-9 one draft entry per due occurrence with the template description, lines, partner, tax and shared ext keys; no source; next run advanced', async () => {
     const t = await template({
       name: '本社家賃',
       description: '本社 家賃 未払計上',
       startDate: '2026-08-01',
-      lines: rentLines(),
+      ext: { department: 'D1', templateNote: 'not copied' },
+      lines: [
+        line(acc.rent, '100000', '0', {
+          taxCategory: 'standard',
+          taxRate: '0.10',
+          memo: '家賃',
+          ext: { costCenter: 'C9', lineNote: 'not copied' },
+        }),
+        line(acc.accrued, '0', '100000', { partnerId }),
+      ],
     });
     const res = await generate({ templateId: t.id });
     expect(res).toMatchObject({ asOf: '2026-10-15', autoSubmit: false, created: 2, truncated: false });
@@ -338,6 +364,9 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
       reversalOf: null,
       totalDebit: '0',
     });
+    // only the keys registered on both the template side and the journal side are copied
+    expect(entry.ext).toEqual({ department: 'D1' });
+    expect(entry.lines.journal_line.map((l) => l.ext ?? {})).toEqual([{ costCenter: 'C9' }, {}]);
     expect(
       entry.lines.journal_line.map((l) => [
         l.accountId,
@@ -366,6 +395,15 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
     expect(second.status).toBe('fulfilled');
     const created = [first, second].map((r) => (r.status === 'fulfilled' ? r.value.created : -1));
     expect(created.sort()).toEqual([0, 7]); // A: Jul–Sep (3), B: Jul–Oct 10 (4)
+    // Neither run fails only because of the other: the later one waits on the series lock and reads the candidates after
+    // the first commit, so it finds nothing due (without the locks the unique key would turn its templates into failed).
+    const results = [first, second].flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    expect(
+      results.flatMap((r) =>
+        r.templates.filter((t) => t.status !== 'generated').map((t) => [t.name, t.status, t.stop]),
+      ),
+    ).toEqual([]);
+    expect(results.find((r) => r.created === 0)?.templates).toEqual([]);
     for (const [id, n] of [
       [a.id, 3],
       [b.id, 4],
@@ -429,7 +467,7 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
     await deactivateAll();
   });
 
-  it('AC-12 a business error rolls back only that occurrence and stops its template; a template without lines is invalid_template; other errors fail the run', async () => {
+  it('AC-12 a business error rolls back only that occurrence (and its event, AC-20) and stops its template; a template without lines is invalid_template; other errors fail the run', async () => {
     await deactivateAll();
     registry.registerHook(JournalEntry.name, 'before_create', (_ctx, { row }) => {
       if (row.description === 'boom' && row.date === '2026-09-30')
@@ -447,6 +485,9 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
     expect(b?.stop?.issues).toEqual([{ path: 'date', message: 'refused by test hook' }]);
     expect((await entriesOf(boom.id)).map((r) => r.occurrenceDate)).toEqual(['2026-08-31']);
     expect(await run((ctx) => repo(ctx, JournalEntry).count({ description: 'boom', date: '2026-09-30' }))).toBe(0);
+    // AC-20: the generated occurrence has its event, the rolled-back one has none (the emit is the last step inside the
+    // occurrence's savepoint, so an occurrence rolled back by an earlier step never reaches it)
+    expect((await eventsOf(boom.id)).map((p) => p.occurrenceDate)).toEqual(['2026-08-31']);
     const n = res.templates.find((t) => t.templateId === bare.id);
     expect(n).toMatchObject({
       status: 'failed',
@@ -575,7 +616,7 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
     ]);
   });
 
-  it('AC-17 run records refuse every generic write (admin too); deleting a generated draft clears entryId and skips the occurrence; a submitted one reverses', async () => {
+  it('AC-17 run records refuse every generic write (admin too: create by field ownership, update/delete by the hook); deleting a generated draft clears entryId and skips the occurrence; a submitted one reverses', async () => {
     const t = await template({ name: '記録', startDate: '2026-09-01', dayOfMonth: 1, lines: rentLines('77') });
     const res = await generate({ templateId: t.id });
     const [sep, oct] = res.templates[0]?.entries ?? [];
@@ -589,9 +630,30 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
       const err = await caught(act(name, input, admin));
       expect([name, err.code]).toEqual([name, name.endsWith('.create') ? 'PERMISSION_DENIED' : 'INVALID_STATE']);
     }
-    // create without server-owned input is refused by the hook, not only by field ownership
-    const hookOnly = await caught(run((ctx) => repo(ctx, RecurringJournalRun).create({} as never), admin));
-    expect(['INVALID_STATE', 'VALIDATION']).toContain(hookOnly.code);
+    // A create without the server-owned fields fails validation (they are required) before any hook runs, so the
+    // before_create guard is defence in depth. Call the registered guards directly: each refuses outside generation,
+    // and generation's capability (create only) passes create but not update or delete.
+    const bare = await caught(run((ctx) => repo(ctx, RecurringJournalRun).create({} as never), admin));
+    expect(bare.code).toBe('VALIDATION');
+    const guard = (phase: 'before_create' | 'before_update' | 'before_delete', inGeneration: boolean) =>
+      run(async (ctx) => {
+        const hooks = registry.hooksFor(RecurringJournalRun.name, phase);
+        const call = async (c: Context) => {
+          for (const hook of hooks)
+            await hook(c, { entity: RecurringJournalRun.name, row: { ...runRow }, previous: { ...runRow } });
+        };
+        try {
+          await (inGeneration ? withRecurringRun(ctx, call) : call(ctx));
+          return hooks.length > 0 ? 'passed' : 'no guard registered';
+        } catch (e) {
+          if (e instanceof DaifukuError) return e.code;
+          throw e;
+        }
+      }, admin);
+    expect(await guard('before_create', false)).toBe('INVALID_STATE');
+    expect(await guard('before_create', true)).toBe('passed');
+    expect(await guard('before_update', true)).toBe('INVALID_STATE');
+    expect(await guard('before_delete', true)).toBe('INVALID_STATE');
     await act('journal_entry.delete', { id: sep?.entryId ?? '' });
     const runs = await entriesOf(t.id);
     expect(runs.find((r) => r.occurrenceDate === '2026-09-01')).toMatchObject({ entryId: null });
@@ -633,18 +695,10 @@ describe('accounting.generate_recurring (AC-9..AC-20)', () => {
     const t = await template({ name: 'イベント', startDate: '2026-10-01', dayOfMonth: 1, lines: rentLines('3') });
     const res = await generate({ templateId: t.id });
     const entryId = res.templates[0]?.entries[0]?.entryId;
-    const rows = await db.owner.sql<
-      { payload: Row }[]
-    >`select payload from outbox where topic = ${RECURRING_GENERATED_EVENT} and tenant_id = ${db.tenantId}`;
-    expect(rows.map((r) => r.payload)).toContainEqual({
-      templateId: t.id,
-      occurrenceDate: '2026-10-01',
-      occurrenceNo: null,
-      entryId,
-      submitted: false,
-    });
-    // the rolled-back occurrence of AC-12 left no event
-    expect(rows.some((r) => r.payload.occurrenceDate === '2026-09-30' && r.payload.entryId === undefined)).toBe(false);
+    expect(await eventsOf(t.id)).toEqual([
+      { templateId: t.id, occurrenceDate: '2026-10-01', occurrenceNo: null, entryId, submitted: false },
+    ]);
+    // the rolled-back occurrence leaving no event is checked with AC-12's failing template
     await act('recurring_journal.update', { id: t.id, patch: { isActive: false } });
   });
 });

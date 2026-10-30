@@ -3,7 +3,9 @@
 //   do not flood the landmark list);
 // - `landmark`: a <section> labelled by its heading (a region landmark) for a top-level part of a page;
 // - `as="fieldset"`: the title is the fieldset's <legend> (its first child), for grouped inputs.
-import { useId, type ReactNode } from 'react';
+// - `headingRef`: the heading becomes focusable from script (tabIndex -1), so a page can move keyboard focus to a section
+//   that appears after an action (e.g. a result whose opener is now disabled).
+import { useId, type ReactNode, type Ref } from 'react';
 import { cx } from './cx.ts';
 
 export interface FormSectionProps {
@@ -17,6 +19,8 @@ export interface FormSectionProps {
   /** Render a named region landmark (<section>) instead of a group; ignored for fieldsets. */
   landmark?: boolean;
   headingLevel?: 2 | 3;
+  /** Focus target for script (the heading gets tabIndex -1); ignored for fieldsets, whose title is a legend. */
+  headingRef?: Ref<HTMLHeadingElement>;
   children?: ReactNode;
   className?: string;
 }
@@ -29,6 +33,7 @@ export function FormSection({
   as = 'group',
   landmark = false,
   headingLevel = 2,
+  headingRef,
   children,
   className,
 }: FormSectionProps) {
@@ -53,7 +58,7 @@ export function FormSection({
   const content = (
     <>
       <div className="ui-section-head">
-        <Heading id={id} className="ui-section-title">
+        <Heading id={id} ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="ui-section-title">
           {title}
         </Heading>
         {meta}

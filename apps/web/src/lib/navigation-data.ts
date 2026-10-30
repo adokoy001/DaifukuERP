@@ -237,8 +237,8 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     action: 'accounting.generate_recurring',
     label: { ja: '定期仕訳の生成', en: 'Generate recurring journals' },
     description: {
-      ja: '家賃の未払計上や前払費用の振替など、定期仕訳の期日が来た回の仕訳を下書きで作ります。',
-      en: 'Create the due entries of recurring journals (accrued rent, prepaid expense transfers) as drafts.',
+      ja: '家賃の未払計上や前払費用の振替など、定期仕訳の期日が来た回の仕訳を作ります（既定は下書き）。',
+      en: 'Create the due entries of recurring journals (accrued rent, prepaid expense transfers), as drafts by default.',
     },
   },
   {

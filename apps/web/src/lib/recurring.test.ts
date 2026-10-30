@@ -8,6 +8,7 @@ import {
   canGenerate,
   NO_PERMISSION,
   parseSchedule,
+  periodSuffix,
   PLAN_STATUSES,
   PLAN_STATUS_LABEL,
   recurringLineLock,
@@ -16,6 +17,7 @@ import {
   RUN_STATUSES,
   RUN_STATUS_LABEL,
   runButtonLabel,
+  scheduleRowHint,
   STOP_REASONS,
   STOP_REASON_LABEL,
   stopHint,
@@ -103,6 +105,18 @@ describe('recurring journal screen wording (AC-23, AC-25)', () => {
     expect(canGenerate({ ...schedule, rows: schedule.rows.slice(1) })).toBe(false);
     expect(canGenerate(undefined)).toBe(false);
     expect(parseSchedule(undefined).rows).toEqual([]);
+  });
+
+  it('AC-21 AC-23 a stopping schedule row explains what to do (allocation advice for k/N rows); due rows have no hint', () => {
+    const row = { reason: null, occurrence: '' } as const;
+    expect(scheduleRowHint(row)).toBeUndefined();
+    expect(scheduleRowHint({ ...row, reason: 'closed_period' })).toEqual(stopHint('closed_period', false));
+    expect(scheduleRowHint({ reason: 'closed_period', occurrence: '3/12' })?.ja).toContain(
+      '按分の回の日付は変えられません',
+    );
+    expect(scheduleRowHint({ ...row, reason: 'invalid_template' })).toEqual(stopHint('invalid_template', false));
+    expect(periodSuffix('2026-09')).toEqual({ ja: '（2026-09）', en: ' (2026-09)' });
+    expect(periodSuffix(undefined)).toBeUndefined();
   });
 
   it('AC-23 result links: the journal list, and the close guide only for drafts; none when nothing was created', () => {

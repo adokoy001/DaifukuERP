@@ -13,7 +13,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 | レポートの題名 | `description` の最初の文 | `試算表を返します。…` → 「試算表」 | `lib/report.ts reportTitle` |
 | レポートの合計 | `totals` のキー | 列 key と一致 → 表の合計行。一致しない（`output_tax_total` など）→ 表の下に「合計」のキー・値リスト（キーはそのまま、値は小数の表示規則）。CSV も同じ順で末尾に `key,value` 行 | `lib/report.ts columnTotals / extraTotals`, `lib/csv.ts`（web-phase15 AC-7） |
 | レポート結果の操作 | 受信した `TableResult.rows` | 結果内検索・小数の正確な並替え・25/50行ページング。合計は再計算せず、元の帳票全体の集計値として表示 | `lib/report.ts reportRowsPage`、`components/report-table.tsx` |
-| 明細グリッド | document の `lines: [{ entity, parentField }]` | ヘッダの下に明細ごとのグリッド。列は明細エンティティの `views.list`。ただし kernel 既定（非 hidden の先頭 6 項目）と同じ並びは「未宣言」とみなし全項目。親 ref と `seq` は出さない。必須かつ既定値なしの項目は必ず列に足す | `lib/lines.ts gridColumns` |
+| 明細グリッド | document / entity の `lines: [{ entity, parentField }]`（entity の明細は ADR-0031） | ヘッダの下に明細ごとのグリッド。列は明細エンティティの `views.list`。ただし kernel 既定（非 hidden の先頭 6 項目）と同じ並びは「未宣言」とみなし全項目。親 ref と `seq` は出さない。必須かつ既定値なしの項目は必ず列に足す。グリッドは、親を更新できない利用者、下書きでない document（entity は docstatus で凍結しない）、entity ごとの規則で凍結した記録（`lib/line-lock.ts` の `locked`。例: `lib/recurring.ts recurringLineLock` が生成を始めた按分の定期仕訳を理由つきで読取専用にする）で読取専用になる | `lib/lines.ts gridColumns`、`lib/line-lock.ts lineLockReason` |
 | 多相参照（明細セル） | 明細の uuid/text 項目 `<x>Id` と、同じ明細の enum 項目 `<x>Entity`（値が /meta のエンティティ名） | id 入力の下に参照先の `number`（無ければ displayField）をリンクで表示（例: `payment_allocation.invoiceId` + `invoiceEntity` → INV-2026-000006） | `lib/lines.ts polymorphicTarget`, `components/line-grid.tsx`（web-phase15） |
 | ext フィールド | `EntityMeta.extFields[]`（`name: 'ext.<key>'`、ADR-0014） | フォームの「追加項目」fieldset に同じウィジェットで描画。値は `row.ext[key]`。保存時は `ext` を丸ごと送る（kernel が置換するため、フォームに無いキーは記録の値を残す。空欄はキー削除）。update は ext の値が変わったときだけ `patch.ext` を付ける | `lib/ext.ts`, `components/record-form.tsx`（web-phase15 AC-3） |
 | ext の一覧列 | `views.list` に `ext.<key>` | その ext フィールドの列を出す（API が ext の orderBy をできないので並べ替え不可）。※ 現在の kernel は定義時検証で `views.list` に ext を書けない（ADR-0014 帰結）ので、将来のビュー定義用 | `lib/ext.ts listColumns`, `components/data-table.tsx` |
@@ -46,6 +46,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 - 絞り込み欄は適用で作り直さない（「絞り込む」「すべてクリア」に焦点が残る）。外から条件が変わったとき（札・保存ビュー・戻る）は下書きだけを置き換える。適用を拒否したら最初の不正な欄（`aria-invalid="true"`）へ。
 - 札を外したら次の札、なければ前の札、なければ「絞り込み」ボタンへ。札の行の「絞り込みをクリア」も「絞り込み」ボタンへ。表の中の空状態の「絞り込みをクリア」は「検索をクリア」と同じく検索欄へ。
 - 一括操作の確定後は、確認の開き元（選択バー）が消えるので結果の見出し（`tabIndex=-1`）へ。
+- 定期仕訳の生成（`/finance/recurring`）の成功後は、予定の読み直しで開き元の「下書きを生成」が無効になるので、結果の見出し（`FormSection` の `headingRef`）へ。
 - 保存ビューの削除後は次のビューの「呼び出す」、なければ前、なければ名前の欄へ（ダイアログの中に留める）。
 
 ## 業務分野と画面検索
@@ -163,7 +164,7 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 | 画面の題名 | `PageHeader` | `h1` は画面に 1 つ。`back`（戻るリンク）、`eyebrow`、`meta`（技術名・番号・状態）、`icon`、`subtitle`、`actions`（右側の主操作）、`titleTestId`。`icon` と文字は折り返さない 1 行（`ui-page-header-main`）で、幅が足りないときは `actions` だけが下の行へ回る。専用画面の見た目を保つときは `className` に既存クラス（`control-heading` など）を渡し、その CSS で `flex-wrap: nowrap` などを決める |
 | 検索・絞り込みの行 | `Toolbar` | `end` は右寄せ（件数・ページ送り）。`role="toolbar"` ではない（Tab 順を変えない）。名前を付けるときだけ `label` |
 | 囲み | `Card` | `as="form"` でフォーム全体を 1 枚にできる（フォーム専用の属性は `as="form"` のときだけ型が通る） |
-| 入力のまとまり | `FormSection` | 題名・説明・右側の操作。既定は見出しで名前を付けた `role="group"`（landmark にしない。フォームの中に並べても landmark 一覧が増えない）。ページの大きな区画にするときだけ `landmark`（`<section>`）。入力群は `as="fieldset"`（`legend` が最初の子） |
+| 入力のまとまり | `FormSection` | 題名・説明・右側の操作。既定は見出しで名前を付けた `role="group"`（landmark にしない。フォームの中に並べても landmark 一覧が増えない）。ページの大きな区画にするときだけ `landmark`（`<section>`）。入力群は `as="fieldset"`（`legend` が最初の子）。操作の後に現れる区画へ焦点を移すときは `headingRef` を渡す（見出しが `tabIndex=-1` になり、`ref.current.focus()` できる） |
 | 0 件・未実行 | `EmptyState` | 何が無いかと次の一手（新規・検索をクリア・取込）。live region にしない。画面の区画の主内容なら `titleAs="h2"`、画面全体なら `titleAs="h1"`（`NotFoundView` など） |
 | 読込中 | `Skeleton` / `SkeletonRows` / `SkeletonCard`、画面単位は `LoadingView` | 骨格は `aria-hidden`。骨格の容器に `aria-busy="true"`。「読み込み中…」は `sr-only` の `aria-live="polite"` で、busy の容器の**外**に置く（中に置くと busy の間読まれないことがある）。`role="status"` にしないのは、トーストの `getByRole('status')` と重ならないようにするため |
 | 表 | `DataTableShell` | 枠・固定見出し・数値列の右寄せ（`cellAlignClass('right')` = `ui-cell-num`）・空状態・骨格行。`skeleton` は初回と条件変更後（前の結果が誤解を招くとき）、`busy` だけなら行を残して上端の帯で示す。`fill` で高さを画面に合わせ、見出しを固定する。`loadingLabel` を渡すと骨格行の間だけ live region が「読み込み中…」と言う。空状態は表の後ろ（枠の中）に出すので、列が多く横に長い表でも見えている枠の幅に収まる。`aria-sort` は並べ替え中の列見出しだけに付ける（`ariaSortFor`） |
