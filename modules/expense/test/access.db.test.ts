@@ -319,6 +319,225 @@ describe('API keys are refused (machine-credentials AC-22, round 7 integration)'
     ).toMatchObject(human);
     expect(await settlements()).toBe(counts.settlements);
   });
+  it('AC-15 AC-22 an accounting-only key is refused with human-actor-required before the module role check (not <op>:requires-workforce_payroll)', async () => {
+    const w = await f.worker();
+    const r = await ready(w);
+    const before = await f.getSettlement(r.id);
+    const lineId = before.lines.expense_settlement_line[0]?.id ?? '';
+    const adv = await f.act<Row & { id: string; version: number }>(f.settler.params, 'expense_advance.create', {
+      employeeId: w.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    const k = key(['accounting']);
+    expect(await caught(f.act(k, 'expense.settlement_candidates', {}))).toMatchObject(human);
+    expect(await caught(f.draft({ employeeId: w.employeeId, kind: 'reimbursement' }, k))).toMatchObject(human);
+    expect(await caught(f.act(k, 'expense.todo', {}))).toMatchObject(human);
+    expect(
+      await caught(f.act(k, 'expense_settlement.create', { employeeId: w.employeeId, kind: 'reimbursement' })),
+    ).toMatchObject(human);
+    expect(await caught(f.edit(r.id, { note: 'x' }, undefined, k))).toMatchObject(human);
+    expect(await caught(f.edit(r.id, {}, [{ payeeName: 'x' }], k))).toMatchObject(human);
+    expect(
+      await caught(f.run(k, (ctx) => repo(ctx, ExpenseSettlementLine).update(lineId, { payeeName: '別の店' }))),
+    ).toMatchObject(human);
+    expect(await caught(f.run(k, (ctx) => repo(ctx, ExpenseSettlementLine).delete(lineId)))).toMatchObject(human);
+    expect(
+      await caught(f.act(k, 'expense_settlement.delete', { id: r.id, expectedVersion: before.version })),
+    ).toMatchObject(human);
+    expect(await caught(f.submit(r.id, k))).toMatchObject(human);
+    expect(
+      await caught(
+        f.act(k, 'expense_advance.create', {
+          employeeId: w.employeeId,
+          partnerId: f.partners.alice,
+          amount: '1000',
+          purpose: 'x',
+        }),
+      ),
+    ).toMatchObject(human);
+    expect(
+      await caught(
+        f.act(k, 'expense_advance.update', { id: adv.id, expectedVersion: adv.version, patch: { amount: '9000' } }),
+      ),
+    ).toMatchObject(human);
+    expect(
+      await caught(f.act(k, 'expense_advance.delete', { id: adv.id, expectedVersion: adv.version })),
+    ).toMatchObject(human);
+    expect(await caught(f.act(k, 'expense_advance.submit', { id: adv.id }))).toMatchObject(human);
+    const after = await f.getSettlement(r.id);
+    expect(after).toMatchObject({ version: before.version, docstatus: DOCSTATUS.draft, note: before.note });
+    expect(after.lines.expense_settlement_line.map((l) => [l.id, l.payeeName])).toEqual([[lineId, '店']]);
+    expect(await f.act(f.settler.params, 'expense_advance.get', { id: adv.id })).toMatchObject({
+      amount: '1000',
+      version: adv.version,
+      docstatus: DOCSTATUS.draft,
+    });
+
+    await f.submit(r.id);
+    await f.act(f.settler.params, 'expense_advance.submit', { id: adv.id });
+    expect(await caught(f.cancel(r.id, undefined, k))).toMatchObject(human);
+    expect(await caught(f.act(k, 'expense_advance.cancel', { id: adv.id }))).toMatchObject(human);
+    expect((await f.getSettlement(r.id)).docstatus).toBe(DOCSTATUS.submitted);
+    expect((await f.run({}, (ctx) => repo(ctx, WorkforceExpense).get(r.expenseId))).status).toBe('settled');
+    await f.cancel(r.id);
+    const cancelled = await f.getSettlement(r.id);
+    expect(
+      await caught(f.act(k, 'expense_settlement.amend', { id: r.id, expectedVersion: cancelled.version })),
+    ).toMatchObject(human);
+    expect(await f.run({}, (ctx) => repo(ctx, ExpenseSettlement).count({ employeeId: w.employeeId }))).toBe(1);
+  });
+  it('AC-15 AC-22 a key without the kernel entity / action permission (workforce_payroll only) gets the kernel refusal, as a person with that role does', async () => {
+    const w = await f.worker();
+    const k = key(['workforce_payroll']);
+    for (const p of [k, f.payroll.params]) {
+      expect(await caught(f.act(p, 'expense.settlement_candidates', {}))).toMatchObject(denied('create'));
+      expect(
+        await caught(f.act(p, 'expense_settlement.create', { employeeId: w.employeeId, kind: 'reimbursement' })),
+      ).toMatchObject(denied('create'));
+      expect(await caught(f.act(p, 'expense.todo', {}))).toMatchObject(denied('submit'));
+    }
+  });
+  it('AC-15 AC-22 a key is refused before the module reads anything: an unknown employee or parent settlement gives 403, not NOT_FOUND or a reference error', async () => {
+    const k = key(['admin']);
+    const ghost = newId();
+    expect(
+      await caught(f.act(k, 'expense_settlement.create', { employeeId: ghost, kind: 'reimbursement' })),
+    ).toMatchObject(human);
+    expect(await caught(f.draft({ employeeId: ghost, kind: 'reimbursement' }, k))).toMatchObject(human);
+    expect(
+      await caught(
+        f.act(k, 'expense_advance.create', {
+          employeeId: ghost,
+          partnerId: f.partners.alice,
+          amount: '1000',
+          purpose: 'x',
+        }),
+      ),
+    ).toMatchObject(human);
+    expect(
+      await caught(
+        f.run(k, (ctx) =>
+          repo(ctx, ExpenseSettlementLine).create({ settlementId: ghost, expenseId: newId(), amount: '100' } as never),
+        ),
+      ),
+    ).toMatchObject(human);
+  });
+  it('AC-15 AC-22 a key cannot touch a submitted settlement or advance through the allowOnSubmit update path (an empty patch is 403, the version stays)', async () => {
+    const w = await f.worker();
+    const r = await ready(w);
+    await f.submit(r.id);
+    const adv = await f.act<Row & { id: string }>(f.settler.params, 'expense_advance.create', {
+      employeeId: w.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    await f.act(f.settler.params, 'expense_advance.submit', { id: adv.id });
+    const settlement = await f.getSettlement(r.id);
+    const advance = await f.act<Row & { version: number }>(f.settler.params, 'expense_advance.get', { id: adv.id });
+    for (const k of [key(['admin']), key(['accounting', 'workforce_payroll'])]) {
+      expect(
+        await caught(
+          f.act(k, 'expense_settlement.update', { id: r.id, expectedVersion: settlement.version, patch: {} }),
+        ),
+      ).toMatchObject(human);
+      expect(
+        await caught(f.act(k, 'expense_advance.update', { id: adv.id, expectedVersion: advance.version, patch: {} })),
+      ).toMatchObject(human);
+    }
+    expect(await f.getSettlement(r.id)).toMatchObject({
+      version: settlement.version,
+      docstatus: DOCSTATUS.submitted,
+      updatedAt: settlement.updatedAt,
+    });
+    expect(await f.act(f.settler.params, 'expense_advance.get', { id: adv.id })).toMatchObject({
+      version: advance.version,
+      docstatus: DOCSTATUS.submitted,
+      status: 'open',
+      updatedAt: advance.updatedAt,
+    });
+  });
+  it('AC-15 AC-22 an agent is judged as the person it acts for: refused on its own expenses, settles a colleague end to end', async () => {
+    const agent = (forUser: string): Partial<ContextParams> => ({
+      actor: { type: 'agent', id: newId(), onBehalfOf: forUser },
+      roles: ['accounting', 'workforce_payroll'],
+      accessScope: 'all',
+      siteIds: [],
+    });
+    const selfie = await f.person('agent-selfie', ['workforce_employee']);
+    const w = await f.worker('agent-selfie-emp', f.siteA, selfie);
+    const asSelf = agent(selfie.id);
+    const expense = await f.approvedExpense(w);
+    expect(
+      await caught(f.draft({ employeeId: w.employeeId, kind: 'reimbursement', expenseIds: [expense] }, asSelf)),
+    ).toMatchObject(denied('create:self-settlement'));
+    expect(
+      await caught(
+        f.act(asSelf, 'expense_advance.create', {
+          employeeId: w.employeeId,
+          partnerId: f.partners.alice,
+          amount: '1000',
+          purpose: 'x',
+        }),
+      ),
+    ).toMatchObject(denied('create:self-settlement'));
+    const d = await f.draft({
+      employeeId: w.employeeId,
+      kind: 'reimbursement',
+      expenseIds: [expense],
+      partnerId: f.partners.alice,
+    });
+    expect(await caught(f.edit(d.id, { note: 'x' }, undefined, asSelf))).toMatchObject(
+      denied('update:self-settlement'),
+    );
+    await f.edit(d.id, { date: '2026-10-08' }, [{ invoiceKind: 'small_amount', payeeName: '店' }]);
+    expect(await caught(f.submit(d.id, asSelf))).toMatchObject(denied('submit:self-settlement'));
+    await f.submit(d.id);
+    expect(await caught(f.cancel(d.id, undefined, asSelf))).toMatchObject(denied('cancel:self-settlement'));
+    expect((await f.getSettlement(d.id)).docstatus).toBe(DOCSTATUS.submitted);
+    // the candidates of the agent flag the group of the person it acts for
+    await f.approvedExpense(w);
+    const cands = await f.act<{ groups: { employeeId: string; self: boolean }[] }>(
+      asSelf,
+      'expense.settlement_candidates',
+      {},
+    );
+    expect(cands.groups.find((g) => g.employeeId === w.employeeId)?.self).toBe(true);
+
+    // an agent acting for the settler settles another employee, cancels, pays an advance and sees the inbox
+    const forSettler = agent(f.settler.id);
+    const other = await f.worker('agent-other-emp');
+    const e2 = await f.approvedExpense(other);
+    const d2 = await f.draft(
+      { employeeId: other.employeeId, kind: 'reimbursement', expenseIds: [e2], partnerId: f.partners.alice },
+      forSettler,
+    );
+    await f.edit(d2.id, { date: '2026-10-08' }, [{ invoiceKind: 'small_amount', payeeName: '店' }], forSettler);
+    expect((await f.submit(d2.id, forSettler)).docstatus).toBe(DOCSTATUS.submitted);
+    expect((await f.run({}, (ctx) => repo(ctx, WorkforceExpense).get(e2))).status).toBe('settled');
+    expect((await f.cancel(d2.id, undefined, forSettler)).docstatus).toBe(DOCSTATUS.cancelled);
+    expect((await f.run({}, (ctx) => repo(ctx, WorkforceExpense).get(e2))).status).toBe('approved');
+    const adv = await f.act<{ id: string }>(forSettler, 'expense_advance.create', {
+      employeeId: other.employeeId,
+      partnerId: f.partners.alice,
+      date: '2026-10-01',
+      amount: '1000',
+      purpose: 'x',
+    });
+    const paid = await f.act<{ docstatus: number; status: string; paymentId: string | null }>(
+      forSettler,
+      'expense_advance.submit',
+      { id: adv.id },
+    );
+    expect(paid).toMatchObject({ docstatus: DOCSTATUS.submitted, status: 'open' });
+    expect(typeof paid.paymentId).toBe('string');
+    const todo = await f.act<{ items: { key: string; count: number }[] }>(forSettler, 'expense.todo', {});
+    expect(todo.items.find((i) => i.key === 'open_advances')?.count).toBeGreaterThan(0);
+  });
 });
 
 describe('employee and site boundaries (AC-16, D25)', () => {

@@ -2,7 +2,8 @@
 // before_validate (draft create/update): role and self-settlement checks first (AC-15; the self check covers create,
 //   update and, in before_delete, delete of the draft), then on create the employee's user and site (server-owned),
 //   today's date (JST) and zeroed computed fields. Internal updates (recalc, paymentId) carry the module capability
-//   and skip these checks.
+//   and skip these checks. An update of a submitted settlement (allowOnSubmit, server-owned fields) only refuses an
+//   API key (machine-credentials AC-22).
 // before_create / before_update (draft): advance-derived amounts from the stored total (AC-7).
 // after_lines_saved: one recalculation per replace-all line save (hooks/recalc.ts).
 // before_submit: under the employee lock, every AC-6 check — including AC-4 on every line and the advance — then the
@@ -39,7 +40,7 @@ import {
   WorkforceEmployee,
   WorkforceExpense,
 } from '@daifuku/mod-workforce';
-import { refuseSelfSettlement, requireSettlementRoles } from '../access.ts';
+import { refuseMachineActor, refuseSelfSettlement, requireSettlementRoles } from '../access.ts';
 import type { ExpenseSettlementKind } from '../contract.ts';
 import { ExpenseAdvance, ExpenseSettlement, ExpenseSettlementLine } from '../entities/index.ts';
 import { internalWrite } from '../internal.ts';
@@ -75,7 +76,10 @@ async function advanceAmountOf(ctx: Context, kind: unknown, advanceId: unknown):
 }
 
 async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promise<void> {
-  if (previous && previous.docstatus !== DOCSTATUS.draft) return; // allowOnSubmit fields only
+  if (previous && previous.docstatus !== DOCSTATUS.draft) {
+    refuseMachineActor(ctx); // allowOnSubmit fields only (server-owned); an API key is refused here too (AC-15)
+    return;
+  }
   if (previous && hasWriteCapability(ctx, S, 'update')) return; // module-internal recalculation
   requireSettlementRoles(ctx, S, previous ? 'update' : 'create');
   if (previous) {

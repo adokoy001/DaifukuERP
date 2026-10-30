@@ -1,6 +1,8 @@
 // expense_advance hooks (spec AC-13, AC-12, ADR-0039).
 // before_validate (draft): roles and self check (AC-15; also on update and delete), the employee's user and site,
-//   today's date (JST); a positive whole-yen amount. before_submit: date not in the future, JPY, the cash/bank account default, status `open`.
+//   today's date (JST); a positive whole-yen amount. On a submitted advance (allowOnSubmit, server-owned fields) it
+//   only refuses an API key (machine-credentials AC-22).
+// before_submit: date not in the future, JPY, the cash/bank account default, status `open`.
 // after_submit: the payout through payment `createClearingPayment` (Dr 仮払金 / Cr cash/bank), its id recorded.
 // before_cancel: refused while `settled` (cancel the settlement first); after_cancel: the payout is cancelled with the
 //   same correction date. A submitted settlement that clears the advance blocks its cancellation (kernel DependencyError).
@@ -20,7 +22,7 @@ import {
 import { assertJpySettlement } from '@daifuku/mod-accounting';
 import { createClearingPayment, defaultAccountIdFor, Payment, type PaymentMethod } from '@daifuku/mod-payment';
 import { WorkforceEmployee } from '@daifuku/mod-workforce';
-import { refuseSelfSettlement, requireSettlementRoles } from '../access.ts';
+import { refuseMachineActor, refuseSelfSettlement, requireSettlementRoles } from '../access.ts';
 import { ExpenseAdvance } from '../entities/index.ts';
 import { internalWrite } from '../internal.ts';
 import { zeroIfMissing } from '../services/load.ts';
@@ -42,7 +44,10 @@ function assertAmount(value: unknown): void {
 }
 
 async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promise<void> {
-  if (previous && previous.docstatus !== DOCSTATUS.draft) return; // allowOnSubmit fields only
+  if (previous && previous.docstatus !== DOCSTATUS.draft) {
+    refuseMachineActor(ctx); // allowOnSubmit fields only (server-owned); an API key is refused here too (AC-15)
+    return;
+  }
   if (previous && hasWriteCapability(ctx, A, 'update')) return;
   requireSettlementRoles(ctx, A, previous ? 'update' : 'create');
   if (previous) refuseSelfSettlement(ctx, A, 'update', previous.userId);
