@@ -1,9 +1,9 @@
-// sales.render_invoice_html (spec AC-5): builds InvoiceRenderData (issuer from `sales.issuer`, recipient from the
-// partner, money as Decimal strings) and hands it to registry.override('sales.invoice_html', defaultInvoiceHtml).
+// sales.render_invoice_html (spec AC-5): builds InvoiceRenderData (issuer from `sales.issuer`, else `company.profile`;
+// recipient from the partner; money as Decimal strings) and hands it to registry.override('sales.invoice_html', ...).
 import {
+  companyProfileOf,
   defineAction,
   getCompany,
-  getSetting,
   label,
   registry,
   repo,
@@ -28,10 +28,35 @@ function defined<T>(o: object): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null)) as T;
 }
 
-/** The issuer block: `sales.issuer`, or just the company name when the setting is not set. */
+/**
+ * The issuer block (docs/specs/company-admin.md AC-7): `sales.issuer` when the company set it (the whole block wins);
+ * otherwise built from `company.profile` — the legal name (else the company name), registration number, postal code,
+ * address, phone and email. A stored `sales.issuer` that fails its schema is ignored like getSetting does.
+ */
+export function resolveIssuer(company: { name: string; settings: Readonly<Record<string, unknown>> }): {
+  issuer: SalesIssuer;
+  source: 'sales.issuer' | 'company.profile';
+  invalidIssuer: boolean;
+} {
+  const raw = company.settings[SALES_ISSUER_KEY];
+  const stored = raw === undefined ? undefined : salesIssuerSchema.safeParse(raw);
+  if (stored?.success) return { issuer: stored.data, source: 'sales.issuer', invalidIssuer: false };
+  const profile = companyProfileOf(company.settings);
+  const issuer = defined<SalesIssuer>({
+    name: profile.legalName ?? company.name,
+    invoiceRegistrationNo: profile.invoiceRegistrationNo,
+    postalCode: profile.postalCode,
+    address: profile.address,
+    phone: profile.phone,
+    email: profile.email,
+  });
+  return { issuer, source: 'company.profile', invalidIssuer: stored !== undefined };
+}
+
 export async function loadIssuer(ctx: Context): Promise<SalesIssuer> {
-  const company = await getCompany(ctx);
-  return getSetting(ctx, SALES_ISSUER_KEY, salesIssuerSchema, { name: company.name });
+  const resolved = resolveIssuer(await getCompany(ctx));
+  if (resolved.invalidIssuer) ctx.log.warn('invalid company setting, using company.profile', { key: SALES_ISSUER_KEY });
+  return resolved.issuer;
 }
 
 export async function buildInvoiceRenderData(ctx: Context, id: string): Promise<InvoiceRenderData> {

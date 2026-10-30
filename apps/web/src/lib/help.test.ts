@@ -23,6 +23,7 @@ const ROUTES = [
   '/settings',
   '/templates',
   '/admin/users',
+  '/admin/companies',
   '/operations',
   '/operations/devices',
   '/me',

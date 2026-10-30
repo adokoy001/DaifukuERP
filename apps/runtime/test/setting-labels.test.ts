@@ -31,6 +31,7 @@ describe('settings-console AC-13: labels of registered settings', () => {
         'example.default_customer_rank',
         'wholesale.due_days',
         'packs.applied',
+        'company.profile',
       ]),
     );
   });

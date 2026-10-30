@@ -2,7 +2,7 @@
 
 - 状態: 採択（2026-10-29）／ 確信度: 中
 - 関連: [ADR-0013](0013-hexagonal-ports.md)（L1 設定 `registerSetting`）、[ADR-0015](0015-packs.md)（pack の設定既定値）、[受入基準](../specs/settings-console.md)、[UI 規約](../conventions/ui.md)
-- 追記予定: B2 の `company.profile`（[company-admin](../specs/company-admin.md)）、B4 の `setup.progress`（[setup-wizard](../specs/setup-wizard.md)）をこの ADR に節として足す
+- 追記: §6 B2 の `company.profile`（[company-admin](../specs/company-admin.md)、2026-10-30）。追記予定: B4 の `setup.progress`（[setup-wizard](../specs/setup-wizard.md)）
 
 ## 背景
 
@@ -72,6 +72,16 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 ### 5. 既定値とテンプレートが書いた値
 
 「既定値」は module の宣言した `default`（`getSetting` の fallback）だけを指す。テンプレート（pack）の適用が書いた値（例: 賃貸管理の `sales.accounts.revenue = 4200`）は、ほかの保存値と同じ**会社の値**として扱う。そのため「既定に戻す」はテンプレートの値ではなく module の既定値（`sales.accounts.revenue = 4000`）に戻す。テンプレートを適用した会社（`packs.applied` が空でない）では、確認の画面にその旨を添える。テンプレートの値に戻すには、その値を入れ直すか、`pnpm pack:apply <name> --force`（API `pack.apply` の `force`。そのテンプレートの設定をすべて上書きし、seed も再実行する。ADR-0015）を使う。テンプレートごとの既定値を画面に出すことはしていない（設定定義は module ごとで、pack の既定値は pack 側の `settings` にあるため）。
+
+### 6. kernel の設定 `company.profile`（2026-10-30 追記、[company-admin](../specs/company-admin.md)）
+
+会社の基本情報を 1 か所に置くため、kernel が設定 `company.profile` を登録する（`kernel/src/company-profile.ts`）。`companies` の列は増やさない（移行なし）。
+
+- schema: すべて省略可の object。`legalName`（正式名称）、`postalCode`、`address`、`phone`、`email`（メール形式）、`invoiceRegistrationNo`（`^T\d{13}$`。国税庁 タックスアンサー No.6625。実在照合はしない）、`taxStatus`（`taxable | exempt`）、`fiscalYearEndMonth`（1〜12 の整数）、`representative`。`taxStatus: 'exempt'` と登録番号の同時指定は拒否する（登録番号は適格請求書発行事業者＝課税事業者だけが持つ）。この相互検査は zod の `superRefine` で、JSON Schema には現れない（画面は API の検証エラーを細目に表示する）。
+- 表示属性: `category: 'company'`、`order: 0`（会社タブの先頭）、全 9 細目の日英ラベル、住所は `textarea`、`taxStatus` の選択肢ラベル（課税事業者／免税事業者）。`default` は宣言しない（既定値は「空のプロフィール」で、「既定に戻す」は保存値を消す）。
+- 登録: `ensureCompanyProfileSetting()`（冪等）を apps/runtime の `loadRuntime` が呼ぶ。`packs.applied` と同じく kernel の設定なので module の import には載らない。kernel を直接使う試験は自分で呼ぶ。
+- 読取: `getCompanyProfile(ctx)`（保存値が schema に合わなければ空のプロフィールと警告ログ）、`companyProfileOf(settings)`（会社行の `settings` から。1 回の会社読取で他の設定と一緒に解決するため）。
+- 最初の読み手は販売: `sales.issuer` が未設定（または schema に合わない保存値）のとき、請求書の発行者は `company.profile` の正式名称（無ければ会社名）・登録番号・郵便番号・住所・電話・メールから組み立てる（`modules/sales` の `resolveIssuer`）。`sales.issuer` が有効なら細目単位で混ぜず、それをまとめて使う（振込先など請求書だけの情報を別名義で持てるように）。申告・給与資料の読取元の切替は各資料の仕様で扱う。
 
 ## 却下した案
 

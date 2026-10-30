@@ -256,6 +256,27 @@ export { createManagedUser, updateManagedUser } from './access-users.ts';
 export { putCompanyMembership, removeCompanyMembership } from './access-memberships.ts';
 export { accessDirectory, accessAudit } from './access-directory.ts';
 export { createUserSchema, updateUserSchema, membershipSchema, removeMembershipSchema } from './access-admin-common.ts';
+export {
+  COMPANY_CODE,
+  createCompany,
+  createCompanySchema,
+  listCompanies,
+  updateCompany,
+  updateCompanySchema,
+  type AdminCompany,
+  type CreateCompanyOptions,
+  type CreatedCompany,
+} from './company-admin.ts';
+export {
+  COMPANY_PROFILE_KEY,
+  COMPANY_PROFILE_SETTING,
+  INVOICE_REGISTRATION_NO,
+  companyProfileOf,
+  companyProfileSchema,
+  ensureCompanyProfileSetting,
+  getCompanyProfile,
+  type CompanyProfile,
+} from './company-profile.ts';
 
 export * from './identity/index.ts';
 

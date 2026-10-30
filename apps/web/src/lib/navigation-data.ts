@@ -334,6 +334,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/admin/companies',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'tenant-admin',
+    label: { ja: '会社の管理', en: 'Companies' },
+    description: {
+      ja: 'テナントに会社を追加し、会社名と国を変更します。',
+      en: 'Add companies to the tenant and change their name and country.',
+    },
+  },
+  {
     href: '/account',
     workspace: 'admin',
     kind: 'setting',

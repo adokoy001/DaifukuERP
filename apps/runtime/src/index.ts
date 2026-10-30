@@ -1,6 +1,6 @@
 // One catalog for all adapters. Schema tools load all installed packs independently
 // of the current runtime selection, preserving disabled packs' data.
-import { registerCrudActions, registerPackActions, registry } from '@daifuku/kernel';
+import { ensureCompanyProfileSetting, registerCrudActions, registerPackActions, registry } from '@daifuku/kernel';
 import { loadDotEnv } from './environment.ts';
 import { loadPacks, selectedPackNames } from './packs.ts';
 
@@ -13,5 +13,7 @@ export async function loadRuntime(options: { schema?: boolean } = {}) {
   const packs = await loadPacks(selectedPackNames(options.schema ? 'all' : process.env.DAIFUKU_PACKS));
   registerPackActions();
   registerCrudActions();
+  // Kernel-owned company setting (docs/specs/company-admin.md AC-6); modules read it, the settings console lists it.
+  ensureCompanyProfileSetting();
   return { modules: businessModules, packs, warnings: registry.warnings() };
 }

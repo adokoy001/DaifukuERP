@@ -15,7 +15,7 @@ export const salesAccountsSchema = z.object({
 export type SalesAccounts = z.output<typeof salesAccountsSchema>;
 export const SALES_ACCOUNTS_DEFAULT: SalesAccounts = { receivable: '1300', revenue: '4000', taxPayable: '2200' };
 
-/** 適格請求書 issuer block (No.6625 記載事項①: 氏名又は名称及び登録番号). Falls back to the company name when unset. */
+/** 適格請求書 issuer block (No.6625 記載事項①: 氏名又は名称及び登録番号). Unset: built from `company.profile` (loadIssuer). */
 export const salesIssuerSchema = z.object({
   name: z.string().min(1).max(200),
   invoiceRegistrationNo: z
@@ -51,8 +51,8 @@ export const SALES_SETTING_DEFS: readonly SettingDef[] = [
     key: SALES_ISSUER_KEY,
     label: label('請求書の発行者', 'Invoice issuer'),
     description: label(
-      '適格請求書に印字する名称・登録番号（T+13桁）・住所・連絡先・振込先。未設定なら会社名を印字する',
-      'Name, registration number (T + 13 digits), address, contact and bank details printed on invoices. Unset: the company name is printed',
+      '適格請求書に印字する名称・登録番号（T+13桁）・住所・連絡先・振込先。未設定なら会社プロフィール（無ければ会社名）を印字する',
+      'Name, registration number (T + 13 digits), address, contact and bank details printed on invoices. Unset: the company profile (else the company name) is printed',
     ),
     schema: salesIssuerSchema,
     order: 10,

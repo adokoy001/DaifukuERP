@@ -276,6 +276,12 @@ const accessRoute = createRoute({
   path: '/admin/users',
   component: lazyRouteComponent(() => import('./pages/access-page.tsx'), 'AccessPage'),
 });
+// company-admin AC-9: tenant administrators add and rename companies.
+const companiesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/companies',
+  component: lazyRouteComponent(() => import('./pages/companies-page.tsx'), 'CompaniesPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
@@ -405,6 +411,7 @@ const routeTree = rootRoute.addChildren([
     edgeRoute,
     reportsRoute,
     accessRoute,
+    companiesRoute,
     employeeRoute,
     workforceRoute,
     inboxRoute,

@@ -15,6 +15,7 @@ import { registerMetaRoutes } from './routes/meta.ts';
 import { registerRestRoutes } from './routes/rest.ts';
 import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
+import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
 import { registerSquarePosRoutes } from './routes/square-pos.ts';
 import { registerWorkforceEvidenceRoutes } from './routes/workforce-evidence.ts';
@@ -74,6 +75,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerRestRoutes(server, { db: opts.app });
   registerAttachmentRoutes(server, { db: opts.app });
   registerAccessAdminRoutes(server, { db: opts.app });
+  registerCompanyAdminRoutes(server, { db: opts.app });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
   registerAnalyticsRoutes(server, { db: opts.app });
   await registerSquarePosRoutes(server, {

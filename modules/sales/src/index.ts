@@ -24,6 +24,7 @@ export {
   renderInvoiceHtmlAction,
   buildInvoiceRenderData,
   loadIssuer,
+  resolveIssuer,
   INVOICE_HTML_OVERRIDE,
 } from './actions/render-invoice-html.ts';
 export { arAgingAction, arAging, AR_AGING_COLUMNS } from './actions/ar-aging.ts';

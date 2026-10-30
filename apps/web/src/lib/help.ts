@@ -30,6 +30,7 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/settings': topic('03-setup.md', '設定画面'),
   '/templates': INDUSTRY,
   '/admin/users': topic('08-admin.md'),
+  '/admin/companies': topic('08-admin.md', '会社の追加と編集'),
   '/operations': topic('appendix-e-operations-control.md'),
   '/operations/devices': DEVICES,
   '/me': WORKFORCE,
