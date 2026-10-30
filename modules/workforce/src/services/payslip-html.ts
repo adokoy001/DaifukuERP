@@ -64,6 +64,7 @@ const L = {
   attendance: { ja: '勤怠', en: 'Attendance' },
   item: { ja: '項目', en: 'Item' },
   amount: { ja: '金額', en: 'Amount' },
+  actual: { ja: '実績', en: 'Actual' },
   basePay: { ja: '通常賃金', en: 'Base pay' },
   premiumPay: { ja: '割増賃金', en: 'Premium pay' },
   grossPay: { ja: '総支給額', en: 'Gross pay' },
@@ -110,7 +111,7 @@ export const defaultPayslipHtml: PayslipHtmlRenderer = (d, tools) => {
     { className: 'deductions', caption: t(L.deductions), foot: [t(L.deductionTotal), formatMoney(d.deductionTotal)] },
   );
   const attendance = dataTable(
-    item,
+    [{ label: t(L.item) }, { label: t(L.actual), align: 'right' }],
     [
       [t(L.worked), hoursMinutes(d.attendance.workedMinutes)],
       [t(L.paidLeave), formatMoney(d.attendance.paidLeaveDays)],
