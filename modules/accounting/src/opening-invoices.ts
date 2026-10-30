@@ -49,7 +49,9 @@ import {
 } from './services/opening.ts';
 
 /** AC-15: rows (= opening invoices) per request. */
-export const OPENING_INVOICE_MAX_ROWS = 1000;
+// Measured (work log, verification step 5): about 0.15 s per invoice on a loaded 4-CPU container, so 200 rows stay
+// well under a minute and hold about 200 advisory locks. Larger files are split.
+export const OPENING_INVOICE_MAX_ROWS = 200;
 
 export const openingInvoicesInput = z
   .object({

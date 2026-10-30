@@ -17,9 +17,9 @@ export const OPENING_SECTIONS: readonly OpeningSection[] = ['journal', 'receivab
 export const OPENING_MAX_BYTES = 2 * 1024 * 1024;
 export const OPENING_MAX_ROWS: Record<OpeningSection, number> = {
   journal: 1000,
-  receivables: 1000,
-  payables: 1000,
-  stock: 5000,
+  receivables: 200,
+  payables: 200,
+  stock: 2000,
 };
 
 export const SECTION_ACTION: Record<OpeningSection, string> = {

@@ -180,6 +180,11 @@ describe('opening receivables: input and request checks', () => {
     );
   });
 
+  it('AC-15 Q-5: more than 200 rows are a VALIDATION of the whole request', async () => {
+    const rows = Array.from({ length: 201 }, () => ({ partnerCode: 'C001', amount: '1' }));
+    expect(await caught(importAr(rows, 'dry-run'))).toMatchObject({ code: 'VALIDATION' });
+  });
+
   it('AC-26: one bad row keeps the execute from writing anything', async () => {
     const result = await importAr([
       { partnerCode: 'C001', amount: '1000' },

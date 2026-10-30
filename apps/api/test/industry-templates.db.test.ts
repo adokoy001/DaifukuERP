@@ -4,6 +4,7 @@ import {
   applyPack,
   connect,
   dropAll,
+  newId,
   registry,
   repo,
   runAction,
@@ -31,20 +32,19 @@ beforeAll(async () => {
   // Build the historical schema without applying current-registry grants to not-yet-created industry tables.
   await migrate(owner.drizzle, { migrationsFolder: previous });
   boot = await seedLegacyDemo(owner);
-  preserved = await withContext(owner, systemParams(boot.tenantId, boot.companyId), async (ctx) => {
-    const partner = (await runAction(ctx, 'partner.create', { name: 'Keep this customer', isCustomer: true })) as {
+  const partner = await withContext(owner, systemParams(boot.tenantId, boot.companyId), async (ctx) => {
+    return (await runAction(ctx, 'partner.create', { name: 'Keep this customer', isCustomer: true })) as {
       id: string;
     };
-    return runAction(ctx, 'sales_invoice.create', {
-      partnerId: partner.id,
-      date: '2026-09-12',
-      lines: {
-        sales_invoice_line: [
-          { description: 'Original document', quantity: '1', unitPrice: '1000', taxCategory: 'exempt' },
-        ],
-      },
-    }) as Promise<{ id: string; total: string }>;
   });
+  // The draft invoice is written with the historical (migration 0007) columns only, as legacy-fixture.ts does: the
+  // current registry's sales_invoice has later columns (e.g. opening_balance, 0018) that this schema does not have yet.
+  const id = newId();
+  await owner.sql`insert into sales_invoice (id,tenant_id,company_id,partner_id,date,docstatus,subtotal,total,paid_amount,balance,status,tax_summary)
+    values (${id},${boot.tenantId},${boot.companyId},${partner.id},'2026-09-12',0,1000,1000,0,1000,'draft','[]')`;
+  await owner.sql`insert into sales_invoice_line (id,tenant_id,company_id,invoice_id,description,quantity,unit_price,tax_category,amount)
+    values (${newId()},${boot.tenantId},${boot.companyId},${id},'Original document',1,1000,'exempt',1000)`;
+  preserved = { id, total: '1000' };
 });
 afterAll(async () => {
   await app.close();

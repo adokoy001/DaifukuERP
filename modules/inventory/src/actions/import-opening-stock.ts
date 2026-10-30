@@ -46,7 +46,9 @@ import { resolveDefaultWarehouse } from '../settings.ts';
 import { asModule } from '../system-write.ts';
 
 /** AC-23: rows per request; AC-24: lines per receipt (the document line limit). */
-export const OPENING_STOCK_MAX_ROWS = 5000;
+// Measured (work log): about 18 s per 1,000 lines on a loaded container; 2,000 rows keep the inventory series lock
+// (every stock posting of the company waits) well under a minute.
+export const OPENING_STOCK_MAX_ROWS = 2000;
 export const OPENING_STOCK_LINES_PER_ENTRY = 500;
 
 export const importOpeningStockInput = z
@@ -273,8 +275,8 @@ export async function importOpeningStock(ctx: Context, input: ImportOpeningStock
 export const importOpeningStockAction = defineAction({
   name: 'inventory.import_opening_stock',
   description: label(
-    '期首在庫（品目 × 倉庫ごとの数量と単価）を、期首残高日付・会計年度に紐づく入庫として取り込みます（行: warehouseCode?, productCode, quantity, unitCost。最大 5,000 行・2 MB）。単価が移動平均の最初の取得原価になります。仕訳は作りません。既に在庫・移動がある品目 × 倉庫は stock_exists。mode: dry-run は確認だけ。全件か無か。入庫できるロール（在庫・購買・管理者）も必要。',
-    'Import opening stock (quantity and unit cost per product × warehouse) as receipts dated the opening date and linked to the fiscal year (rows: warehouseCode?, productCode, quantity, unitCost; at most 5,000 rows / 2 MB). The unit cost becomes the first moving-average cost. No journal entry. A product × warehouse that already has stock or movements is stock_exists. mode dry-run checks only. All or nothing. Also needs a role that receives stock (inventory, purchasing or admin).',
+    '期首在庫（品目 × 倉庫ごとの数量と単価）を、期首残高日付・会計年度に紐づく入庫として取り込みます（行: warehouseCode?, productCode, quantity, unitCost。最大 2,000 行・2 MB）。単価が移動平均の最初の取得原価になります。仕訳は作りません。既に在庫・移動がある品目 × 倉庫は stock_exists。mode: dry-run は確認だけ。全件か無か。入庫できるロール（在庫・購買・管理者）も必要。',
+    'Import opening stock (quantity and unit cost per product × warehouse) as receipts dated the opening date and linked to the fiscal year (rows: warehouseCode?, productCode, quantity, unitCost; at most 2,000 rows / 2 MB). The unit cost becomes the first moving-average cost. No journal entry. A product × warehouse that already has stock or movements is stock_exists. mode dry-run checks only. All or nothing. Also needs a role that receives stock (inventory, purchasing or admin).',
   ),
   input: importOpeningStockInput,
   output: openingImportResult,

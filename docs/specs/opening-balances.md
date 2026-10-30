@@ -1,10 +1,10 @@
 # Spec: opening-balances（期首残高の取込）
 
-- 状態: draft
+- 状態: implemented（2026-10-30。実装と検証は [作業記録](../log/2026-10-30-opening-balances.md)）
 - モジュール: `modules/accounting`（期首残高日の規則、開始仕訳の取込・取消・状況、期首残高仮勘定の設定）、`modules/sales`（期首売掛金）、`modules/purchase`（期首買掛金）、`modules/inventory`（期首在庫）、`l10n/jp`（科目 3900）、`kernel`（取込のセル変換の公開だけ）、`apps/web`（`/finance/opening`） ／ 依存: [csv-import](csv-import.md)（B5、事前確認と行ごとの結果の型、CSV の読込）、[ui-kit](ui-kit.md)（D1）、[list-workbench](list-workbench.md)（C1、期首伝票の一括取消に使う）
 - ADR: **ADR-0030（新規。実装時に作成。0027〜0029 は使用・予約済みのため。統合時に番号が衝突したら振り直す）**「期首残高は期首日の前日付で、期首残高仮勘定を介して開始仕訳と module 所有の期首伝票に分ける」。関連: [ADR-0005](../adr/0005-append-only-ledger.md)（取消は逆仕訳）、[ADR-0006](../adr/0006-docstatus-lifecycle.md)、[ADR-0007](../adr/0007-authorization.md)、[ADR-0010](../adr/0010-money-decimal.md)、[ADR-0013](../adr/0013-hexagonal-ports.md)、[ADR-0016](../adr/0016-foundation-invariants.md)（module 内部の書込権限）、[ADR-0028](../adr/0028-import-port.md)（取込 port）
 - 作成: 2026-10-30 ／ 作成者: agent（spec 作成セッション、ブランチ `wip/opening-balances`）。設計の元は [完成度向上の実装計画](../completion-plan.md) B6
-- 作業記録: `docs/log/2026-10-30-opening-balances.md`（実装時に作成）
+- 作業記録: [docs/log/2026-10-30-opening-balances.md](../log/2026-10-30-opening-balances.md)
 - 制度事実: [docs/domain/opening-balances.md](../domain/opening-balances.md)（この spec と同時に追加。一部【未確認】）
 
 ## 目的（1段落）
@@ -73,7 +73,7 @@
 
 ### 売掛金・買掛金（期首請求書）
 
-- AC-15 THE SYSTEM SHALL `sales.import_opening_receivables` と `purchase.import_opening_payables` の入力を `{ fiscalYearId, mode, rows: [{ partnerCode, amount, dueDate?, reference?, originalDate?, memo? }] }`（行 1〜1,000）とし、1 行につき 1 件の期首請求書を作る（同じ取引先の複数行は支払期日ごとの残高として別の請求書）。取引先は AC-9 と同じ規則で解決する。金額は AC-9 と同じ変換で正の円単位（0・空 → error `zero_amount`、負 → error `negative_amount`、端数 → error `not_whole_yen`）。金額が数として読めない、日付が `dateCell`（`YYYY-MM-DD` か `YYYY/M/D`）で読めない → error `invalid_value`（field と column 付き）。`originalDate` が期首残高日より後、`dueDate` が `originalDate` より前 → error `invalid_value`。取引先のセルが `$ctx.` で始まる → error `invalid_value`（照会しない。D-12）。
+- AC-15 THE SYSTEM SHALL `sales.import_opening_receivables` と `purchase.import_opening_payables` の入力を `{ fiscalYearId, mode, rows: [{ partnerCode, amount, dueDate?, reference?, originalDate?, memo? }] }`（行 1〜200。検証手順 5 の計測で 1,000 行の実行が 60 秒を超えたため 1,000 から下げた）とし、1 行につき 1 件の期首請求書を作る（同じ取引先の複数行は支払期日ごとの残高として別の請求書）。取引先は AC-9 と同じ規則で解決する。金額は AC-9 と同じ変換で正の円単位（0・空 → error `zero_amount`、負 → error `negative_amount`、端数 → error `not_whole_yen`）。金額が数として読めない、日付が `dateCell`（`YYYY-MM-DD` か `YYYY/M/D`）で読めない → error `invalid_value`（field と column 付き）。`originalDate` が期首残高日より後、`dueDate` が `originalDate` より前 → error `invalid_value`。取引先のセルが `$ctx.` で始まる → error `invalid_value`（照会しない。D-12）。
 - AC-16 WHEN execute（または dry-run）で行を受け付けた THE SYSTEM SHALL 要求者の文脈の `Repository` で次の請求書を作って確定する: 日付 = 期首残高日、`openingBalance = true`（module 内部の書込権限でだけ書ける）、支払期日 = `dueDate`（空なら取引先の締め日・支払条件から、`originalDate` があればそれを、無ければ期首残高日を基準に計算。D-18）、税込入力 false、明細 1 行（品目なし、摘要「期首残高」、数量 1、単価 = 金額、税区分 `out_of_scope`。仕入は勘定科目 = 期首残高仮勘定）。売上は備考に「期首残高 元請求書 <reference>（<originalDate>）<memo>」、仕入は先方請求書番号に `reference`、備考に `originalDate` と `memo` を入れる。採番は通常の連番（`INV-` / `BILL-`、年は期首残高日の暦年）。
 - AC-17 WHEN `openingBalance` の請求書が確定される THE SYSTEM SHALL 売上は「借方 売掛金（`sales.accounts.receivable`、取引先付き）／貸方 期首残高仮勘定（不課税）」、仕入は「借方 期首残高仮勘定（不課税）／貸方 買掛金（`purchase.accounts.payable`、取引先付き）」を期首残高日付で accounting の期首残高の経路（AC-3）を通して転記し、税額・控除対象外消費税を 0、`controlAccountId`・`journalEntryId`・`status = 'open'`・`balance = total` を通常の請求書と同じに設定する。IF `openingBalance` の請求書の明細が 1 行でない、税区分が `out_of_scope` でない、品目がある、（仕入）明細の勘定科目が期首残高仮勘定でない、または日付が会社の最初の会計年度の期首残高日でない THEN THE SYSTEM SHALL 確定を拒否する（VALIDATION）。
 - AC-18 IF 行の取引先に、同じ会計年度の未取消（確定済み）の期首請求書が同じ種類（売上／仕入）で既にある THEN THE SYSTEM SHALL その行を error `exists`（既存の請求書番号付き）とする。IF その取引先・種類の期首請求書に、期首残高日以外の日付で取り消したもの（`cancelledDate` ≠ 期首残高日）がある THEN THE SYSTEM SHALL その行を error `cancelled_in_year`（請求書番号付き。hint: 期中の通常の請求書か仕訳で残高を訂正する）とする（D-8）。期首残高日付で取り消した期首請求書だけの取引先は取り込み直せる。同じファイル内の同じ取引先の複数行は許す。照会より前に年度・種類ごとの業務ロック（`withLock(ctx, 'opening:sales_invoice:<fiscalYearId>')` など）を取り（D-14）、同時の取込が同じ取引先に二重に作らない。
@@ -84,7 +84,7 @@
 
 ### 在庫（期首在庫の入庫）
 
-- AC-23 THE SYSTEM SHALL `inventory.import_opening_stock` の入力を `{ fiscalYearId, mode, rows: [{ warehouseCode?, productCode, quantity, unitCost }] }`（行 1〜5,000）とし、倉庫はコード（空なら既定の倉庫 `resolveDefaultWarehouse`）、品目はコード、無ければ名称の完全一致で解決する。数量は 0 より大きく小数 6 桁まで、単価は 0 以上で小数 6 桁まで（`decimalCell`、Decimal）。数量・単価が数として読めない → error `invalid_value`（field と column 付き）、数量が 0 以下 → error `non_positive_quantity`、単価が負 → error `negative_amount`、小数 7 桁以上 → error `scale_exceeded`。品目・倉庫のセルが `$ctx.` で始まる → error `invalid_value`（照会しない。D-12）。サービス品目 → error `service_product`、同じファイル内の同じ品目 × 倉庫の 2 行目以降 → error `duplicate`。IF 品目 × 倉庫に期首残高日より後の日付の在庫台帳の行がある、または現在の在庫数量か金額が 0 でない THEN THE SYSTEM SHALL その行を error `stock_exists` とする（後から過去日付で入庫しても既存の払出の単価は再計算されないため。[domain](../domain/opening-balances.md)）。この照会の前に `INVENTORY_SERIES_LOCK` を取る（D-14）。在庫評価が期首残高日まで締められていれば（`assertInventoryDate`）要求全体を既存の StateError で拒否する。
+- AC-23 THE SYSTEM SHALL `inventory.import_opening_stock` の入力を `{ fiscalYearId, mode, rows: [{ warehouseCode?, productCode, quantity, unitCost }] }`（行 1〜2,000。計測で 5,000 行が約 90 秒かかったため下げた）とし、倉庫はコード（空なら既定の倉庫 `resolveDefaultWarehouse`）、品目はコード、無ければ名称の完全一致で解決する。数量は 0 より大きく小数 6 桁まで、単価は 0 以上で小数 6 桁まで（`decimalCell`、Decimal）。数量・単価が数として読めない → error `invalid_value`（field と column 付き）、数量が 0 以下 → error `non_positive_quantity`、単価が負 → error `negative_amount`、小数 7 桁以上 → error `scale_exceeded`。品目・倉庫のセルが `$ctx.` で始まる → error `invalid_value`（照会しない。D-12）。サービス品目 → error `service_product`、同じファイル内の同じ品目 × 倉庫の 2 行目以降 → error `duplicate`。IF 品目 × 倉庫に期首残高日より後の日付の在庫台帳の行がある、または現在の在庫数量か金額が 0 でない THEN THE SYSTEM SHALL その行を error `stock_exists` とする（後から過去日付で入庫しても既存の払出の単価は再計算されないため。[domain](../domain/opening-balances.md)）。この照会の前に `INVENTORY_SERIES_LOCK` を取る（D-14）。在庫評価が期首残高日まで締められていれば（`assertInventoryDate`）要求全体を既存の StateError で拒否する。
 - AC-24 WHEN execute でエラー行が無い THE SYSTEM SHALL 倉庫ごとに入庫の入出庫伝票（type `receipt`、日付 = 期首残高日、備考「期首在庫 <年度コード>」、`sourceEntity = 'fiscal_year'`・`sourceId = <fiscalYearId>`（inventory の module 書込でだけ設定。`asModule` は伝票と明細の作成だけに使い、確定は `asModule` の外で要求者の文脈のまま行うので、確定時の入出庫の種類のロールの検査 `assertEntryRole(ctx, type, 'submit')` が二重の防御として働く））を明細 500 行ごとに作って確定し、各明細を CSV の単価で移動平均の最初の取得として転記する（平均単価 = 単価）。在庫は仕訳を作らない（在庫科目の期首残高は開始仕訳で入れる）。入出庫伝票の確定は、`sourceEntity = 'fiscal_year'` を、type が `receipt`、会計年度が存在し、日付がその期首残高日である場合に限り発生元として認め、それ以外の `fiscal_year` の発生元は従来どおり拒否する。期首在庫の入庫は通常の取消（cancel。訂正日なしなら期首残高日付の逆行）で取り消し、同じ品目 × 倉庫を取り込み直せる。期中の日付で取り消したときは期中の台帳の行が残るので、その品目 × 倉庫は以後 `stock_exists` になる（D-8。マニュアル 03）。
 
 ### 事前確認・結果の形・期首残高仮勘定・状況
@@ -170,7 +170,7 @@
    - `modules/sales/test/opening-receivables.db.test.ts` と `modules/purchase/test/opening-payables.db.test.ts`: 入力の検査（金額 0・負・端数、日付の形、期首残高日より後の `originalDate`、取引先の 0 件・曖昧、AC-15）、期首請求書の形と転記（不課税、売掛金/買掛金 ↔ 仮勘定、期首残高日、採番、AC-16〜AC-17）、確定時の検査の拒否（明細 2 行・課税・品目付き・日付違い）、取引先ごとの `exists` と別の取引先の追加取込（AC-18）、取消の逆仕訳が期首残高日付・訂正日付き・最初の期間の締め後の拒否、`opening_amend`（AC-19）、印刷の拒否（AC-20）、汎用の作成で `openingBalance` を指定すると 403（AC-21）、入金の消込と年齢表（AC-22）、accounting だけの利用者は 403・accounting + sales（purchasing）と admin は通る・sales だけは 403（AC-6）、他社の取引先は `ref_not_found`（AC-7）、全件か無か（AC-26）、仮勘定の取込前・取込後（AC-27）、期首残高日付の取消の後の再取込は通り・期中の日付の取消の後は `cancelled_in_year`（AC-18、D-8）、`$ctx.` のセルと読めない金額・日付の `invalid_value`（AC-15）、2 本の接続での同時の取込で同じ取引先に 1 件だけ（AC-18、D-14）、転記科目が無いと要求全体の 409（D-16）。
    - `modules/inventory/test/opening-stock.db.test.ts`: 倉庫ごとの入庫と 500 行の分割、移動平均の初期値 = 単価、`inventory.valuation`（AC-24）、`stock_exists`（期首残高日より後の移動・残高あり）、`duplicate`・`service_product`、在庫評価の締めで拒否（AC-23）、取消後の再取込、汎用の入出庫伝票で `fiscal_year` の発生元を偽れないこと（AC-24）、accounting だけは 403・accounting + inventory と admin は通る・accounting + sales は 403（AC-6）、数量・単価の `invalid_value`・`non_positive_quantity`・`negative_amount`・`scale_exceeded`・`$ctx.`（AC-23）、2 本の接続での同時の取込で 1 回だけ入庫（AC-23、D-14）、伝票の確定の失敗が `submit_failed` の issue（D-15）。
    - `apps/api/test/opening-balances.db.test.ts`（全 module の runtime、`POST /actions/...` 経由）: golden（`apps/api/test/fixtures/opening-balances/{journal,receivables,payables,stock}.csv` を読んで 4 つを取り込み、試算表の期首欄・仮勘定 0・年齢表・在庫評価が CSV と一致、AC-30）、REST の 2 MB 超の 413（AC-8）、会社の分離（会社 B から見えない・会社 B の試算表が変わらない、AC-7）。fixture の CSV は引用符を使わない単純な形にし、試験側で分割する。
-   - MCP のツール一覧に 5 つの mutating action と状況が出ること（既存の `apps/mcp/test/mcp.db.test.ts` に追加、AC-8）。
+   - MCP のツール一覧に 5 つの mutating action と状況が出ること、MCP の 2 MB の検査（AC-8）。実装では既存の `apps/mcp/test/mcp.db.test.ts` は試験用の entity だけを登録しているため、業務 module を登録する別ファイル `apps/mcp/test/opening-balances-tools.db.test.ts` にした。
 4. ブラウザ（`apps/web/e2e/opening-balances.spec.ts`、1 試験。`commerceFixture` の新しい合成会社。fixture が開く最初の年度の期首残高日を使い、3900 の科目・取引先・品目は API で作る）: 画面検索から開く → 開始仕訳の CSV（売掛金・買掛金の合計行を含む）を事前確認して合計と仮勘定の行を確認 → 貸借の合わないファイルで「取り込む」が無効 → 正しいファイルを取り込む → 売掛金・買掛金・在庫を取り込む → 状況の仮勘定が 0 → 試算表の期首欄 → 開始仕訳の取消と再取込 → 英語表示と 390px（文書と `#screen-content` の幅）→ axe（AC-31〜AC-39）。
 5. 計測（作業記録に残す）: 売掛金 1,000 行の事前確認と実行、在庫 5,000 行、開始仕訳 500 行の所要時間（この開発コンテナ、Fastify の inject）。売掛金 1,000 行の実行が 60 秒を超えるなら行数の上限を下げて spec を直す。売掛金 1,000 行の実行中の `pg_locks` の件数の最大（勧告ロックは期首請求書ごとに 1 つ、トランザクションの終わりまで持つ）を記録し、既定の `max_locks_per_transaction`（64）× 接続数に対して行数の上限（Q-5）を見直す。マニュアルに「サーバーのロックの上限が既定のときはファイルを分ける」と書く。
 6. マニュアル 03・06・09・10 と画面の一覧を更新し、[domain](../domain/opening-balances.md) の【未確認】を一次出典で確かめられたら置き換える（できなければ作業記録に未確認のまま残す）。
@@ -178,7 +178,7 @@
 
 ## 注意（実装の前提）
 
-- 期首請求書・開始仕訳の確定はどれも既存の `assertOpenPeriod` で会社全体の業務ロック `accounting-periods` を取り、要求の終わりまで持つ（dry-run も同じ。ADR-0028 の「事前確認は実行と同じロックを取る」）。売掛金 1,000 行の取込中は、その会社の他の仕訳・請求書の確定が待つ。マニュアルで「利用開始前、または営業時間外に、分けたファイルで」と案内する。
+- 期首請求書・開始仕訳の確定はどれも既存の `assertOpenPeriod` で会社全体の業務ロック `accounting-periods` を取り、要求の終わりまで持つ（dry-run も同じ。ADR-0028 の「事前確認は実行と同じロックを取る」）。売掛金 200 行の取込中（計測で約 30 秒）は、その会社の他の仕訳・請求書の確定が待つ。マニュアルで「利用開始前、または営業時間外に、分けたファイルで」と案内する。
 - l10n/jp の科目の追加で、科目表の全行を固定している試験や golden があれば期待値を更新する（データの追加に伴う更新で弱体化ではない。作業記録に書く）。
 - `postFromSource` / `reverseSourceEntry` の既存の利用者（売上・仕入・入出金・商流など）の振る舞いは変えない。期首残高の経路は別の関数（`postOpeningFromSource` / `reverseOpeningSourceEntry`）にし、`openingBalance` の請求書のときだけ呼ぶ。
 
@@ -194,7 +194,7 @@
 - Q-2 期首残高日を期首日の前日とする（D-1）。既定: 計画どおり前日。期首日付にするなら試算表・総勘定元帳に開始仕訳の特別扱いが要る。
 - Q-3 期首残高仮勘定の科目コード・名称・区分。既定: `3900 期首残高仮勘定`（純資産）。既存の会社は科目を作るか設定を変える（取込が理由付きで止まる）。
 - Q-4 個人事業者の事業主貸・事業主借に期首残高がある行を拒否・注意するか。既定: システムは検査せず、マニュアルで注意する（l10n 固有の科目区分を accounting が知らないため）。
-- Q-5 売掛金・買掛金 1,000 行、在庫 5,000 行、開始仕訳 1,000 行（明細 500）の上限。既定: この値で実装し、計測（検証手順 5）で見直す。
+- Q-5 売掛金・買掛金 1,000 行、在庫 5,000 行、開始仕訳 1,000 行（明細 500）の上限。既定: この値で実装し、計測（検証手順 5）で見直す。→ 2026-10-30 計測の結果、売掛金・買掛金 200 行、在庫 2,000 行に下げた（開始仕訳は 1,000 行のまま。作業記録）。
 - Q-6 締めガイドに「期首残高仮勘定の残高が 0 でない」の点検を足すか。既定: この項目では足さない（別項目）。
 - Q-7 申告準備の科目分類で 3900 をどう扱うか。既定: 残高 0 なら出力に影響しないことを実装時に確かめ、分類が必須なら利益剰余金の下の独自科目として扱う案を作業記録に書く。
 - Q-8 期首請求書を分析の集計元から分ける軸。既定: この項目では足さない（スコープ外）。

@@ -72,8 +72,8 @@ export async function importOpeningReceivables(ctx: Context, input: OpeningInvoi
 export const importOpeningReceivablesAction = defineAction({
   name: 'sales.import_opening_receivables',
   description: label(
-    '期首の売掛金を得意先別の期首請求書として取り込みます（行: partnerCode, amount, dueDate?, reference?, originalDate?, memo?。最大 1,000 行・2 MB）。1 行 = 期首残高日付・不課税 1 行の請求書（消込・年齢表の対象、発行はしない）。売掛金 / 期首残高仮勘定に転記。mode: dry-run は確認だけ。全件か無か。売上請求書を作れるロールも必要。',
-    'Import opening receivables as one opening invoice per row (rows: partnerCode, amount, dueDate?, reference?, originalDate?, memo?; at most 1,000 rows / 2 MB): dated the opening date with one out-of-scope line, open for allocation and aging, never issued; posts receivable / opening balance clearing. mode dry-run checks only. All or nothing. Also needs a role that creates sales invoices.',
+    '期首の売掛金を得意先別の期首請求書として取り込みます（行: partnerCode, amount, dueDate?, reference?, originalDate?, memo?。最大 200 行・2 MB）。1 行 = 期首残高日付・不課税 1 行の請求書（消込・年齢表の対象、発行はしない）。売掛金 / 期首残高仮勘定に転記。mode: dry-run は確認だけ。全件か無か。売上請求書を作れるロールも必要。',
+    'Import opening receivables as one opening invoice per row (rows: partnerCode, amount, dueDate?, reference?, originalDate?, memo?; at most 200 rows / 2 MB): dated the opening date with one out-of-scope line, open for allocation and aging, never issued; posts receivable / opening balance clearing. mode dry-run checks only. All or nothing. Also needs a role that creates sales invoices.',
   ),
   input: openingInvoicesInput,
   output: openingImportResult,

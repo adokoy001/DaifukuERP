@@ -193,6 +193,15 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
     expect(pick('3000')).toMatchObject({ name: '元入金', type: 'equity', subtype: '元入金' });
     expect(pick('3100')).toMatchObject({ name: '事業主貸', type: 'equity', subtype: '事業主勘定' });
     expect(pick('3200')).toMatchObject({ name: '事業主借', type: 'equity', subtype: '事業主勘定' });
+    // opening-balances AC-28: the default clearing account of accounting.opening_balances (no partner, no tax role)
+    expect(pick('3900')).toEqual({
+      name: '期首残高仮勘定',
+      type: 'equity',
+      subtype: '期首残高仮勘定',
+      partnerRequired: false,
+      taxCategoryDefault: null,
+      isActive: true,
+    });
     expect(pick('4000')).toEqual({
       name: '売上高',
       type: 'revenue',
@@ -230,7 +239,7 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
     expect(all.items.filter((a) => a.partnerRequired).map((a) => a.code)).toEqual(['1300', '2100']);
     const types = new Map<string, number>();
     for (const a of all.items) types.set(a.type, (types.get(a.type) ?? 0) + 1);
-    expect(Object.fromEntries(types)).toEqual({ asset: 6, liability: 6, equity: 3, revenue: 2, expense: 14 });
+    expect(Object.fromEntries(types)).toEqual({ asset: 6, liability: 6, equity: 4, revenue: 2, expense: 14 });
     // codes are the primary key of the seed: the table itself has no duplicates
     expect(new Set(JP_CHART_OF_ACCOUNTS.map((a) => a.code)).size).toBe(JP_CHART_OF_ACCOUNTS.length);
   });

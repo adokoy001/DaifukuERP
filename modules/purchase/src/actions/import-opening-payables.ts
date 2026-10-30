@@ -78,8 +78,8 @@ export async function importOpeningPayables(ctx: Context, input: OpeningInvoices
 export const importOpeningPayablesAction = defineAction({
   name: 'purchase.import_opening_payables',
   description: label(
-    '期首の買掛金を仕入先別の期首請求書として取り込みます（行: partnerCode, amount, dueDate?, reference?, originalDate?, memo?。最大 1,000 行・2 MB）。1 行 = 期首残高日付・不課税 1 行（科目は期首残高仮勘定）の仕入請求書（支払・年齢表の対象）。期首残高仮勘定 / 買掛金に転記。mode: dry-run は確認だけ。全件か無か。仕入請求書を作れるロールも必要。',
-    'Import opening payables as one opening bill per row (rows: partnerCode, amount, dueDate?, reference?, originalDate?, memo?; at most 1,000 rows / 2 MB): dated the opening date with one out-of-scope line on the clearing account, open for payments and aging; posts opening balance clearing / payable. mode dry-run checks only. All or nothing. Also needs a role that creates purchase invoices.',
+    '期首の買掛金を仕入先別の期首請求書として取り込みます（行: partnerCode, amount, dueDate?, reference?, originalDate?, memo?。最大 200 行・2 MB）。1 行 = 期首残高日付・不課税 1 行（科目は期首残高仮勘定）の仕入請求書（支払・年齢表の対象）。期首残高仮勘定 / 買掛金に転記。mode: dry-run は確認だけ。全件か無か。仕入請求書を作れるロールも必要。',
+    'Import opening payables as one opening bill per row (rows: partnerCode, amount, dueDate?, reference?, originalDate?, memo?; at most 200 rows / 2 MB): dated the opening date with one out-of-scope line on the clearing account, open for payments and aging; posts opening balance clearing / payable. mode dry-run checks only. All or nothing. Also needs a role that creates purchase invoices.',
   ),
   input: openingInvoicesInput,
   output: openingImportResult,

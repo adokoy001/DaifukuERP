@@ -127,6 +127,11 @@ describe('opening stock: rows and permissions', () => {
     await f.run({}, (ctx) => repo(ctx, Warehouse).update(main, { isDefault: true }));
   });
 
+  it('AC-23 Q-5: more than 2,000 rows are a VALIDATION of the whole request', async () => {
+    const rows = Array.from({ length: 2001 }, () => ({ productCode: 'A', quantity: '1', unitCost: '1' }));
+    expect(await caught(importStock(rows, 'dry-run'))).toMatchObject({ code: 'VALIDATION' });
+  });
+
   it('AC-7: a product code of another company is ref_not_found', async () => {
     const otherCompanyId = newId();
     await f.db.owner.drizzle
