@@ -1,0 +1,19 @@
+// A small master owned by the __PACK_SNAKE__ pack: pack entities get a table, /meta and generic CRUD. Rename or replace it
+// with the industry's own master; keep the `__PACK_SNAKE___` prefix (entity names are global).
+import { defineEntity, f, label } from '@daifuku/kernel';
+
+export const __PACK_PASCAL__Tag = defineEntity({
+  name: '__PACK_SNAKE___tag',
+  label: label(__PACK_TAG_LABEL_JA__, __PACK_TAG_LABEL_EN__),
+  fields: {
+    code: f.text({ label: label('コード', 'Code'), required: true, unique: true, immutable: true, maxLength: 20 }),
+    name: f.text({ label: label('名称', 'Name'), required: true, maxLength: 100 }),
+  },
+  permissions: {
+    roles: {
+      sales: ['read', 'create', 'update'],
+      viewer: ['read'],
+    },
+  },
+  views: { list: ['code', 'name'], search: ['code', 'name'] },
+});

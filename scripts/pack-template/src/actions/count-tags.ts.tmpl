@@ -1,0 +1,16 @@
+// __PACK_SNAKE__.count_tags: a read-only pack action. Its permission is read on the tag entity, so it follows the entity's
+// roles, the company scope and the pack application check; it declares no store/site access.
+import { defineAction, label, repo } from '@daifuku/kernel';
+import { z } from 'zod';
+import { __PACK_PASCAL__Tag } from '../entities/__PACK_KEBAB__-tag.ts';
+
+export const countTagsAction = defineAction({
+  name: '__PACK_SNAKE__.count_tags',
+  description: label('タグの件数を返します。', 'Count the tags.'),
+  input: z.object({}),
+  output: z.object({ count: z.number().int() }),
+  permission: { entity: __PACK_PASCAL__Tag.name, op: 'read' },
+  tx: 'none',
+  mutates: false,
+  handler: async (ctx) => ({ count: await repo(ctx, __PACK_PASCAL__Tag).count() }),
+});

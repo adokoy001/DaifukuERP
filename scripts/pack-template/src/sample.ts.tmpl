@@ -1,0 +1,22 @@
+// Demo data: one partner carrying the pack's ext field. applyPack runs it once per company (again only with force);
+// codes that already exist are skipped, so a forced re-run is safe.
+import { repo, type Context } from '@daifuku/kernel';
+import { Partner } from '@daifuku/mod-partner';
+
+export const SAMPLE_PARTNER_CODES = ['__PACK_CODE__-0001'] as const;
+export const SAMPLE_NOTE = 'サンプルの備考';
+
+export async function sample__PACK_PASCAL__(ctx: Context): Promise<void> {
+  const r = repo(ctx, Partner);
+  const existing = await r.list({
+    where: { code: { $in: [...SAMPLE_PARTNER_CODES] } },
+    limit: SAMPLE_PARTNER_CODES.length,
+  });
+  const present = new Set(existing.items.map((p) => p.code));
+  const rows = [
+    { code: SAMPLE_PARTNER_CODES[0], name: 'サンプル取引先', isCustomer: true, ext: { __PACK_CAMEL__Note: SAMPLE_NOTE } },
+  ];
+  for (const row of rows) {
+    if (!present.has(row.code)) await r.create(row);
+  }
+}
