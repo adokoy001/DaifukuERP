@@ -9,6 +9,7 @@ import { AuthFrame } from '../components/auth-frame.tsx';
 import { MfaChallenge } from '../components/mfa-challenge.tsx';
 import { SsoProviders } from '../components/sso-providers.tsx';
 import { takeMfa } from '../lib/identity-flow.ts';
+import { draftStorage, pruneDrafts } from '../lib/form-draft.ts';
 import { useLocale } from '../i18n.tsx';
 import { S } from '../strings.ts';
 
@@ -42,6 +43,9 @@ export function useCompleteLogin() {
   const navigate = useNavigate();
   return async (res: LoginResponse) => {
     setSession(res.token, res.user);
+    // form-ergonomics AC-8: drafts survive an expired session for the same user only. Someone else signing in on this
+    // tab removes the previous user's drafts (and any expired ones); the same user gets theirs back.
+    pruneDrafts(draftStorage(), Date.now(), { tenantId: res.user.tenantId, userId: res.user.id });
     qc.clear();
     await navigate({
       to: res.user.roles.length > 0 && res.user.roles.every((role) => role === 'workforce_employee') ? '/me' : '/',

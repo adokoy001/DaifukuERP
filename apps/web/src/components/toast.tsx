@@ -74,7 +74,11 @@ function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
   const { t } = useLocale();
   if (toasts.length === 0) return null;
   return (
-    <div aria-live="polite" className="fixed right-3 bottom-3 z-50 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
+    // `toast-viewport`: below 768px styles.css lifts it above a record form's bottom bar (form-ergonomics AC-7).
+    <div
+      aria-live="polite"
+      className="toast-viewport fixed right-3 bottom-3 z-50 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}

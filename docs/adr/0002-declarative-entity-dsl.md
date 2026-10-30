@@ -26,7 +26,7 @@ Salesforce/Frappe のように「全部メタデータ・ランタイム解釈�
 ### 決定
 - `views.form` の各グループは、従来の field 名の配列（`['code', 'name']`）か、ラベル付きの `{ label: Label; fields: string[] }`（kernel の型 `FormGroup`）のどちらでもよい。1 つの entity の中で混ぜてよい。`'auto'` も従来どおり。
 - `defineEntity` / `defineDocument` は定義時に検査する: グループの field 名は宣言済みであること、1 つの field は 1 回だけ現れること、ラベル付きグループは日本語・英語の両方が空でないラベルと 1 つ以上の field を持つこと。従来は `views.form` を検査していなかったため、既存の定義をすべて読み込んで（単体・DB の全 suite）違反が無いことを確かめた。
-- `/meta` の `EntityMeta.views.form` は `'auto' | FormGroupMeta[]`、`FormGroupMeta = string[] | { label, fields }`。従来の形のグループは従来と同じ `string[]` のまま出すので、ラベルを使わない entity の meta はバイト単位で変わらない。マスクされた field はどちらの形でも取り除く（ラベル付きのグループは field が空でもラベルを残し、UI が空の節を出さない）。
+- `/meta` の `EntityMeta.views.form` は `'auto' | FormGroupMeta[]`、`FormGroupMeta = string[] | { label, fields }`。従来の形のグループは従来と同じ `string[]` のまま出すので、ラベルを使わない entity の meta はバイト単位で変わらない。マスクされた field はどちらの形でも取り除く。ラベル付きのグループの field がすべて見えないときは、見出しを付けずに空の `[]` を返す（権限の field group の外の role に、隠れた節の存在と名前を知らせないため。グループの位置は保つ。UI は空の節を出さない）。
 - 同じ追補で `FieldMeta.restricted?: true` を加えた。権限の `fieldGroups` に属する field に付き、ブラウザがその値を端末内に保存しない（未保存入力の退避）ための印である。マスクの判定そのもの（`maskedFields`）は変えない。
 - 見出しは表示用の文言であり、権限・保存・API の入出力には影響しない。pack の `labelOverrides` は節の見出しを対象にしない（必要になったら別に追補する）。
 

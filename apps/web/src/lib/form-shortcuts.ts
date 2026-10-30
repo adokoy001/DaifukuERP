@@ -10,6 +10,39 @@ export interface KeyLike {
   altKey: boolean;
   shiftKey: boolean;
   isComposing?: boolean;
+  /** 229 while an IME handles the key (Safari reports it with isComposing false). */
+  keyCode?: number;
+}
+
+/**
+ * IME composition: the native `isComposing`, or keyCode 229. React's synthetic KeyboardEvent has no `isComposing`, so a
+ * React handler passes `fromReactKey(event)` (or `event.nativeEvent`) instead of the synthetic event.
+ */
+export function isComposingKey(event: KeyLike): boolean {
+  return event.isComposing === true || event.keyCode === 229;
+}
+
+/** The KeyLike of a React keyboard event, with the composition state read from the native event. */
+export function fromReactKey(event: {
+  key: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  keyCode: number;
+  nativeEvent: { isComposing: boolean };
+}): KeyLike {
+  return {
+    key: event.key,
+    code: event.code,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    isComposing: event.nativeEvent.isComposing,
+    keyCode: event.keyCode,
+  };
 }
 
 /** macOS and iOS use ⌘ as the primary modifier; everything else uses Ctrl (same rule as the Ctrl/⌘+K palette). */
@@ -22,17 +55,25 @@ export function shortcutLabel(key: 'S' | 'Enter', mac: boolean): { aria: string;
     : { aria: `Control+${key}`, text: `Ctrl+${key}` };
 }
 
+/** AC-6/AC-10: Alt+↑ / Alt+↓ in the platform notation (macOS names the key Option, ⌥). */
+export function altArrowLabel(arrow: '↑' | '↓', mac: boolean): string {
+  return mac ? `⌥${arrow}` : `Alt+${arrow}`;
+}
+
 export type FormShortcut = 'save' | 'advance';
 
 /**
  * AC-5: Ctrl+S (⌘+S) saves, Ctrl+Enter (⌘+Enter) advances. Only the platform's own modifier counts (Ctrl+S on macOS
- * is not ours), and never during IME composition or with Alt/Shift held.
+ * is not ours), and never during IME composition or with Alt/Shift held. The S is the letter the layout types; the
+ * physical key (`code`) counts only when the layout types no Latin letter there (Cyrillic, Greek…), so Ctrl+O on
+ * Dvorak (physical KeyS) stays the browser's.
  */
 export function formShortcut(event: KeyLike, mac: boolean): FormShortcut | undefined {
   const primary = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (!primary || event.isComposing || event.altKey || event.shiftKey) return undefined;
+  if (!primary || isComposingKey(event) || event.altKey || event.shiftKey) return undefined;
   if (event.key === 'Enter') return 'advance';
-  if (event.key.toLowerCase() === 's' || event.code === 'KeyS') return 'save';
+  const latin = /^[a-z]$/i.test(event.key);
+  if (latin ? event.key.toLowerCase() === 's' : event.code === 'KeyS') return 'save';
   return undefined;
 }
 
@@ -60,7 +101,7 @@ export type GridKey = 'next' | 'move-up' | 'move-down';
 
 /** AC-6: Enter (no modifier) moves to the next cell; Alt+↑ / Alt+↓ move the row. */
 export function gridKey(event: KeyLike): GridKey | undefined {
-  if (event.isComposing) return undefined;
+  if (isComposingKey(event)) return undefined;
   if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) return 'next';
   if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
     if (event.key === 'ArrowUp') return 'move-up';

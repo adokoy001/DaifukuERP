@@ -6,12 +6,23 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { FAILING_IMPACTS, WCAG_TAGS } from './a11y-policy.ts';
 import { BUSINESS_DATE } from './environment.ts';
-import { api, type Headers, type Row } from './operations-helpers.ts';
-import { assertNoOverflow, qualityPartner, qualitySession, signInQuality } from './quality-helpers.ts';
+import { api, PASSWORD, type Headers, type Row } from './operations-helpers.ts';
+import {
+  assertNoOverflow,
+  failedRead,
+  qualityEmployee,
+  qualityPartner,
+  qualitySession,
+  signInQuality,
+} from './quality-helpers.ts';
 
 const suffix = () => crypto.randomUUID().slice(0, 8);
 const form = (page: Page) => page.getByTestId('record-form');
 const summary = (page: Page) => page.getByTestId('error-summary');
+/** The alert sentence of the last failed attempt inside the summary (AC-3). */
+const summaryAlert = (page: Page) => summary(page).getByRole('alert');
+/** Alerts in the toast area (a failed save that the summary lists pushes none). */
+const toastAlerts = (page: Page) => page.locator('.toast-viewport').getByRole('alert');
 
 async function draftInvoice(request: APIRequestContext, headers: Headers, note: string) {
   const partner = await qualityPartner(request, headers, `D3 得意先 ${note}`);
@@ -42,6 +53,11 @@ async function watchDefaultPrevented(page: Page) {
 }
 async function lastKey(page: Page) {
   return page.evaluate(() => (window as unknown as { __lastKey?: { key: string; prevented: boolean } }).__lastKey);
+}
+async function resetLastKey(page: Page) {
+  await page.evaluate(() => {
+    (window as unknown as { __lastKey?: unknown }).__lastKey = undefined;
+  });
 }
 
 test('form-ergonomics AC-2/AC-4: labelled sections with legends, required marks and helper text on the invoice form', async ({
@@ -76,7 +92,11 @@ test('form-ergonomics AC-3: a failed save shows the summary, focuses the first i
   await form(page).getByRole('button', { name: '保存', exact: true }).click();
   const box = summary(page);
   await expect(box).toBeVisible();
-  await expect(box).toHaveAttribute('role', 'alert');
+  // One alert per attempt: the attempt's sentence (the list below shrinks, so it is not the live region), and no
+  // error toast read at the same time.
+  await expect(summaryAlert(page)).toHaveText(/^保存できませんでした。入力内容の問題が \d+ 件ありました。$/);
+  await expect(summaryAlert(page)).toHaveAttribute('data-attempt', '1');
+  await expect(toastAlerts(page)).toHaveCount(0);
   await expect(box.getByRole('heading')).toHaveText(/入力内容に \d+ 件の問題があります/);
   await expect(box.getByRole('link', { name: '得意先: 必須項目です' })).toBeVisible();
   const cellLink = box.getByRole('link', { name: '売上請求書明細 1 行目の品名・摘要: 必須項目です', exact: true });
@@ -93,7 +113,63 @@ test('form-ergonomics AC-3: a failed save shows the summary, focuses the first i
   await description.fill('D3 品名');
   await expect(box.getByRole('link', { name: /1 行目の品名・摘要/ })).toHaveCount(0);
   await expect(box.getByRole('link', { name: '得意先: 必須項目です' })).toBeVisible();
+  // The alert keeps the attempt's text while the list shrinks (nothing is read again on each keystroke).
+  await expect(summaryAlert(page)).toHaveAttribute('data-attempt', '1');
   await page.screenshot({ path: test.info().outputPath('form-error-summary.png') });
+  // A second attempt with the same remaining problem mounts a new alert (announced again) and moves focus again.
+  await form(page).getByRole('button', { name: '保存', exact: true }).click();
+  await expect(summaryAlert(page)).toHaveAttribute('data-attempt', '2');
+  const remaining = await box.getByRole('listitem').count();
+  await expect(summaryAlert(page)).toHaveText(`保存できませんでした。入力内容の問題が ${remaining} 件ありました。`);
+  await expect(form(page).locator('input[name=partnerId]')).toBeFocused();
+  await expect(toastAlerts(page)).toHaveCount(0);
+});
+
+test('form-ergonomics AC-3: focus moves to the invalid input again after a successful save and after a restore', async ({
+  page,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, `D3 焦点 ${suffix()}`);
+  page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
+  await signInQuality(page);
+  // Update mode keeps the same form after a save (keyed by the record id): fail, fix and save, then fail again.
+  await page.goto(`/e/partner/${partner.id}`);
+  const name = form(page).locator('input[name=name]');
+  const save = form(page).getByRole('button', { name: '保存', exact: true });
+  await name.fill('');
+  await save.click();
+  await expect(summary(page)).toBeVisible();
+  await expect(name).toBeFocused();
+  await name.fill(`D3 焦点 ${suffix()} 修正`);
+  await save.click();
+  await expect(form(page)).toHaveAttribute('data-dirty', 'false');
+  await expect(summary(page)).toHaveCount(0);
+  await save.focus();
+  await name.fill('');
+  await save.click();
+  await expect(summary(page)).toBeVisible();
+  await expect(name).toBeFocused();
+  // A restored draft starts the count again as well: fail, restore, fail -> focus moves.
+  await page.goto('/e/partner/new');
+  const newName = form(page).locator('input[name=name]');
+  await newName.fill('D3 復元してから失敗');
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  await page.getByRole('link', { name: '← 取引先' }).click();
+  await expect(page).toHaveURL(/\/e\/partner(\?.*)?$/);
+  await page.goto('/e/partner/new');
+  const offer = page.getByTestId('draft-offer');
+  await expect(offer).toBeVisible();
+  await form(page).getByRole('button', { name: '保存', exact: true }).click();
+  await expect(summary(page)).toBeVisible();
+  await expect(newName).toBeFocused();
+  await offer.getByRole('button', { name: '復元する', exact: true }).click();
+  await expect(newName).toHaveValue('D3 復元してから失敗');
+  await expect(summary(page)).toHaveCount(0);
+  await newName.fill('');
+  await form(page).getByRole('button', { name: '保存', exact: true }).click();
+  await expect(summary(page)).toBeVisible();
+  await expect(newName).toBeFocused();
 });
 
 test('form-ergonomics AC-5: Ctrl+S saves without the browser dialog; Ctrl+Enter saves changes or opens the submit confirmation', async ({
@@ -133,12 +209,19 @@ test('form-ergonomics AC-5: Ctrl+S saves without the browser dialog; Ctrl+Enter 
   await page.keyboard.press('Control+s');
   expect(await lastKey(page)).toEqual({ key: 's', prevented: true });
   // AC-10: the "?" button lists the shortcuts.
+  await note.fill('モーダルの間は保存しない');
   await form(page).getByTestId('form-shortcuts').click();
   const help = page.getByRole('dialog', { name: 'キーボード操作', exact: true });
   await expect(help.getByTestId('form-shortcut-list')).toContainText('Ctrl+S');
   await expect(help.getByTestId('form-shortcut-list')).toContainText('Alt+↑ / Alt+↓');
+  // While a modal is open Ctrl+S saves nothing, and still keeps the browser's save dialog closed.
+  await resetLastKey(page);
+  await page.keyboard.press('Control+s');
+  expect(await lastKey(page)).toEqual({ key: 's', prevented: true });
+  await expect(form(page)).toHaveAttribute('data-dirty', 'true');
   await help.getByRole('button', { name: '閉じる', exact: true }).first().click();
   await expect(help).toHaveCount(0);
+  expect((await api<Row>(request, headers, `/api/sales_invoice/${invoice.id}`)).note).toBe('Ctrl+Enter で保存');
 });
 
 test('form-ergonomics AC-6: Enter walks the line cells and adds a row at the end; Alt+↑ moves the row', async ({
@@ -153,6 +236,24 @@ test('form-ergonomics AC-6: Enter walks the line cells and adds a row at the end
   const cell = (row: number, name: string) =>
     rows.nth(row).locator(`td[data-field="${name}"]`).locator('input, select');
   await cell(0, 'description').fill('一行目');
+  // The Enter that confirms an IME conversion stays with the IME: no move, no row. React's synthetic event has no
+  // isComposing, so this checks the native one (Chrome) and keyCode 229 (Safari).
+  const imeEnter = (nativeComposing: boolean) =>
+    cell(0, 'description').evaluate((element, composing) => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+        isComposing: composing,
+      });
+      if (!composing) Object.defineProperty(event, 'keyCode', { get: () => 229 });
+      element.dispatchEvent(event);
+    }, nativeComposing);
+  await imeEnter(true);
+  await expect(cell(0, 'description')).toBeFocused();
+  await imeEnter(false);
+  await expect(cell(0, 'description')).toBeFocused();
+  await expect(rows).toHaveCount(1);
   await cell(0, 'description').press('Enter');
   await expect(cell(0, 'quantity')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -181,6 +282,13 @@ test('form-ergonomics AC-6: Enter walks the line cells and adds a row at the end
   await page.keyboard.press('Alt+ArrowDown');
   await expect(cell(1, 'description')).toHaveValue('二行目');
   await expect(grid).toContainText('Enter: 次の欄へ');
+  // Outside the grid Alt+↓ still opens a reference list (the combobox pattern); only grid cells hand it to the row.
+  const partner = form(page).locator('input[name=partnerId]');
+  await partner.focus();
+  await partner.press('Escape');
+  await expect(partner).toHaveAttribute('aria-expanded', 'false');
+  await partner.press('Alt+ArrowDown');
+  await expect(partner).toHaveAttribute('aria-expanded', 'true');
 });
 
 test('form-ergonomics AC-7/AC-2: at 390px Save and Submit sit in the bottom bar and labelled sections become tabs', async ({
@@ -231,6 +339,45 @@ test('form-ergonomics AC-7/AC-2: at 390px Save and Submit sit in the bottom bar 
   await tabs.getByRole('tab', { name: '備考・仕訳', exact: true }).click();
   await form(page).locator('textarea[name=note]').fill('スマホで編集');
   await expect(bar.getByRole('button', { name: '確定', exact: true })).toBeDisabled();
+  // The bar with the unsaved-changes label still leaves a scrolled-in input visible (scroll-padding follows its height).
+  await expect(bar.locator('.dirty-label')).toBeVisible();
+  await page.getByTestId('record-title').scrollIntoViewIfNeeded();
+  await description.evaluate((element) => element.scrollIntoView({ block: 'end' }));
+  await expect
+    .poll(async () => {
+      const input = await description.boundingBox();
+      const dirtyBar = await bar.boundingBox();
+      return input !== null && dirtyBar !== null && input.y + input.height <= dirtyBar.y + 1;
+    })
+    .toBe(true);
+  // Toasts sit above the bar: right after a save the bar's Submit takes the tap, not the 「保存しました」 toast.
+  await bar.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(form(page)).toHaveAttribute('data-dirty', 'false');
+  const toasts = page.locator('.toast-viewport');
+  await expect(toasts).toContainText('保存しました');
+  // With the top of the form in view the bar is pinned to the bottom of the screen, where the toasts appear.
+  await page.getByTestId('record-title').scrollIntoViewIfNeeded();
+  const barSubmit = bar.getByRole('button', { name: '確定', exact: true });
+  await expect(barSubmit).toBeEnabled();
+  await expect
+    .poll(async () => {
+      const toastBox = await toasts.boundingBox();
+      const barBox = await bar.boundingBox();
+      return (
+        toastBox !== null &&
+        barBox !== null &&
+        barBox.y + barBox.height > 844 - 40 &&
+        toastBox.y + toastBox.height <= barBox.y + 1
+      );
+    })
+    .toBe(true);
+  const hit = await barSubmit.evaluate((element) => {
+    const r = element.getBoundingClientRect();
+    const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return at !== null && element.contains(at);
+  });
+  expect(hit).toBe(true);
+  await form(page).locator('textarea[name=note]').fill('スマホで再編集');
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(bar.getByRole('button', { name: '確定', exact: true })).toBeHidden();
   await expect(page.locator('.doc-action-submit')).toBeVisible();
@@ -326,6 +473,170 @@ test('form-ergonomics AC-8: unsaved input survives a reload and is offered back;
   await expect(page.getByTestId('draft-offer')).toHaveCount(0);
   await expect.poll(() => draftKeys(page)).toHaveLength(0);
   await expect(form(page).locator('input[name=name]')).toHaveValue('');
+});
+
+test('form-ergonomics AC-8: a refetch while the input is unsaved keeps the draft on the version the input was made on', async ({
+  page,
+  context,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, `D3 版 ${suffix()}`);
+  page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
+  await signInQuality(page);
+  await page.goto(`/e/partner/${partner.id}`);
+  await expect(form(page)).toHaveAttribute('data-mode', 'update');
+  const opened = await api<Row>(request, headers, `/api/partner/${partner.id}`);
+  const storedVersion = () =>
+    page.evaluate(() => {
+      const key = Object.keys(sessionStorage).find((k) => k.startsWith('daifuku.form-draft.v1.'));
+      return key ? (JSON.parse(sessionStorage.getItem(key) ?? '{}') as { baseVersion?: unknown }).baseVersion : null;
+    });
+  // Past the record query's staleTime, so a reconnect refetches it.
+  await page.waitForTimeout(6000);
+  const name = form(page).locator('input[name=name]');
+  await name.fill(`${String(partner.name)} 編集中`);
+  await expect.poll(storedVersion).toBe(opened.version);
+  // Someone else saves; the record refetches (network reconnect) while the input is unsaved.
+  await api(
+    request,
+    headers,
+    `/api/partner/${partner.id}`,
+    { patch: { notes: '別の人が更新' }, expectedVersion: opened.version },
+    'PATCH',
+  );
+  await context.setOffline(true);
+  await page.waitForTimeout(300);
+  await context.setOffline(false);
+  await expect(page.getByTestId('conflict')).toBeVisible();
+  // More typing and leaving the page still store the version the input was made on.
+  await name.press('End');
+  await page.keyboard.type('!');
+  await page.waitForTimeout(800);
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  expect(await storedVersion()).toBe(opened.version);
+  await page.reload();
+  await expect(page.getByTestId('draft-stale')).toBeVisible();
+  await expect(page.getByTestId('draft-offer')).toHaveCount(0);
+  await expect.poll(() => draftKeys(page)).toHaveLength(0);
+});
+
+test('form-ergonomics AC-8: a record read denied (404) or an entity gone from the meta keeps no draft', async ({
+  page,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, `D3 拒否 ${suffix()}`);
+  page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
+  await signInQuality(page);
+  await page.goto(`/e/partner/${partner.id}`);
+  await form(page)
+    .locator('input[name=name]')
+    .fill(`${String(partner.name)} 編集中`);
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  // The record is gone for this user: the reload stores the input on the way out, and the 404 removes it.
+  await page.route(`**/api/partner/${partner.id}`, (route) =>
+    route.request().method() === 'GET' ? route.fulfill(failedRead(404)) : route.fallback(),
+  );
+  await page.reload();
+  await expect(page.getByTestId('record-form')).toHaveCount(0);
+  await expect.poll(() => draftKeys(page)).toHaveLength(0);
+  await page.unroute(`**/api/partner/${partner.id}`);
+  // The entity itself leaves the user's meta: every draft of it in this boundary goes (the record read never runs).
+  await page.goto('/e/partner/new');
+  await form(page).locator('input[name=name]').fill('D3 権限がなくなる新規');
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  await page.route('**/meta', async (route) => {
+    const response = await route.fetch();
+    const meta = (await response.json()) as { entities: { name: string }[] };
+    await route.fulfill({
+      response,
+      json: { ...meta, entities: meta.entities.filter((entity) => entity.name !== 'partner') },
+    });
+  });
+  await page.reload();
+  await expect(page.getByTestId('record-form')).toHaveCount(0);
+  await expect.poll(() => draftKeys(page)).toHaveLength(0);
+});
+
+test('form-ergonomics AC-8: sign-out clears the drafts; after an expired session only the same user gets them back', async ({
+  page,
+  request,
+}) => {
+  const { headers } = await qualitySession(request);
+  const partner = await qualityPartner(request, headers, `D3 ログアウト ${suffix()}`);
+  const other = await qualityEmployee(request);
+  page.on('dialog', (dialog) => void dialog.accept().catch(() => {}));
+  const name = form(page).locator('input[name=name]');
+  const expire = async () => {
+    await page.evaluate(() => sessionStorage.setItem('daifuku.token', 'expired-synthetic-token'));
+    await page.reload();
+    await expect(page).toHaveURL(/\/login/);
+  };
+  await signInQuality(page);
+  // Explicit sign-out from the sidebar with unsaved input: the leave confirmation, then no draft is left.
+  await page.goto(`/e/partner/${partner.id}`);
+  await name.fill(`${String(partner.name)} 編集中`);
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.waitForTimeout(800);
+  expect(await draftKeys(page)).toHaveLength(0);
+  // An expired session keeps the draft for the same user: signing in again offers it.
+  await signInQuality(page);
+  await page.goto(`/e/partner/${partner.id}`);
+  await name.fill(`${String(partner.name)} 期限切れの前`);
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+  await expire();
+  expect(await draftKeys(page)).toHaveLength(1);
+  await signInQuality(page);
+  expect(await draftKeys(page)).toHaveLength(1);
+  await page.goto(`/e/partner/${partner.id}`);
+  await expect(page.getByTestId('draft-offer')).toBeVisible();
+  // Someone else signing in on the same tab after an expiry: the previous user's drafts go.
+  await page.getByTestId('draft-offer').getByRole('button', { name: '復元する', exact: true }).click();
+  await expect(name).toHaveValue(`${String(partner.name)} 期限切れの前`);
+  await expire();
+  expect(await draftKeys(page)).toHaveLength(1);
+  await signInQuality(page, other.email, PASSWORD);
+  expect(await draftKeys(page)).toHaveLength(0);
+});
+
+test('form-ergonomics AC-9: previous / next cross the page edge with the same criteria', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const { headers } = await qualitySession(request);
+  const key = `D3頁${suffix()}`;
+  for (let i = 1; i <= 52; i++) await qualityPartner(request, headers, `${key} ${String(i).padStart(3, '0')}`);
+  await signInQuality(page);
+  await page.goto(`/e/partner?q=${encodeURIComponent(key)}&sort=name:asc`);
+  await expect(page.getByTestId('total')).toContainText('52');
+  await page
+    .getByRole('row')
+    .filter({ hasText: `${key} 050` })
+    .click();
+  const title = page.getByTestId('record-title');
+  const nav = page.getByTestId('record-nav');
+  await expect(title).toHaveText(`${key} 050`);
+  await expect(nav.getByTestId('record-position')).toHaveText('50 / 52 件');
+  // Next from the last row of page 1 reads page 2 of the same criteria.
+  await nav.getByTestId('record-next').click();
+  await expect(title).toHaveText(`${key} 051`);
+  await expect(nav.getByTestId('record-position')).toHaveText('51 / 52 件');
+  // Back to the list opens the page the record is on.
+  await expect(page.getByRole('link', { name: '← 取引先' })).toHaveAttribute('href', /[?&]page=2(&|$)/);
+  await nav.getByTestId('record-next').click();
+  await expect(title).toHaveText(`${key} 052`);
+  await expect(nav.getByTestId('record-next')).toBeDisabled();
+  // Previous from the first row of page 2 reads page 1 again (page 1 has no page key, like the list's URL).
+  await nav.getByTestId('record-prev').click();
+  await expect(title).toHaveText(`${key} 051`);
+  await nav.getByTestId('record-prev').click();
+  await expect(title).toHaveText(`${key} 050`);
+  await expect(nav.getByTestId('record-position')).toHaveText('50 / 52 件');
+  await expect(page.getByRole('link', { name: '← 取引先' })).not.toHaveAttribute('href', /[?&]page=/);
+  await page.getByRole('link', { name: '← 取引先' }).click();
+  await expect(page).toHaveURL(new RegExp(`/e/partner\\?.*q=${encodeURIComponent(key)}`));
+  await expect(page.getByRole('row').filter({ hasText: `${key} 050` })).toBeVisible();
 });
 
 test('form-ergonomics AC-9: previous / next follow the list the record was opened from', async ({ page, request }) => {

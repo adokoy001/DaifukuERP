@@ -35,8 +35,17 @@ interface KeyboardOptions {
   pick: (row: RecordJson) => void;
 }
 function candidateKey(event: KeyboardEvent<HTMLInputElement>, state: KeyboardOptions): void {
-  // form-ergonomics AC-6: Alt+↑/↓ moves a line-grid row, so the combobox leaves it to the grid.
-  if (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
+  // Keys that drive an IME conversion (the Enter that confirms it, the arrows of its candidate window) are the IME's.
+  // React's synthetic event has no `isComposing`; it is read from the native event (keyCode 229 on Safari).
+  if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+  // form-ergonomics AC-6: inside a line grid Alt+↑/↓ moves the row, so the combobox leaves it to the grid. Elsewhere
+  // Alt+↓ opens the list like ↓ (the ARIA combobox pattern).
+  if (
+    event.altKey &&
+    (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+    event.currentTarget.closest('tr[data-row-key]')
+  )
+    return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
     state.setOpen(true);

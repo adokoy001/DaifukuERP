@@ -154,12 +154,15 @@ export function extFieldMetas(entity: EntityDef, opts: MetaOptions = {}): FieldM
 
 /**
  * One `views.form` group limited to the caller's visible fields. Plain groups stay `string[]` (the original /meta
- * shape); labelled groups become `{ label, fields }` (form-ergonomics AC-1, ADR-0002 addendum).
+ * shape); labelled groups become `{ label, fields }` (form-ergonomics AC-1, ADR-0002 addendum). A labelled group with
+ * no visible field becomes a plain `[]`: its heading would tell a role outside a permission field group that the
+ * hidden section exists and what it is called; the empty group keeps the positions of the others.
  */
 function formGroupMeta(group: readonly string[] | FormGroup, visible: readonly string[]): FormGroupMeta {
   if (Array.isArray(group)) return group.filter((f) => visible.includes(f));
   const labelled = group as FormGroup;
-  return { label: labelled.label, fields: labelled.fields.filter((f) => visible.includes(f)) };
+  const fields = labelled.fields.filter((f) => visible.includes(f));
+  return fields.length > 0 ? { label: labelled.label, fields } : [];
 }
 
 export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = {}): EntityMeta {

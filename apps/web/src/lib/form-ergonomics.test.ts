@@ -10,18 +10,30 @@ import {
   buildDraft,
   DRAFT_MAX_AGE_MS,
   draftKey,
+  draftKeyScope,
   draftOffer,
   draftTarget,
   forgetDrafts,
+  forgetEntityDrafts,
   parseDraft,
+  pruneDrafts,
   readDraft,
   removeDraft,
   serializeDraft,
   writeDraft,
   type DraftKeyedStorage,
 } from './form-draft.ts';
-import { advanceAction, formShortcut, gridKey, movedIndex, nextCell, type KeyLike } from './form-shortcuts.ts';
-import { formGroups, formSections, needsInput, sectionLayout } from './form.ts';
+import {
+  advanceAction,
+  altArrowLabel,
+  formShortcut,
+  fromReactKey,
+  gridKey,
+  movedIndex,
+  nextCell,
+  type KeyLike,
+} from './form-shortcuts.ts';
+import { formSections, needsInput, sectionLayout } from './form.ts';
 import type { GridRow } from './lines.ts';
 import {
   adjacentSearch,
@@ -85,8 +97,8 @@ describe('form-ergonomics AC-1/AC-2: sections from views.form', () => {
     ]);
   });
 
-  it('AC-1: the original string[][] form gives the same groups as before (formGroups)', () => {
-    const groups = formGroups(entity([['name', 'code'], ['nope', 'secret', 'phone'], ['name']]));
+  it('AC-1: the original string[][] form gives the same groups as before', () => {
+    const groups = formSections(entity([['name', 'code'], ['nope', 'secret', 'phone'], ['name']])).map((s) => s.fields);
     expect(groups.map((g) => g.map((f) => f.name))).toEqual([
       ['name', 'code'],
       ['phone'],
@@ -193,9 +205,20 @@ describe('form-ergonomics AC-5: Ctrl/⌘+S and Ctrl/⌘+Enter', () => {
     expect(formShortcut(key('s', { ctrlKey: true, shiftKey: true }), false)).toBeUndefined();
     expect(formShortcut(key('s', { ctrlKey: true, altKey: true }), false)).toBeUndefined();
     expect(formShortcut(key('s', { ctrlKey: true, isComposing: true }), false)).toBeUndefined();
+    expect(formShortcut(key('s', { ctrlKey: true, keyCode: 229 }), false)).toBeUndefined();
     expect(formShortcut(key('Enter', { ctrlKey: true }), false)).toBe('advance');
     expect(formShortcut(key('Enter'), false)).toBeUndefined();
     expect(formShortcut(key('k', { ctrlKey: true }), false)).toBeUndefined();
+  });
+
+  it('AC-5: the S is the letter the layout types; the physical key counts only on a non-Latin layout', () => {
+    // Dvorak: the physical S key types "o" — Ctrl+O stays the browser's.
+    expect(formShortcut(key('o', { ctrlKey: true, code: 'KeyS' }), false)).toBeUndefined();
+    // Dvorak: the key that types "s" (physical KeyO) saves.
+    expect(formShortcut(key('s', { ctrlKey: true, code: 'KeySemicolon' }), false)).toBe('save');
+    // Cyrillic: the physical S key types "ы"; the shortcut still works there.
+    expect(formShortcut(key('ы', { ctrlKey: true, code: 'KeyS' }), false)).toBe('save');
+    expect(formShortcut(key('ы', { ctrlKey: true, code: 'KeyA' }), false)).toBeUndefined();
   });
 
   it('AC-5: Ctrl+Enter saves unsaved work, opens the submit confirmation of a clean draft, and saves otherwise', () => {
@@ -215,10 +238,33 @@ describe('form-ergonomics AC-6: line grid keys', () => {
     expect(gridKey(key('Enter', { shiftKey: true }))).toBeUndefined();
     expect(gridKey(key('Enter', { ctrlKey: true }))).toBeUndefined();
     expect(gridKey(key('Enter', { isComposing: true }))).toBeUndefined();
+    // Safari reports the IME's Enter with keyCode 229 and isComposing false.
+    expect(gridKey(key('Enter', { keyCode: 229 }))).toBeUndefined();
     expect(gridKey(key('ArrowUp', { altKey: true }))).toBe('move-up');
     expect(gridKey(key('ArrowDown', { altKey: true }))).toBe('move-down');
     expect(gridKey(key('ArrowDown'))).toBeUndefined();
     expect(gridKey(key('ArrowDown', { altKey: true, ctrlKey: true }))).toBeUndefined();
+  });
+
+  it('AC-6: a React keyboard event reads the composition state from its native event (React does not copy it)', () => {
+    const reactEvent = {
+      key: 'Enter',
+      code: 'Enter',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      keyCode: 13,
+      nativeEvent: { isComposing: true },
+    };
+    expect(gridKey(fromReactKey(reactEvent))).toBeUndefined();
+    expect(gridKey(fromReactKey({ ...reactEvent, nativeEvent: { isComposing: false } }))).toBe('next');
+    expect(gridKey(fromReactKey({ ...reactEvent, keyCode: 229, nativeEvent: { isComposing: false } }))).toBeUndefined();
+  });
+
+  it('AC-6/AC-10: Alt+↑/↓ in the platform notation (Option on macOS)', () => {
+    expect(altArrowLabel('↑', false)).toBe('Alt+↑');
+    expect(altArrowLabel('↓', true)).toBe('⌥↓');
   });
 
   it('AC-6: next cell in the row, then the next row, then a new row after the last cell of the last row', () => {
@@ -466,6 +512,94 @@ describe('form-ergonomics AC-8: unsaved-input drafts', () => {
     });
     expect(forgetDrafts(storage)).toBe(2);
     expect([...storage.map.keys()]).toEqual(['daifuku.token']);
+  });
+
+  const stored = (target: string, values: Record<string, string>, savedAt = now) => ({
+    entity: 'partner',
+    target,
+    baseVersion: target === 'new' ? null : 1,
+    savedAt,
+    values,
+    lines: {},
+  });
+
+  it('AC-8: a draft that would not be read back is not written (kept = false) and the older draft goes', () => {
+    const storage = new MemoryStorage();
+    const k = draftKey(scope, 'partner', 'p1');
+    expect(writeDraft(storage, k, stored('p1', { name: 'short' }))).toBe(true);
+    // One value over 100,000 characters: refused, and the older draft under the key is removed.
+    expect(writeDraft(storage, k, stored('p1', { notes: 'x'.repeat(100_001) }))).toBe(false);
+    expect(storage.map.has(k ?? '')).toBe(false);
+    // Over 500,000 characters in all (many values each under the per-value limit): refused as well.
+    const many = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`f${i}`, 'y'.repeat(90_000)]));
+    expect(writeDraft(storage, k, stored('p1', many))).toBe(false);
+    expect(storage.map.size).toBe(0);
+    // A refused write (quota) also leaves no older draft behind.
+    expect(writeDraft(storage, k, stored('p1', { name: 'again' }))).toBe(true);
+    const full = new MemoryStorage();
+    full.map.set(k ?? '', 'older');
+    full.setItem = () => {
+      throw new Error('quota');
+    };
+    expect(writeDraft(full, k, stored('p1', { name: 'b' }))).toBe(false);
+    expect(full.map.size).toBe(0);
+  });
+
+  it('AC-8: the key names its boundary; anything else is not a draft key', () => {
+    expect(draftKeyScope(draftKey(scope, 'partner', 'new:seed') ?? '')).toEqual({
+      ...scope,
+      entity: 'partner',
+      target: 'new:seed',
+    });
+    expect(draftKeyScope('daifuku.token')).toBeUndefined();
+    expect(draftKeyScope('daifuku.form-draft.v1.not-json')).toBeUndefined();
+    expect(draftKeyScope('daifuku.form-draft.v1.["t","u","c","partner"]')).toBeUndefined();
+    expect(draftKeyScope('daifuku.form-draft.v1.["t","","c","partner","p1"]')).toBeUndefined();
+  });
+
+  it("AC-8: a sign-in keeps the same user's drafts and removes another user's and dead ones", () => {
+    const storage = new MemoryStorage();
+    storage.setItem('daifuku.token', 'x');
+    const at = Date.parse(now) + 1000;
+    const own = draftKey(scope, 'partner', 'p1') ?? '';
+    const ownOtherCompany = draftKey({ ...scope, companyId: 'c2' }, 'partner', 'new') ?? '';
+    const otherUser = draftKey({ ...scope, userId: 'u2' }, 'partner', 'p1') ?? '';
+    const otherTenant = draftKey({ ...scope, tenantId: 't2' }, 'partner', 'p1') ?? '';
+    const expired = draftKey(scope, 'partner', 'p2') ?? '';
+    const broken = draftKey(scope, 'partner', 'p3') ?? '';
+    writeDraft(storage, own, stored('p1', { name: 'mine' }));
+    writeDraft(storage, ownOtherCompany, stored('new', { name: 'mine too' }));
+    writeDraft(storage, otherUser, stored('p1', { name: 'theirs' }));
+    writeDraft(storage, otherTenant, stored('p1', { name: 'theirs' }));
+    writeDraft(storage, expired, stored('p2', { name: 'old' }, new Date(at - DRAFT_MAX_AGE_MS - 1000).toISOString()));
+    storage.setItem(broken, '{"version":1');
+    storage.setItem('daifuku.form-draft.v1.garbage', '{}');
+    expect(pruneDrafts(storage, at, { tenantId: 't1', userId: 'u1' })).toBe(5);
+    expect([...storage.map.keys()].sort()).toEqual(['daifuku.token', own, ownOtherCompany].sort());
+    // Without an owner only dead entries go.
+    writeDraft(storage, otherUser, stored('p1', { name: 'theirs' }));
+    storage.setItem(broken, 'not json');
+    expect(pruneDrafts(storage, at)).toBe(1);
+    expect(storage.map.has(otherUser)).toBe(true);
+    expect(pruneDrafts(undefined, at)).toBe(0);
+  });
+
+  it('AC-8: an entity gone from the meta loses its drafts in this boundary only (records, new and seeded new)', () => {
+    const storage = new MemoryStorage();
+    const keep = [
+      draftKey(scope, 'sales_invoice', 'i1') ?? '',
+      draftKey({ ...scope, companyId: 'c2' }, 'partner', 'p1') ?? '',
+      draftKey({ ...scope, userId: 'u2' }, 'partner', 'p1') ?? '',
+    ];
+    const drop = [
+      draftKey(scope, 'partner', 'p1') ?? '',
+      draftKey(scope, 'partner', 'new') ?? '',
+      draftKey(scope, 'partner', 'new:seed') ?? '',
+    ];
+    for (const k of [...keep, ...drop]) storage.setItem(k, '{}');
+    expect(forgetEntityDrafts(storage, scope, 'partner')).toBe(3);
+    expect([...storage.map.keys()].sort()).toEqual([...keep].sort());
+    expect(forgetEntityDrafts(storage, { ...scope, companyId: '' }, 'sales_invoice')).toBe(0);
   });
 });
 

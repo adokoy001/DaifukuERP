@@ -1050,7 +1050,8 @@
   clear: both;
 }
 /* form-ergonomics AC-7: Submit lives in the form bar only below 768px; above it the header button is the one shown. */
-.form-bar-submit {
+.form-bar-submit,
+.dirty-label-short {
   display: none;
 }
 @media (max-width: 767px) {
@@ -1066,14 +1067,26 @@
   .form-toolbar .btn {
     min-height: 40px;
   }
+  /* The short unsaved-changes text keeps Save, Submit, Cancel and ? on one row of the bar at 390px. */
+  .form-toolbar .dirty-label-long {
+    display: none;
+  }
+  .form-toolbar .dirty-label-short {
+    display: inline;
+  }
   /* Keyboard hints mean nothing on a touch screen and crowd the grid header. */
   .form-shortcut-hint,
   .line-grid-hint {
     display: none;
   }
-  /* A focused input is scrolled clear of the sticky bar. */
+  /* A focused input is scrolled clear of the sticky bar: its measured height (record-form useBarHeightVar), also when
+     it wraps to a second row, plus a gap. */
   .page-content:has(.form-toolbar) {
-    scroll-padding-bottom: 96px;
+    scroll-padding-bottom: calc(var(--form-bar-h, 80px) + 16px);
+  }
+  /* Toasts sit above the bar so they never cover Save / Submit. */
+  html:has(.form-toolbar) .toast-viewport {
+    bottom: calc(var(--form-bar-h, 80px) + 12px);
   }
 }
 .dirty-label {

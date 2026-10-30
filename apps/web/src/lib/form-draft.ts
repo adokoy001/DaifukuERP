@@ -241,9 +241,17 @@ export function readDraft(
   return parseDraft(readRaw(storage, key), entity, target, now);
 }
 
-/** False when the draft could not be kept (no storage, quota exceeded, unknown boundary). */
+/**
+ * False when the draft could not be kept: no storage, unknown boundary, quota exceeded, or a draft that would not be
+ * read back (a value over MAX_TEXT, over MAX_RAW in all — the same limits as parseDraft). Then any older draft under
+ * the key is removed too, so what the leave confirmation says (`kept`) and what the screen offers later agree.
+ */
 export function writeDraft(storage: DraftStorage | undefined, key: string | undefined, draft: FormDraft): boolean {
-  return writeRaw(storage, key, serializeDraft(draft));
+  const raw = serializeDraft(draft);
+  const readable = parseDraft(raw, draft.entity, draft.target, Date.parse(draft.savedAt)) !== undefined;
+  if (readable && writeRaw(storage, key, raw)) return true;
+  removeDraft(storage, key);
+  return false;
 }
 
 export function removeDraft(storage: DraftStorage | undefined, key: string | undefined): void {
@@ -255,9 +263,9 @@ export function removeDraft(storage: DraftStorage | undefined, key: string | und
   }
 }
 
-/** Explicit sign-out: every form draft of this tab is removed (a shared computer keeps no typed values). Never throws. */
-export function forgetDrafts(storage: DraftKeyedStorage | undefined): number {
-  if (!storage) return 0;
+/** The draft keys of this tab; empty when the storage cannot be listed. */
+function storedDraftKeys(storage: DraftKeyedStorage | undefined): string[] {
+  if (!storage) return [];
   const keys: string[] = [];
   try {
     for (let index = 0; index < storage.length; index++) {
@@ -265,8 +273,82 @@ export function forgetDrafts(storage: DraftKeyedStorage | undefined): number {
       if (key?.startsWith(DRAFT_PREFIX)) keys.push(key);
     }
   } catch {
-    return 0;
+    return [];
   }
+  return keys;
+}
+
+/** The boundary a draft key was made for (draftKey), or undefined when the key is not one draftKey makes. */
+export function draftKeyScope(
+  key: string,
+): { tenantId: string; userId: string; companyId: string; entity: string; target: string } | undefined {
+  if (!key.startsWith(DRAFT_PREFIX)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(key.slice(DRAFT_PREFIX.length));
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 5 || !parsed.every((part) => typeof part === 'string' && part))
+    return undefined;
+  const [tenantId, userId, companyId, entity, target] = parsed as string[];
+  return tenantId && userId && companyId && entity && target
+    ? { tenantId, userId, companyId, entity, target }
+    : undefined;
+}
+
+/** Explicit sign-out: every form draft of this tab is removed (a shared computer keeps no typed values). Never throws. */
+export function forgetDrafts(storage: DraftKeyedStorage | undefined): number {
+  const keys = storedDraftKeys(storage);
   for (const key of keys) removeDraft(storage, key);
   return keys.length;
+}
+
+/**
+ * Removes the drafts nobody can get back: expired, unreadable or oversized entries and keys draftKey does not make,
+ * and, with `owner`, every draft of another tenant or user. A sign-in calls it with the new user (after an expired
+ * session someone else may sign in on the same tab; the same user keeps the drafts); the form calls it without.
+ * Never throws; returns how many were removed.
+ */
+export function pruneDrafts(
+  storage: DraftKeyedStorage | undefined,
+  now: number,
+  owner?: { tenantId: string; userId: string },
+): number {
+  let removed = 0;
+  for (const key of storedDraftKeys(storage)) {
+    const scope = draftKeyScope(key);
+    const foreign = owner !== undefined && (scope?.tenantId !== owner.tenantId || scope.userId !== owner.userId);
+    const dead = !scope || readDraft(storage, key, scope.entity, scope.target, now) === undefined;
+    if (!foreign && !dead) continue;
+    removeDraft(storage, key);
+    removed++;
+  }
+  return removed;
+}
+
+/**
+ * Removes every draft of `entity` in this session's boundary (any record, `new`, `new:<seed>`): the entity is no
+ * longer in the user's meta, so nothing typed for it is kept (quality-foundation AC-5). Never throws.
+ */
+export function forgetEntityDrafts(
+  storage: DraftKeyedStorage | undefined,
+  scope: AssistScope | undefined,
+  entity: string,
+): number {
+  if (!scope?.tenantId || !scope.userId || !scope.companyId || !entity) return 0;
+  let removed = 0;
+  for (const key of storedDraftKeys(storage)) {
+    const of = draftKeyScope(key);
+    if (
+      of?.tenantId !== scope.tenantId ||
+      of.userId !== scope.userId ||
+      of.companyId !== scope.companyId ||
+      of.entity !== entity
+    )
+      continue;
+    removeDraft(storage, key);
+    removed++;
+  }
+  return removed;
 }

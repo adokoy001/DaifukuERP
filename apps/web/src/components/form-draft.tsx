@@ -12,12 +12,14 @@ import {
   draftKey,
   draftOffer,
   draftStorage,
+  pruneDrafts,
   readDraft,
   removeDraft,
   writeDraft,
   type FormDraft,
 } from '../lib/form-draft.ts';
 import type { FormValues } from '../lib/form.ts';
+import type { AssistScope } from '../lib/assist-storage.ts';
 import { formatTimestamp } from '../lib/format.ts';
 import type { GridRow } from '../lib/lines.ts';
 import { Button } from '../ui/index.ts';
@@ -53,11 +55,15 @@ export interface FormDraftControl {
   clear: () => void;
 }
 
+/** The draft boundary of this tab: the signed-in user and tenant and this tab's company (lib/form-draft.ts). */
+export function sessionDraftScope(): AssistScope {
+  const user = getUser();
+  return { tenantId: user?.tenantId ?? '', userId: user?.id ?? '', companyId: getCompanyId() ?? '' };
+}
+
 /** The draft key of `entity` / `target` for the signed-in user, tenant and this tab's company (lib/form-draft.ts). */
 export function sessionDraftKey(entity: string, target: string): string | undefined {
-  const user = getUser();
-  const scope = { tenantId: user?.tenantId ?? '', userId: user?.id ?? '', companyId: getCompanyId() ?? '' };
-  return draftKey(scope, entity, target);
+  return draftKey(sessionDraftScope(), entity, target);
 }
 
 export function useFormDraft(options: FormDraftOptions): FormDraftControl {
@@ -77,13 +83,18 @@ export function useFormDraft(options: FormDraftOptions): FormDraftControl {
   const cleared = useRef<{ values: FormValues; lines: Record<string, GridRow[]> } | null>(null);
 
   // Read once per screen (the form is keyed by record id / seed): offer it, or drop it when the record moved on. The
-  // version is the one this form instance was opened with (a ref), so a later refetch does not re-run the read.
+  // version is the one this form instance was opened with (a ref), so a later refetch does not re-run the read. Dead
+  // entries of the tab (expired, unreadable, oversized) are swept first, so they do not pile up next to the session.
   const openedVersion = useRef(recordVersion);
   useEffect(() => {
     if (!key) return;
     const storage = draftStorage();
+    pruneDrafts(storage, Date.now());
     const draft = readDraft(storage, key, entity.name, target, Date.now());
-    if (!draft) return;
+    if (!draft) {
+      removeDraft(storage, key);
+      return;
+    }
     if (draftOffer(draft, openedVersion.current) === 'offer') setOffer(draft);
     else {
       removeDraft(storage, key);
@@ -176,7 +187,10 @@ export function FormDraftNotice({ control }: { control: FormDraftControl }) {
   const { t, locale } = useLocale();
   if (control.offer)
     return (
+      // role="status": the offer appears after the first render (the draft is read in an effect); polite, so it does
+      // not compete with the error summary's alert.
       <div
+        role="status"
         className="ui-notice ui-notice-info flex flex-wrap items-center gap-2 text-xs"
         data-testid="draft-offer"
         data-saved-at={control.offer.savedAt}
@@ -197,7 +211,11 @@ export function FormDraftNotice({ control }: { control: FormDraftControl }) {
     );
   if (control.stale)
     return (
-      <div className="ui-notice ui-notice-warning flex flex-wrap items-center gap-2 text-xs" data-testid="draft-stale">
+      <div
+        role="status"
+        className="ui-notice ui-notice-warning flex flex-wrap items-center gap-2 text-xs"
+        data-testid="draft-stale"
+      >
         <p className="min-w-0 flex-1">
           {t({
             ja: 'この記録は前回の入力の後に更新されたため、前回の未保存の入力は復元しません。',

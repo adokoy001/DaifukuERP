@@ -6,7 +6,7 @@
 // with focus on the first invalid input (AC-3), required marks and helper text (AC-4), Ctrl/⌘+S and Ctrl/⌘+Enter
 // (AC-5), the bottom bar with Save / Submit on narrow screens (AC-7), unsaved-input drafts (AC-8), the shortcut list (AC-10).
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { useBlocker } from '@tanstack/react-router';
 import { isApiError } from '../api/client.ts';
 import { keys, useCreate, useMeta, useUpdate } from '../api/queries.ts';
@@ -202,6 +202,13 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
         formErrors: mapped.formErrors,
         attempt: s.attempt + 1,
       }));
+      // The summary is the one alert of the attempt; a toast would be a second alert read at the same time. Only a
+      // VALIDATION without any message the summary can show falls back to the toast.
+      const listed =
+        Object.keys(mapped.fieldErrors).length > 0 ||
+        mapped.formErrors.length > 0 ||
+        Object.values(lineErrors).some((rows) => Object.keys(rows).length > 0);
+      if (listed) return;
     }
     toast.error(e);
   };
@@ -210,9 +217,9 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
     e.preventDefault();
     if (inFlight.current || state.conflict || !entity.ops.includes(mode === 'create' ? 'create' : 'update')) return;
     // web-phase15 AC-2: 配分合計 > 金額 is refused before any request (the server validates again at submit).
+    // form-ergonomics AC-3: the error summary shows the message (no toast: one alert per attempt).
     if (conv && allocationSummary(state.values[ALLOCATION.amountField], state.lines[conv.lineEntity] ?? []).over) {
       setState((s) => ({ ...s, formErrors: [t(S.overAllocated)], attempt: s.attempt + 1 }));
-      toast.push({ kind: 'error', title: t(S.overAllocated) });
       return;
     }
     const plan = planSave({
@@ -233,10 +240,6 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
         formErrors: [],
         attempt: s.attempt + 1,
       }));
-      toast.push({
-        kind: 'error',
-        title: t(Object.keys(plan.lineErrors).length > 0 ? S.linesHaveErrors : S.formHasErrors),
-      });
       return;
     }
     if (!record) {
@@ -302,6 +305,28 @@ function useFocusTarget(sectionOf: (item: SummaryItem) => string | undefined, se
   };
 }
 
+/**
+ * AC-7: the bottom bar's measured height as `--form-bar-h` on the document. Below 768px the scroll area keeps that
+ * much room under a focused input (scroll-padding-bottom) and the toasts sit above the bar, also when the bar wraps
+ * to a second row (styles.css).
+ */
+function useBarHeightVar(bar: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = bar.current;
+    const root = globalThis.document?.documentElement;
+    if (!element || !root || typeof ResizeObserver === 'undefined') return;
+    const update = () =>
+      root.style.setProperty('--form-bar-h', `${Math.ceil(element.getBoundingClientRect().height)}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--form-bar-h');
+    };
+  }, [bar]);
+}
+
 export function RecordForm({
   entity,
   record,
@@ -321,13 +346,17 @@ export function RecordForm({
   const { state, setState, setValue, setRows } = useFormState(entity, specs, record, initial);
   const exitAllowed = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  useBarHeightVar(barRef);
   const dirty = formFingerprint(state.values, state.lines) !== state.baseline;
   const canWrite = entity.ops.includes(mode === 'create' ? 'create' : 'update');
-  // AC-8: unsaved input kept in this tab per entity and record (or `new`), offered when the screen opens again.
+  // AC-8: unsaved input kept in this tab per entity and record (or `new`), offered when the screen opens again. The
+  // version is the one the input was made on (state.record): a refetch while the input is unsaved moves the `record`
+  // prop to the newer version but keeps state.record (and raises the conflict), so the draft still reads as stale.
   const draft = useFormDraft({
     entity,
     target: draftTarget(record?.id, record ? undefined : initial?.key),
-    recordVersion: record?.version,
+    recordVersion: state.record?.version,
     enabled: canWrite,
     specs,
     values: state.values,
@@ -428,7 +457,12 @@ export function RecordForm({
   );
   const lastAttempt = useRef(0);
   useEffect(() => {
-    if (state.attempt === 0 || state.attempt === lastAttempt.current) return;
+    // A save, a reload or a restored draft starts the count again (attempt 0); the next failure is a new attempt.
+    if (state.attempt === 0) {
+      lastAttempt.current = 0;
+      return;
+    }
+    if (state.attempt === lastAttempt.current) return;
     lastAttempt.current = state.attempt;
     const first = firstTarget(summary);
     if (first) jump(first);
@@ -437,13 +471,17 @@ export function RecordForm({
 
   // AC-5: Ctrl/⌘+S saves from anywhere on the record screen (never the browser's save dialog); Ctrl/⌘+Enter inside
   // the form saves unsaved work or opens the submit confirmation of a clean draft document. While a modal dialog is
-  // open the keys are left to it.
+  // open neither acts (Ctrl/⌘+S still keeps the browser's save dialog closed).
   const keyState = useRef({ dirty, canSave, mode, submitControl });
   keyState.current = { dirty, canSave, mode, submitControl };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const shortcut = formShortcut(event, IS_MAC);
-      if (!shortcut || document.querySelector('dialog[open], [aria-modal="true"]')) return;
+      if (!shortcut) return;
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) {
+        if (shortcut === 'save') event.preventDefault();
+        return;
+      }
       const form = formRef.current;
       if (!form) return;
       const s = keyState.current;
@@ -509,17 +547,16 @@ export function RecordForm({
     >
       <FormDraftNotice control={draft} />
       {state.conflict ? <ConflictBanner onReload={() => void reload()} /> : null}
-      <FormErrorSummary items={summary} onJump={jump} />
+      <FormErrorSummary items={summary} attempt={state.attempt} onJump={jump} />
       {!canWrite ? (
         <p className="notice">
           {t({ ja: '閲覧モード — この記録は編集できません。', en: 'View mode — you cannot edit this record.' })}
         </p>
       ) : null}
       {anyRequired ? (
-        <p className="text-[11px] text-text-muted" data-testid="required-legend">
-          <span className="text-red-600" aria-hidden="true">
-            *
-          </span>{' '}
+        // The inputs carry `required`; the legend explains the visual mark only, so assistive technology skips it.
+        <p className="text-[11px] text-text-muted" data-testid="required-legend" aria-hidden="true">
+          <span className="text-red-600">*</span>{' '}
           {t({ ja: 'は入力が必要な項目です', en: 'marks a field you must fill in' })}
         </p>
       ) : null}
@@ -558,7 +595,7 @@ export function RecordForm({
           </LineGrid>
         );
       })}
-      <div className="form-toolbar flex items-center gap-2" data-testid="form-toolbar">
+      <div ref={barRef} className="form-toolbar flex items-center gap-2" data-testid="form-toolbar">
         {canWrite && (editable || !linesReadOnly) ? (
           <button
             type="submit"
@@ -584,8 +621,10 @@ export function RecordForm({
           </button>
         ) : null}
         {dirty ? (
+          // AC-7: below 768px the short text keeps the bar on one row (styles.css shows one of the two).
           <span className="dirty-label" role="status">
-            {t({ ja: '未保存の変更', en: 'Unsaved changes' })}
+            <span className="dirty-label-long">{t({ ja: '未保存の変更', en: 'Unsaved changes' })}</span>
+            <span className="dirty-label-short">{t({ ja: '未保存', en: 'Unsaved' })}</span>
           </span>
         ) : null}
         <button type="button" className="btn" onClick={onCancel}>

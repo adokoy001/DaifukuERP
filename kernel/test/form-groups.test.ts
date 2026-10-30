@@ -61,10 +61,17 @@ describe('views.form labelled groups (form-ergonomics AC-1)', () => {
     ]);
   });
 
-  it('AC-1 a masked field leaves its labelled group with the label and no fields (the UI drops empty groups)', () => {
+  it('AC-1 a labelled group whose fields are all masked becomes a plain [] (no label of the hidden section)', () => {
     const form = entityMeta(clerk, Grouped).views.form;
-    expect(form).toContainEqual({ label: { ja: '口座', en: 'Bank account' }, fields: [] });
+    expect(form).toEqual([
+      { label: { ja: '基本', en: 'Basics' }, fields: ['code', 'name'] },
+      ['phone'],
+      [],
+      { label: { ja: '備考', en: 'Notes' }, fields: ['notes'] },
+    ]);
     expect(JSON.stringify(form)).not.toContain('bankAccountNo');
+    expect(JSON.stringify(form)).not.toContain('口座');
+    expect(JSON.stringify(form)).not.toContain('Bank account');
   });
 
   it('AC-1 the original string[][] form is accepted and emitted unchanged', () => {

@@ -83,11 +83,6 @@ export function formSections(entity: EntityMeta): FormSection[] {
   return sections;
 }
 
-/** Groups from `views.form` as plain field lists (the shape before labelled groups; see formSections). */
-export function formGroups(entity: EntityMeta): FieldMeta[][] {
-  return formSections(entity).map((section) => section.fields);
-}
-
 /** form-ergonomics AC-2: below this many labelled sections a narrow screen still stacks them. */
 export const TAB_MIN_SECTIONS = 4;
 

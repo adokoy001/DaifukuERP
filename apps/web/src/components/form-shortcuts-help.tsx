@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
-import { IS_MAC, shortcutLabel } from '../lib/form-shortcuts.ts';
+import { altArrowLabel, IS_MAC, shortcutLabel } from '../lib/form-shortcuts.ts';
 import { S } from '../strings.ts';
 import { Button, Dialog } from '../ui/index.ts';
 
@@ -25,7 +25,10 @@ export function shortcutRows(mac: boolean): { keys: string; label: Label }[] {
         en: 'Lines: next cell; from the last cell to the next row, after the last row a new row',
       },
     },
-    { keys: 'Alt+↑ / Alt+↓', label: { ja: '明細: 行を上下に移動', en: 'Lines: move the row up or down' } },
+    {
+      keys: `${altArrowLabel('↑', mac)} / ${altArrowLabel('↓', mac)}`,
+      label: { ja: '明細: 行を上下に移動', en: 'Lines: move the row up or down' },
+    },
     { keys: `${mod}K`, label: { ja: '画面と記録を検索', en: 'Search screens and records' } },
   ];
 }

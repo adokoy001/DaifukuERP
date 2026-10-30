@@ -65,31 +65,33 @@ describe('form-ergonomics AC-2: sections', () => {
 });
 
 describe('form-ergonomics AC-3: error summary', () => {
-  it('AC-3: one alert with the count, a link per input and plain text for messages without one', () => {
-    const html = render(
-      h(FormErrorSummary, {
-        onJump: () => {},
-        items: [
-          { key: 'form:0', message: '配分合計が金額を超えています' },
-          { key: 'field:name', message: '必須項目です', targetId: 'f-name', field: { ja: '名称', en: 'Name' } },
-          {
-            key: 'line',
-            message: '必須項目です',
-            targetId: 'l-sales_invoice_line-r1-description',
-            field: { ja: '品名', en: 'Description' },
-            line: { label: { ja: '売上明細', en: 'Invoice line' }, row: 2 },
-          },
-        ],
-      }),
-    );
+  const items = [
+    { key: 'form:0', message: '配分合計が金額を超えています' },
+    { key: 'field:name', message: '必須項目です', targetId: 'f-name', field: { ja: '名称', en: 'Name' } },
+    {
+      key: 'line',
+      message: '必須項目です',
+      targetId: 'l-sales_invoice_line-r1-description',
+      field: { ja: '品名', en: 'Description' },
+      line: { label: { ja: '売上明細', en: 'Invoice line' }, row: 2 },
+    },
+  ];
+
+  it('AC-3: the count, a link per input and plain text for messages without one; one alert sentence per attempt', () => {
+    const html = render(h(FormErrorSummary, { onJump: () => {}, attempt: 2, items }));
     expect(html.match(/role="alert"/g)).toHaveLength(1);
-    expect(html).toContain('入力内容に 3 件の問題があります');
+    // The alert is the attempt's sentence (with the messages focus cannot carry), not the shrinking list.
+    expect(html).toMatch(
+      /<p role="alert" class="sr-only" data-testid="error-summary-alert" data-attempt="2">保存できませんでした。入力内容の問題が 3 件ありました。配分合計が金額を超えています<\/p>/,
+    );
+    expect(html).toContain('<h2 class="text-sm font-semibold">入力内容に 3 件の問題があります</h2>');
+    expect(html).not.toMatch(/<div[^>]*role="alert"[^>]*data-testid="error-summary"/);
     expect(html).toContain('<span>配分合計が金額を超えています</span>');
     expect(html).toContain('href="#f-name"');
     expect(html).toContain('名称: 必須項目です');
     expect(html).toContain('href="#l-sales_invoice_line-r1-description"');
     expect(html).toContain('売上明細 2 行目の品名: 必須項目です');
-    expect(render(h(FormErrorSummary, { onJump: () => {}, items: [] }))).toBe('');
+    expect(render(h(FormErrorSummary, { onJump: () => {}, attempt: 1, items: [] }))).toBe('');
   });
 });
 
@@ -144,7 +146,8 @@ describe('form-ergonomics AC-10: shortcut list', () => {
   it('AC-10: save, advance, the grid keys and the palette, in the platform notation, ja and en', () => {
     const pc = shortcutRows(false);
     expect(pc.map((r) => r.keys)).toEqual(['Ctrl+S', 'Ctrl+Enter', 'Enter', 'Alt+↑ / Alt+↓', 'Ctrl+K']);
-    expect(shortcutRows(true).map((r) => r.keys)).toEqual(['⌘S', '⌘↩', 'Enter', 'Alt+↑ / Alt+↓', '⌘K']);
+    // macOS names the Alt key Option (⌥), like ⌘ for Ctrl.
+    expect(shortcutRows(true).map((r) => r.keys)).toEqual(['⌘S', '⌘↩', 'Enter', '⌥↑ / ⌥↓', '⌘K']);
     for (const row of pc) {
       expect(row.label.ja).not.toBe('');
       expect(row.label.en).not.toBe('');

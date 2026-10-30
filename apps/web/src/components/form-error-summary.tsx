@@ -1,16 +1,48 @@
-// form-ergonomics AC-3: after a failed save, the one `role="alert"` of the form — how many problems, and a link per
+// form-ergonomics AC-3: after a failed save, the summary at the top of the form — how many problems, and a link per
 // message to its input (header field, or line grid row + column). Activating a link shows the input's tab (narrow
 // screens) and focuses it. Items come from lib/form-errors.ts.
-import type { MouseEvent } from 'react';
+//
+// Announcements: the list shrinks while the user fixes the inputs, so it is not a live region (an assertive, atomic
+// alert would read the whole summary again on every keystroke that clears an error). Each failed attempt mounts one
+// `role="alert"` sentence (keyed by the attempt) whose text stays as it was at that attempt; a second attempt with the
+// same problems is announced again because the sentence is mounted again.
+import { useState, type MouseEvent } from 'react';
 import { useLocale } from '../i18n.tsx';
 import type { SummaryItem } from '../lib/form-errors.ts';
 
 export interface FormErrorSummaryProps {
   items: readonly SummaryItem[];
+  /** The failed save attempt the summary belongs to (record-form's FormState.attempt). */
+  attempt: number;
   onJump: (item: SummaryItem) => void;
 }
 
-export function FormErrorSummary({ items, onJump }: FormErrorSummaryProps) {
+function countText(locale: string, count: number): string {
+  return locale === 'ja'
+    ? `入力内容に ${count} 件の問題があります`
+    : `There ${count === 1 ? 'is 1 problem' : `are ${count} problems`} with your input`;
+}
+
+/**
+ * The sentence announced once per attempt. Its text is the one of that attempt (state set at mount only) and it is
+ * worded as what happened, so it stays true while the list below shrinks. Messages without an input to focus (配分超過
+ * and other form-level messages) are read in full here, because focus cannot carry them.
+ */
+function AttemptAlert({ attempt, count, notes }: { attempt: number; count: number; notes: readonly string[] }) {
+  const { t } = useLocale();
+  const [atAttempt] = useState(() => ({ count, notes: [...notes] }));
+  return (
+    <p role="alert" className="sr-only" data-testid="error-summary-alert" data-attempt={attempt}>
+      {t({
+        ja: `保存できませんでした。入力内容の問題が ${atAttempt.count} 件ありました。`,
+        en: `Not saved: ${atAttempt.count === 1 ? '1 problem' : `${atAttempt.count} problems`} with your input. `,
+      })}
+      {atAttempt.notes.join(' ')}
+    </p>
+  );
+}
+
+export function FormErrorSummary({ items, attempt, onJump }: FormErrorSummaryProps) {
   const { t, locale } = useLocale();
   if (items.length === 0) return null;
   const text = (item: SummaryItem) => {
@@ -30,15 +62,16 @@ export function FormErrorSummary({ items, onJump }: FormErrorSummaryProps) {
   };
   return (
     <div
-      role="alert"
       data-testid="error-summary"
       className="ui-notice ui-notice-danger form-error-summary flex flex-col gap-1 text-xs"
     >
-      <h2 className="text-sm font-semibold">
-        {locale === 'ja'
-          ? `入力内容に ${items.length} 件の問題があります`
-          : `There ${items.length === 1 ? 'is 1 problem' : `are ${items.length} problems`} with your input`}
-      </h2>
+      <AttemptAlert
+        key={attempt}
+        attempt={attempt}
+        count={items.length}
+        notes={items.filter((item) => !item.targetId).map(text)}
+      />
+      <h2 className="text-sm font-semibold">{countText(locale, items.length)}</h2>
       <ul className="flex list-disc flex-col gap-0.5 pl-5">
         {items.map((item) => (
           <li key={item.key}>

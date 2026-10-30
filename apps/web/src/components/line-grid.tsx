@@ -8,7 +8,7 @@ import { useMeta, useRecord } from '../api/queries.ts';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { needsInput, widgetFor, type FormValue } from '../lib/form.ts';
-import { gridKey, movedIndex, nextCell } from '../lib/form-shortcuts.ts';
+import { altArrowLabel, fromReactKey, gridKey, IS_MAC, movedIndex, nextCell } from '../lib/form-shortcuts.ts';
 import { gridCellId } from '../lib/form-errors.ts';
 import { decimalMinScale, formatDecimal, groupDigits, shortId } from '../lib/format.ts';
 import { columnSums, moveRow, newRow, polymorphicTarget, type GridErrors, type GridRow } from '../lib/lines.ts';
@@ -91,9 +91,10 @@ function useKeyboard(rows: GridRow[], columns: FieldMeta[], readOnly: boolean, o
   // form-ergonomics AC-6 (lib/form-shortcuts.ts): Enter goes to the next input cell of the row, then to the first cell
   // of the next row, and appends a row after the last cell of the last row; Alt+↑ / Alt+↓ move the row and keep the
   // focus in the same cell. Widgets that consume Enter (a combobox with a highlighted option) call preventDefault
-  // first, textareas keep their newline and buttons their click.
+  // first, textareas keep their newline and buttons their click. The Enter that confirms an IME conversion is the
+  // IME's: React's synthetic event has no `isComposing`, so the composition state comes from the native event.
   const onKeyDown = (e: KeyboardEvent<HTMLTableSectionElement>) => {
-    const key = gridKey(e);
+    const key = gridKey(fromReactKey(e));
     if (key === undefined || e.defaultPrevented || readOnly) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'BUTTON' || (key === 'next' && target.tagName === 'TEXTAREA')) return;
@@ -214,7 +215,7 @@ function RowTools({
         className={btn}
         aria-label={t(S.moveUp)}
         aria-keyshortcuts="Alt+ArrowUp"
-        title={`${t(S.moveUp)} (Alt+↑)`}
+        title={`${t(S.moveUp)} (${altArrowLabel('↑', IS_MAC)})`}
         disabled={index === 0}
         onClick={() => onMove(index - 1)}
       >
@@ -225,7 +226,7 @@ function RowTools({
         className={btn}
         aria-label={t(S.moveDown)}
         aria-keyshortcuts="Alt+ArrowDown"
-        title={`${t(S.moveDown)} (Alt+↓)`}
+        title={`${t(S.moveDown)} (${altArrowLabel('↓', IS_MAC)})`}
         disabled={index >= count - 1}
         onClick={() => onMove(index + 1)}
       >

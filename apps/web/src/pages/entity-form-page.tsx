@@ -28,9 +28,9 @@ import { RecordLinkActions, SeedNotice, useDraftSeed } from '../components/recor
 import { RelatedPanel } from '../components/related-panel.tsx';
 import type { DraftSeed } from '../lib/duplicate.ts';
 import { useRecordVisit } from '../api/navigation-assist.ts';
-import { draftStorage, draftTarget, removeDraft } from '../lib/form-draft.ts';
+import { draftStorage, draftTarget, forgetEntityDrafts, removeDraft } from '../lib/form-draft.ts';
 import { isApiError } from '../api/client.ts';
-import { sessionDraftKey } from '../components/form-draft.tsx';
+import { sessionDraftKey, sessionDraftScope } from '../components/form-draft.tsx';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -197,6 +197,12 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   useEffect(() => {
     if (denied) forgetDraftOnDenied(name, id, denied);
   }, [denied, name, id]);
+  // AC-8: an entity the user can no longer see (absent from the loaded meta) keeps none of its drafts in this tab:
+  // the record read never runs then, so the 403/404 clean-up above cannot catch it.
+  const entityGone = meta.data !== undefined && entity === undefined && name !== '';
+  useEffect(() => {
+    if (entityGone) forgetEntityDrafts(draftStorage(), sessionDraftScope(), name);
+  }, [entityGone, name]);
   if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
