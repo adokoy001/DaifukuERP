@@ -1,6 +1,6 @@
 # Spec: expense-settlement（経費精算の一般化）
 
-- 状態: draft
+- 状態: implemented（2026-10-30。帳簿のみ保存・少額特例・経過措置の書類・計上時期の根拠は一次資料で未確認 — 検証手順 7、[作業記録](../log/2026-10-30-expense-settlement.md)）
 - モジュール: `modules/expense`（新規 `@daifuku/mod-expense`。精算書・仮払・受信箱・候補の読取）、`modules/workforce`（経費の支払方法、精算書からの精算記録）、`modules/payment`（相手科目付きの入出金）、`l10n/jp`（勘定科目 仮払金）、`apps/web`（`/finance/expenses`、`/me` と `/workforce` の経費） ／ 依存: workforce、partner、tax、accounting、purchase、payment。画面は [ui-kit](ui-kit.md)、[inbox](inbox.md)、[document-links](document-links.md)、[form-ergonomics](form-ergonomics.md)、[list-workbench](list-workbench.md)、[settings-console](settings-console.md)、[setup-health](setup-health.md)、[navigation-assist](navigation-assist.md) の規約に従う
 - ADR: **ADR-0039（新規。この項目に予約された番号）**「経費精算の転記と相手科目付き入出金」。入出金（payment）が他 module の伝票から作られる契約（`counterAccountId`、作成関数、取消の順序）を決める。kernel・DSL は拡張しない
 - 作成: 2026-10-30 ／ 作成者: agent（spec writer、`wip/expense-settlement`）。設計の元は [完成度向上の実装計画](../completion-plan.md) E5
@@ -66,6 +66,22 @@
 | 18  | 受信箱の二重の見え方と名前                             | 採用。D12 の書き換えと文言                                                                                                                                                                                                                                              |
 | 19  | AC-17 の期待と相手科目の検査                           | 採用。AC-14・AC-17                                                                                                                                                                                                                                                      |
 
+### 実装時の決定（2026-10-30、実装者）
+
+spec critic の指摘は 0 件（変更なし）。実装で次を決めた。
+
+| #   | 決定 | 理由 |
+| --- | ---- | ---- |
+| I1  | 「実装時に確かめる前提」は 5 件とも成り立った: 確定 hook の中での入出金の作成・確定と取消（入れ子の lifecycle）、`findDependents` による AC-12 の拒否と取消済みの参照元の無視、`siteAccess: store` の server-owned `siteId` の書込検査（kernel の `assertStoreWrite`）、明細の `before_validate` の行ごとの実行と `after_lines_saved` の 1 回、入出金の `assertDirectionRole` と `postFromSource` が確定者の `Context` で通ること | DB 試験（`settlement.db.test.ts`・`draft.db.test.ts`・`access.db.test.ts`・`clearing.db.test.ts`）で確かめた |
+| I2  | `expense.todo` の権限は AC-18 のとおり精算書の `submit` とする。拠点・店舗を限定された文脈は kernel の規則で確定できないため `/meta` に提供元が出ず、受信箱は呼ばない（D25 の目的「受信箱の呼出しを失敗させない」を満たす）。直接呼ぶと `PERMISSION_DENIED`。AC-16 の文言をこれに合わせた | 権限を `read` に下げると、処理できない利用者（拠点の管理者・従業員）全員の受信箱が空の提供元を呼ぶことになり、inbox AC-1「処理できない項目は数えない」の運用（`edge.todo` の前例）と合わない |
+| I3  | 拠点を限定された経理が他拠点の従業員の精算書を汎用の作成で作ろうとすると、従業員が見えないため `NOT_FOUND`（作成されない）になる | kernel の拠点の境界が先に働く。AC-16 は作れないことだけを求める |
+| I4  | 従業員が異動した後に異動前の精算書を訂正すると、kernel の訂正は server-owned の `siteId` を写さず、ヘッダは従業員の現在の拠点になり、明細の検査（同じ拠点）で失敗する。初版は扱わず、マニュアルに「`/finance/expenses` から新しい下書きを作る」と書く | 承認済みの経費があると workforce が異動を拒むため、この状況は「精算 → 異動 → 精算書の取消」の後にだけ起きる |
+| I5  | `/finance/expenses` の「未精算の仮払」の各行に「仮払精算を作成」（`expense.draft_settlement { employeeId, kind: 'advance', advanceId }`）を置く | D24（使わなかった仮払の明細 0 行の精算）を専用画面から行えるようにする。汎用画面だけでは仮払精算の下書きの作り方が分かりにくい |
+| I6  | 銀行照合済みの入出金の取消拒否（AC-11・AC-13）は、expense の試験では入出金の `before_cancel` に試験用の hook を登録して代替する（expense は banking に依存しない）。banking の実際の拒否も同じ phase の hook | 実装の経路（`after_cancel` からの `cancelDocument` が入出金の `before_cancel` を通る）は同じ。作業記録に代替であることを書く |
+| I7  | 入出金の確定時の「相手科目付きの入出金に消込明細がある」拒否は、公開の経路では到達できない二重の防御（明細の hook が先に拒否する）。試験は明細の hook の拒否だけを確かめる | 相手科目付きの下書きは `createClearingPayment` の中にしか存在しない |
+| I8  | l10n/jp の試験の勘定科目の種類別件数（資産 6）を 7 に更新した（1800 仮払金）。弱めたのではなく、仕様の追加に合わせた期待値の更新 | `l10n/jp/test/l10n-jp.db.test.ts` は種類別の件数を固定値で持っていた |
+| I9  | migration は `0018_expense_settlement`（基点 ffc2f42 の次の番号）。統合時に第 5・6 回の migration と番号を合わせる | 計画の指示 |
+
 ## 受入基準（EARS）
 
 ### 申請と承認（workforce）
@@ -108,7 +124,7 @@
 ### 権限と境界
 
 - AC-15 IF 精算書・仮払の作成・更新・確定・取消・訂正、または `expense.draft_settlement` / `expense.settlement_candidates` を、`accounting` と `workforce_payroll` の両方（または admin）を持たない利用者が行った THEN THE SYSTEM SHALL 書き込む前（読取 action では読む前）に `PERMISSION_DENIED` を返す。action の `permission` はロールの OR しか表せないため、action と entity の権限は `accounting` に与え、`workforce_payroll` は hook・handler の冒頭で検査する。accounting を持ち workforce_payroll を持たない利用者への拒否は `details.op` = `<op>:requires-workforce_payroll`（`<op>` は `create` / `update` / `delete` / `submit` / `cancel` / `candidates`）、accounting を持たない利用者への拒否は kernel の通常の `details.op`（`create` など）とする（D26）。IF 精算書・仮払の従業員が要求者本人（admin を含む）THEN THE SYSTEM SHALL 作成・確定・取消を `PERMISSION_DENIED`（`details.op` = `<op>:self-settlement`）で拒否する。
-- AC-16 THE SYSTEM SHALL `workforce_employee` には自分の精算書・明細・仮払だけを読ませ（行の権限 `userId = $ctx.userId`）、他人の記録は一覧・取得・関連記録のいずれにも現れない（取得は NOT_FOUND。従業員には export 権限を与えないので CSV 出力もできない）。拠点を限定された `workforce_manager` には担当拠点の精算書・仮払だけを読ませる（`siteAccess`）。拠点を限定された文脈から他拠点の従業員の精算書を作ることはできない。`expense.settlement_candidates` と `expense.draft_settlement` は拠点を限定された文脈では実行できず（`siteAccess: false`、`PERMISSION_DENIED`）、`expense.todo` は実行できる（D25）。拠点・店舗を限定された文脈は精算書・仮払を確定・取消・訂正できない（kernel の規則、`PERMISSION_DENIED`）。
+- AC-16 THE SYSTEM SHALL `workforce_employee` には自分の精算書・明細・仮払だけを読ませ（行の権限 `userId = $ctx.userId`）、他人の記録は一覧・取得・関連記録のいずれにも現れない（取得は NOT_FOUND。従業員には export 権限を与えないので CSV 出力もできない）。拠点を限定された `workforce_manager` には担当拠点の精算書・仮払だけを読ませる（`siteAccess`）。拠点を限定された文脈から他拠点の従業員の精算書を作ることはできない。`expense.settlement_candidates` と `expense.draft_settlement` は拠点を限定された文脈では実行できず（`siteAccess: false`、`PERMISSION_DENIED`）、`expense.todo` は拠点を限定された文脈の受信箱の呼出しを失敗させない（D25。実装時の決定 I2: 確定できない文脈には提供元が `/meta` に出ず、受信箱は呼ばない）。拠点・店舗を限定された文脈は精算書・仮払を確定・取消・訂正できない（kernel の規則、`PERMISSION_DENIED`）。
 - AC-17 THE SYSTEM SHALL 会社をまたいで精算書・仮払・明細を読ませない（id 指定の取得は `NOT_FOUND`、一覧には現れない）。他社の取引先・勘定科目・仮払をヘッダに、他社の経費を明細に指定した保存は `VALIDATION`（取引先・科目・仮払は kernel の参照の整合性、経費は明細の検査）、他社の従業員を指定した `expense.draft_settlement` は `NOT_FOUND` を返す。他社の仕訳・入出金・経費は変化しない。
 
 ### 受信箱・設定・導入チェック

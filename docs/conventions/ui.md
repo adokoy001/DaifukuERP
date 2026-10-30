@@ -65,7 +65,7 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 |---|---|
 | 名前と形 | `defineAction({ name: '<module>.todo', input: todoInput, output: todoResult, mutates: false, tx: 'none' })`。`todoInput` / `todoResult` / `todoItems` は `@daifuku/kernel`（`kernel/src/todo-result.ts`）。出力は `{ items: [{ key, label: { ja, en }, count, href, severity: 'info' \| 'warn' }] }` |
 | 数え方 | 提供元 module の `Repository.count` / `list` など既存の読取経路を、呼び出した利用者の `Context` のまま使う。会社・拠点・店舗・本人の境界とロールはそのまま効く。`systemContext()` や集計用の別経路を作らない。状態を変えない（`edge.board` のような読取時の状態更新を持ち込まない） |
-| 誰に出すか | 実行できるロールは、その仕事を処理するロールに絞る（閲覧専用のロールや、処理 action を実行できないロールは含めない。例: `edge.todo` は `edge.resolve` を実行できる edge_manager だけ）。項目ごとに処理アクションの `canRunAction` や `can(ctx, entity, op)` で絞り、自分の申請など本人が承認できない記録は数えない |
+| 誰に出すか | 実行できるロールは、その仕事を処理するロールに絞る（閲覧専用のロールや、処理 action を実行できないロールは含めない。例: `edge.todo` は `edge.resolve` を実行できる edge_manager だけ。`expense.todo` は `permission: { entity: 'expense_settlement', op: 'submit' }` で、拠点・店舗に限定された文脈は確定できないため提供元が出ず、二つ目の必要ロール `workforce_payroll` が無い経理には `{ items: [] }` を返す — [expense-settlement](../specs/expense-settlement.md) AC-18・D25）。項目ごとに処理アクションの `canRunAction` や `can(ctx, entity, op)` で絞り、自分の申請など本人が承認できない記録は数えない |
 | 件数 0 | `todoItems()` が 0 件の項目を落とす。すべて 0 なら `{ items: [] }` |
 | 失敗させない | 1 つの項目の件数が上限（`MAX_REPORT_ROWS` など）を超えて数えられない場合は、その項目だけを返さず、提供元全体を失敗させない（例: `restaurant_chain.todo` の未提出） |
 | 開く画面 | 数えた対象を開く画面で確認できるようにする（月単位の画面は `?period=` で最古の月を開く）。絞り込めない画面へ送る場合は付録N にその旨を書く |

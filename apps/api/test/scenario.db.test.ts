@@ -183,6 +183,7 @@ describe('台本: 個人事業（デザイン事務所）の 2026年10月 (docs/
       'contract',
       'workforce',
       'workforce_evidence',
+      'expense',
       'industry_operations',
       'pos_integration',
       'group_accounting',

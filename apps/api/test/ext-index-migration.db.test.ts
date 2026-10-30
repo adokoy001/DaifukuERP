@@ -66,13 +66,17 @@ it('0016 changes only the generated JAN column and its index in the complete 001
 });
 
 /**
- * The constraints of relations that existed before the upgrade. Later migrations may add whole tables (e.g. 0019,
- * docs/specs/recurring-journals.md); their constraints are new, not changes, so only pre-existing relations are compared.
+ * Facts after the upgrade, with constraints limited to those that existed before it (same relation and name). Later
+ * migrations may add whole tables and new constraints on existing tables (e.g. 0019 recurring journals, 0023 docs/specs/expense-settlement.md:
+ * payment.counter_account_id); those are additions, not changes, so only the pre-existing constraints are compared.
  */
 async function upgradedFacts(before: Awaited<ReturnType<typeof facts>>) {
-  const existing = new Set(before.constraints.map((row) => String(row.relation)));
+  const existing = new Set(before.constraints.map((row) => `${String(row.relation)}|${String(row.conname)}`));
   const after = await facts();
-  return { ...after, constraints: after.constraints.filter((row) => existing.has(String(row.relation))) };
+  return {
+    ...after,
+    constraints: after.constraints.filter((row) => existing.has(`${String(row.relation)}|${String(row.conname)}`)),
+  };
 }
 
 it('upgrades populated 0015 without changing old values, versions, settings or FK constraints; rerun is harmless', async () => {

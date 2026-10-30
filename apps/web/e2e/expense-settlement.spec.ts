@@ -208,6 +208,23 @@ test('expense-settlement AC-20 AC-21 AC-22: record, approve, draft, submit with 
   await api(request, f.headers, `/api/expense_advance/${advance.id}/submit`, {});
   await page.goto(`/e/expense_advance/${advance.id}`);
   await expect(page.getByTestId('related-panel').getByTestId('related-group-payment')).toBeVisible();
+
+  // D24 from the dedicated screen: an unused advance is cleared by an advance settlement without lines (full refund).
+  await page.goto('/finance/expenses');
+  await page
+    .getByTestId('expense-advances')
+    .locator('li')
+    .filter({ hasText: f.employee.name })
+    .getByTestId('expense-clear-advance')
+    .click();
+  await expect(page).toHaveURL(/\/e\/expense_settlement\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId('lines-expense_settlement_line').getByTestId('line-row')).toHaveCount(0);
+  await confirmDoc(page, '確定');
+  await expect(page.getByTestId('docstatus')).toHaveAttribute('data-docstatus', '1');
+  await expect(page.getByTestId('related-panel').getByTestId('related-group-payment')).toBeVisible();
+  expect((await api<Row & { status: string }>(request, f.headers, `/api/expense_advance/${advance.id}`)).status).toBe(
+    'settled',
+  );
 });
 
 test('expense-settlement AC-20 AC-23: roles, English, 390px without horizontal scroll and axe', async ({

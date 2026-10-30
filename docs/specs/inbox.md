@@ -43,6 +43,8 @@
 | `edge.todo`（siteAccess） | edge_manager | `uncertain_jobs`（warn） | 結果不明の機器処理と、実行中のまま期限・リースが切れた処理（状態は変えない） | `edge.resolve` を実行できる人（edge_manager、担当拠点のみ）。edge_operator は解決できないため提供元を実行できない（機器の画面では従来どおり見える） | `/operations/devices` |
 | `tax_filing.todo` | accounting / workforce_payroll（全社の文脈のみ） | `accounting_review` | 財務諸表の準備資料の下書きで、作成者が自分でないもの | 会計の準備を扱える人 | `/finance/filing` |
 | | | `payroll_review` | 給与申告の準備資料の下書きで、作成者が自分でないもの | 給与の準備を扱える人 | `/finance/filing` |
+| `expense.todo`（siteAccess、2026-10-30 [expense-settlement](expense-settlement.md) で追加） | accounting / admin（精算書の submit。全社の文脈のみ） | `draft_settlements`（warn） | 下書きの経費精算書で、従業員が要求者でないもの | accounting と workforce_payroll の両方を持つ人（片方だけの経理には `{ items: [] }`） | `/e/expense_settlement?status=draft` |
+| | | `open_advances` | 確定済み・未精算の仮払 | 同左 | `/finance/expenses` |
 
 ## 関係するファイル・インターフェース（名指し）
 

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client.ts';
 import {
+  clearAdvanceInput,
   draftedOnly,
   draftInput,
   groupTitle,
@@ -58,6 +59,9 @@ describe('expense settlement candidates (AC-20)', () => {
     expect(draftInput(adv, [advance({})])).toMatchObject({ kind: 'advance', advanceId: id(50) });
     expect(draftInput(adv, [advance({}), advance({ id: id(51) })])).not.toHaveProperty('advanceId');
     expect(draftInput(adv, [advance({ employeeId: id(2) })])).not.toHaveProperty('advanceId');
+  });
+  it('AC-20 D24 an open advance is cleared by an advance settlement naming it (no expense list)', () => {
+    expect(clearAdvanceInput(advance({}))).toEqual({ employeeId: id(1), kind: 'advance', advanceId: id(50) });
   });
   it('AC-20 titles and summaries in Japanese and English', () => {
     const g = group({ paymentMethod: 'corporate_card', kind: 'corporate_card' });

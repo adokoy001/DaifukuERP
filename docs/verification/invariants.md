@@ -163,3 +163,13 @@
 - 根拠: 子プロセスのvitestが生成テスト11件を実行し、生成ACごとに成功を照合する。テンプレートの型を壊すとunitの型検査が、viewerに作成権限を足すとDB実行が失敗することを実装時に確認した。
 - 失効条件: テンプレート、definePack/applyPack/pack action/権限/meta/freshDbの契約、partnerの公開API、登録先（runtime catalog、runtimeテストの一覧、workforceの件数表示）の形の変更。変更時は規約の手順で登録経路を一巡し直す。
 - 限界: 登録後のmigration同期・`gate:light`・画面での適用は作業記録の一巡でのみ確認する。生成packへ足す業種固有の業務規則の正しさは保証しない。
+
+## PV-EXPENSE-01
+- 条件: 経費精算書の確定は、経費の仕訳・入出金とその仕訳・経費の精算済み・仮払の消込をすべて作るか、何も作らない。1 件の経費は取消されていない精算書 1 枚、1 件の仮払は確定済みの精算書 1 枚にだけ入り、仮払金と未払金の取引先別残高は「計上 → 支払・返金」で 0 に戻る。
+- 前提: 同じ会社・JPY・確定者は accounting と workforce_payroll の両方を持ち経費の本人でない。税率・経過措置の率は期間付きデータ、端数処理は会社設定。銀行照合済みの入出金は banking が取消を拒む。
+- 仕様: [経費精算の仕様](../specs/expense-settlement.md)、[ADR-0039](../adr/0039-expense-settlement-posting.md)
+- 実装: [精算書の hook](../../modules/expense/src/hooks/settlement.ts)、[転記の純関数](../../modules/expense/src/services/posting.ts)、[相手科目付き入出金](../../modules/payment/src/clearing.ts)
+- 試験: [確定・巻戻し・競合・取消](../../modules/expense/test/settlement.db.test.ts)、[golden](../../modules/expense/test/posting.test.ts)、[相手科目付き入出金](../../modules/payment/test/clearing.db.test.ts)
+- 根拠: golden 11 件（3 種類 × 仮払の差額、丸め単位・配分・経過措置・書類なし・明細なしの仮払）を純関数と実 DB の転記の両方で照合し、入出金の hook に注入した失敗・締め済み期間・科目欠落で巻戻しを、`Promise.allSettled` の並行操作で勝者 1 つを確かめる。
+- 失効条件: 精算書・仮払・入出金の hook の順序、kernel の `findDependents`・訂正の写し方、payment の転記規則、税の丸め単位・控除率の扱い、従業員のロックのキーの変更。
+- 限界: 帳簿のみ保存・少額特例・経過措置の書類の要件（一次資料で未確認）と、精算日で計上することによる消費税の期間帰属の正しさは保証しない。銀行照合済みの拒否は試験内の hook で代替した。

@@ -13,7 +13,7 @@ Windows/Linux/macOS端末への常駐サービス導入と更新は [エッジ�
 
 ホームと左メニューから業務分野を選ぶ方法、全画面検索、パンくずによる現在位置と戻り先、`Ctrl+K` の「画面と記録を開く」・最近開いた記録・お気に入り・「この画面の説明」は [付録N](appendix-n-navigation.md) にまとめています。旧画像にある長いmodule別メニューは現在の配置と異なります。
 
-新しい従業員・スマホ機能は [付録F](appendix-f-workforce.md)、15業界の業務操作は [付録G](appendix-g-industry-catalog.md)、開発者向けの構造は [AI_INDEX](../../AI_INDEX.md) を参照してください。
+新しい従業員・スマホ機能は [付録F](appendix-f-workforce.md)、承認済み経費の精算（立替・法人カード・仮払と仕訳・支払）は [経費精算](expense-settlement.md)、15業界の業務操作は [付録G](appendix-g-industry-catalog.md)、開発者向けの構造は [AI_INDEX](../../AI_INDEX.md) を参照してください。
 
 ## はじめに
 

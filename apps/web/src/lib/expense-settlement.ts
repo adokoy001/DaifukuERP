@@ -77,6 +77,14 @@ export function draftInput(group: CandidateGroup, advances: readonly OpenAdvance
   };
 }
 
+/**
+ * The draft of an advance settlement for one open advance (D24): the employee's approved "paid from an advance"
+ * expenses outside another settlement, or no lines at all for an unused advance (a full refund on submit).
+ */
+export function clearAdvanceInput(advance: OpenAdvance): Record<string, unknown> {
+  return { employeeId: advance.employeeId, kind: 'advance', advanceId: advance.id };
+}
+
 export function groupTitle(group: CandidateGroup, locale: Locale): string {
   const code = group.employeeCode ? `${group.employeeCode} ` : '';
   return `${code}${group.employeeName} · ${PAYMENT_METHOD_LABEL[group.paymentMethod][locale]} · ${group.siteName}`;

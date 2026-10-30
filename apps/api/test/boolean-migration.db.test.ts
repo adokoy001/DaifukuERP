@@ -86,13 +86,17 @@ it('0017 changes exactly five boolean columns and the relay predicate; all-pack 
 });
 
 /**
- * Facts after the upgrade, with constraints limited to relations that existed before it. Later migrations may add whole
- * tables (e.g. 0019, docs/specs/recurring-journals.md); their constraints are new, not changes to existing ones.
+ * Facts after the upgrade, with constraints limited to those that existed before it (same relation and name). Later
+ * migrations may add whole tables and new constraints on existing tables (e.g. 0019 recurring journals, 0023 docs/specs/expense-settlement.md:
+ * payment.counter_account_id); those are additions, not changes, so only the pre-existing constraints are compared.
  */
 async function upgradedFacts(before: Awaited<ReturnType<typeof booleanHistoryFacts>>) {
-  const existing = new Set(before.constraints.map((row) => String(row.relation)));
+  const existing = new Set(before.constraints.map((row) => `${String(row.relation)}|${String(row.conname)}`));
   const after = await booleanHistoryFacts(owner);
-  return { ...after, constraints: after.constraints.filter((row) => existing.has(String(row.relation))) };
+  return {
+    ...after,
+    constraints: after.constraints.filter((row) => existing.has(`${String(row.relation)}|${String(row.conname)}`)),
+  };
 }
 
 it('preserves both truth values, credentials, MFA, sessions and all unrelated data across tenants; rerun is harmless', async () => {

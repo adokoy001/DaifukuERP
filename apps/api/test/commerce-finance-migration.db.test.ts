@@ -83,6 +83,9 @@ it('upgrades populated 0013 without changing invoices, payment facts, MFA or reg
     users: expectedBooleanUserFacts(original.users),
     // 0018 (docs/specs/opening-balances.md) adds opening_balance with default false; every original column is unchanged.
     invoices: original.invoices.map((row) => ({ ...row, opening_balance: false })),
+    // 0023 (docs/specs/expense-settlement.md, ADR-0039) adds payment.counter_account_id, null on existing payments; every
+    // original column is unchanged.
+    payments: original.payments.map((row) => ({ ...row, counter_account_id: null })),
   };
   owner = await upgradeLegacyConnection(owner, OWNER_URL);
   expect(await facts()).toEqual(before);

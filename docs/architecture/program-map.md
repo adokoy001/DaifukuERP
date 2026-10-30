@@ -54,6 +54,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 - [従業員module](../../modules/workforce/src/index.ts): 公開entity・wire contract・制度seed。勤怠/休暇/経費/給与は各actionから開始する。
 - [帳票の共通レイアウト](../../modules/print-layout/src/index.ts): 発行者・宛先・明細表・税率別内訳・合計・状態の帯・`printDocument` と設定 `print_layout.date_style`。各 module の `render_<document>_html` action（売上請求書・合計請求書・見積書・注文書・納品書・領収書・支払通知書・給与明細）が使う（[spec](../specs/print-templates.md)）。
 - [領収書module](../../modules/workforce-evidence/src/index.ts): 経費に従属する添付サービスと型。
+- [経費精算module](../../modules/expense/src/index.ts): 承認済み経費の精算書と仮払。確定で accounting の仕訳と payment の相手科目付き入出金（`createClearingPayment`）を同じトランザクションで作る（[ADR-0039](../adr/0039-expense-settlement-posting.md)）。画面は `/finance/expenses` と汎用画面。
 - [業種共通処理](../../modules/industry-operations/src/index.ts): 業種固有の案件documentを組み立て、開始/完了/請求/集計を共通化する。
 - [10業界の定義](../../packs/industry-catalog/src/index.ts): 選択したpackだけを読み、業種固有項目・検収条件・サンプルを載せる。
 

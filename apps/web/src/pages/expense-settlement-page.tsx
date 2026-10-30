@@ -17,6 +17,7 @@ import { describeError } from '../lib/error-view.ts';
 import {
   advancesOf,
   ADVANCE_ENTITY,
+  clearAdvanceInput,
   CANDIDATES_ACTION,
   DRAFT_ACTION,
   draftedOnly,
@@ -72,19 +73,20 @@ function Candidates() {
   const toast = useToast();
   const candidates = useExpenseCandidates(true);
   const draft = useDraftSettlement();
-  const [failed, setFailed] = useState<{ group: CandidateGroup; error: unknown }>();
+  const [failed, setFailed] = useState<{ input: Record<string, unknown>; error: unknown }>();
   if (candidates.isError && isPayrollRefusal(candidates.error)) return <Forbidden />;
   if (candidates.isError && !candidates.data)
     return <MetaError error={candidates.error} retry={() => void candidates.refetch()} />;
   const data = candidates.data;
-  const create = async (group: CandidateGroup, advances: readonly OpenAdvance[]) => {
+  const create = async (input: Record<string, unknown>) => {
+    if (draft.isPending) return;
     setFailed(undefined);
     try {
-      const created = await draft.mutateAsync({ action: DRAFT_ACTION, input: draftInput(group, advances) });
+      const created = await draft.mutateAsync({ action: DRAFT_ACTION, input });
       toast.success(t({ ja: '精算書の下書きを作成しました。', en: 'Created a draft expense settlement.' }));
       await navigate({ to: '/e/$entity/$id', params: { entity: SETTLEMENT_ENTITY, id: created.id } });
     } catch (error) {
-      setFailed({ group, error });
+      setFailed({ input, error });
     }
   };
   return (
@@ -111,9 +113,7 @@ function Candidates() {
       <p className="sr-only" aria-live="polite" data-testid="expense-live">
         {data ? t(summaryText(data)) : ''}
       </p>
-      {failed ? (
-        <DraftFailure failure={failed} onRetry={() => void create(failed.group, data?.advances ?? [])} />
-      ) : null}
+      {failed ? <DraftFailure failure={failed} onRetry={() => void create(failed.input)} /> : null}
       {data?.truncated ? (
         <p className="ui-notice ui-notice-warning" data-testid="expense-truncated">
           {t({
@@ -129,7 +129,11 @@ function Candidates() {
           description={data ? t(summaryText(data)) : undefined}
         >
           {data ? (
-            <GroupList data={data} pending={draft.isPending} onCreate={(g) => void create(g, data.advances)} />
+            <GroupList
+              data={data}
+              pending={draft.isPending}
+              onCreate={(g) => void create(draftInput(g, data.advances))}
+            />
           ) : (
             <div aria-busy="true">
               <SkeletonCard lines={4} />
@@ -178,7 +182,15 @@ function Candidates() {
             en: 'An advance is cleared by an advance settlement. Clear an unused advance with an advance settlement without lines (full refund).',
           })}
         >
-          {data ? <AdvanceList advances={data.advances} /> : <SkeletonCard lines={2} />}
+          {data ? (
+            <AdvanceList
+              advances={data.advances}
+              pending={draft.isPending}
+              onClear={(a) => void create(clearAdvanceInput(a))}
+            />
+          ) : (
+            <SkeletonCard lines={2} />
+          )}
         </FormSection>
       </Card>
     </div>
@@ -266,7 +278,15 @@ function GroupList({
   );
 }
 
-function AdvanceList({ advances }: { advances: readonly OpenAdvance[] }) {
+function AdvanceList({
+  advances,
+  pending,
+  onClear,
+}: {
+  advances: readonly OpenAdvance[];
+  pending: boolean;
+  onClear: (advance: OpenAdvance) => void;
+}) {
   const { t } = useLocale();
   if (advances.length === 0)
     return (
@@ -291,6 +311,20 @@ function AdvanceList({ advances }: { advances: readonly OpenAdvance[] }) {
           <Link to="/e/$entity/$id" params={{ entity: ADVANCE_ENTITY, id: a.id }} className="ui-link">
             {t({ ja: '仮払を開く', en: 'Open advance' })}
           </Link>
+          <Button
+            size="sm"
+            aria-disabled={pending || undefined}
+            onClick={() => {
+              if (!pending) onClear(a);
+            }}
+            aria-label={t({
+              ja: `仮払精算を作成（${a.number ?? ''} ${a.employeeName}）`,
+              en: `Create advance clearing (${a.number ?? ''} ${a.employeeName})`,
+            })}
+            data-testid="expense-clear-advance"
+          >
+            {t({ ja: '仮払精算を作成', en: 'Create advance clearing' })}
+          </Button>
         </li>
       ))}
     </ul>
