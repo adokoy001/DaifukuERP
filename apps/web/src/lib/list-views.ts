@@ -5,7 +5,7 @@
 // Pure apart from the storage/lock objects passed in; list-views.test.ts.
 import type { EntityMeta, FieldMeta } from '../api/types.ts';
 import type { AnalysisLockManager, AnalysisStorage } from './analytics-storage.ts';
-import { extFieldsOf, listColumns } from './ext.ts';
+import { extFieldsOf, isExtFieldName, listColumns } from './ext.ts';
 import { MAX_FILTER_JSON, parseSort } from './query.ts';
 
 export type ListStorage = AnalysisStorage;
@@ -196,6 +196,25 @@ export function moveColumn(names: readonly string[], index: number, delta: -1 | 
 }
 
 // ---- saved views (AC-5) ---------------------------------------------------------------------
+
+/** Columns every list can be ordered by besides its fields (the Repository's base columns the UI links use). */
+const BASE_SORT_FIELDS = ['createdAt', 'updatedAt', 'id'] as const;
+
+/**
+ * A saved sort checked against the entity's current meta: kept only when its field can still be ordered by (a field the
+ * caller sees, not an ext key, or a base column; `number` / `docstatus` on documents). A field removed, masked or made
+ * outputHidden since the view was saved is dropped, so the list opens instead of failing on a refused orderBy.
+ */
+export function restorableSort(entity: EntityMeta, sort: string | undefined): string | undefined {
+  const spec = parseSort(sort);
+  if (!spec) return undefined;
+  const { field } = spec;
+  const ok =
+    (BASE_SORT_FIELDS as readonly string[]).includes(field) ||
+    (entity.kind === 'document' && (field === 'number' || field === 'docstatus')) ||
+    (!isExtFieldName(field) && entity.fields.some((f) => f.name === field));
+  return ok ? sort : undefined;
+}
 
 export function newViewId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;

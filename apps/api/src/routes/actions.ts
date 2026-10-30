@@ -30,10 +30,17 @@ export function registerActionRoutes(app: FastifyInstance, opts: { db: Database 
     async (req) => {
       const { name } = parse(nameParams, req.params, 'params');
       assertExposedAction(name);
-      return withRequestContext(opts.db, req, async (ctx) => {
-        if (registry.hasAction(name)) checkActionExport(ctx, registry.action(name));
-        return tableResult.parse(await runAction(ctx, name, req.body));
-      });
+      // One repeatable-read snapshot for the whole export: a multi-page read (<entity>.export_rows reads 500 rows per
+      // page) neither repeats nor skips rows changed meanwhile, and the export's audit row can still be written.
+      return withRequestContext(
+        opts.db,
+        req,
+        async (ctx) => {
+          if (registry.hasAction(name)) checkActionExport(ctx, registry.action(name));
+          return tableResult.parse(await runAction(ctx, name, req.body));
+        },
+        { snapshot: true },
+      );
     },
   );
   // internal actions (ADR-0014) get no route and no OpenAPI entry; the catch-all below answers 404 for them

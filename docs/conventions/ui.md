@@ -31,13 +31,20 @@ apps/web は `GET /meta`・`GET /auth/me`・アクションの出力だけから
 |---|---|---|---|
 | 絞り込み欄 | document の状態、業務日付（`date` → `postingDate` → `documentDate` → `transactionDate` の最初の date field）、`views.list` → `views.search` の field | date は範囲、ref は参照検索、enum は複数選択、decimal / int は範囲、bool は指定なし/はい/いいえ。text は検索欄、timestamp・uuid・json・ext・hidden は欄なし | `lib/list-filters.ts filterDefs`, `components/list-filter-panel.tsx` |
 | 絞り込みの URL | `?f=<JSON>`（key は field 名か `docstatus`）。他の画面からは `?status=draft,submitted&from=YYYY-MM-DD&to=YYYY-MM-DD` | `f` を entity の欄で検査し（不正は無視）、REST の `where` に `{ docstatus: { $in } }`・`{ $gte, $lte }`（金額は decimal 文字列）・等値で渡す。`status/from/to` は状態と業務日付として解釈し、次の変更で `f` に書き換える。適用中の条件は札（`.ui-chip`）で表示し、1 つずつ外せる | `lib/query.ts parseListSearch`, `lib/list-filters.ts` |
-| 列と保存ビュー | `localStorage` の `daifuku.list.v1.[tenantId, userId, companyId, entity]` | 列の表示・順序と名前付きビュー（最大 30）。読込は厳密、書込は読込と同じ検査の後。Web Locks があれば排他、無くても書く。失敗しても既定の列で表示する。保存した列・条件は現在の meta で検査し直す | `lib/list-views.ts`, `components/list-columns-dialog.tsx`, `components/list-views-dialog.tsx` |
+| 列と保存ビュー | `localStorage` の `daifuku.list.v1.[tenantId, userId, companyId, entity]` | 列の表示・順序と名前付きビュー（最大 30）。読込は厳密、書込は読込と同じ検査の後。Web Locks があれば排他、無くても書く。読めない・保存を拒否するブラウザでも既定の列で表示し、注意を出す。保存した列・条件・並べ替えは現在の meta で検査し直す（`restorableSort`） | `lib/list-views.ts`, `components/list-columns-dialog.tsx`, `components/list-views-dialog.tsx` |
 | ページ合計 | 表示列のうち `FieldMeta.money` の decimal | 表の下に「このページの合計（表示中の n 件）」。`lib/decimal.ts` の文字列演算。全体の合計ではない | `lib/list-workbench.ts pageTotals` |
-| CSV 出力 | `<entity>.export_rows`（generic、`{ entity, op: 'export' }`、`mutates: false`、TableResult、最大 5,000 行）。/meta の `canExport` | ボタンは `canExport` のときだけ。押すたびに `POST /actions/<entity>.export_rows/export` で取り直し、`lib/csv.ts` で CSV 化（BOM・CRLF・式の無効化）。`meta.truncated` なら件数と上限を表示 | `kernel/src/actions/export-rows.ts`, `components/list-export.tsx` |
-| 一覧出力の監査 | `audit_log`: entity、新しい `record_id`、`op: 'export'`、`action: '<entity>.export_rows'`、`after.export`（where・search・orderBy・columns・rows・total・truncated） | 出力 1 回につき 1 行。記録単位の監査パネルには出ない | `kernel/src/actions/export-rows.ts` |
+| CSV 出力 | `<entity>.export_rows`（generic、`{ entity, op: 'export' }`、`mutates: false`、TableResult、最大 5,000 行）。/meta の `canExport` | ボタンは `canExport` のときだけ。押すたびに `POST /actions/<entity>.export_rows/export`（repeatable read の 1 スナップショット）で取り直し、`lib/csv.ts` で CSV 化（BOM・CRLF・式の無効化）。`meta.truncated` なら件数と上限を表示。参照列は参照先の `export` 権限があるときだけ表示名、なければ id（ADR-0018） | `kernel/src/actions/export-rows.ts`, `components/list-export.tsx` |
+| 一覧出力の監査 | `audit_log`: entity、新しい `record_id`、`op: 'export'`、`action: '<entity>.export_rows'`、`after.export`（where・search・orderBy・columns・rows・total・truncated）。`where` は 4,000 文字まで、field group に属する field の値は `'[masked]'` | 出力 1 回につき 1 行。記録単位の監査パネルには出ない | `kernel/src/actions/export-rows.ts` |
 | 一括操作 | document で `ops` に `submit` / `cancel` / `delete` があるとき | 先頭に選択列（`DataTable` の `selection`）。選択は 100 件まで、同じ条件ならページをまたいで保持。操作ごとの対象件数と対象外の理由を表示し、確認後に 1 件ずつ既存 REST を `expectedVersion`（表示した版）付きで呼ぶ。結果は行ごと、失敗しても成功は戻さない。実行中は次の実行を止め、終了後に一覧を再取得 | `lib/list-workbench.ts`, `components/list-bulk.tsx` |
 
 一覧の見出しは `PageHeader`（右に CSV 出力・取込・新規などの操作）と `Toolbar`（検索・絞り込み・列・保存ビュー、右端に件数とページ送り）の 2 段を保つ。操作を足すときもこの構造に入れる。
+
+押した要素が消える操作の焦点（キーボード・読み上げの利用者が `<body>` から辿り直さないため）:
+
+- 絞り込み欄は適用で作り直さない（「絞り込む」「すべてクリア」に焦点が残る）。外から条件が変わったとき（札・保存ビュー・戻る）は下書きだけを置き換える。適用を拒否したら最初の不正な欄（`aria-invalid="true"`）へ。
+- 札を外したら次の札、なければ前の札、なければ「絞り込み」ボタンへ。札の行の「絞り込みをクリア」も「絞り込み」ボタンへ。表の中の空状態の「絞り込みをクリア」は「検索をクリア」と同じく検索欄へ。
+- 一括操作の確定後は、確認の開き元（選択バー）が消えるので結果の見出し（`tabIndex=-1`）へ。
+- 保存ビューの削除後は次のビューの「呼び出す」、なければ前、なければ名前の欄へ（ダイアログの中に留める）。
 
 ## 業務分野と画面検索
 

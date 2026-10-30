@@ -36,7 +36,9 @@ export const tableResult = z.object({
 
 ## 汎用一覧の CSV（`<entity>.export_rows`）との違い
 
-kernel が entity ごとに派生する `<entity>.export_rows`（[list-workbench](../specs/list-workbench.md)）も TableResult を返すが、レポートではない（`generic: true`。`/r/`・レポート一覧・画面検索に出さない）。汎用一覧の現在の条件・列で最大 5,000 行（`EXPORT_ROWS_LIMIT`、帳票の 10,000 行とは別）を表示値で返し、出力 1 回ごとに監査へ記録する。権限は entity の `export`、経路はレポートと同じ `POST /actions/:name/export`。
+kernel が entity ごとに派生する `<entity>.export_rows`（[list-workbench](../specs/list-workbench.md)）も TableResult を返すが、レポートではない（`generic: true`。`/r/`・レポート一覧・画面検索に出さない）。汎用一覧の現在の条件・列で最大 5,000 行（`EXPORT_ROWS_LIMIT`、帳票の 10,000 行とは別）を表示値で返し、出力 1 回ごとに監査へ記録する。権限は entity の `export`、経路はレポートと同じ `POST /actions/:name/export`。参照列の表示名は参照先の `export` 権限があるときだけ出す（ADR-0018 の「出力するすべての台帳の export を再検証」を、参照先を名指しする `exportEntities` の代わりに列ごとに適用する）。
+
+`POST /actions/:name/export` は 1 要求を repeatable read（読書き可）のトランザクションで実行する（`withContext` の `snapshot: true`）。複数ページ・複数文の読取が 1 つのスナップショットになり、出力の監査など insert は書ける。帳票の action はこの経路で更新をしない（`mutates` の action はもともと拒否される）。
 
 ## ブラウザ・ピボットとの境界
 

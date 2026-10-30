@@ -1,11 +1,48 @@
 // docs/specs/list-workbench.md AC-7..AC-9 over HTTP: the list's CSV rows come from the derived `<entity>.export_rows`
 // action through the existing fresh-authorization route POST /actions/:name/export.
-import { auditLog, companyMemberships, hashPassword, newId, users } from '@daifuku/kernel';
+import {
+  auditLog,
+  companyMemberships,
+  defineAction,
+  hashPassword,
+  label,
+  newId,
+  registry,
+  repo,
+  runAction,
+  tableResult,
+  users,
+  withContext,
+  type ContextParams,
+  type TableResult,
+} from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { buildServer } from '../src/server.ts';
+
+// A test-only report that answers with the isolation level of the request transaction it runs in, so the route wiring
+// of POST /actions/:name/export (repeatable read) and POST /actions/:name (unchanged) is measured, not assumed.
+defineAction({
+  name: 'list_export_probe.isolation',
+  description: label('試験用: 要求トランザクションの分離レベル', 'Test: isolation level of the request transaction'),
+  input: z.object({}),
+  output: tableResult,
+  permission: 'authenticated',
+  exportEntities: ['partner'],
+  tx: 'none',
+  handler: async (ctx) => {
+    const shown = JSON.stringify(await ctx.db.execute(sql`SHOW transaction_isolation`));
+    const level = ['repeatable read', 'read committed', 'serializable'].find((l) => shown.includes(l)) ?? shown;
+    return {
+      title: label('分離レベル', 'Isolation level'),
+      columns: [{ key: 'level', label: label('分離レベル', 'Isolation level'), kind: 'text' as const }],
+      rows: [{ level }],
+    };
+  },
+});
 
 let db: TestDb;
 let app: FastifyInstance;
@@ -105,5 +142,46 @@ describe('list-workbench AC-7..AC-9: POST /actions/<entity>.export_rows/export',
     const entry = rows.find((r) => JSON.stringify(r.after).includes('"where":{"code":"LX-3"}'));
     expect(entry).toMatchObject({ entity: 'partner', tenantId: db.tenantId, companyId: db.companyId });
     expect((entry?.after as { export: Record<string, unknown> }).export).toMatchObject({ where, rows: 1, total: 1 });
+  });
+
+  it('AC-7: POST /actions/:name/export runs in repeatable read; POST /actions/:name stays read committed', async () => {
+    const exported = await call('POST', '/actions/list_export_probe.isolation/export', adminToken, {});
+    expect(exported.status).toBe(200);
+    expect(exported.body.rows).toEqual([{ level: 'repeatable read' }]);
+    const plain = await call('POST', '/actions/list_export_probe.isolation', adminToken, {});
+    expect(plain.status).toBe(200);
+    expect(plain.body.rows).toEqual([{ level: 'read committed' }]);
+  });
+
+  it('AC-7: the export runs in one repeatable-read snapshot that can still write its audit row', async () => {
+    // POST /actions/:name/export opens its request transaction with { snapshot: true } (routes/actions.ts).
+    const params: ContextParams = {
+      tenantId: db.tenantId,
+      companyId: db.companyId,
+      actor: { type: 'user', id: db.adminUserId },
+      roles: ['admin'],
+    };
+    const partner = registry.entity('partner');
+    const where = { code: 'LX-SNAP' };
+    await withContext(
+      db.app,
+      params,
+      async (ctx) => {
+        const level = await ctx.db.execute(sql`SHOW transaction_isolation`);
+        expect(JSON.stringify(level)).toContain('repeatable read');
+        expect(await repo(ctx, partner).count(where)).toBe(0);
+        await db.run({}, (writer) => repo(writer, partner).create({ code: 'LX-SNAP', name: 'スナップショット中' }));
+        const result = (await runAction(ctx, 'partner.export_rows', { where })) as TableResult;
+        expect(result.rows).toEqual([]);
+        expect(result.meta).toMatchObject({ total: 0 });
+      },
+      { snapshot: true },
+    );
+    expect(await db.run({}, (ctx) => repo(ctx, partner).count(where))).toBe(1);
+    const audited = await db.owner.drizzle
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'partner.export_rows'), eq(auditLog.op, 'export')));
+    expect(audited.some((r) => JSON.stringify(r.after).includes('"where":{"code":"LX-SNAP"}'))).toBe(true);
   });
 });

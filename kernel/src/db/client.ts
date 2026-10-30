@@ -32,12 +32,14 @@ export function connect(url: string, opts: { max?: number } = {}): Database {
  * This is the ONLY way to obtain a Context; there is no bypass (ADR-0007).
  * readOnlySnapshot starts a repeatable-read, read-only transaction before any company/tenant lookup;
  * use it for bounded multi-page analytical reads whose totals must describe one database snapshot.
+ * snapshot starts a repeatable-read transaction that may still write (e.g. the audit row of a CSV export): every
+ * statement reads the same snapshot, so multi-page reads neither repeat nor skip rows that change meanwhile.
  */
 export async function withContext<T>(
   database: Database,
   params: ContextParams,
   fn: (ctx: Context) => Promise<T>,
-  options: { readOnlySnapshot?: boolean } = {},
+  options: { readOnlySnapshot?: boolean; snapshot?: boolean } = {},
 ): Promise<T> {
   return database.drizzle.transaction(
     async (tx) => {
@@ -59,7 +61,11 @@ export async function withContext<T>(
       const ctx = makeContext(tx, { ...params, appliedPacks });
       return fn(ctx);
     },
-    options.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined,
+    options.readOnlySnapshot
+      ? { isolationLevel: 'repeatable read', accessMode: 'read only' }
+      : options.snapshot
+        ? { isolationLevel: 'repeatable read' }
+        : undefined,
   );
 }
 

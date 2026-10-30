@@ -1,6 +1,6 @@
 import { canEditSettings } from '../api/settings.ts';
 import type { ActionMeta, AppMeta, EntityMeta, Label, Locale, MenuItem } from '../api/types.ts';
-import { reportTitle } from './report.ts';
+import { isReportAction, reportTitle } from './report.ts';
 import { DEDICATED_NAVIGATION, WORKSPACES, workspaceForModule, type DedicatedNavigation } from './navigation-data.ts';
 import type { NavigationCatalog, NavigationEntry, NavigationWorkspace } from './navigation-types.ts';
 export { WORKSPACES, workspaceForModule } from './navigation-data.ts';
@@ -39,7 +39,7 @@ function add(entries: Map<string, NavigationEntry>, entry: NavigationEntry): voi
 function allowedDedicated(definition: DedicatedNavigation, meta: AppMeta, tenantAdmin: boolean): boolean {
   if (definition.action && !meta.actions.some((action) => action.name === definition.action)) return false;
   if (definition.condition === 'reports')
-    return meta.actions.some((action) => ACTION_NAME.test(action.name) && action.resultKind === 'table');
+    return meta.actions.some((action) => ACTION_NAME.test(action.name) && isReportAction(action));
   if (definition.condition === 'settings') return canEditSettings(meta.roles);
   if (definition.condition === 'tenant-admin') return tenantAdmin;
   return true;
@@ -111,8 +111,7 @@ function menuEntry(
   const match = /^\/(r|a)\/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/.exec(path);
   const action = match?.[2] ? actions.get(match[2]) : undefined;
   if (!action) return undefined;
-  if (match?.[1] === 'r')
-    return action.resultKind === 'table' && !action.generic ? actionEntry(action, meta, item.label) : undefined;
+  if (match?.[1] === 'r') return isReportAction(action) ? actionEntry(action, meta, item.label) : undefined;
   // Keep the generated action page's own visibility contract: internal/generic and pack setup are not forms here.
   return !action.generic && action.resultKind !== 'table' && action.module !== 'pack'
     ? actionEntry(action, meta, item.label)
@@ -141,9 +140,7 @@ export function buildNavigation(meta: AppMeta | undefined, tenantAdmin: boolean)
       if (entry) add(entries, entry);
     }
   for (const entity of entities.values()) add(entries, recordEntry(entity, meta));
-  // Generic entity actions are never reports (<entity>.export_rows is the list's CSV source).
-  for (const action of actions.values())
-    if (action.resultKind === 'table' && !action.generic) add(entries, actionEntry(action, meta));
+  for (const action of actions.values()) if (isReportAction(action)) add(entries, actionEntry(action, meta));
   const all = [...entries.values()];
   return {
     entries: all,

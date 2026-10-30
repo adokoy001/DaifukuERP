@@ -1,8 +1,13 @@
 // ui-kit AC-4/AC-5: what the generic list shows when there is nothing to list, and the next step.
 import type { ReactNode } from 'react';
+import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
+import { countLabel, FILTERS } from '../lib/list-workbench.ts';
 import { S } from '../strings.ts';
 import { Button, EmptyState } from '../ui/index.ts';
+
+/** list-workbench: one label for every "clear the filters" control of the generic list. */
+export const CLEAR_FILTERS: Label = { ja: '絞り込みをクリア', en: 'Clear filters' };
 
 export interface ListEmptyStateProps {
   entityLabel: string;
@@ -32,7 +37,7 @@ export function ListEmptyState({
   if (q || filterCount > 0) {
     const parts = [
       q ? (locale === 'ja' ? `「${q}」` : `“${q}”`) : '',
-      filterCount > 0 ? (locale === 'ja' ? `絞り込み ${filterCount} 件` : `${filterCount} filter(s)`) : '',
+      filterCount > 0 ? (locale === 'ja' ? '絞り込み ' : '') + countLabel(filterCount, locale, FILTERS) : '',
     ].filter(Boolean);
     return (
       <EmptyState
@@ -41,9 +46,7 @@ export function ListEmptyState({
         action={
           <>
             {q ? <Button onClick={onClearSearch}>{t(S.clearSearch)}</Button> : null}
-            {filterCount > 0 && onClearFilters ? (
-              <Button onClick={onClearFilters}>{t({ ja: '絞り込みをクリア', en: 'Clear filters' })}</Button>
-            ) : null}
+            {filterCount > 0 && onClearFilters ? <Button onClick={onClearFilters}>{t(CLEAR_FILTERS)}</Button> : null}
           </>
         }
       />

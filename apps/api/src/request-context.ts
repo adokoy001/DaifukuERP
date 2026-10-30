@@ -19,8 +19,14 @@ export function parse<T extends z.ZodType>(schema: T, value: unknown, part: stri
   throw new ValidationError(`invalid ${part}`, issues);
 }
 
-export function withRequestContext<T>(db: Database, req: FastifyRequest, fn: (ctx: Context) => Promise<T>): Promise<T> {
-  return withContext(db, req.contextParams(), fn);
+/** `snapshot`: one repeatable-read snapshot for every statement of the request (see withContext). */
+export function withRequestContext<T>(
+  db: Database,
+  req: FastifyRequest,
+  fn: (ctx: Context) => Promise<T>,
+  options: { snapshot?: boolean } = {},
+): Promise<T> {
+  return withContext(db, req.contextParams(), fn, options);
 }
 
 /** `internal: true` actions run in-process only (ADR-0014): over HTTP they answer like an unknown action. */

@@ -26,7 +26,8 @@ const XrPartner = defineEntity({
   displayField: 'name',
   fields: { code: f.text({ required: true, unique: true }), name: f.text({ required: true }) },
   permissions: {
-    roles: { xr_exporter: ['read', 'create'], xr_limited: ['read'], xr_reader: ['read', 'create'] },
+    // xr_limited reads partners but may not export them: its order exports keep partner ids (ADR-0018).
+    roles: { xr_exporter: ['read', 'create', 'export'], xr_limited: ['read'], xr_reader: ['read', 'create'] },
   },
 });
 const XrOrder = defineDocument({
@@ -59,6 +60,7 @@ const XrOrder = defineDocument({
   },
   views: { list: ['partnerId', 'date', 'amount', 'stage', 'secret'], search: ['owner'] },
 });
+registry.registerExt(XrOrder.name, { region: f.text(), vaultTag: f.text({ outputHidden: true }) });
 const XrBulk = defineEntity({
   name: 'xr_bulk',
   label: label('大量出力', 'Bulk export'),
@@ -151,10 +153,16 @@ describe('list-workbench AC-7/AC-8: rows, columns and masks', () => {
       PermissionDenied,
     );
     for (const roles of [exporter, ['admin']])
-      await expect(run(roles, 'xr_order.export_rows', { columns: ['vaultKey'] })).rejects.toBeInstanceOf(
-        PermissionDenied,
-      );
+      for (const column of ['vaultKey', 'ext.vaultTag'])
+        await expect(run(roles, 'xr_order.export_rows', { columns: [column] })).rejects.toBeInstanceOf(
+          PermissionDenied,
+        );
+    const ext = await run(exporter, 'xr_order.export_rows', { columns: ['ext.region'] });
+    expect(ext.columns.map((c) => c.key)).toEqual(['ext.region']);
     await expect(run(exporter, 'xr_order.export_rows', { columns: ['nope'] })).rejects.toBeInstanceOf(ValidationError);
+    await expect(run(exporter, 'xr_order.export_rows', { columns: ['ext.nope'] })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
     await expect(run(exporter, 'xr_order.export_rows', { columns: ['date', 'date'] })).rejects.toBeInstanceOf(
       ValidationError,
     );
@@ -165,13 +173,22 @@ describe('list-workbench AC-7/AC-8: rows, columns and masks', () => {
     expect(admin.rows.map((r) => r.secret)).toContain('classified-1');
   });
 
-  it('AC-8: row rules limit the rows and a ref target the caller cannot read keeps its id', async () => {
+  it('AC-8: row rules limit the rows; a ref target the caller cannot export (or read) keeps its id', async () => {
     const limited = await run(['xr_limited'], 'xr_order.export_rows', { columns: ['owner', 'partnerId'] });
     expect(limited.rows.map((r) => r.owner)).toEqual(['mine', 'mine']);
     expect(limited.meta?.total).toBe(2);
-    expect(limited.rows[0]?.partnerId).toBe('Alpha 商事');
+    // ADR-0018: xr_limited may read partners but not export them, so their names are not output.
+    expect(limited.rows.map((r) => r.partnerId)).toEqual([partnerId, partnerId]);
+    expect(JSON.stringify(limited.rows)).not.toContain('Alpha 商事');
     const noRef = await run(['xr_noref'], 'xr_order.export_rows', { columns: ['partnerId'] });
     expect(noRef.rows.map((r) => r.partnerId)).toEqual([partnerId, partnerId, partnerId]);
+    const exported = await run(exporter, 'xr_order.export_rows', { columns: ['partnerId'] });
+    expect(exported.rows.map((r) => r.partnerId)).toEqual(['Alpha 商事', 'Alpha 商事', 'Alpha 商事']);
+  });
+
+  it('AC-8: an oversized where is refused before anything is read or audited', async () => {
+    const where = { owner: { $in: Array.from({ length: 600 }, (_, i) => `owner-${i}`) } };
+    await expect(run(exporter, 'xr_order.export_rows', { where })).rejects.toBeInstanceOf(ValidationError);
   });
 });
 
@@ -191,6 +208,24 @@ describe('list-workbench AC-9: audit', () => {
       export: { where, search: 'mi', columns: ['date'], rows: 2, total: 2, truncated: false },
     });
     expect(entries.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('AC-9: values of field-group fields in the audited criteria are replaced; names and operators stay', async () => {
+    const where = { secret: { $ne: 'classified-zz' }, $or: [{ secret: 'classified-1' }, { owner: 'audit-or' }] };
+    const result = await run(['admin'], 'xr_order.export_rows', { where, columns: ['owner'] });
+    expect(result.rows.map((r) => r.owner)).toEqual(['mine']);
+    const entries = await db.run({}, (ctx) =>
+      ctx.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, 'xr_order.export_rows'), eq(auditLog.op, 'export'))),
+    );
+    const entry = entries.find((e) => JSON.stringify(e.after).includes('audit-or'));
+    expect((entry?.after as { export: { where: unknown } }).export.where).toEqual({
+      secret: { $ne: '[masked]' },
+      $or: [{ secret: '[masked]' }, { owner: 'audit-or' }],
+    });
+    expect(JSON.stringify(entries.map((e) => e.after))).not.toContain('classified-');
   });
 });
 

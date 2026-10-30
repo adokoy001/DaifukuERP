@@ -442,8 +442,10 @@
     align-items: center;
     gap: calc(var(--spacing) * 1.5);
   }
+  /* Chips and the row's "Clear filters" are at least 24px tall (WCAG 2.2 SC 2.5.8 target size, also at 390px). */
   .ui-chip {
     display: inline-flex;
+    min-height: 24px;
     max-width: 100%;
     align-items: center;
     gap: var(--spacing);
@@ -458,6 +460,11 @@
   }
   .ui-chip:hover {
     border-color: var(--accent);
+  }
+  .ui-chip-clear {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
   }
 
   /* ---- Tabs ---- */

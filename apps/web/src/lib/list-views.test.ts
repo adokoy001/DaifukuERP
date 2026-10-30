@@ -14,6 +14,7 @@ import {
   mutateListPrefs,
   readListPrefs,
   resolveColumns,
+  restorableSort,
   saveView,
   writeListPrefs,
   type ListLockManager,
@@ -190,5 +191,20 @@ describe('list-workbench AC-5: saved views', () => {
     for (let i = 0; i < MAX_SAVED_VIEWS; i += 1) prefs = saveView(prefs, view(`v${i}`));
     expect(() => saveView(prefs, view('one more'))).toThrow();
     expect(saveView(prefs, view('v3', { id: 'replaced' })).views).toHaveLength(MAX_SAVED_VIEWS);
+  });
+
+  it('AC-5: a reopened view keeps its sort only when the field can still be ordered by in the current meta', () => {
+    expect(restorableSort(entity, 'total:desc')).toBe('total:desc');
+    expect(restorableSort(entity, 'createdAt:asc')).toBe('createdAt:asc');
+    expect(restorableSort(entity, 'number:desc')).toBe('number:desc');
+    expect(restorableSort({ ...entity, kind: 'entity' }, 'number:desc')).toBeUndefined();
+    // removed, masked or outputHidden since saving (no longer in the caller's meta): dropped, so the list still opens
+    expect(restorableSort(entity, 'secretMargin:desc')).toBeUndefined();
+    expect(restorableSort({ ...entity, fields: entity.fields.filter((f) => f.name !== 'total') }, 'total:asc')).toBe(
+      undefined,
+    );
+    // ext keys cannot be ordered by (ADR-0014)
+    expect(restorableSort(entity, 'ext.rank:asc')).toBeUndefined();
+    expect(restorableSort(entity, undefined)).toBeUndefined();
   });
 });

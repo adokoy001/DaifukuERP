@@ -5,9 +5,9 @@ import { useMutation } from '@tanstack/react-query';
 import { request } from '../api/client.ts';
 import type { TableResult } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
-import { tableToCsv } from '../lib/csv.ts';
+import { csvFilename, tableToCsv } from '../lib/csv.ts';
 import { saveBlob } from '../lib/download.ts';
-import { exportActionName, exportFilename } from '../lib/list-workbench.ts';
+import { countLabel, exportActionName, ROWS } from '../lib/list-workbench.ts';
 import { S } from '../strings.ts';
 import { Button } from '../ui/index.ts';
 import { Icon } from './icon.tsx';
@@ -42,7 +42,7 @@ export function ListExportButton({
       onSuccess: (result) => {
         saveBlob(
           new Blob([tableToCsv(result, locale, t(S.sums))], { type: 'text/csv;charset=utf-8' }),
-          exportFilename(entity, new Date()),
+          csvFilename(entity, new Date()),
         );
         const meta = result.meta ?? {};
         if (meta.truncated === true)
@@ -56,8 +56,8 @@ export function ListExportButton({
         else
           toast.success(
             locale === 'ja'
-              ? `${number(result.rows.length, locale)} 件の CSV を作成しました`
-              : `CSV created with ${number(result.rows.length, locale)} rows`,
+              ? `${countLabel(result.rows.length, locale, ROWS)}の CSV を作成しました`
+              : `CSV created with ${countLabel(result.rows.length, locale, ROWS)}`,
           );
       },
       onError: (e) => toast.error(e),

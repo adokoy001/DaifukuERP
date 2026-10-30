@@ -3,7 +3,7 @@
 // rolls back the rows that succeeded. One run at a time; the list is read again when it ends.
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type Ref } from 'react';
 import { request } from '../api/client.ts';
 import { keys } from '../api/queries.ts';
 import type { EntityMeta, Label, RecordJson } from '../api/types.ts';
@@ -13,8 +13,10 @@ import {
   BULK_LIMIT,
   bulkRequest,
   bulkSummary,
+  countLabel,
   planBulk,
   rowLabel,
+  ROWS,
   type BulkOp,
   type BulkRowResult,
 } from '../lib/list-workbench.ts';
@@ -34,7 +36,7 @@ const STATE_NOTE: Record<BulkOp, Label> = {
 };
 
 function count(n: number, locale: 'ja' | 'en'): string {
-  return locale === 'ja' ? `${n} 件` : `${n} ${n === 1 ? 'row' : 'rows'}`;
+  return countLabel(n, locale, ROWS);
 }
 
 export interface BulkRun {
@@ -221,8 +223,21 @@ const STATUS_LABEL: Record<BulkRowResult['status'], Label> = {
   failed: { ja: '失敗', en: 'Failed' },
 };
 
-/** Per-row results of the last run; kept after the list refresh until closed. */
-export function BulkResults({ entity, run, onClose }: { entity: EntityMeta; run: BulkRun; onClose: () => void }) {
+/**
+ * Per-row results of the last run; kept after the list refresh until closed. The heading takes focus when a run starts
+ * (`headingRef`, tabIndex -1): the confirm dialog's opener, the bulk bar, is gone by then.
+ */
+export function BulkResults({
+  entity,
+  run,
+  onClose,
+  headingRef,
+}: {
+  entity: EntityMeta;
+  run: BulkRun;
+  onClose: () => void;
+  headingRef?: Ref<HTMLHeadingElement>;
+}) {
   const { t, locale } = useLocale();
   const summary = bulkSummary(run.results);
   const heading = locale === 'ja' ? `一括${t(OP_LABEL[run.op])}の結果` : `Bulk ${t(OP_LABEL[run.op]).toLowerCase()}`;
@@ -233,7 +248,9 @@ export function BulkResults({ entity, run, onClose }: { entity: EntityMeta; run:
   return (
     <Card className="gap-1.5" data-testid="bulk-results">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold text-text">{heading}</h2>
+        <h2 ref={headingRef} tabIndex={-1} className="text-sm font-semibold text-text" data-testid="bulk-heading">
+          {heading}
+        </h2>
         <div aria-live="polite" className="text-xs text-text-secondary" data-testid="bulk-summary">
           {run.active ? `${t({ ja: '実行中', en: 'Running' })} — ${line}` : line}
         </div>

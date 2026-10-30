@@ -16,6 +16,14 @@ function shorten(s: string, tail?: RegExp): string {
   return head.length > TITLE_MAX ? `${head.slice(0, TITLE_MAX)}…` : head;
 }
 
+/**
+ * A report is a table action that is not generic. Generic entity actions are never reports: `<entity>.export_rows`
+ * returns a TableResult for the list's CSV only. Shared by the report catalog and the navigation so they cannot drift.
+ */
+export function isReportAction(action: Pick<ActionMeta, 'resultKind' | 'generic'>): boolean {
+  return action.resultKind === 'table' && !action.generic;
+}
+
 /** Menu title for a report: actions only carry a description, so its first clause is used (`試算表を返します。…` -> `試算表`). */
 export function reportTitle(action: Pick<ActionMeta, 'name' | 'description'>): Label {
   const ja = shorten(action.description.ja, JA_VERB_TAIL);

@@ -5,6 +5,17 @@ import { isDecimalString, sumDecimalStrings } from './decimal.ts';
 import { fieldValue } from './ext.ts';
 import { parseSort } from './query.ts';
 
+// ---- counts in UI text (AC-12) --------------------------------------------------------------
+
+/** "3 件" / "1 row" / "3 rows": a locale-formatted count with the English singular or plural noun. */
+export function countLabel(n: number, locale: Locale, en: readonly [singular: string, plural: string]): string {
+  const shown = n.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US');
+  return locale === 'ja' ? `${shown} 件` : `${shown} ${n === 1 ? en[0] : en[1]}`;
+}
+
+export const ROWS = ['row', 'rows'] as const;
+export const FILTERS = ['filter', 'filters'] as const;
+
 // ---- page totals (AC-6) ---------------------------------------------------------------------
 
 export interface PageTotal {
@@ -55,11 +66,6 @@ export function exportInput(
   };
 }
 
-export function exportFilename(entity: string, now: Date): string {
-  const stamp = now.toISOString().slice(0, 19).replace(/[-:T]/g, '');
-  return `${entity}_${stamp}.csv`;
-}
-
 // ---- bulk document operations (AC-10/AC-11) -------------------------------------------------
 
 export const BULK_LIMIT = 100;
@@ -83,6 +89,60 @@ export interface BulkPlan {
   targets: RecordJson[];
   /** Selected rows whose state does not allow the operation. */
   ineligible: RecordJson[];
+}
+
+// ---- selection (AC-11) ----------------------------------------------------------------------
+
+/** Selected rows by id, in the order they were chosen (Map keeps insertion order). */
+export type RowSelectionMap = ReadonlyMap<string, RecordJson>;
+
+/**
+ * What keeps a selection alive: search, sort and filters. The page is deliberately not part of it, so rows chosen on
+ * one page stay selected on the next; any other change of the criteria starts a new, empty selection.
+ */
+export function selectionCriteria(state: {
+  q?: string | undefined;
+  sort?: string | undefined;
+  where?: Record<string, unknown> | undefined;
+}): string {
+  return JSON.stringify([state.q ?? '', state.sort ?? '', state.where ?? null]);
+}
+
+/** Selects or clears one row; a new row beyond `limit` is refused (the same map is returned). */
+export function toggleSelection(
+  current: RowSelectionMap,
+  row: RecordJson,
+  on: boolean,
+  limit = BULK_LIMIT,
+): RowSelectionMap {
+  if (on ? current.has(row.id) || current.size >= limit : !current.has(row.id)) return current;
+  const next = new Map(current);
+  if (on) next.set(row.id, row);
+  else next.delete(row.id);
+  return next;
+}
+
+/** The page checkbox: selects the page's rows in order until `limit`, or clears them all. */
+export function togglePageSelection(
+  current: RowSelectionMap,
+  rows: readonly RecordJson[],
+  on: boolean,
+  limit = BULK_LIMIT,
+): RowSelectionMap {
+  const next = new Map(current);
+  for (const row of rows) {
+    if (!on) next.delete(row.id);
+    else if (next.has(row.id) || next.size < limit) next.set(row.id, row);
+  }
+  return next;
+}
+
+/** Selected rows that are on the page shown take its fresh copy (version, state); others are kept as they were. */
+export function refreshSelection(current: RowSelectionMap, rows: readonly RecordJson[]): RowSelectionMap {
+  if (!rows.some((row) => current.has(row.id))) return current;
+  const next = new Map(current);
+  for (const row of rows) if (next.has(row.id)) next.set(row.id, row);
+  return next;
 }
 
 /** AC-10/AC-11: eligible rows in selection order (at most BULK_LIMIT) and the rows left out for their state. */

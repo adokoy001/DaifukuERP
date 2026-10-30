@@ -13,7 +13,7 @@ import type { EntityMeta, Label, RecordJson } from '../api/types.ts';
 import { DataTable, type RowSelection } from '../components/data-table.tsx';
 import { BulkBar, BulkConfirm, BulkResults, useBulkRunner } from '../components/list-bulk.tsx';
 import { ListColumnsDialog } from '../components/list-columns-dialog.tsx';
-import { ListEmptyState } from '../components/list-empty-state.tsx';
+import { CLEAR_FILTERS, ListEmptyState } from '../components/list-empty-state.tsx';
 import { ListExportButton } from '../components/list-export.tsx';
 import { ListFilterPanel } from '../components/list-filter-panel.tsx';
 import { ListViewsDialog } from '../components/list-views-dialog.tsx';
@@ -41,6 +41,7 @@ import {
   newViewId,
   readListPrefs,
   resolveColumns,
+  restorableSort,
   saveView,
   type ListPrefs,
   type ListStorage,
@@ -49,12 +50,19 @@ import {
 import {
   BULK_LIMIT,
   bulkOps,
+  countLabel,
   exportActionName,
   exportInput,
   pageTotals,
   planBulk,
+  refreshSelection,
   rowLabel,
+  ROWS,
+  selectionCriteria,
+  togglePageSelection,
+  toggleSelection,
   type BulkOp,
+  type RowSelectionMap,
 } from '../lib/list-workbench.ts';
 import { PAGE_SIZE, pageCount, toListState, updateSearch, type ListSearch, type SearchPatch } from '../lib/query.ts';
 import { S } from '../strings.ts';
@@ -65,12 +73,15 @@ const W = {
   filters: { ja: '絞り込み', en: 'Filters' },
   columns: { ja: '列', en: 'Columns' },
   views: { ja: '保存ビュー', en: 'Saved views' },
-  clearFilters: { ja: '絞り込みをクリア', en: 'Clear filters' },
   removeFilter: { ja: '絞り込みを外す', en: 'Remove filter' },
   pageTotals: { ja: 'このページの合計', en: 'Totals on this page' },
   storageFailed: {
     ja: '表示設定を読み込めませんでした。既定の列で表示しています。',
     en: 'Could not read the saved list settings; showing the default columns.',
+  },
+  storageUnavailable: {
+    ja: 'このブラウザでは列と保存ビューを保存できません。既定の列で表示しています。',
+    en: 'This browser does not allow saving columns and views; showing the default columns.',
   },
   saveFailed: {
     ja: 'このブラウザに保存できませんでした。表示は変わりません。',
@@ -165,17 +176,23 @@ function useListPrefs(entity: string) {
     entity,
   );
   const [prefs, setPrefs] = useState<ListPrefs>(EMPTY_PREFS);
-  const [readFailed, setReadFailed] = useState(false);
+  /** Why the stored settings are not in use: unreadable data, or no storage at all (blocked site data, private mode). */
+  const [problem, setProblem] = useState<'read-failed' | 'unavailable' | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const refresh = () => {
       const storage = browserStorage();
+      if (!storage) {
+        setPrefs(EMPTY_PREFS);
+        setProblem('unavailable');
+        return;
+      }
       try {
-        setPrefs(storage ? readListPrefs(storage, key) : EMPTY_PREFS);
-        setReadFailed(false);
+        setPrefs(readListPrefs(storage, key));
+        setProblem(null);
       } catch {
         setPrefs(EMPTY_PREFS);
-        setReadFailed(true);
+        setProblem('read-failed');
       }
     };
     const receive = (event: StorageEvent) => {
@@ -193,7 +210,7 @@ function useListPrefs(entity: string) {
         if (!storage) throw new Error('storage unavailable');
         const next = await mutateListPrefs(storage, globalThis.navigator?.locks, key, update);
         setPrefs(next);
-        setReadFailed(false);
+        setProblem(null);
         return true;
       } catch (error) {
         toast.push({
@@ -207,38 +224,22 @@ function useListPrefs(entity: string) {
     },
     [key, t, toast],
   );
-  return { prefs, readFailed, busy, change };
+  return { prefs, problem, busy, change };
 }
 
-/** Rows chosen for a bulk operation, kept across pages of the same criteria and refreshed with the rows shown. */
+/**
+ * AC-11: rows chosen for a bulk operation (pure rules in lib/list-workbench.ts): at most BULK_LIMIT, kept across pages
+ * of the same criteria (`selectionCriteria`), emptied when the criteria change, refreshed with the rows shown.
+ */
 function useSelection(rows: RecordJson[] | undefined, criteria: string) {
-  const [selected, setSelected] = useState<Map<string, RecordJson>>(() => new Map());
+  const [selected, setSelected] = useState<RowSelectionMap>(() => new Map());
   useEffect(() => setSelected(new Map()), [criteria]);
   useEffect(() => {
-    if (!rows) return;
-    setSelected((current) => {
-      if (!rows.some((row) => current.has(row.id))) return current;
-      const next = new Map(current);
-      for (const row of rows) if (next.has(row.id)) next.set(row.id, row);
-      return next;
-    });
+    if (rows) setSelected((current) => refreshSelection(current, rows));
   }, [rows]);
-  const toggle = (row: RecordJson, on: boolean) =>
-    setSelected((current) => {
-      const next = new Map(current);
-      if (on && next.size < BULK_LIMIT) next.set(row.id, row);
-      if (!on) next.delete(row.id);
-      return next;
-    });
+  const toggle = (row: RecordJson, on: boolean) => setSelected((current) => toggleSelection(current, row, on));
   const togglePage = (page: RecordJson[], on: boolean) =>
-    setSelected((current) => {
-      const next = new Map(current);
-      for (const row of page) {
-        if (!on) next.delete(row.id);
-        else if (next.size < BULK_LIMIT) next.set(row.id, row);
-      }
-      return next;
-    });
+    setSelected((current) => togglePageSelection(current, page, on));
   return { selected, toggle, togglePage, clear: () => setSelected(new Map()) };
 }
 
@@ -256,7 +257,7 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
   useEffect(() => {
     if (list.error) toast.error(list.error);
   }, [list.error, toast]);
-  const { prefs, readFailed, busy: prefsBusy, change } = useListPrefs(entity.name);
+  const { prefs, problem: prefsProblem, busy: prefsBusy, change } = useListPrefs(entity.name);
   // web-phase15 AC-3: `ext.<key>` in views.list resolves to the registered ext field; AC-4 stored columns override it.
   const columns = useMemo(() => resolveColumns(entity, prefs.columns), [entity, prefs.columns]);
   const refFields = useMemo(() => columns.filter((f) => f.kind === 'ref'), [columns]);
@@ -275,8 +276,7 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
   const canCreate = entity.ops.includes('create');
   const canExport = meta.data?.actions.some((a) => a.name === exportActionName(entity.name) && a.canExport === true);
   const ops = bulkOps(entity);
-  const criteria = JSON.stringify([search.q ?? '', search.sort ?? '', where ?? null]);
-  const selection = useSelection(rows, criteria);
+  const selection = useSelection(rows, selectionCriteria({ q: search.q, sort: search.sort, where }));
   const bulk = useBulkRunner(entity);
   const [confirmOp, setConfirmOp] = useState<BulkOp | null>(null);
   const [dialog, setDialog] = useState<'columns' | 'views' | null>(null);
@@ -286,6 +286,28 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
   // "Clear search" and "Retry" sit in the table body and disappear when the list reloads; keep keyboard and
   // screen-reader users in place by moving focus to the search box (their next step is to type or read on).
   const searchBox = useRef<HTMLInputElement>(null);
+  const filterPanelId = `list-filters-${entity.name}`;
+  const filterToggleId = `${filterPanelId}-toggle`;
+  // A filter chip removes itself and the chip row's "Clear filters" disappears with the row: after the URL change,
+  // focus goes to the next chip, else the previous one, else the Filters toggle (never to <body>).
+  const chipRow = useRef<HTMLDivElement>(null);
+  const focusAfterFilters = useRef<string | null>(null);
+  useEffect(() => {
+    const target = focusAfterFilters.current;
+    if (target === null) return;
+    focusAfterFilters.current = null;
+    const chip = chipRow.current?.querySelector<HTMLElement>(`[data-chip="${target}"]`);
+    (chip ?? globalThis.document?.getElementById(filterToggleId) ?? searchBox.current)?.focus();
+  }, [filters, filterToggleId]);
+  // The bulk bar (the confirm dialog's opener) goes away when a run starts: focus the results heading instead, so the
+  // live summary is read in context and the per-row links follow in Tab order.
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  const focusResults = useRef(false);
+  useEffect(() => {
+    if (!focusResults.current || !bulk.run) return;
+    focusResults.current = false;
+    resultsHeading.current?.focus();
+  }, [bulk.run]);
   if (entity.name.startsWith('workforce_') && list.isError)
     return <MetaError error={list.error} retry={() => void list.refetch()} />;
   const selectedRows = [...selection.selected.values()];
@@ -356,13 +378,14 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
   };
   const openView = (view: SavedListView) => {
     setDialog(null);
+    // AC-5: filters, sort and columns are checked against the entity's current meta; stale parts are dropped.
     const restored = parseFilters(view.filters, defs);
+    const sort = restorableSort(entity, view.sort);
     setText(view.q ?? '');
     void navigate({
       to: '/e/$entity',
       params: { entity: entity.name },
-      search: () =>
-        updateSearch({}, { q: view.q, sort: view.sort, f: activeFilterCount(restored) ? restored : undefined }),
+      search: () => updateSearch({}, { q: view.q, sort, f: activeFilterCount(restored) ? restored : undefined }),
     });
     const names = view.columns && !isDefaultColumns(entity, view.columns) ? view.columns : undefined;
     void change((current) => {
@@ -370,7 +393,12 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
       return names ? { ...rest, columns: names } : rest;
     });
   };
-  const filterPanelId = `list-filters-${entity.name}`;
+  const removeChip = (key: string) => {
+    const shown = defs.filter((def) => filters[def.key] !== undefined).map((def) => def.key);
+    const index = shown.indexOf(key);
+    focusAfterFilters.current = shown[index + 1] ?? shown[index - 1] ?? 'toggle';
+    applyFilters(withFilter(filters, defs, key, undefined));
+  };
   return (
     <div className="flex h-full flex-col gap-2 p-3">
       <PageHeader
@@ -414,6 +442,7 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
         />
         {defs.length ? (
           <Button
+            id={filterToggleId}
             aria-expanded={filtersOpen}
             aria-controls={filtersOpen ? filterPanelId : undefined}
             onClick={() => setFiltersOpen((open) => !open)}
@@ -427,9 +456,13 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
           {prefs.views.length ? withCount(t(W.views), prefs.views.length, locale) : t(W.views)}
         </Button>
       </Toolbar>
-      {readFailed ? <p className="ui-notice ui-notice-warning text-xs">{t(W.storageFailed)}</p> : null}
+      {prefsProblem ? (
+        <p className="ui-notice ui-notice-warning text-xs" data-testid="list-prefs-notice">
+          {t(prefsProblem === 'unavailable' ? W.storageUnavailable : W.storageFailed)}
+        </p>
+      ) : null}
       {filterCount ? (
-        <div className="ui-chips" data-testid="filter-chips">
+        <div className="ui-chips" data-testid="filter-chips" ref={chipRow}>
           {defs.map((def) => {
             const value = filters[def.key];
             if (value === undefined) return null;
@@ -441,27 +474,29 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
                 key={def.key}
                 type="button"
                 className="ui-chip"
+                data-chip={def.key}
                 aria-label={`${t(W.removeFilter)}: ${shown}`}
-                onClick={() => applyFilters(withFilter(filters, defs, def.key, undefined))}
+                onClick={() => removeChip(def.key)}
               >
                 <span>{shown}</span>
                 <span aria-hidden="true">×</span>
               </button>
             );
           })}
-          <button type="button" className="ui-link" onClick={() => applyFilters({})}>
-            {t(W.clearFilters)}
+          <button
+            type="button"
+            className="ui-link ui-chip-clear"
+            onClick={() => {
+              focusAfterFilters.current = 'toggle';
+              applyFilters({});
+            }}
+          >
+            {t(CLEAR_FILTERS)}
           </button>
         </div>
       ) : null}
       {filtersOpen && defs.length ? (
-        <ListFilterPanel
-          key={JSON.stringify(filters)}
-          id={filterPanelId}
-          defs={defs}
-          filters={filters}
-          onApply={applyFilters}
-        />
+        <ListFilterPanel id={filterPanelId} defs={defs} filters={filters} onApply={applyFilters} />
       ) : null}
       <WorkforceWorkflowLink entity={entity.name} />
       {ops.length && selectedRows.length ? (
@@ -474,7 +509,9 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
         />
       ) : null}
       {selection.selected.size >= BULK_LIMIT ? <p className="text-xs text-text-muted">{t(W.limitReached)}</p> : null}
-      {bulk.run ? <BulkResults entity={entity} run={bulk.run} onClose={bulk.clear} /> : null}
+      {bulk.run ? (
+        <BulkResults entity={entity} run={bulk.run} onClose={bulk.clear} headingRef={resultsHeading} />
+      ) : null}
       <DataTable
         entity={entity}
         columns={columns}
@@ -493,8 +530,8 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary" data-testid="page-totals">
           <span className="font-semibold">
             {locale === 'ja'
-              ? `${t(W.pageTotals)}（表示中の ${rows.length} 件）`
-              : `${t(W.pageTotals)} (${rows.length} rows shown)`}
+              ? `${t(W.pageTotals)}（表示中の ${countLabel(rows.length, locale, ROWS)}）`
+              : `${t(W.pageTotals)} (${countLabel(rows.length, locale, ROWS)} shown)`}
           </span>
           {totals.map(({ field, total }) => (
             <span key={field.name} data-total={field.name}>
@@ -544,6 +581,7 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
             const targets = planBulk(op, selectedRows).targets;
             setConfirmOp(null);
             selection.clear();
+            focusResults.current = true;
             void bulk.start(op, targets);
           }}
         />

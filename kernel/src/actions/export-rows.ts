@@ -2,8 +2,9 @@
 // TableResult for the browser's CSV. Rows are read page by page through the Repository with the caller's Context, so
 // row rules, company/site scope, field masks and outputHidden apply exactly as in `<entity>.list`; the permission is the
 // entity's `export` operation, and every export leaves one audit entry (entity, criteria summary, row count, actor).
-// The values are the list as displayed: ref columns carry the referenced record's display value (read with the caller's
-// own read permission on the target; the id when it cannot be read), enum and document state their label.
+// The values are the list as displayed: ref columns carry the referenced record's display value only when the caller may
+// also export the target (ADR-0018: a CSV re-checks export on every ledger whose data it outputs) and can read the row;
+// otherwise the id. Enum and document state carry their label.
 import { z } from 'zod';
 import type { Context } from '../context.ts';
 import { defineAction } from '../dsl/action.ts';
@@ -15,7 +16,7 @@ import { label, type Label, type Locale } from '../i18n.ts';
 import { newId } from '../ids.ts';
 import { writeAudit } from '../audit.ts';
 import { extFieldMetas, fieldMeta } from '../meta.ts';
-import { assertReadableFields } from '../permissions.ts';
+import { assertReadableFields, can } from '../permissions.ts';
 import { publicOutput } from '../public-output.ts';
 import { registry } from '../registry.ts';
 import { listQuerySchema, MAX_LIMIT, type ListQuery } from '../repository/query.ts';
@@ -26,6 +27,10 @@ import { tableResult, type ColumnKind, type TableColumn } from '../table-result.
 /** Rows one export returns at most; beyond it `meta.truncated` is true and `meta.total` tells how many matched. */
 export const EXPORT_ROWS_LIMIT = 5000;
 const MAX_COLUMNS = 100;
+/** Serialized `where` at most, like REST GET /api/:entity (the criteria are kept in the append-only audit log). */
+const MAX_WHERE_JSON = 4000;
+/** Placeholder for values of field-group fields in the audited criteria. */
+const MASKED_VALUE = '[masked]';
 
 const DOCUMENT_COLUMNS: Record<'number' | 'docstatus', Label> = {
   number: label('番号', 'Number'),
@@ -39,9 +44,17 @@ const DOCSTATUS_LABELS: Record<number, Label> = {
 
 export const exportRowsInput = z
   .object({
-    where: listQuerySchema.shape.where,
+    where: listQuerySchema.shape.where.refine(
+      (where) => where === undefined || JSON.stringify(where).length <= MAX_WHERE_JSON,
+      {
+        message: `where must serialize to at most ${MAX_WHERE_JSON} characters`,
+      },
+    ),
     search: listQuerySchema.shape.search,
-    orderBy: listQuerySchema.shape.orderBy,
+    orderBy: z
+      .array(z.object({ field: z.string().min(1).max(120), dir: z.enum(['asc', 'desc']).optional() }))
+      .max(5)
+      .optional(),
     /** Columns in output order: entity fields, `ext.<key>`, and for documents `number` / `docstatus`. Default: the list view. */
     columns: z.array(z.string().min(1).max(120)).min(1).max(MAX_COLUMNS).optional(),
     /** Language of enum and document-state labels. Default: the request's locale. */
@@ -105,10 +118,12 @@ function resolveColumn(ctx: Context, entity: EntityDef, name: string): ExportCol
     return { key: name, label: DOCUMENT_COLUMNS[name], kind: 'text', read: (row) => row[name] };
   if (name.startsWith('ext.')) {
     const key = name.slice(4);
-    const meta = extFieldMetas(entity, { appliedPacks }).find((f) => f.name === name);
     const def = registry.extFields(entity.name).find((d) => d.key === key);
-    if (!meta || !def) throw unknownColumn(entity, name);
+    if (!def) throw unknownColumn(entity, name);
+    // Before the meta lookup: an outputHidden or masked ext key is refused like the same key in where (AC-8).
     assertReadableFields(ctx, entity, [name]);
+    const meta = extFieldMetas(entity, { appliedPacks }).find((f) => f.name === name);
+    if (!meta) throw unknownColumn(entity, name);
     return {
       key: name,
       label: meta.label,
@@ -142,13 +157,15 @@ function displayValue(row: Row, displayField: string | undefined): string | unde
 }
 
 /**
- * id -> display value of the referenced records, read through the target's Repository with the caller's Context: a
- * target the caller cannot read (or a row it cannot see) keeps the id, so the export never shows more than /e/<target>.
+ * id -> display value of the referenced records, read through the target's Repository with the caller's Context. The
+ * display value is the target's data, so it needs the target's `export` operation too (ADR-0018); a target the caller
+ * cannot export or read (or a row it cannot see) keeps the id, so the export never outputs more than an export of the
+ * target itself would.
  */
 async function refLabels(ctx: Context, field: AnyField, ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const target = field.ref && registry.hasEntity(field.ref) ? registry.entity(field.ref) : undefined;
-  if (!target || ids.length === 0) return out;
+  if (!target || ids.length === 0 || !can(ctx, target, 'export')) return out;
   const displayField = (field.opts as { displayField?: string }).displayField ?? target.displayField;
   try {
     for (let i = 0; i < ids.length; i += MAX_LIMIT) {
@@ -165,6 +182,28 @@ async function refLabels(ctx: Context, field: AnyField, ids: string[]): Promise<
     throw error;
   }
   return out;
+}
+
+/**
+ * The criteria as audited: field names and operators stay, values of field-group fields (any group, whoever exports)
+ * become a placeholder, so the append-only audit row never holds masked data for a later reader outside the group.
+ */
+function auditedWhere(entity: EntityDef, where: Domain): Domain {
+  const grouped = new Set(Object.values(entity.config.permissions.fieldGroups ?? {}).flatMap((g) => [...g.fields]));
+  const masked = (key: string) => grouped.has(key) || (key.startsWith('ext.') && grouped.has('ext'));
+  const hide = (value: unknown): unknown =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).map((op) => [op, MASKED_VALUE]))
+      : MASKED_VALUE;
+  const walk = (domain: Domain): Domain =>
+    Object.fromEntries(
+      Object.entries(domain).map(([key, value]) => {
+        if ((key === '$or' || key === '$and') && Array.isArray(value))
+          return [key, value.map((d) => walk(d as Domain))];
+        return [key, masked(key) ? hide(value) : value];
+      }),
+    ) as Domain;
+  return walk(where);
 }
 
 function enumLabel(field: AnyField, value: unknown, locale: Locale): unknown {
@@ -253,6 +292,7 @@ export function registerExportRowsAction(entity: EntityDef): void {
           {
             export: {
               ...query,
+              ...(query.where ? { where: auditedWhere(entity, query.where) } : {}),
               columns: names,
               rows: out.length,
               total,

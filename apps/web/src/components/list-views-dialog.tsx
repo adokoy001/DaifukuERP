@@ -1,6 +1,8 @@
 // list-workbench AC-5: name and save the current filters, sort, search and columns; open or delete saved views (kit
-// Dialog). Views live in this browser only, per user, tenant, company and entity (lib/list-views.ts).
-import { useId, useState } from 'react';
+// Dialog). Views live in this browser only, per user, tenant, company and entity (lib/list-views.ts). Deleting a view
+// removes the focused button with its row, so focus moves to the next view's "Open", else the previous one, else the
+// name field. Storage failures are reported by the list page (toast); the dialog stays as it was.
+import { useEffect, useId, useRef, useState } from 'react';
 import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { MAX_SAVED_VIEWS, type SavedListView } from '../lib/list-views.ts';
@@ -26,18 +28,27 @@ const W = {
 interface Props {
   views: readonly SavedListView[];
   busy: boolean;
-  /** Already-translated storage failure, shown under the form. */
-  error?: string;
   onSave: (name: string) => void;
   onOpen: (view: SavedListView) => void;
   onDelete: (view: SavedListView) => void;
   onClose: () => void;
 }
 
-export function ListViewsDialog({ views, busy, error, onSave, onOpen, onDelete, onClose }: Props) {
+export function ListViewsDialog({ views, busy, onSave, onOpen, onDelete, onClose }: Props) {
   const { t, locale } = useLocale();
   const nameId = useId();
   const [name, setName] = useState('');
+  const list = useRef<HTMLUListElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  /** Row index of the view being deleted; focus is placed once the delete has finished (busy back to false). */
+  const deleting = useRef<number | null>(null);
+  useEffect(() => {
+    const index = deleting.current;
+    if (index === null || busy) return;
+    deleting.current = null;
+    const opens = list.current ? [...list.current.querySelectorAll<HTMLElement>('[data-view-open]')] : [];
+    (opens[index] ?? opens[index - 1] ?? nameInput.current)?.focus();
+  }, [views, busy]);
   const trimmed = name.trim();
   const replaces = views.some((v) => v.name.trim() === trimmed);
   const full = views.length >= MAX_SAVED_VIEWS && !replaces;
@@ -64,6 +75,7 @@ export function ListViewsDialog({ views, busy, error, onSave, onOpen, onDelete, 
         </label>
         <div className="flex flex-wrap gap-2">
           <input
+            ref={nameInput}
             id={nameId}
             className="input min-w-0 flex-1"
             maxLength={80}
@@ -76,17 +88,12 @@ export function ListViewsDialog({ views, busy, error, onSave, onOpen, onDelete, 
           </Button>
         </div>
         <p id={`${nameId}-hint`}>{t(full ? W.full : W.sameName)}</p>
-        {error ? (
-          <p className="ui-field-error" role="alert">
-            {error}
-          </p>
-        ) : null}
       </div>
       {views.length === 0 ? (
         <p>{t(W.none)}</p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-2" data-testid="saved-views">
-          {views.map((view) => (
+        <ul className="mt-3 flex flex-col gap-2" data-testid="saved-views" ref={list}>
+          {views.map((view, index) => (
             <li key={view.id} className="flex flex-wrap items-center gap-2" data-view={view.name}>
               <span className="min-w-0 flex-1 text-sm font-semibold text-text">
                 {view.name}
@@ -94,14 +101,17 @@ export function ListViewsDialog({ views, busy, error, onSave, onOpen, onDelete, 
                   {new Date(view.updatedAt).toLocaleDateString(locale === 'ja' ? 'ja-JP' : 'en-GB')}
                 </span>
               </span>
-              <Button size="sm" onClick={() => onOpen(view)} aria-label={`${t(W.open)}: ${view.name}`}>
+              <Button size="sm" onClick={() => onOpen(view)} aria-label={`${t(W.open)}: ${view.name}`} data-view-open>
                 {t(W.open)}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => onDelete(view)}
+                onClick={() => {
+                  deleting.current = index;
+                  onDelete(view);
+                }}
                 aria-label={`${t(W.remove)}: ${view.name}`}
               >
                 {t(W.remove)}

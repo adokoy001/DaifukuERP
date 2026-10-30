@@ -1,6 +1,9 @@
 // list-workbench AC-1/AC-2/AC-12: the generic list's filter form, built from the entity's FilterDefs. Edits stay in a
 // draft until "Apply", so a half-typed date or amount never reaches the URL; invalid values are named, not sent.
-import { useId, useState, type FormEvent } from 'react';
+// The form stays mounted while filters change (focus stays on "Apply" / "Clear all"); a change from outside the form
+// (a removed chip, a saved view, the back button) replaces the draft. A refused apply moves focus to the first invalid
+// control so the reason under it is read.
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Label } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import {
@@ -109,6 +112,20 @@ export function ListFilterPanel({ id, defs, filters, onApply }: Props) {
     Object.fromEntries(defs.map((def) => [def.key, toDraft(def, filters[def.key])])),
   );
   const [invalid, setInvalid] = useState<string[]>([]);
+  const synced = useRef(JSON.stringify(filters));
+  useEffect(() => {
+    const json = JSON.stringify(filters);
+    if (json === synced.current) return;
+    synced.current = json;
+    setDraft(Object.fromEntries(defs.map((def) => [def.key, toDraft(def, filters[def.key])])));
+    setInvalid([]);
+  }, [filters, defs]);
+  const focusInvalid = useRef(false);
+  useEffect(() => {
+    if (!focusInvalid.current) return;
+    focusInvalid.current = false;
+    globalThis.document?.getElementById(id)?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [invalid, id]);
   const set = (key: string, value: unknown) => {
     setDraft((d) => ({ ...d, [key]: value }));
     setInvalid((keys) => keys.filter((k) => k !== key));
@@ -116,6 +133,7 @@ export function ListFilterPanel({ id, defs, filters, onApply }: Props) {
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const result = draftToFilters(defs, draft);
+    focusInvalid.current = result.invalid.length > 0;
     setInvalid(result.invalid);
     if (result.invalid.length === 0) onApply(result.filters);
   };

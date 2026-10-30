@@ -74,13 +74,26 @@ test('list-workbench AC-1/AC-2/AC-3/AC-12: filters live in the URL, survive relo
   await expect(panel.locator('[data-filter="docstatus"]')).toBeVisible();
   await expect(panel.locator('[data-filter="date"]')).toBeVisible();
   await panel.locator('[data-filter="docstatus"]').getByLabel('下書き', { exact: true }).check();
-  await panel.locator('[data-filter="date"]').getByLabel('開始', { exact: true }).fill(BUSINESS_DATE);
+  const fromInput = panel.locator('[data-filter="date"]').getByLabel('開始', { exact: true });
+  const applyButton = panel.getByRole('button', { name: '絞り込む', exact: true });
+  // AC-2: From after To is refused with the reason, and focus moves to the first invalid control.
+  await fromInput.fill(nextDate(BUSINESS_DATE));
   await panel.locator('[data-filter="date"]').getByLabel('終了', { exact: true }).fill(BUSINESS_DATE);
+  await applyButton.press('Enter');
+  await expect(fromInput).toBeFocused();
+  await expect(fromInput).toHaveAttribute('aria-invalid', 'true');
+  await expect(panel.locator('[data-filter="date"] .ui-field-error')).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]f=/);
+  await fromInput.fill(BUSINESS_DATE);
   const filtered = page.waitForRequest((r) => r.url().includes('/api/journal_entry?') && r.url().includes('where='));
-  await panel.getByRole('button', { name: '絞り込む', exact: true }).click();
+  await applyButton.focus();
+  await applyButton.press('Enter');
   const where = JSON.parse(new URL((await filtered).url()).searchParams.get('where') ?? '{}') as unknown;
   expect(where).toEqual({ docstatus: { $in: [0] }, date: { $gte: BUSINESS_DATE, $lte: BUSINESS_DATE } });
   await expect(page).toHaveURL(/[?&]f=/);
+  // The panel is not rebuilt by the apply: a keyboard user stays on "Apply".
+  await expect(rows(page)).toHaveCount(2);
+  await expect(applyButton).toBeFocused();
   await expect(rows(page)).toHaveCount(2);
   await expect(chips(page)).toContainText('状態: 下書き');
   await expect(chips(page)).toContainText(`日付: ${BUSINESS_DATE} – ${BUSINESS_DATE}`);
@@ -99,13 +112,27 @@ test('list-workbench AC-1/AC-2/AC-3/AC-12: filters live in the URL, survive relo
   await openList(page, `?q=${j.runId}&status=draft&from=${BUSINESS_DATE}&to=${BUSINESS_DATE}`);
   await expect(rows(page)).toHaveCount(2);
   await expect(chips(page)).toContainText('状態: 下書き');
-  // Removing one chip rewrites the link parameters into `f`.
+  // Removing one chip rewrites the link parameters into `f`; focus moves on to the next chip, not to <body>.
   await chips(page)
     .getByRole('button', { name: /^絞り込みを外す: 状態/ })
-    .click();
+    .press('Enter');
   await expect(page).not.toHaveURL(/[?&]status=/);
   await expect(page).toHaveURL(/[?&]f=/);
   await expect(rows(page)).toHaveCount(3);
+  await expect(chips(page).getByRole('button', { name: /^絞り込みを外す: 日付/ })).toBeFocused();
+  // The chip row's "Clear filters" disappears with the row: focus goes to the Filters toggle.
+  await chips(page).getByRole('button', { name: '絞り込みをクリア', exact: true }).press('Enter');
+  await expect(rows(page)).toHaveCount(4);
+  await expect(chips(page)).toHaveCount(0);
+  await expect(page.getByTestId('filters-toggle')).toBeFocused();
+  // "Clear all" in the open panel keeps focus where it is.
+  await openList(page, `?q=${j.runId}&status=submitted`);
+  await expect(rows(page)).toHaveCount(1);
+  await page.getByTestId('filters-toggle').click();
+  const clearAll = page.locator('.list-filter-panel').getByRole('button', { name: 'すべてクリア', exact: true });
+  await clearAll.press('Enter');
+  await expect(rows(page)).toHaveCount(4);
+  await expect(clearAll).toBeFocused();
 
   // AC-2: an invalid condition in a shared URL is ignored, not an error.
   await openList(page, `?q=${j.runId}&f=${encodeURIComponent('{"docstatus":[9],"date":{"from":"2026-02-30"}}')}`);
@@ -132,6 +159,12 @@ test('list-workbench AC-1/AC-2/AC-3/AC-12: filters live in the URL, survive relo
   await page.locator('.list-filter-panel').getByRole('button', { name: '絞り込む', exact: true }).click();
   await expect(rows(page)).toHaveCount(1);
   await assertNoOverflow(page);
+  // The chip and the row's "Clear filters" are at least 24px tall (WCAG 2.2 SC 2.5.8 target size) on a phone.
+  for (const target of [
+    chips(page).getByRole('button', { name: /^絞り込みを外す: 状態/ }),
+    chips(page).getByRole('button', { name: '絞り込みをクリア', exact: true }),
+  ])
+    expect((await target.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(24);
   await page.screenshot({ path: test.info().outputPath('list-filters-390.png'), fullPage: true });
 });
 
@@ -202,8 +235,29 @@ test('list-workbench AC-4/AC-5/AC-6: columns and saved views persist per user an
   await page
     .getByRole('dialog', { name: '保存ビュー' })
     .getByRole('button', { name: `削除: ${viewName}`, exact: true })
-    .click();
+    .press('Enter');
   await expect(page.getByRole('dialog', { name: '保存ビュー' })).toContainText('保存したビューはまだありません。');
+  // The deleted row took the focused button with it: focus goes to the name field, still inside the dialog.
+  await expect(
+    page.getByRole('dialog', { name: '保存ビュー' }).getByLabel('ビューの名前', { exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+
+  // AC-4: when the browser refuses storage (blocked site data, private mode) the list says so and uses the defaults.
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('blocked for the test', 'SecurityError');
+      },
+    });
+  });
+  await openList(page, `?q=${j.runId}`);
+  await expect(rows(page)).toHaveCount(2);
+  await expect(page.getByTestId('list-prefs-notice')).toHaveText(
+    'このブラウザでは列と保存ビューを保存できません。既定の列で表示しています。',
+  );
+  await expect.poll(() => headerTexts(page)).toEqual(defaults);
 });
 
 test('list-workbench AC-7/AC-8: CSV export re-reads the criteria with export permission; viewers get no export', async ({
@@ -296,9 +350,11 @@ test('list-workbench AC-10/AC-11: bulk submit reports each row, keeps successes 
   const confirm = page.getByRole('dialog', { name: '3 件を確定' });
   await expect(confirm.getByTestId('bulk-targets')).toContainText(`一覧検証 ${j.runId} 一括A`);
   await expect(confirm.getByTestId('bulk-left-out')).toContainText('1 件は下書きでないため対象外');
-  await confirm.getByRole('button', { name: '3 件を確定', exact: true }).click();
+  await confirm.getByRole('button', { name: '3 件を確定', exact: true }).press('Enter');
   const results = page.getByTestId('bulk-results');
   await expect(results.getByTestId('bulk-summary')).toContainText('実行中');
+  // The bulk bar that opened the dialog is gone: focus lands on the results heading, not on <body>.
+  await expect(results.getByTestId('bulk-heading')).toBeFocused();
   // AC-11: while it runs, a new selection cannot start another run.
   await page.getByLabel(`選択: ${String(d.number)}`, { exact: true }).check();
   await expect(page.getByTestId('bulk-bar').getByRole('button', { name: /^取消/ })).toBeDisabled();
