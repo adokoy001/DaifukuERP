@@ -1,0 +1,4 @@
+partnerCode,amount,dueDate,reference,originalDate,memo
+C001,200000,2026-04-30,OLD-101,2026-03-20,
+C001,80000,,OLD-090,2026-01-31,
+C002,50000,,,,

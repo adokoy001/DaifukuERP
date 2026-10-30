@@ -163,6 +163,7 @@ export {
 export {
   assertNotOpeningAmend,
   assertOpeningCurrency,
+  assertOpeningInputSize,
   assertOpeningInvoice,
   assertOpeningOps,
   attempt as attemptOpeningUnit,

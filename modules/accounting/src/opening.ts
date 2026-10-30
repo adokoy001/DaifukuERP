@@ -39,6 +39,19 @@ export const OPENING_ROLES = ['accounting', 'admin'] as const;
 /** AC-8: request size of every import (the B5 limit). */
 export const OPENING_INPUT_BYTES = IMPORT_MAX_BYTES;
 
+/**
+ * AC-8: the HTTP adapter refuses a body over OPENING_INPUT_BYTES with 413 (inputBytes); MCP and in-process callers get
+ * the same limit on the UTF-8 length of the JSON input (as the B5 import port does).
+ */
+export function assertOpeningInputSize(input: unknown): void {
+  if (new TextEncoder().encode(JSON.stringify(input)).length > OPENING_INPUT_BYTES)
+    throw new ValidationError(
+      `opening balance import request exceeds ${OPENING_INPUT_BYTES} bytes`,
+      [{ path: 'rows', message: `at most ${OPENING_INPUT_BYTES} bytes per request` }],
+      'Split the file and import it in several requests.',
+    );
+}
+
 /** AC-26: imports post amounts in yen only. */
 export async function assertOpeningCurrency(ctx: Context): Promise<void> {
   const company = await getCompany(ctx);

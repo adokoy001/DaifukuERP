@@ -25,6 +25,7 @@ import { JournalEntry } from '../entities/journal-entry.ts';
 import { JournalLine } from '../entities/journal-line.ts';
 import {
   assertOpeningCurrency,
+  assertOpeningInputSize,
   attempt,
   clearingAccountState,
   clearingBalanceAt,
@@ -240,6 +241,7 @@ export async function importOpeningBalances(
   ctx: Context,
   input: ImportOpeningBalancesInput,
 ): Promise<OpeningImportResult> {
+  assertOpeningInputSize(input);
   await assertOpeningCurrency(ctx);
   const year = await assertOpeningYear(ctx, input.fiscalYearId);
   const clearing = await resolveOpeningClearingAccount(ctx);

@@ -20,6 +20,7 @@ import { JournalEntry } from './entities/journal-entry.ts';
 import { JournalLine } from './entities/journal-line.ts';
 import {
   assertOpeningCurrency,
+  assertOpeningInputSize,
   assertOpeningOps,
   attempt,
   clearingBalanceAt,
@@ -225,6 +226,7 @@ export async function importOpeningInvoices(
   input: OpeningInvoicesInput,
   spec: OpeningInvoiceSpec,
 ): Promise<OpeningImportResult> {
+  assertOpeningInputSize(input);
   await assertOpeningCurrency(ctx);
   const year = await assertOpeningYear(ctx, input.fiscalYearId);
   assertOpeningOps(ctx, spec.action, [

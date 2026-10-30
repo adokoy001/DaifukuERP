@@ -359,6 +359,16 @@ describe('opening journal: year conditions, permissions, isolation', () => {
     expect(await caught(importJournal(many, 'dry-run'))).toMatchObject({ code: 'VALIDATION' });
     const lines = Array.from({ length: 501 }, () => ({ accountCode: '1000', debit: '1' }));
     expect(await caught(importJournal(lines, 'dry-run'))).toMatchObject({ code: 'VALIDATION' });
+    // in-process (and MCP) callers get the same 2 MB limit on the JSON input as the HTTP body limit
+    const fat = Array.from({ length: 1000 }, () => ({
+      accountCode: 'a'.repeat(1000),
+      partnerCode: 'p'.repeat(1000),
+      debit: '1',
+      memo: 'x'.repeat(1000),
+    }));
+    const err = await caught(importJournal(fat as Row[], 'dry-run'));
+    expect(err).toMatchObject({ code: 'VALIDATION' });
+    expect((err as Error).message).toContain('bytes');
   });
 });
 

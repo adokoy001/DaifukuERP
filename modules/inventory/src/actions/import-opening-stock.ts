@@ -6,6 +6,7 @@
 import { Decimal, defineAction, label, repo, submitDocument, type Context, type Infer } from '@daifuku/kernel';
 import {
   assertOpeningCurrency,
+  assertOpeningInputSize,
   assertOpeningOps,
   assertOpeningYear,
   attemptOpeningUnit,
@@ -138,6 +139,7 @@ async function createReceipt(
 }
 
 export async function importOpeningStock(ctx: Context, input: ImportOpeningStockInput): Promise<OpeningImportResult> {
+  assertOpeningInputSize(input);
   await assertOpeningCurrency(ctx);
   const year = await assertOpeningYear(ctx, input.fiscalYearId);
   assertOpeningOps(
