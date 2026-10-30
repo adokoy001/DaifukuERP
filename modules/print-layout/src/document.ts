@@ -7,7 +7,12 @@ const PAGE_CSS =
   '@page{size:A4;margin:12mm}' +
   'html,body{margin:0;background:#fff;color:#111}' +
   '.print-document *{box-sizing:border-box}' +
-  '@media print{.print-document{padding:0;max-width:none}.table-wrap{overflow:visible}}';
+  // Paper: a smaller type size and tighter cells (overriding the parts' inline padding) so 20 item lines fit one A4
+  // page (spec verification step 5, measured with Chromium PDF output).
+  '@media print{.print-document{padding:0;max-width:none;font-size:11px}' +
+  '.print-document th,.print-document td{padding:2px 6px!important}' +
+  '.print-document .table-wrap{overflow:visible;margin:6px 0!important}' +
+  '.print-document .parties{margin:8px 0!important}}';
 
 export interface PrintDocumentInput {
   title: string;
