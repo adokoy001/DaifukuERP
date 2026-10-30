@@ -1,7 +1,8 @@
 // AC-5 (docs/specs/evidence-search.md): what each evidence row links to, read with the caller's Context. One
 // Repository.list per linked entity on the page (limit = the ids asked for), so read permission, row rules, company/
 // site/store scope and field masks of the linked entity apply; anything the caller cannot see is `readable: false`
-// without saying why. A link to a document line stands for its document (as the related-records reader does).
+// without saying why. A link to a line stands for its parent record, document or entity (as the related-records
+// reader does; ADR-0031).
 // Only kernel public API: registry, repo, can, maskedFields and the entity definitions.
 import { can, isUuid, maskedFields, registry, repo, type Context, type EntityDef } from '@daifuku/kernel';
 import type { LinkedKind, LinkedSummary } from './evidence.ts';
@@ -15,11 +16,11 @@ export interface LinkRef {
   linkedId: string | null;
 }
 
-/** line entity name -> its document and the line's parent field. */
+/** line entity name -> its parent (document or entity, ADR-0031) and the line's parent field. */
 export function lineParents(): Map<string, { parent: EntityDef; parentField: string }> {
   const out = new Map<string, { parent: EntityDef; parentField: string }>();
   for (const doc of registry.allEntities())
-    for (const line of doc.doc?.lines ?? [])
+    for (const line of doc.config.lines ?? [])
       if (registry.hasEntity(line.entity)) out.set(line.entity, { parent: doc, parentField: line.parentField });
   return out;
 }

@@ -87,7 +87,7 @@ it('0017 changes exactly five boolean columns and the relay predicate; all-pack 
 
 /**
  * Facts after the upgrade, with constraints limited to relations that existed before it. Later migrations may add whole
- * tables (e.g. 0018, docs/specs/recurring-journals.md); their constraints are new, not changes to existing ones.
+ * tables (e.g. 0019, docs/specs/recurring-journals.md); their constraints are new, not changes to existing ones.
  */
 async function upgradedFacts(before: Awaited<ReturnType<typeof booleanHistoryFacts>>) {
   const existing = new Set(before.constraints.map((row) => String(row.relation)));

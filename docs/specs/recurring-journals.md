@@ -62,11 +62,11 @@
 - `modules/accounting/src/settings.ts`（新規: `RECURRING_AUTO_SUBMIT_KEY`、`ACCOUNTING_SETTING_DEFS`、`registerAccountingSettings`、`loadRecurringAutoSubmit`）、`modules/accounting/src/domain-write.ts`（生成記録の書込み権 `accounting.recurring_run` と次回日付の書込み権 `accounting.recurring_cursor` を `defineWriteCapability` で追加）
 - 既存で使うもの: `modules/accounting/src/hooks/validate-entry.ts`（`assertOpenPeriod`、`PERIOD_HINT`、`loadLines`）、`modules/accounting/src/dimensions.ts`（`postingDimensions`）、`modules/accounting/src/actions/helpers.ts`（`localDate`、`listAll`）、kernel の `withLock`、`withSavepoint`、`saveLines`、`submitDocument`、`getSetting`、`getCompany`、`currencyScale`、`todayLocal`、`canRunAction`、`todoInput` / `todoResult` / `todoItems`、`tableResult` / `column`
 - `modules/accounting/src/module.ts`（entity・action・hook・設定・メニュー「定期仕訳」の登録）、`modules/accounting/src/index.ts`（公開）
-- DB の移行: `pnpm db:schema && pnpm db:generate` で `apps/api/drizzle/migrations/00NN_recurring_journals.sql`（3 表）を生成する。番号は生成時に決まり、並行する round 4（B2）の移行と衝突したら統合担当が振り直す
+- DB の移行: `pnpm db:schema && pnpm db:generate` で `apps/api/drizzle/migrations/00NN_recurring_journals.sql`（3 表）を生成する（統合で `0019_recurring_journals.sql` になった）。番号は生成時に決まり、並行する round 4（B2）の移行と衝突したら統合担当が振り直す
 - `apps/web/src/pages/recurring-page.tsx`（新規）、`apps/web/src/api/recurring.ts`（新規）、`apps/web/src/lib/recurring.ts`（新規、純粋: 状態の文言・結果の整形・ボタンの文言）、`apps/web/src/router.tsx`（`/finance/recurring`）、`apps/web/src/lib/navigation-data.ts`（専用画面、`action: 'accounting.generate_recurring'`）、`apps/web/src/lib/help.ts`（`SCREENS` と `ENTITIES`）、`apps/web/src/ui/token-usage.test.ts`（`CONVERTED` に追加）
 - 試験: `modules/accounting/test/recurrence.test.ts`（unit）、`modules/accounting/test/recurring.db.test.ts`（DB）、`modules/accounting/test/todo.db.test.ts`（DB）、`apps/web/src/lib/recurring.test.ts`（Web unit）、`apps/web/e2e/recurring-journals.spec.ts`（ブラウザ）、既存の `apps/web/src/lib/help.test.ts` と `apps/runtime/test/setting-labels.test.ts`（新しい対応表と設定ラベルを自動で検査）
 - 文書: `docs/manual/05-daily.md`（「定期仕訳を登録する」）、`docs/manual/06-monthly.md`（「定期仕訳を生成する」、月末の作業の流れ）、画面の一覧（`docs/manual/00-index.md`、`docs/manual/appendix-n-navigation.md`、`docs/architecture/program-map.md`）、`docs/domain/japan-tax.md#prepaid-expense`（この spec と同じコミットで追加、【未確認】）
-- D3 統合後の追補（hook）: round 4 の [form-ergonomics](form-ergonomics.md)（D3、未統合）が `views.form` のラベル付きグループを入れたら、定期仕訳のフォームを「基本」「周期」「按分」「生成の状況」の見出し付きグループにする。この spec の実装は D3 に依存せず、従来の配列の形で `views.form` を書く
+- D3 統合後の追補（hook）: round 4 の [form-ergonomics](form-ergonomics.md)（D3。統合済みで、定期仕訳のフォームはラベル付きグループにした）が `views.form` のラベル付きグループを入れたら、定期仕訳のフォームを「基本」「周期」「按分」「生成の状況」の見出し付きグループにする。この spec の実装は D3 に依存せず、従来の配列の形で `views.form` を書く
 
 ## データ・業務ルール（出典）
 

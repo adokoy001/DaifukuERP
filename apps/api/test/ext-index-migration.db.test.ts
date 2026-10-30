@@ -66,7 +66,7 @@ it('0016 changes only the generated JAN column and its index in the complete 001
 });
 
 /**
- * The constraints of relations that existed before the upgrade. Later migrations may add whole tables (e.g. 0018,
+ * The constraints of relations that existed before the upgrade. Later migrations may add whole tables (e.g. 0019,
  * docs/specs/recurring-journals.md); their constraints are new, not changes, so only pre-existing relations are compared.
  */
 async function upgradedFacts(before: Awaited<ReturnType<typeof facts>>) {

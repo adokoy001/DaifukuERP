@@ -46,6 +46,22 @@ const EvLine = defineEntity({
     fieldGroups: { parent: { fields: ['docId'], roles: ['clerk'] } },
   },
 });
+// An entity (not a document) with lines (ADR-0031), like accounting's recurring_journal.
+const EvTemplate = defineEntity({
+  name: 'ev_unit_template',
+  label: label('証憑テスト雛形', 'Evidence test template'),
+  fields: { name: f.text() },
+  displayField: 'name',
+  lines: [{ entity: 'ev_unit_template_line', parentField: 'templateId' }],
+  permissions: { roles: { clerk: ['read'] } },
+});
+const EvTemplateLine = defineEntity({
+  name: 'ev_unit_template_line',
+  label: label('証憑テスト雛形明細', 'Evidence test template line'),
+  fields: { templateId: f.ref('ev_unit_template', { required: true }), memo: f.text() },
+  displayField: 'memo',
+  permissions: { roles: { clerk: ['read'] } },
+});
 const EvMasked = defineEntity({
   name: 'ev_unit_masked',
   label: label('証憑テスト秘匿', 'Evidence test masked'),
@@ -299,6 +315,15 @@ describe('link summary helpers (AC-5)', () => {
     expect(linkKindOf(EvLine.name, parents)).toBe('line');
     expect(linkKindOf(EvMasked.name, parents)).toBe('entity');
     expect(linkKindOf('no_such_entity', parents)).toBe('unknown');
+    // ADR-0031: a line of a plain entity stands for that entity too (round-5 integration review).
+    expect(parents.get(EvTemplateLine.name)).toEqual({ parent: EvTemplate, parentField: 'templateId' });
+    expect(linkKindOf(EvTemplateLine.name, parents)).toBe('line');
+    expect(linkKindOf(EvTemplate.name, parents)).toBe('entity');
+    expect(describeRow({ roles: ['clerk'] }, EvTemplate, { name: '家賃', number: 'X-1', docstatus: 1 })).toEqual({
+      title: '家賃',
+      number: null,
+      docstatus: null,
+    });
     expect(unreadable('no_such_entity', 'x', 'unknown')).toEqual({
       entity: 'no_such_entity',
       id: 'x',
