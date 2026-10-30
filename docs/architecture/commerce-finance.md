@@ -9,10 +9,11 @@
 ```mermaid
 flowchart TD
   UI[finance Web / REST / MCP] --> Trade[trade: 注文・履行・請求]
-  UI --> Bank[banking: 明細・照合・振込準備]
+  UI --> Bank[banking: 明細・照合・振込準備・資金繰り表]
   UI --> Filing[tax-filing: 原資料・確認・出力]
   Trade --> Inventory[inventory / sales / purchasing]
   Bank --> Payment[payment / accounting]
+  Bank --> Plan[contract: 請求予定 / workforce: 給与の支払日]
   Filing --> Source[accounting / workforce]
   JP[l10n/jp: HOT010・給与準備profile] --> Filing
   Inventory --> Kernel[kernel: Repository / Decimal / lock / audit]
@@ -30,6 +31,7 @@ flowchart TD
 | 銀行のwire/DSL | [contract](../../modules/banking/src/contract.ts)、[entities](../../modules/banking/src/entities.ts) |
 | 取込・候補・消込 | [imports](../../modules/banking/src/imports.ts)、[matching](../../modules/banking/src/matching.ts)、[reconcile](../../modules/banking/src/reconcile.ts) |
 | 振込出力 | [transfers](../../modules/banking/src/transfers.ts)、[zengin](../../modules/banking/src/zengin.ts) |
+| 資金繰り表 | [actions](../../modules/banking/src/cash-forecast.ts)、[読取](../../modules/banking/src/cash-sources.ts)、[配置規則](../../modules/banking/src/cash-plan.ts)、[表の形](../../modules/banking/src/cash-tables.ts)、[契約の予定](../../modules/contract/src/cash-plan.ts)、[給与の支払日](../../modules/workforce/src/payroll-cash.ts) |
 | 申告資料の採取と確認 | [workflow](../../modules/tax-filing/src/workflow.ts)、[会計](../../modules/tax-filing/src/accounting-source.ts)、[給与](../../modules/tax-filing/src/payroll-source.ts) |
 | 国別形式の拡張 | [profile port](../../modules/tax-filing/src/profile.ts)、[国内profile](../../l10n/jp/src/filing/profiles.ts)、[出典と版](../../l10n/jp/src/filing/data.ts) |
 | UI・認可更新・ダウンロード | [finance client](../../apps/web/src/api/finance.ts)、[共有UI](../../apps/web/src/components/finance-shared.tsx)、[ファイル変換](../../apps/web/src/lib/finance-file.ts) |
@@ -53,6 +55,15 @@ flowchart TD
 振込準備は未払仕入請求の残額と口座の確認snapshotを固定し、他バッチによる重複準備を予約で防ぎます。初回出力時に現在の版・残高を再検査し、出力設定とバイト列を保存します。再取得はその同一バイト列です。準備/出力はPayment・仕訳・実送金を作らず、取消も銀行側の指図を取り消しません。
 
 全銀profileはJPY総合振込、普通/当座、限定した許容文字、1レコード120バイト、Shift_JIS、改行なしまたはCRLFです。銀行固有の契約・取込条件は導入先で確認します。[SMBCの形式](https://bqa.smbc.co.jp/faq/show/2505?site_domain=web21lite)、[MUFGのレコード仕様](https://web.bizstn.bk.mufg.jp/biz/help/pdf/form_3_1_2_20080512.pdf)、[対応範囲](../domain/japan-bank-integration.md)。
+
+## 資金繰り表の読取と依存
+
+`banking.cash_forecast`（日別）と `banking.cash_schedule`（予定の明細）は読取専用の帳票 action です（[仕様](../specs/cash-forecast.md)）。所有者を banking にしたのは、振込予約を自分の entity として持ち、権限の境界（会社全体の accounting / admin）が資金繰りと同じだからです。契約の請求予定（`planPeriod`）を使うため、banking の依存に contract と workforce を足しました。contract は sales に、workforce は kernel だけに依存し、どちらも banking に依存しないので循環しません。accounting は sales・purchase・contract から依存される側なので、ここに置くと循環します。
+
+- 残高の正は帳簿です。期首残高と記帳済みの入出金は資金科目（`payment.accounts` の現金・普通預金と銀行口座の帳簿科目）の転記済み仕訳から読み、仕訳ごとに相殺して資金科目間の振替を数えません。`aggregate` の 10,000 グループの上限は `entryDate`・`entryId` の keyset で繰り返して読みます。銀行明細は残高に使いません。
+- 予定は確定済みの売上・仕入請求の現在の残高、有効な振込予約（振込指定日へ移す）、contract の `plannedContractReceipts`（今日の月の 12 か月前の月初から、生成時と同じ明細・税・支払期日。それより前の未作成は件数だけ）、workforce の `payrollCashSchedule`（支払日の証跡がある確定給与を支払日ごとに合算）です。2 つの action は同じ読取関数と同じ純粋な配置規則を使います。
+- 種類ごとに、呼出者がすべての entity を行の制限なく読め、使う項目が隠されていないとき（給与は export も）だけ含めます。含めない種類は列を除き `meta.sources` に理由を返します。権限を広げた読取はしません。
+- 給与と支払仕訳の結び付き、未消込の入出金、資金科目外の入出金は二重計上・計上漏れの原因になるので、残高は変えずに `meta` の注意情報として返します。
 
 ## 申告準備のsnapshotと確認
 

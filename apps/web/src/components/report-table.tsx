@@ -36,10 +36,23 @@ function asField(col: TableColumn): FieldMeta {
   return f;
 }
 
-function Cell({ col, value, currencyScale }: { col: TableColumn; value: unknown; currencyScale: number }) {
+/** Optional extra class per column (a dedicated screen tints column groups, e.g. drafts on the cash forecast). */
+type ColumnClass = (col: TableColumn) => string | undefined;
+
+function Cell({
+  col,
+  value,
+  currencyScale,
+  extra,
+}: {
+  col: TableColumn;
+  value: unknown;
+  currencyScale: number;
+  extra?: string | undefined;
+}) {
   const { locale } = useLocale();
   const fmt = formatValue(asField(col), value, locale, { currencyScale });
-  const cls = `px-2 py-1 whitespace-nowrap ${fmt.mono ? 'font-mono tabular-nums' : ''} ${alignOf(col) === 'right' ? 'text-right' : ''}`;
+  const cls = `px-2 py-1 whitespace-nowrap ${fmt.mono ? 'font-mono tabular-nums' : ''} ${alignOf(col) === 'right' ? 'text-right' : ''}${extra ? ` ${extra}` : ''}`;
   if (col.kind === 'ref' && col.ref && typeof value === 'string' && value) {
     return (
       <td className={cls}>
@@ -57,7 +70,15 @@ function Cell({ col, value, currencyScale }: { col: TableColumn; value: unknown;
   return <td className={cls}>{value === null || value === undefined ? '—' : fmt.text}</td>;
 }
 
-function TotalsRow({ result, currencyScale }: { result: TableResult; currencyScale: number }) {
+function TotalsRow({
+  result,
+  currencyScale,
+  columnClass,
+}: {
+  result: TableResult;
+  currencyScale: number;
+  columnClass?: ColumnClass | undefined;
+}) {
   const { t, locale } = useLocale();
   const totals = columnTotals(result);
   if (Object.keys(totals).length === 0) return null;
@@ -72,7 +93,7 @@ function TotalsRow({ result, currencyScale }: { result: TableResult; currencySca
             <td
               key={col.key}
               data-total={col.key}
-              className={`px-2 py-1 whitespace-nowrap ${alignOf(col) === 'right' ? 'num' : ''}`}
+              className={`px-2 py-1 whitespace-nowrap ${alignOf(col) === 'right' ? 'num' : ''} ${columnClass?.(col) ?? ''}`}
             >
               {text}
             </td>
@@ -107,7 +128,7 @@ function ExtraTotals({ result, currencyScale }: { result: TableResult; currencyS
   );
 }
 
-export function ReportTable({ result }: { result: TableResult }) {
+export function ReportTable({ result, columnClass }: { result: TableResult; columnClass?: ColumnClass }) {
   const currencyScale = useCurrencyScale();
   const { t, locale } = useLocale();
   const searchId = useId();
@@ -202,7 +223,14 @@ export function ReportTable({ result }: { result: TableResult }) {
           })}
         </p>
       ) : null}
-      <ReportGrid result={result} view={view} sort={sort} sortBy={sortBy} currencyScale={currencyScale} />
+      <ReportGrid
+        result={result}
+        view={view}
+        sort={sort}
+        sortBy={sortBy}
+        currencyScale={currencyScale}
+        columnClass={columnClass}
+      />
       <nav aria-label={t({ ja: '帳票結果のページ移動', en: 'Report pagination' })} className="report-browse-pages">
         <button type="button" className="btn" disabled={view.page === 0} onClick={() => setPage(0)}>
           {t({ ja: '最初', en: 'First' })}
@@ -254,12 +282,14 @@ function ReportGrid({
   sort,
   sortBy,
   currencyScale,
+  columnClass,
 }: {
   result: TableResult;
   view: ReportRowsPage;
   sort: ReportSort | undefined;
   sortBy: (key: string) => void;
   currencyScale: number;
+  columnClass?: ColumnClass | undefined;
 }) {
   const { t } = useLocale();
   return (
@@ -272,7 +302,7 @@ function ReportGrid({
                 key={col.key}
                 scope="col"
                 aria-sort={sort?.key === col.key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                className={`border-b border-neutral-200 px-2 py-1.5 font-medium whitespace-nowrap ${alignOf(col) === 'right' ? 'text-right' : ''}`}
+                className={`border-b border-neutral-200 px-2 py-1.5 font-medium whitespace-nowrap ${alignOf(col) === 'right' ? 'text-right' : ''} ${columnClass?.(col) ?? ''}`}
               >
                 <button
                   type="button"
@@ -300,13 +330,19 @@ function ReportGrid({
             view.rows.map(({ row, index }) => (
               <tr key={index} data-testid="report-row" className="border-b border-neutral-100 hover:bg-sky-50">
                 {result.columns.map((col) => (
-                  <Cell key={col.key} col={col} value={row[col.key]} currencyScale={currencyScale} />
+                  <Cell
+                    key={col.key}
+                    col={col}
+                    value={row[col.key]}
+                    currencyScale={currencyScale}
+                    extra={columnClass?.(col)}
+                  />
                 ))}
               </tr>
             ))
           )}
         </tbody>
-        <TotalsRow result={result} currencyScale={currencyScale} />
+        <TotalsRow result={result} currencyScale={currencyScale} columnClass={columnClass} />
       </table>
     </div>
   );

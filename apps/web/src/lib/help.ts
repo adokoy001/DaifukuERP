@@ -18,6 +18,7 @@ const WORKFORCE = topic('appendix-f-workforce.md');
 const FISCAL = topic('appendix-i-fiscal-and-work-systems.md');
 const ENTERPRISE = topic('appendix-h-enterprise-operations.md');
 const COMMERCE = topic('appendix-l-commerce-bank-filing.md');
+const CASH_FORECAST = topic('appendix-l-commerce-bank-filing.md', '資金繰り表');
 const INDUSTRY = topic('appendix-d-industry-templates.md');
 const DEVICES = topic('appendix-j-store-devices.md');
 const MONTHLY = '06-monthly.md';
@@ -50,6 +51,7 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/commerce/franchise': ENTERPRISE,
   '/commerce/trade': COMMERCE,
   '/finance/banking': COMMERCE,
+  '/finance/cash-forecast': CASH_FORECAST,
   '/finance/filing': COMMERCE,
   // Screens of the same round (docs/specs/inbox.md, close-guide.md), mapped to the chapters those specs update.
   '/inbox': NAVIGATION,
@@ -69,6 +71,8 @@ const REPORTS: Readonly<Record<string, HelpTopic>> = {
   'sales.ar_aging': topic(MONTHLY),
   'purchase.ap_aging': topic(MONTHLY),
   'inventory.valuation': topic(MONTHLY, '在庫評価'),
+  'banking.cash_forecast': CASH_FORECAST,
+  'banking.cash_schedule': CASH_FORECAST,
 };
 /** Generic action forms with a manual section; other `/a/...` forms have no link. */
 const ACTIONS: Readonly<Record<string, HelpTopic>> = {

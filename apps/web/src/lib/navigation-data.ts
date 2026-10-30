@@ -211,6 +211,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/finance/cash-forecast',
+    workspace: 'finance',
+    module: 'banking',
+    action: 'banking.cash_forecast',
+    label: { ja: '資金繰り表', en: 'Cash forecast' },
+    description: {
+      ja: '記帳済みの入出金と請求・支払ファイル・契約・給与の予定から、日別の残高の推移と入出金予定を確かめます。',
+      en: 'See the daily balance and the expected receipts and payments from invoices, transfer files, contracts and payroll.',
+    },
+  },
+  {
     href: '/finance/close',
     workspace: 'finance',
     module: 'accounting',

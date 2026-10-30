@@ -39,6 +39,7 @@ import { ScreenTrail } from './components/screen-trail.tsx';
 import { CommandPalette } from './components/command-palette.tsx';
 import { forgetRecentNames } from './api/navigation-assist.ts';
 import { parseDirectorySearch } from './lib/menu-search.ts';
+import { parseCashSearch } from './lib/cash-forecast.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
 import { parseOpeningSearch } from './lib/opening-balances.ts';
 import { parseEvidenceSearch } from './lib/evidence-search.ts';
@@ -397,6 +398,12 @@ const bankingRoute = createRoute({
   path: '/finance/banking',
   component: lazyRouteComponent(() => import('./pages/banking-page.tsx'), 'BankingPage'),
 });
+const cashForecastRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/cash-forecast',
+  validateSearch: parseCashSearch,
+  component: lazyRouteComponent(() => import('./pages/cash-forecast-page.tsx'), 'CashForecastPage'),
+});
 const closeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/close',
@@ -495,6 +502,7 @@ const routeTree = rootRoute.addChildren([
     commerceFranchiseRoute,
     tradeRoute,
     bankingRoute,
+    cashForecastRoute,
     closeRoute,
     openingRoute,
     recurringRoute,

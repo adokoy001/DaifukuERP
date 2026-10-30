@@ -83,6 +83,10 @@ const CONVERTED = [
   // event-delivery (docs/specs/event-delivery.md)
   'pages/event-deliveries-page.tsx',
   'components/inbox-notification.tsx',
+  // cash-forecast (docs/specs/cash-forecast.md)
+  'pages/cash-forecast-page.tsx',
+  'components/cash-forecast-chart.tsx',
+  'cash-forecast.css',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))
