@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useDelete, useDocAction, type DocOp } from '../api/queries.ts';
 import type { EntityMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
@@ -13,10 +13,17 @@ export interface DocActionsProps {
   submitBlocked?: string | undefined;
   blocked?: string | undefined;
   onBusy?: (busy: boolean) => void;
+  /** form-ergonomics AC-5/AC-7: lets the form bar and Ctrl/⌘+Enter open the same confirmation as the buttons. */
+  ref?: Ref<DocActionsHandle>;
+}
+
+export interface DocActionsHandle {
+  /** Opens the confirmation of `op` when its button would be enabled; false (nothing opens) otherwise. */
+  request: (op: 'submit') => boolean;
 }
 type Choice = { op: DocOp | 'delete'; title: string; message: string; done: string };
 
-export function DocActions({ entity, record, onAfter, submitBlocked, blocked, onBusy }: DocActionsProps) {
+export function DocActions({ entity, record, onAfter, submitBlocked, blocked, onBusy, ref }: DocActionsProps) {
   const { t } = useLocale();
   const toast = useToast();
   const act = useDocAction({ entity: entity.name });
@@ -95,6 +102,18 @@ export function DocActions({ entity, record, onAfter, submitBlocked, blocked, on
       done: t(S.deleted),
     },
   ].filter((a) => a.visible);
+  useImperativeHandle(
+    ref,
+    () => ({
+      request: (op) => {
+        const action = actions.find((a) => a.op === op);
+        if (!action || busy || (op === 'submit' && submitBlocked !== undefined)) return false;
+        setChoice(action);
+        return true;
+      },
+    }),
+    [actions, busy, submitBlocked],
+  );
   if (!actions.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -112,7 +131,7 @@ export function DocActions({ entity, record, onAfter, submitBlocked, blocked, on
         <button
           key={action.op}
           type="button"
-          className={`btn ${action.op === 'submit' ? 'btn-primary' : action.op === 'cancel' ? 'btn-danger' : ''}`}
+          className={`btn doc-action-${action.op} ${action.op === 'submit' ? 'btn-primary' : action.op === 'cancel' ? 'btn-danger' : ''}`}
           disabled={busy || (action.op === 'submit' && submitBlocked !== undefined)}
           title={blocked ?? (action.op === 'submit' ? submitBlocked : undefined)}
           onClick={() => setChoice(action)}

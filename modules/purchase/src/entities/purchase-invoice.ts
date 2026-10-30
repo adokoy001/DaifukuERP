@@ -108,12 +108,16 @@ export const PurchaseInvoice = defineDocument({
   views: {
     list: ['date', 'partnerId', 'supplierInvoiceNo', 'total', 'balance', 'status', 'dueDate'],
     search: ['supplierInvoiceNo', 'note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['partnerId', 'date', 'supplierInvoiceNo', 'dueDate'],
-      ['priceIncludesTax', 'supplierTaxStatus', 'creditRatio'],
-      ['subtotal', 'taxTotal', 'deductibleTax', 'nonDeductibleTax', 'total'],
-      ['status', 'paidAmount', 'balance', 'journalEntryId'],
-      ['note'],
+      { label: label('請求', 'Bill'), fields: ['partnerId', 'date', 'supplierInvoiceNo', 'dueDate'] },
+      { label: label('税の扱い', 'Tax treatment'), fields: ['priceIncludesTax', 'supplierTaxStatus', 'creditRatio'] },
+      {
+        label: label('金額', 'Amounts'),
+        fields: ['subtotal', 'taxTotal', 'deductibleTax', 'nonDeductibleTax', 'total'],
+      },
+      { label: label('支払', 'Payment'), fields: ['status', 'paidAmount', 'balance', 'journalEntryId'] },
+      { label: label('備考', 'Note'), fields: ['note'] },
     ],
   },
 });

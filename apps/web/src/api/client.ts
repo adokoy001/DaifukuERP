@@ -90,6 +90,15 @@ export function getCompanyId(): string | null {
   }
 }
 
+/**
+ * The signed-in tenant, user and company of this tab as one string: router history state made for one session
+ * (draft seeds, the list position of form-ergonomics AC-9) is used only in that session.
+ */
+export function sessionOwner(): string {
+  const user = getUser();
+  return `${user?.tenantId ?? ''}:${user?.id ?? ''}:${getCompanyId() ?? ''}`;
+}
+
 export function setActiveCompany(id: string): void {
   const key = companySelectionKey();
   if (!key) throw new Error('Sign in before selecting a company.');

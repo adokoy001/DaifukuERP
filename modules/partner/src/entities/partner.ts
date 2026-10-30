@@ -83,14 +83,24 @@ export const Partner = defineEntity({
   views: {
     list: ['code', 'name', 'nameKana', 'isCustomer', 'isSupplier', 'taxStatus'],
     search: ['name', 'nameKana', 'code'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['code', 'name', 'nameKana'],
-      ['isCustomer', 'isSupplier', 'isActive'],
-      ['invoiceRegistrationNo', 'taxStatus'],
-      ['closingDay', 'paymentMonthOffset', 'paymentDay'],
-      ['postalCode', 'prefecture', 'address1', 'address2', 'phone', 'email'],
-      ['bankName', 'bankBranch', 'bankAccountType', 'bankAccountNo', 'bankAccountHolderKana'],
-      ['notes'],
+      { label: label('基本', 'Basics'), fields: ['code', 'name', 'nameKana'] },
+      { label: label('取引区分', 'Roles'), fields: ['isCustomer', 'isSupplier', 'isActive'] },
+      { label: label('インボイス', 'Invoice registration'), fields: ['invoiceRegistrationNo', 'taxStatus'] },
+      {
+        label: label('締め・支払条件', 'Closing and payment terms'),
+        fields: ['closingDay', 'paymentMonthOffset', 'paymentDay'],
+      },
+      {
+        label: label('連絡先', 'Contact'),
+        fields: ['postalCode', 'prefecture', 'address1', 'address2', 'phone', 'email'],
+      },
+      {
+        label: label('振込口座', 'Bank account'),
+        fields: ['bankName', 'bankBranch', 'bankAccountType', 'bankAccountNo', 'bankAccountHolderKana'],
+      },
+      { label: label('備考', 'Notes'), fields: ['notes'] },
     ],
   },
 });

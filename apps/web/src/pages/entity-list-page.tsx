@@ -4,9 +4,11 @@
 // list-workbench (docs/specs/list-workbench.md): meta-driven filters in the URL (`?f=`, and the `?status=&from=&to=`
 // link contract) sent as REST `where`, a column chooser and saved views in browser storage, page totals of money
 // columns, CSV export through the fresh export authorization, and bulk submit / cancel / delete with per-row results.
+// form-ergonomics AC-9: opening a row hands the shown ids and the criteria to the record page (router history state)
+// for its previous / next buttons.
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getCompanyId, getUser } from '../api/client.ts';
+import { getCompanyId, getUser, sessionOwner } from '../api/client.ts';
 import { useCurrencyScale } from '../api/company.tsx';
 import { useEntityMeta, useList, useMeta, useRefLabelMaps } from '../api/queries.ts';
 import type { EntityMeta, Label, RecordJson } from '../api/types.ts';
@@ -64,7 +66,8 @@ import {
   type BulkOp,
   type RowSelectionMap,
 } from '../lib/list-workbench.ts';
-import { PAGE_SIZE, pageCount, toListState, updateSearch, type ListSearch, type SearchPatch } from '../lib/query.ts';
+import { PAGE_SIZE, pageCount, updateSearch, type ListSearch, type SearchPatch } from '../lib/query.ts';
+import { listStateOf, recordNavState } from '../lib/record-nav.ts';
 import { S } from '../strings.ts';
 import { Button, buttonClass, EmptyState, PageHeader, Toolbar } from '../ui/index.ts';
 import { EntityMissing, LoadingView, MetaError } from './status-views.tsx';
@@ -252,7 +255,8 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
   const defs = useMemo(() => filterDefs(entity), [entity]);
   const filters = useMemo(() => effectiveFilters(search, entity, defs), [search, entity, defs]);
   const where = useMemo(() => filtersToDomain(filters, defs), [filters, defs]);
-  const state = useMemo(() => ({ ...toListState(search), ...(where ? { where } : {}) }), [search, where]);
+  // The same query the record page uses to read a neighbouring page (lib/record-nav.ts listStateOf).
+  const state = useMemo(() => listStateOf(entity, search), [entity, search]);
   const list = useList(entity.name, state);
   useEffect(() => {
     if (list.error) toast.error(list.error);
@@ -271,7 +275,17 @@ function ListView({ entity, search, importable }: { entity: EntityMeta; search: 
     void navigate({ to: '/e/$entity', params: { entity: entity.name }, search: (prev) => updateSearch(prev, patch) });
   const applyFilters = (next: ListFilters) => setSearch({ f: activeFilterCount(next) ? next : undefined });
   const openRow = (row: RecordJson) =>
-    void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id: row.id } });
+    void navigate({
+      to: '/e/$entity/$id',
+      params: { entity: entity.name, id: row.id },
+      state: (prev) => ({
+        ...prev,
+        ...recordNavState(
+          { entity: entity.name, ids: (rows ?? []).map((r) => r.id), search, total: list.data?.total ?? 0 },
+          sessionOwner(),
+        ),
+      }),
+    });
   const page = search.page ?? 1;
   const canCreate = entity.ops.includes('create');
   const canExport = meta.data?.actions.some((a) => a.name === exportActionName(entity.name) && a.canExport === true);

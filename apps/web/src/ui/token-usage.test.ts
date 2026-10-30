@@ -42,6 +42,12 @@ const CONVERTED = [
   'pages/companies-page.tsx',
   // setup-health (docs/specs/setup-health.md)
   'pages/health-page.tsx',
+  // form-ergonomics (docs/specs/form-ergonomics.md)
+  'components/form-sections.tsx',
+  'components/form-error-summary.tsx',
+  'components/form-draft.tsx',
+  'components/form-shortcuts-help.tsx',
+  'components/record-nav.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

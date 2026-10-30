@@ -133,11 +133,12 @@ export const SalesInvoice = defineDocument({
   views: {
     list: ['partnerId', 'date', 'dueDate', 'total', 'balance', 'status'],
     search: ['note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['partnerId', 'date', 'dueDate', 'priceIncludesTax'],
-      ['subtotal', 'taxTotal', 'total'],
-      ['paidAmount', 'balance', 'status'],
-      ['note', 'journalEntryId'],
+      { label: label('請求', 'Invoice'), fields: ['partnerId', 'date', 'dueDate', 'priceIncludesTax', 'currency'] },
+      { label: label('金額', 'Amounts'), fields: ['subtotal', 'taxTotal', 'total', 'taxSummary'] },
+      { label: label('入金', 'Receipt'), fields: ['paidAmount', 'balance', 'status'] },
+      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'journalEntryId', 'controlAccountId'] },
     ],
   },
 });

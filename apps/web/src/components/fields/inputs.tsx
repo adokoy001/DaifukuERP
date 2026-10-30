@@ -17,6 +17,10 @@ export interface WidgetProps {
   invalid: boolean;
   /** Grid cells have no <label>; the column label is announced instead (web-phase1 AC-1). */
   ariaLabel?: string;
+  /** form-ergonomics AC-4: ids of the error and the field description (helper text). */
+  describedBy?: string | undefined;
+  /** form-ergonomics AC-4: whether the user must enter a value (`required` / aria-required); default `field.required`. */
+  required?: boolean | undefined;
 }
 
 function str(v: FormValue): string {
@@ -27,7 +31,17 @@ function cls(invalid: boolean, extra = ''): string {
   return `input ${invalid ? 'input-error' : ''} ${extra}`.trim();
 }
 
-export function TextField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function TextField({
+  id,
+  field,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   const mono = field.kind === 'uuid' || field.name === 'code';
   return (
     <input
@@ -37,16 +51,27 @@ export function TextField({ id, field, value, onChange, disabled, invalid, ariaL
       className={cls(invalid, mono ? 'font-mono' : '')}
       value={str(value)}
       disabled={disabled}
-      required={field.required}
+      required={required ?? field.required}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
       autoComplete="off"
     />
   );
 }
 
-export function TextAreaField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function TextAreaField({
+  id,
+  field,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   return (
     <textarea
       id={id}
@@ -55,9 +80,10 @@ export function TextAreaField({ id, field, value, onChange, disabled, invalid, a
       className={cls(invalid)}
       value={str(value)}
       disabled={disabled}
-      required={field.required}
+      required={required ?? field.required}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
     />
   );
@@ -70,7 +96,17 @@ export function TextAreaField({ id, field, value, onChange, disabled, invalid, a
  * left to React's (microtask) re-render it replaced "1,100" after a select-all had been made on it, collapsing the
  * selection so the next keystroke appended ("11001") — found by e2e/payment.spec.ts.
  */
-export function NumberField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function NumberField({
+  id,
+  field,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   const [focused, setFocused] = useState(false);
   const currencyScale = useCurrencyScale();
   const raw = str(value);
@@ -95,9 +131,10 @@ export function NumberField({ id, field, value, onChange, disabled, invalid, ari
       value={shown}
       data-raw={field.kind === 'decimal' ? raw : undefined}
       disabled={disabled}
-      required={field.required}
+      required={required ?? field.required}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       placeholder={field.kind === 'decimal' ? '0' : undefined}
       onFocus={onFocus}
       onBlur={() => setFocused(false)}
@@ -108,7 +145,7 @@ export function NumberField({ id, field, value, onChange, disabled, invalid, ari
   );
 }
 
-export function BoolField({ id, field, value, onChange, disabled, ariaLabel }: WidgetProps) {
+export function BoolField({ id, field, value, onChange, disabled, ariaLabel, describedBy }: WidgetProps) {
   return (
     <input
       id={id}
@@ -118,12 +155,23 @@ export function BoolField({ id, field, value, onChange, disabled, ariaLabel }: W
       checked={value === true}
       disabled={disabled}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.checked)}
     />
   );
 }
 
-export function DateField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function DateField({
+  id,
+  field,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   return (
     <input
       id={id}
@@ -132,15 +180,16 @@ export function DateField({ id, field, value, onChange, disabled, invalid, ariaL
       className={cls(invalid, 'font-mono')}
       value={str(value)}
       disabled={disabled}
-      required={field.required}
+      required={required ?? field.required}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
     />
   );
 }
 
-export function TimestampField({ id, field, value, ariaLabel }: WidgetProps) {
+export function TimestampField({ id, field, value, ariaLabel, describedBy }: WidgetProps) {
   const { locale, t } = useLocale();
   const s = str(value);
   return (
@@ -154,11 +203,22 @@ export function TimestampField({ id, field, value, ariaLabel }: WidgetProps) {
       disabled
       title={t(S.readonly)}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
     />
   );
 }
 
-export function EnumField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function EnumField({
+  id,
+  field,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   const { t } = useLocale();
   return (
     <select
@@ -167,9 +227,10 @@ export function EnumField({ id, field, value, onChange, disabled, invalid, ariaL
       className={cls(invalid)}
       value={str(value)}
       disabled={disabled}
-      required={field.required}
+      required={required ?? field.required}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
     >
       <option value="">{t(S.selectNone)}</option>
@@ -182,7 +243,7 @@ export function EnumField({ id, field, value, onChange, disabled, invalid, ariaL
   );
 }
 
-export function JsonField({ id, field, value, onChange, disabled, invalid, ariaLabel }: WidgetProps) {
+export function JsonField({ id, field, value, onChange, disabled, invalid, ariaLabel, describedBy }: WidgetProps) {
   const { t } = useLocale();
   return (
     <textarea
@@ -196,6 +257,7 @@ export function JsonField({ id, field, value, onChange, disabled, invalid, ariaL
       disabled={disabled}
       aria-invalid={invalid}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
     />
   );

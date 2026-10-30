@@ -48,7 +48,12 @@ export interface FieldMeta {
   searchable?: boolean;
   /** Ext fields: who registered it (registry.registerExt `source`). */
   source?: string;
+  /** Listed in a permission field group (masked for other roles); form drafts never keep its value (form-ergonomics AC-8). */
+  restricted?: boolean;
 }
+
+/** A `views.form` group: plain field names, or a labelled section (form-ergonomics AC-1). */
+export type FormGroupMeta = string[] | { label: Label; fields: string[] };
 
 export interface EntityMeta {
   name: string;
@@ -61,7 +66,7 @@ export interface EntityMeta {
   fields: FieldMeta[];
   /** Registered ext fields (ADR-0014): `name` is `ext.<key>`, values live at `row.ext[key]`. Optional for older APIs. */
   extFields?: FieldMeta[];
-  views: { list: string[]; form: 'auto' | string[][]; search: string[] };
+  views: { list: string[]; form: 'auto' | FormGroupMeta[]; search: string[] };
   ops: Op[];
   allowOnSubmit?: string[];
   transitions?: string[];

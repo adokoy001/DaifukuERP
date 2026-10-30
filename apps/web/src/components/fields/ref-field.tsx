@@ -27,12 +27,16 @@ function useOutsideClose(ref: React.RefObject<HTMLDivElement | null>, close: () 
 interface KeyboardOptions {
   open: boolean;
   active: number;
+  /** What the user typed into the search box ('' when nothing). */
+  text: string;
   items: RecordJson[];
   setOpen: (open: boolean) => void;
   setActive: (index: number) => void;
   pick: (row: RecordJson) => void;
 }
 function candidateKey(event: KeyboardEvent<HTMLInputElement>, state: KeyboardOptions): void {
+  // form-ergonomics AC-6: Alt+↑/↓ moves a line-grid row, so the combobox leaves it to the grid.
+  if (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
     state.setOpen(true);
@@ -44,6 +48,10 @@ function candidateKey(event: KeyboardEvent<HTMLInputElement>, state: KeyboardOpt
           ? state.items.length - 1
           : Math.max(0, state.active - 1);
     state.setActive(next);
+  } else if (event.key === 'Enter' && state.open && state.active < 0 && state.text === '') {
+    // form-ergonomics AC-6: the list opened by focus alone (nothing typed, nothing highlighted) does not take Enter,
+    // so Enter moves on in the line grid (and submits like any text box in the header) instead of picking row 1.
+    state.setOpen(false);
   } else if (event.key === 'Enter' && state.open) {
     event.preventDefault();
     const row = state.items[Math.max(0, state.active)];
@@ -54,7 +62,18 @@ function candidateKey(event: KeyboardEvent<HTMLInputElement>, state: KeyboardOpt
     state.setOpen(false);
   }
 }
-export function RefField({ id, field, value, onChange, onSelectRecord, disabled, invalid, ariaLabel }: WidgetProps) {
+export function RefField({
+  id,
+  field,
+  value,
+  onChange,
+  onSelectRecord,
+  disabled,
+  invalid,
+  ariaLabel,
+  describedBy,
+  required,
+}: WidgetProps) {
   const { t } = useLocale();
   const listId = useId();
   const selectedId = typeof value === 'string' ? value : '';
@@ -107,6 +126,8 @@ export function RefField({ id, field, value, onChange, onSelectRecord, disabled,
           aria-activedescendant={open && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
           aria-invalid={invalid}
           aria-label={ariaLabel}
+          aria-describedby={describedBy}
+          aria-required={(required ?? field.required) || undefined}
           autoComplete="off"
           className={`input ${invalid ? 'input-error' : ''}`}
           placeholder={t(S.refSearch)}
@@ -121,7 +142,9 @@ export function RefField({ id, field, value, onChange, onSelectRecord, disabled,
             setActive(-1);
             setOpen(true);
           }}
-          onKeyDown={(event) => candidateKey(event, { open, active: activeIndex, items, setOpen, setActive, pick })}
+          onKeyDown={(event) =>
+            candidateKey(event, { open, active: activeIndex, text, items, setOpen, setActive, pick })
+          }
         />
         {selectedId && !disabled ? (
           <button

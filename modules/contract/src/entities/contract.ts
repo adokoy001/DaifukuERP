@@ -114,12 +114,13 @@ export const Contract = defineDocument({
   views: {
     list: ['partnerId', 'title', 'startDate', 'endDate', 'status', 'nextPeriod'],
     search: ['title', 'note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['partnerId', 'title'],
-      ['startDate', 'endDate', 'status', 'nextPeriod'],
-      ['billingDay', 'billingTiming', 'intervalMonths'],
-      ['prorationRule', 'roundingMode'],
-      ['note'],
+      { label: label('契約', 'Contract'), fields: ['partnerId', 'title'] },
+      { label: label('期間', 'Term'), fields: ['startDate', 'endDate', 'status', 'nextPeriod'] },
+      { label: label('請求条件', 'Billing terms'), fields: ['billingDay', 'billingTiming', 'intervalMonths'] },
+      { label: label('計算方法', 'Calculation'), fields: ['prorationRule', 'roundingMode'] },
+      { label: label('備考', 'Note'), fields: ['note'] },
     ],
   },
 });

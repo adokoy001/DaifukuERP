@@ -5,7 +5,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
-import { getCompanyId, getUser, isApiError } from '../api/client.ts';
+import { isApiError, sessionOwner } from '../api/client.ts';
 import { keys, useMeta } from '../api/queries.ts';
 import { fetchFreshRecord } from '../api/related.ts';
 import type { EntityMeta, RecordJson } from '../api/types.ts';
@@ -24,12 +24,6 @@ function recordTitle(entity: EntityMeta, record: RecordJson): string {
   const v = entity.displayField ? record[entity.displayField] : undefined;
   if (typeof v === 'string' && v) return v;
   return shortId(record.id);
-}
-
-/** The signed-in tenant, user and company: a draft seed is used only in the session that made it. */
-function sessionOwner(): string {
-  const user = getUser();
-  return `${user?.tenantId ?? ''}:${user?.id ?? ''}:${getCompanyId() ?? ''}`;
 }
 
 /**

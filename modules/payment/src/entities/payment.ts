@@ -97,11 +97,12 @@ export const Payment = defineDocument({
   views: {
     list: ['direction', 'partnerId', 'date', 'amount', 'allocatedAmount', 'unallocatedAmount', 'method'],
     search: ['note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['direction', 'partnerId', 'date', 'method'],
-      ['amount', 'accountId'],
-      ['allocatedAmount', 'unallocatedAmount'],
-      ['note', 'journalEntryId'],
+      { label: label('入出金', 'Payment'), fields: ['direction', 'partnerId', 'date', 'method'] },
+      { label: label('金額・口座', 'Amount and account'), fields: ['amount', 'accountId'] },
+      { label: label('消込', 'Allocation'), fields: ['allocatedAmount', 'unallocatedAmount'] },
+      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'journalEntryId'] },
     ],
   },
 });

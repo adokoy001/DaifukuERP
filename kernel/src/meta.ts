@@ -4,7 +4,7 @@ import type { EntityDef } from './dsl/entity.ts';
 import { EXT_PREFIX } from './dsl/ext.ts';
 import type { AnyField } from './dsl/fields.ts';
 import type { Label } from './i18n.ts';
-import type { Op } from './dsl/types.ts';
+import type { FormGroup, Op } from './dsl/types.ts';
 import { allowedOps, maskedFields } from './permissions.ts';
 import { registry } from './registry.ts';
 import { currencyScale } from './settings.ts';
@@ -38,7 +38,15 @@ export interface FieldMeta {
   searchable?: true;
   /** Ext fields: who registered it (registry.registerExt `source`). */
   source?: string;
+  /**
+   * The field is listed in a permission `fieldGroups` entry (masked for roles outside it). form-ergonomics AC-8: the
+   * browser never keeps its value in storage (unsaved-input drafts).
+   */
+  restricted?: true;
 }
+
+/** A `views.form` group as /meta emits it: plain field names, or a labelled group (form-ergonomics AC-1). */
+export type FormGroupMeta = string[] | { label: Label; fields: string[] };
 
 export interface EntityMeta {
   name: string;
@@ -51,7 +59,7 @@ export interface EntityMeta {
   fields: FieldMeta[];
   /** Registered ext fields (ADR-0014), values live at `row.ext[key]`; `name` is `ext.<key>`. Empty when none. */
   extFields: FieldMeta[];
-  views: { list: string[]; form: 'auto' | string[][]; search: string[] };
+  views: { list: string[]; form: 'auto' | FormGroupMeta[]; search: string[] };
   ops: Op[];
   allowOnSubmit?: string[];
   transitions?: string[];
@@ -119,6 +127,8 @@ export function fieldMeta(entity: EntityDef, name: string, opts: MetaOptions = {
   if (!fd || fd.opts.outputHidden) throw new Error(`no public field ${name}`);
   const meta = describeField(name, fd, opts);
   if (isUniqueField(entity, name)) meta.unique = true;
+  if (Object.values(entity.config.permissions.fieldGroups ?? {}).some((group) => group.fields.includes(name)))
+    meta.restricted = true;
   const override = registry.labelOverrides(entity.name, opts.appliedPacks)?.fields?.[name];
   if (override) meta.label = override;
   return meta;
@@ -142,6 +152,16 @@ export function extFieldMetas(entity: EntityDef, opts: MetaOptions = {}): FieldM
     });
 }
 
+/**
+ * One `views.form` group limited to the caller's visible fields. Plain groups stay `string[]` (the original /meta
+ * shape); labelled groups become `{ label, fields }` (form-ergonomics AC-1, ADR-0002 addendum).
+ */
+function formGroupMeta(group: readonly string[] | FormGroup, visible: readonly string[]): FormGroupMeta {
+  if (Array.isArray(group)) return group.filter((f) => visible.includes(f));
+  const labelled = group as FormGroup;
+  return { label: labelled.label, fields: labelled.fields.filter((f) => visible.includes(f)) };
+}
+
 export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = {}): EntityMeta {
   opts = {
     ...opts,
@@ -163,10 +183,7 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
     extFields: extFieldMetas(entity, opts),
     views: {
       list: [...(views?.list ?? nonHidden.slice(0, 6))].filter((f) => visible.includes(f)),
-      form:
-        views?.form && views.form !== 'auto'
-          ? views.form.map((g) => [...g].filter((f) => visible.includes(f)))
-          : 'auto',
+      form: views?.form && views.form !== 'auto' ? views.form.map((g) => formGroupMeta(g, visible)) : 'auto',
       search: [...(views?.search ?? (entity.displayField ? [entity.displayField] : []))].filter((field) =>
         visible.includes(field),
       ),

@@ -3,6 +3,7 @@
 // and across tabs (the `storage` event). Any storage failure reads as "unavailable" and the lists are not shown.
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { assistStorageKey, browserStorage, readRaw, type AssistKind } from '../lib/assist-storage.ts';
+import { draftStorage, forgetDrafts } from '../lib/form-draft.ts';
 import { parseFavorites, toggleStoredFavorite, visibleFavorites, MAX_FAVORITES } from '../lib/favorites.ts';
 import type { NavigationCatalog } from '../lib/navigation-types.ts';
 import {
@@ -85,10 +86,12 @@ export function useRecordVisit(entity: EntityMeta, record: RecordJson | undefine
 
 /**
  * Explicit sign-out (navigation-assist AC-3): drops the signed-in user's stored record names in this browser, for
- * every company. Call it before clearSession(); never on the automatic 401 clean-up. Never throws.
+ * every company, and (form-ergonomics AC-8) the unsaved form drafts of this tab. Call it before clearSession(); never
+ * on the automatic 401 clean-up (a user whose sign-in expired gets the draft back after signing in again). Never throws.
  */
 export function forgetRecentNames(): void {
   try {
+    forgetDrafts(draftStorage());
     const user = getUser();
     if (user?.tenantId && user.id && forgetRecentLabels(browserStorage(), user.tenantId, user.id) > 0) notify();
   } catch {

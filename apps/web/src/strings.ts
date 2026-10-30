@@ -116,7 +116,10 @@ export const S = {
   noLines: L('明細がありません', 'No lines'),
   linesFrozen: L('確定済み／取消済みのため明細は変更できません', 'Lines are frozen after submit/cancel'),
   linesHaveErrors: L('明細の入力内容を確認してください', 'Please check the highlighted line cells'),
-  enterAddsRow: L('Enter: 次の行 / 最終行では追加', 'Enter: next row / adds a row on the last one'),
+  enterAddsRow: L(
+    'Enter: 次の欄へ / 最後の欄で行を追加・Alt+↑↓: 行の移動',
+    'Enter: next cell / adds a row after the last one · Alt+↑↓: move the row',
+  ),
   // reports (AC-3)
   reports: L('レポート', 'Reports'),
   run: L('実行', 'Run'),

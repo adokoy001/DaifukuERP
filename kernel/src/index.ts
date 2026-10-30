@@ -41,6 +41,7 @@ export {
   type FieldGroup,
   type Naming,
   type ViewsConfig,
+  type FormGroup,
   type EntityConfig,
   type StoreAccessPolicy,
   type DocumentConfig,
@@ -200,6 +201,7 @@ export {
   extFieldMetas,
   type EntityMeta,
   type FieldMeta,
+  type FormGroupMeta,
   type AppMeta,
   type MetaOptions,
 } from './meta.ts';

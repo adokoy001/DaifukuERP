@@ -1037,6 +1037,45 @@
   background: #fffffff2;
   box-shadow: 0 -4px 18px #2a335508;
 }
+/* form-ergonomics AC-2: a labelled section's legend sits inside its box, above the field grid. */
+.record-form .record-section > legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.record-form .record-section > legend + * {
+  clear: both;
+}
+/* form-ergonomics AC-7: Submit lives in the form bar only below 768px; above it the header button is the one shown. */
+.form-bar-submit {
+  display: none;
+}
+@media (max-width: 767px) {
+  .form-bar-submit {
+    display: inline-flex;
+  }
+  .record-view .doc-action-submit {
+    display: none;
+  }
+  .form-toolbar {
+    padding-bottom: calc(11px + env(safe-area-inset-bottom));
+  }
+  .form-toolbar .btn {
+    min-height: 40px;
+  }
+  /* Keyboard hints mean nothing on a touch screen and crowd the grid header. */
+  .form-shortcut-hint,
+  .line-grid-hint {
+    display: none;
+  }
+  /* A focused input is scrolled clear of the sticky bar. */
+  .page-content:has(.form-toolbar) {
+    scroll-padding-bottom: 96px;
+  }
+}
 .dirty-label {
   display: inline-flex;
   align-items: center;
