@@ -25,8 +25,25 @@ export {
   buildInvoiceRenderData,
   loadIssuer,
   resolveIssuer,
+  partnerAddressee,
   INVOICE_HTML_OVERRIDE,
 } from './actions/render-invoice-html.ts';
+export {
+  renderStatementHtmlAction,
+  buildStatementRenderData,
+  previousClosingDate,
+  latestClosingDate,
+  isClosingDate,
+  statementPeriod,
+  sumTaxSummaries,
+  STATEMENT_HTML_OVERRIDE,
+  STATEMENT_MAX_INVOICES,
+} from './actions/render-statement-html.ts';
+export {
+  defaultStatementHtml,
+  type StatementRenderData,
+  type StatementHtmlRenderer,
+} from './services/statement-html.ts';
 export { arAgingAction, arAging, AR_AGING_COLUMNS } from './actions/ar-aging.ts';
 export { recalculateInvoice, loadInvoiceLines, type RecalculateInput, type RecalculateResult } from './recalculate.ts';
 export { resolvePostingAccounts, ACCOUNTS_HINT } from './hooks/submit.ts';
@@ -40,6 +57,7 @@ export {
   formatMoney,
   formatRate,
   REDUCED_MARK,
+  rateLabel,
   type InvoiceRenderData,
   type InvoiceHtmlRenderer,
 } from './services/render-html.ts';

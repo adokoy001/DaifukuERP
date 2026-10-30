@@ -47,6 +47,8 @@ import { shiftBoardAction, myShiftsAction } from './actions/shift-portals.ts';
 import { saveShiftPlanAction, publishShiftPlanAction, cancelShiftPlanAction } from './actions/shift-plans.ts';
 import { registerMasterGuards } from './master-guards.ts';
 import { todoAction } from './actions/todo.ts';
+import { renderPayslipHtmlAction } from './actions/payslip.ts';
+import { ensurePrintLayoutSettings } from '@daifuku/mod-print-layout';
 
 export const WorkforceModule = defineModule({
   name: 'workforce',
@@ -103,10 +105,12 @@ export const WorkforceModule = defineModule({
     managementPortalAction,
     initializePolicyAction,
     todoAction,
+    renderPayslipHtmlAction,
   ],
   hooks: () => {
     registerWorkflowGuards();
     registerMasterGuards();
+    ensurePrintLayoutSettings();
   },
   seed: seedWorkforce,
   menus: [

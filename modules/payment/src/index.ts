@@ -23,6 +23,19 @@ export {
   type OutstandingInput,
 } from './actions/outstanding.ts';
 export {
+  renderReceiptHtmlAction,
+  renderPaymentNoticeHtmlAction,
+  buildPaymentDocumentRenderData,
+  RECEIPT_HTML_OVERRIDE,
+  PAYMENT_NOTICE_HTML_OVERRIDE,
+} from './actions/print.ts';
+export {
+  defaultReceiptHtml,
+  defaultPaymentNoticeHtml,
+  type PaymentDocumentRenderData,
+  type PaymentDocumentHtmlRenderer,
+} from './services/payment-html.ts';
+export {
   loadInvoice,
   loadInvoices,
   listOpenInvoices,

@@ -1,5 +1,6 @@
 // UI/agent metadata derived from definitions (ADR-0002): what the generic UI renders and what MCP lists.
 import type { Context } from './context.ts';
+import type { ActionPrintBinding, ActionPrintField } from './dsl/defs.ts';
 import type { EntityDef } from './dsl/entity.ts';
 import { EXT_PREFIX } from './dsl/ext.ts';
 import type { AnyField } from './dsl/fields.ts';
@@ -212,6 +213,25 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
   return meta;
 }
 
+/** An action's print declaration as /meta emits it: `idInput` filled in, `when` / `fields` only when declared. */
+export interface PrintBindingMeta {
+  entity: string;
+  label: Label;
+  idInput: string;
+  when?: Readonly<Record<string, string | number | boolean>>;
+  fields?: Readonly<Record<string, ActionPrintField>>;
+}
+
+export function printBindingMeta(print: ActionPrintBinding): PrintBindingMeta {
+  return {
+    entity: print.entity,
+    label: print.label,
+    idInput: print.idInput ?? 'id',
+    ...(print.when ? { when: print.when } : {}),
+    ...(print.fields ? { fields: print.fields } : {}),
+  };
+}
+
 export interface AppMeta {
   entities: EntityMeta[];
   /** Modules, then packs (ADR-0015: loaded packs contribute menus and entity groups like modules). */
@@ -224,6 +244,8 @@ export interface AppMeta {
     generic: boolean;
     mutates: boolean;
     canExport: boolean;
+    /** Document render actions: the record page that offers it (docs/specs/print-templates.md AC-2). */
+    print?: PrintBindingMeta;
   }[];
   roles: string[];
   /** Loaded packs; `applied` for the caller's company comes from MetaOptions.appliedPacks (false when not given). */
@@ -263,6 +285,7 @@ export function appMeta(ctx: Context, opts: MetaOptions = {}): AppMeta {
       generic: a.generic,
       mutates: a.mutates,
       canExport: canExportAction(effective, a),
+      ...(a.print ? { print: printBindingMeta(a.print) } : {}),
     }));
   for (const module of modules)
     module.menus = module.menus.filter(

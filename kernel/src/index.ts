@@ -58,7 +58,16 @@ export {
   type InsertInput,
   type UpdateInput,
 } from './dsl/entity.ts';
-export { defineAction, toolNameOf, type ActionDef, type ActionConfig, type ActionPermission } from './dsl/action.ts';
+export {
+  defineAction,
+  toolNameOf,
+  PRINT_ACTION_RE,
+  type ActionDef,
+  type ActionConfig,
+  type ActionPermission,
+  type ActionPrintBinding,
+  type ActionPrintField,
+} from './dsl/action.ts';
 export { defineModule, type ModuleDef, type ModuleConfig, type MenuItem } from './dsl/module.ts';
 export { EXT_PREFIX, type ExtFieldDef, type RegisterExtOptions } from './dsl/ext.ts';
 export {
@@ -202,6 +211,8 @@ export {
   appMeta,
   fieldMeta,
   extFieldMetas,
+  printBindingMeta,
+  type PrintBindingMeta,
   type EntityMeta,
   type FieldMeta,
   type FormGroupMeta,

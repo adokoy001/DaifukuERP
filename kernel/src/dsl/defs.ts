@@ -49,6 +49,26 @@ export type ActionPermission =
   /** Requires one of the roles. */
   | { roles: readonly string[] };
 
+/** Label and help of one extra input property of a print action (its input dialog; docs/specs/print-templates.md AC-1). */
+export interface ActionPrintField {
+  label: Label;
+  description?: Label;
+}
+
+/**
+ * A document render action's link to the record page (docs/specs/print-templates.md AC-1, ADR-0009 addendum): the
+ * screen of `entity` shows a print button labelled `label` that sends the record id as input property `idInput`
+ * (default `id`). `when` limits it to records whose fields equal the given values; `fields` labels the other input
+ * properties in ja and en for the input dialog. The action keeps its own permission; this only says where it is offered.
+ */
+export interface ActionPrintBinding {
+  entity: string;
+  label: Label;
+  idInput?: string;
+  when?: Readonly<Record<string, string | number | boolean>>;
+  fields?: Readonly<Record<string, ActionPrintField>>;
+}
+
 export interface ActionConfig<I extends z.ZodType, O extends z.ZodType> {
   /** Reviewed machine-only transport may invoke this action; false by default. */
   relayAccess?: boolean;
@@ -81,6 +101,11 @@ export interface ActionConfig<I extends z.ZodType, O extends z.ZodType> {
    * `/actions/*`, REST sugar, OpenAPI, `/meta` and MCP tools (ADR-0014). Default false.
    */
   internal?: boolean;
+  /**
+   * Document render actions (`<module>.render_<document>_html`, `{ html }` output) only: the record page that offers
+   * it as a print button (docs/specs/print-templates.md). Checked by defineAction; emitted as /meta `actions[].print`.
+   */
+  print?: ActionPrintBinding;
   handler: (ctx: Context, input: z.output<I>) => Promise<z.input<O>>;
 }
 

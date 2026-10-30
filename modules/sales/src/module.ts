@@ -12,6 +12,8 @@ import { arAgingAction } from './actions/ar-aging.ts';
 import { importOpeningReceivablesAction } from './actions/import-opening-receivables.ts';
 import { recordPaymentAction } from './actions/record-payment.ts';
 import { renderInvoiceHtmlAction } from './actions/render-invoice-html.ts';
+import { renderStatementHtmlAction } from './actions/render-statement-html.ts';
+import { ensurePrintLayoutSettings } from '@daifuku/mod-print-layout';
 import { SalesInvoice } from './entities/sales-invoice.ts';
 import { SalesInvoiceLine } from './entities/sales-invoice-line.ts';
 import { registerCancelHook } from './hooks/cancel.ts';
@@ -25,7 +27,13 @@ export const SalesModule = defineModule({
   label: label('販売', 'Sales'),
   depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name],
   entities: [SalesSettlement, SalesInvoice, SalesInvoiceLine],
-  actions: [renderInvoiceHtmlAction, arAgingAction, recordPaymentAction, importOpeningReceivablesAction],
+  actions: [
+    renderInvoiceHtmlAction,
+    renderStatementHtmlAction,
+    arAgingAction,
+    recordPaymentAction,
+    importOpeningReceivablesAction,
+  ],
   hooks: () => {
     registerSettlementHooks();
     registerRecalcHooks();
@@ -33,6 +41,7 @@ export const SalesModule = defineModule({
     registerSubmitHooks();
     registerCancelHook();
     registerSalesSettings();
+    ensurePrintLayoutSettings();
     registry.registerHealthCheck(issuerHealthCheck);
   },
   menus: [
