@@ -10,5 +10,7 @@ export async function insertOutbox(ctx: Context, topic: string, payload: unknown
     companyId: ctx.companyId,
     topic,
     payload: payload as Record<string, unknown>,
+    // One clock for activation and retry comparisons (docs/specs/event-delivery.md AC-6): the context's, not now().
+    createdAt: ctx.now(),
   });
 }

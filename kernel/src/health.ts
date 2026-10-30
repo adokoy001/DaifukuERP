@@ -3,11 +3,12 @@
 // and apps pass platform checks (mail, SSO, migrations, storage) as `extra`. Each check runs in a savepoint with the
 // caller's Context, so it sees only what the caller may read; a check that throws becomes a `warn` item and the others
 // still run. Outcomes carry labels and an in-app path only: never secrets, connection strings or file paths.
-import { and, count, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { isAppHref } from './app-href.ts';
-import type { Context } from './context.ts';
+import { isAdmin, type Context } from './context.ts';
 import { HEALTH_ROLES, hasAnyRole } from './kernel-capabilities.ts';
 import { companyProfileOf, companyProfileSchema, COMPANY_PROFILE_KEY } from './company-profile.ts';
+import { eventDeliveries } from './db/event-tables.ts';
 import { outbox } from './db/system-tables.ts';
 import { DaifukuError, PermissionDenied, safeErrorDiagnostics } from './errors.ts';
 import { label, type Label } from './i18n.ts';
@@ -90,37 +91,60 @@ export const COMPANY_PROFILE_CHECK: HealthCheckDef = {
 };
 
 /**
- * Kernel check: business events waiting in the transactional outbox for this company. Delivery failures are `warn`;
- * a backlog alone is reported as a count (no delivery worker runs until F1, so events accumulate by design).
+ * Kernel check: business event delivery for this company (docs/specs/event-delivery.md AC-24). Events the worker gave up
+ * on (dead outbox rows, i.e. internal subscribers that failed 8 times) and dead webhook / email deliveries are `warn`,
+ * with a link to the administrators' delivery screen for an administrator. Retrying rows alone are not a warning; the
+ * `ok` detail reports undelivered events and deliveries waiting to be sent. No URL, recipient or error text is returned.
  */
 export const OUTBOX_CHECK: HealthCheckDef = {
   id: 'system.outbox',
   label: label('業務イベントの配送', 'Business event delivery'),
   order: 90,
   run: async (ctx) => {
-    const scope = and(
-      eq(outbox.tenantId, ctx.tenantId),
-      ctx.companyId ? eq(outbox.companyId, ctx.companyId) : isNull(outbox.companyId),
-      isNull(outbox.publishedAt),
-    );
-    const [pending] = await ctx.db.select({ n: count() }).from(outbox).where(scope);
-    const [failed] = await ctx.db
+    const company = ctx.companyId ? eq(outbox.companyId, ctx.companyId) : isNull(outbox.companyId);
+    const undelivered = and(eq(outbox.tenantId, ctx.tenantId), company, isNull(outbox.publishedAt));
+    const [pending] = await ctx.db
       .select({ n: count() })
       .from(outbox)
-      .where(and(scope, isNotNull(outbox.lastError)));
+      .where(and(undelivered, isNull(outbox.deadAt)));
+    const [deadEvents] = await ctx.db
+      .select({ n: count() })
+      .from(outbox)
+      .where(and(undelivered, isNotNull(outbox.deadAt)));
+    const deliveries = ctx.companyId
+      ? await ctx.db
+          .select({ status: eventDeliveries.status, n: count() })
+          .from(eventDeliveries)
+          .where(
+            and(
+              eq(eventDeliveries.tenantId, ctx.tenantId),
+              eq(eventDeliveries.companyId, ctx.companyId),
+              inArray(eventDeliveries.status, ['pending', 'sending', 'dead']),
+            ),
+          )
+          .groupBy(eventDeliveries.status)
+      : [];
+    const deadDeliveries = Number(deliveries.find((d) => d.status === 'dead')?.n ?? 0);
+    const waitingDeliveries = deliveries
+      .filter((d) => d.status === 'pending' || d.status === 'sending')
+      .reduce((sum, d) => sum + Number(d.n), 0);
+    const failures = Number(deadEvents?.n ?? 0) + deadDeliveries;
     const waiting = Number(pending?.n ?? 0);
-    const failures = Number(failed?.n ?? 0);
     if (failures > 0)
       return {
         status: 'warn',
         detail: label(
-          `未配送 ${waiting} 件のうち ${failures} 件は配送に失敗しています。`,
-          `${failures} of ${waiting} undelivered events failed to deliver.`,
+          `配送できなかったイベントが ${failures} 件あります。原因を直してから再送してください。`,
+          `${failures} event deliveries failed. Fix the cause, then resend them.`,
         ),
+        ...(isAdmin(ctx) && ctx.actor.type === 'user' ? { href: '/admin/event-deliveries?status=dead' } : {}),
       };
     return {
       status: 'ok',
-      detail: label(`未配送のイベント: ${waiting} 件`, `Undelivered events: ${waiting}`),
+      detail: label(
+        `未配送のイベント: ${waiting} 件、送信待ち: ${waitingDeliveries} 件`,
+        `Undelivered events: ${waiting}; deliveries waiting to be sent: ${waitingDeliveries}`,
+      ),
     };
   },
 };

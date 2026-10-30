@@ -174,7 +174,10 @@ export const auditLog = pgTable(
   ],
 ).enableRLS();
 
-/** Transactional outbox (ADR-0001). Written in the same transaction as the change; delivered by the worker. */
+/**
+ * Transactional outbox (ADR-0001). Written in the same transaction as the change; delivered by the worker (ADR-0037).
+ * `created_at` is written from the emitting context's clock (insertOutbox), not the database default.
+ */
 export const outbox = pgTable(
   'outbox',
   {
@@ -186,9 +189,21 @@ export const outbox = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
     attempts: integer('attempts').notNull().default(0),
+    /** Safe diagnostic of the last subscriber failure (error code, or INTERNAL and SQLSTATE); never a raw message. */
     lastError: text('last_error'),
+    /** Retry not before this time after a subscriber failure (null = due now; docs/specs/event-delivery.md AC-4). */
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'date' }),
+    /** Set when the retry limit is reached: the worker skips the row until an administrator resends it. */
+    deadAt: timestamp('dead_at', { withTimezone: true, mode: 'date' }),
   },
-  (t) => [index('outbox_pending_idx').on(t.tenantId, t.publishedAt, t.createdAt), tenantPolicy('outbox')],
+  (t) => [
+    index('outbox_pending_idx').on(t.tenantId, t.publishedAt, t.createdAt),
+    // Only undelivered, live rows: the worker's due-tenant scan stays small while delivered rows accumulate.
+    index('outbox_due_idx')
+      .on(t.tenantId, t.nextAttemptAt)
+      .where(sql`${t.publishedAt} is null and ${t.deadAt} is null`),
+    tenantPolicy('outbox'),
+  ],
 ).enableRLS();
 
 /** Definitions of JSONB ext fields (ADR-0003): which keys an entity's `ext` may hold, their type and owner pack. */
