@@ -43,6 +43,7 @@ import { parseCashSearch } from './lib/cash-forecast.ts';
 import { parseCloseSearch } from './lib/close-guide.ts';
 import { parseOpeningSearch } from './lib/opening-balances.ts';
 import { parseEvidenceSearch } from './lib/evidence-search.ts';
+import { parseDepreciationSearch } from './lib/depreciation.ts';
 import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
@@ -434,6 +435,12 @@ const expenseSettlementRoute = createRoute({
   path: '/finance/expenses',
   component: lazyRouteComponent(() => import('./pages/expense-settlement-page.tsx'), 'ExpenseSettlementPage'),
 });
+const depreciationRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/depreciation',
+  validateSearch: parseDepreciationSearch,
+  component: lazyRouteComponent(() => import('./pages/depreciation-page.tsx'), 'DepreciationPage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -513,6 +520,7 @@ const routeTree = rootRoute.addChildren([
     recurringRoute,
     evidenceRoute,
     expenseSettlementRoute,
+    depreciationRoute,
     taxFilingRoute,
   ]),
 ]);

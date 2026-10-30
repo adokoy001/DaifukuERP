@@ -89,6 +89,7 @@ const MODULE_WORKSPACES: Readonly<Record<string, WorkspaceId>> = {
   tax: 'finance',
   tax_filing: 'finance',
   group_accounting: 'finance',
+  fixed_assets: 'finance',
   franchise: 'finance',
   attachment: 'finance',
   l10n_jp: 'finance',
@@ -275,6 +276,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '承認済みの従業員経費から精算書を作り、仕訳と支払をまとめて記録します。',
       en: 'Create expense settlements from approved employee expenses; the entry and the payment are recorded together.',
+    },
+  },
+  {
+    href: '/finance/depreciation',
+    workspace: 'finance',
+    module: 'fixed_assets',
+    action: 'fixed_assets.preview_depreciation',
+    label: { ja: '償却の実行', en: 'Depreciation run' },
+    description: {
+      ja: '会計期間の減価償却を試算し、確認してから仕訳を 1 本作ります。',
+      en: 'Preview the depreciation of a fiscal period and book it as one journal entry.',
     },
   },
   {

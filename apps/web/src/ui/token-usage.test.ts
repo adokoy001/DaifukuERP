@@ -24,6 +24,8 @@ const CONVERTED = [
   'components/setting-card.tsx',
   'components/setting-code-field.tsx',
   'pages/close-page.tsx',
+  // fixed-assets (docs/specs/fixed-assets.md AC-32)
+  'pages/depreciation-page.tsx',
   // list-workbench (docs/specs/list-workbench.md)
   'components/list-filter-panel.tsx',
   'components/list-columns-dialog.tsx',

@@ -23,6 +23,7 @@ const INDUSTRY = topic('appendix-d-industry-templates.md');
 const DEVICES = topic('appendix-j-store-devices.md');
 const MONTHLY = '06-monthly.md';
 const EXPENSES = topic('expense-settlement.md');
+const FIXED_ASSETS = topic('appendix-o-fixed-assets.md');
 
 /** Dedicated screens (navigation-data.ts) and the fixed generic routes. */
 const SCREENS: Readonly<Record<string, HelpTopic>> = {
@@ -65,6 +66,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/finance/evidence': topic('02-basics.md', '証憑の検索'),
   // expense-settlement (docs/specs/expense-settlement.md D19)
   '/finance/expenses': EXPENSES,
+  // docs/specs/fixed-assets.md AC-33
+  '/finance/depreciation': FIXED_ASSETS,
 };
 /** Reports explained in the monthly chapter; every other table report uses the report-screen appendix. */
 const REPORTS: Readonly<Record<string, HelpTopic>> = {
@@ -76,6 +79,8 @@ const REPORTS: Readonly<Record<string, HelpTopic>> = {
   'inventory.valuation': topic(MONTHLY, '在庫評価'),
   'banking.cash_forecast': CASH_FORECAST,
   'banking.cash_schedule': CASH_FORECAST,
+  'fixed_assets.depreciation_schedule': topic('appendix-o-fixed-assets.md', '減価償却明細表'),
+  'fixed_assets.property_tax_summary': topic('appendix-o-fixed-assets.md', '償却資産申告の集計'),
 };
 /** Generic action forms with a manual section; other `/a/...` forms have no link. */
 const ACTIONS: Readonly<Record<string, HelpTopic>> = {
@@ -102,6 +107,7 @@ const ENTITIES: readonly (readonly [RegExp, HelpTopic])[] = [
   [/^(?:franchise|group_accounting|pos_integration)_/, ENTERPRISE],
   [/^edge_/, DEVICES],
   [/^expense_(?:settlement|advance)$/, EXPENSES],
+  [/^(?:fixed_asset|fixed_asset_disposal|depreciation_run|depreciation_run_line)$/, FIXED_ASSETS],
 ];
 const BASICS = topic('02-basics.md');
 
