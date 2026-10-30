@@ -2,6 +2,8 @@
 // Test-only entities mirror the real shapes: an invoice with a journalEntryId ref and lines, a journal-like entry with the
 // sourceEntity/sourceId pair and a reversalOf self-ref, a receipt whose allocation lines point at invoices through the
 // invoiceEntity/invoiceId pair, a note whose link field is masked for some roles, and an item some roles cannot read.
+// An order with two header refs and a line ref to the same entity, and a shipment whose lines point at order lines (the
+// trade_fulfillment_line.orderLineId shape), cover the per-item linking field and links held by / pointing at lines.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   amendDocument,
@@ -13,6 +15,7 @@ import {
   label,
   newId,
   registerCrudActions,
+  RELATED_LIMIT,
   relatedRecords,
   repo,
   runAction,
@@ -121,6 +124,46 @@ const RelNote = defineEntity({
     roles: { clerk: ['read', 'create'], auditor: ['read'] },
     fieldGroups: { link: { fields: ['invoiceId'], roles: ['clerk'] } },
   },
+});
+const RelOrder = defineDocument({
+  name: 'rel_order',
+  label: label('関連テスト受注', 'Related test order'),
+  naming: { type: 'sequence', prefix: 'RO-' },
+  fields: {
+    date: f.date({ required: true, default: 'today' }),
+    mainItemId: f.ref('rel_item'),
+    backupItemId: f.ref('rel_item'),
+  },
+  lines: [{ entity: 'rel_order_line', parentField: 'orderId' }],
+  permissions: { roles: { clerk: ['read', 'create', 'update'], shipper: ['read'] } },
+});
+const RelOrderLine = defineEntity({
+  name: 'rel_order_line',
+  label: label('関連テスト受注明細', 'Related test order line'),
+  fields: {
+    orderId: f.ref('rel_order', { required: true, onDelete: 'cascade' }),
+    seq: f.int({ required: true, default: 1 }),
+    itemId: f.ref('rel_item'),
+  },
+  permissions: { roles: { clerk: ['read', 'create', 'update', 'delete'] } },
+});
+const RelShip = defineDocument({
+  name: 'rel_ship',
+  label: label('関連テスト出荷', 'Related test shipment'),
+  naming: { type: 'sequence', prefix: 'RS-' },
+  fields: { date: f.date({ required: true, default: 'today' }) },
+  lines: [{ entity: 'rel_ship_line', parentField: 'shipId' }],
+  permissions: { roles: { clerk: ['read', 'create', 'update'], shipper: ['read'] } },
+});
+defineEntity({
+  name: 'rel_ship_line',
+  label: label('関連テスト出荷明細', 'Related test shipment line'),
+  fields: {
+    shipId: f.ref('rel_ship', { required: true, onDelete: 'cascade' }),
+    seq: f.int({ required: true, default: 1 }),
+    orderLineId: f.ref('rel_order_line', { required: true }),
+  },
+  permissions: { roles: { clerk: ['read', 'create', 'update', 'delete'], shipper: ['read'] } },
 });
 registerCrudActions();
 
@@ -299,11 +342,63 @@ describe('document-links AC-2: references, referencing records, journal entries 
       return { busyInvoice: inv.id, manyItems: created };
     });
     const r = await related(RelInvoice, busyInvoice);
-    expect(group(r, 'rel_item')?.items).toHaveLength(50);
+    expect(RELATED_LIMIT).toBe(50);
+    expect(group(r, 'rel_item')?.items).toHaveLength(RELATED_LIMIT);
     expect(group(r, 'rel_item')?.more).toBe(true);
     expect(group(r, 'rel_item')?.items.every((i) => manyItems.includes(i.id))).toBe(true);
-    expect(group(r, 'rel_note')?.items).toHaveLength(50);
+    expect(group(r, 'rel_note')?.items).toHaveLength(RELATED_LIMIT);
     expect(group(r, 'rel_note')?.more).toBe(true);
+  });
+
+  it('AC-2: each item names the field it was reached through (two header refs and a line ref to one entity)', async () => {
+    const [a, b] = items as [string, string];
+    const c = (await db.run({}, (ctx) => repo(ctx, RelItem).create({ name: 'Item C', code: 'C' }))).id;
+    const orderId = await db.run({}, async (ctx) => {
+      const order = await repo(ctx, RelOrder).create({ date: '2026-10-08', mainItemId: a, backupItemId: b });
+      await saveLines(ctx, RelOrder, order.id, { rel_order_line: [{ itemId: c }, { itemId: a }] });
+      return order.id;
+    });
+    const r = await related(RelOrder, orderId);
+    const vias = Object.fromEntries((group(r, 'rel_item')?.items ?? []).map((i) => [i.id, i.via]));
+    // a line ref to an item the header already names keeps the header field (first link found wins)
+    expect(vias).toEqual({ [a]: 'mainItemId', [b]: 'backupItemId', [c]: 'rel_order_line.itemId' });
+    expect(group(r, 'rel_order_line')).toBeUndefined();
+  });
+
+  it("AC-2: a line pointing at another document's line stands for that document, from both sides", async () => {
+    const { orderId, shipId } = await db.run({}, async (ctx) => {
+      const order = await repo(ctx, RelOrder).create({ date: '2026-10-09' });
+      await saveLines(ctx, RelOrder, order.id, { rel_order_line: [{ itemId: items[0] }, { itemId: items[1] }] });
+      const lines = await repo(ctx, RelOrderLine).list({ where: { orderId: order.id }, limit: 10 });
+      const ship = await repo(ctx, RelShip).create({ date: '2026-10-10' });
+      await saveLines(ctx, RelShip, ship.id, {
+        rel_ship_line: lines.items.map((l) => ({ orderLineId: l.id })),
+      });
+      return { orderId: order.id, shipId: ship.id };
+    });
+    const ship = await related(RelShip, shipId);
+    expect(ids(ship, 'rel_order')).toEqual([orderId]);
+    expect(group(ship, 'rel_order')?.items[0]).toMatchObject({
+      relation: 'references',
+      via: 'rel_ship_line.orderLineId',
+      number: null,
+      docstatus: 0,
+    });
+    expect(group(ship, 'rel_order_line')).toBeUndefined();
+    expect(group(ship, 'rel_ship_line')).toBeUndefined();
+    const order = await related(RelOrder, orderId);
+    expect(ids(order, 'rel_ship')).toEqual([shipId]);
+    expect(group(order, 'rel_ship')?.items[0]).toMatchObject({
+      relation: 'referenced_by',
+      via: 'rel_ship_line.orderLineId',
+    });
+    expect(group(order, 'rel_ship_line')).toBeUndefined();
+    expect(group(order, 'rel_order_line')).toBeUndefined();
+    // AC-3: a caller who cannot read the order lines cannot resolve either side through them
+    const shipper = await related(RelShip, shipId, ['shipper']);
+    expect(shipper.groups).toEqual([]);
+    const shipperOrder = await related(RelOrder, orderId, ['shipper']);
+    expect(group(shipperOrder, 'rel_ship')).toBeUndefined();
   });
 });
 

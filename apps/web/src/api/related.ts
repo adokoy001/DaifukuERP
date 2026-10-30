@@ -2,7 +2,6 @@
 // Types copied by hand from kernel/src/related.ts (the web bundle must not import @daifuku/kernel).
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { request } from './client.ts';
-import { keys } from './queries.ts';
 import type { Label, RecordJson } from './types.ts';
 
 export type RelatedRelation = 'references' | 'referenced_by' | 'amended_from' | 'amendment';
@@ -33,14 +32,21 @@ export interface RelatedResult {
   groups: RelatedGroup[];
 }
 
-/** Under the record's key, so invalidating the record (save, submit, cancel) also refreshes its related records. */
-export const relatedKey = (entity: string, id: string) => [...keys.record(entity, id), 'related'] as const;
+/**
+ * Its own key root, not under the record's key: saves, submits and cancels await the record's invalidation, and must
+ * not wait for this slower read (the form never waits for the panel). The record's version is part of the key, so a
+ * saved or submitted record re-reads its related records in the background.
+ */
+const relatedKey = (entity: string, id: string, version: number) => ['related', entity, id, version] as const;
 
-export function useRelated(entity: string, id: string): UseQueryResult<RelatedResult> {
+/** The related records of one record version; while a newer version loads, the same record's last result stays shown. */
+export function useRelated(entity: string, id: string, version: number): UseQueryResult<RelatedResult> {
   return useQuery({
-    queryKey: relatedKey(entity, id),
+    queryKey: relatedKey(entity, id, version),
     queryFn: ({ signal }) => request<RelatedResult>(`/api/${entity}/${id}/related`, { signal }),
     retry: false,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === entity && previousQuery.queryKey[2] === id ? previous : undefined,
   });
 }
 

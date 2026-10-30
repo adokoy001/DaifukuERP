@@ -1,10 +1,11 @@
 // document-links AC-1..AC-8 through the real UI: duplicate a submitted sales invoice into a new draft, record its receipt
 // with the quick action (prefilled direction / partner / outstanding amount / allocation line) and submit it, see the
-// receipt and the journal entry in the invoice's 関連 panel, refuse a duplicate of a record that changed after it was
-// shown, and use the panel and the actions at 390px. Invoices are set up through the API (as in payment.spec.ts).
+// receipt and the journal entry in the invoice's 関連 panel (documents first), refuse a duplicate of a record that changed
+// after it was shown, offer neither action to a read-only user, and use the panel and the actions at 390px. Invoices are
+// set up through the API (as in payment.spec.ts).
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { BUSINESS_DATE } from './environment.ts';
-import { api, type Headers, type Row } from './operations-helpers.ts';
+import { api, PASSWORD, type Headers, type Row } from './operations-helpers.ts';
 import { assertNoOverflow, qualityPartner, qualitySession, signInQuality } from './quality-helpers.ts';
 
 interface Invoice extends Row {
@@ -15,9 +16,18 @@ interface Invoice extends Row {
   date: string;
 }
 
-async function draftInvoice(request: APIRequestContext, headers: Headers, partnerId: string, note: string) {
+/** An earlier day of the business month (its 1st), so a copy dated today is told apart; the same day on the 1st. */
+const EARLIER_DATE = BUSINESS_DATE.slice(0, 8) + '01';
+
+async function draftInvoice(
+  request: APIRequestContext,
+  headers: Headers,
+  partnerId: string,
+  note: string,
+  date = BUSINESS_DATE,
+) {
   return api<Invoice>(request, headers, '/api/sales_invoice', {
-    date: BUSINESS_DATE,
+    date,
     partnerId,
     note,
     lines: {
@@ -26,8 +36,14 @@ async function draftInvoice(request: APIRequestContext, headers: Headers, partne
   });
 }
 
-async function openInvoice(request: APIRequestContext, headers: Headers, partnerId: string, note: string) {
-  const draft = await draftInvoice(request, headers, partnerId, note);
+async function openInvoice(
+  request: APIRequestContext,
+  headers: Headers,
+  partnerId: string,
+  note: string,
+  date = BUSINESS_DATE,
+) {
+  const draft = await draftInvoice(request, headers, partnerId, note, date);
   return api<Invoice>(request, headers, `/api/sales_invoice/${draft.id}/submit`, {});
 }
 
@@ -51,7 +67,14 @@ test('document-links AC-1/AC-4: duplicate a submitted invoice -> new draft with 
 }) => {
   const { headers } = await qualitySession(request);
   const partner = await qualityPartner(request, headers, 'C2 複製先 ' + crypto.randomUUID().slice(0, 8));
-  const source = await openInvoice(request, headers, partner.id, 'monthly ' + crypto.randomUUID().slice(0, 6));
+  const source = await openInvoice(
+    request,
+    headers,
+    partner.id,
+    'monthly ' + crypto.randomUUID().slice(0, 6),
+    EARLIER_DATE,
+  );
+  expect(source.date).toBe(EARLIER_DATE);
 
   await signInQuality(page);
   await page.goto(`/e/sales_invoice/${source.id}`);
@@ -66,7 +89,8 @@ test('document-links AC-1/AC-4: duplicate a submitted invoice -> new draft with 
   await expect(page).toHaveURL(/\/e\/sales_invoice\/new$/);
   const notice = page.getByTestId('seed-notice');
   await expect(notice).toContainText(source.number);
-  await expect(notice).toContainText(`元の日付 ${source.date}`);
+  // the notice keeps the source's date; the copy takes today's business date (they differ except on the 1st)
+  await expect(notice).toContainText(`元の日付 ${EARLIER_DATE}`);
   await expect(notice).toContainText('保存するまで記録は作成されません');
   const form = page.getByTestId('record-form');
   await expect(form).toHaveAttribute('data-mode', 'create');
@@ -157,6 +181,13 @@ test('document-links AC-5/AC-4: record receipt from an invoice -> prefilled paym
   await expect(
     panel.getByTestId('related-group-journal_entry').locator(`[data-id="${invoice.journalEntryId}"]`),
   ).toBeVisible();
+  // documents (payment, journal entry) are listed before master records (the customer)
+  await expect(panel.getByTestId('related-group-partner')).toBeVisible();
+  const kinds = await panel
+    .locator('[data-testid^="related-group-"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-kind')));
+  expect(kinds[0]).toBe('document');
+  expect(kinds).toEqual([...kinds].sort((a, b) => Number(b === 'document') - Number(a === 'document')));
   await page.screenshot({ path: test.info().outputPath('document-links-invoice-header.png') });
   await panel.screenshot({ path: test.info().outputPath('document-links-invoice-related.png') });
   // a fully paid invoice no longer offers the receipt action
@@ -260,13 +291,91 @@ test('document-links AC-4: a failing related read stays inside the panel; the re
   await page.goto(`/e/sales_invoice/${invoice.id}`);
   const panel = page.getByTestId('related-panel');
   await expect(panel.getByTestId('related-error')).toContainText('関連する記録を読み込めませんでした');
+  await expect(panel.getByTestId('related-status')).toHaveText('関連する記録を読み込めませんでした。');
+  // the technical details stay available, folded away
+  const details = panel.getByTestId('related-error-details');
+  await details.locator('summary').click();
+  await expect(details).toContainText('Synthetic related failure');
+  await expect(details).toContainText('INTERNAL');
+  await expect(details).toContainText('503');
+  await expect(details).toContainText('Retry.');
   // the record itself is shown and its actions work while the panel failed
   await expect(page.getByTestId('record-title')).toHaveText(invoice.number);
   await expect(page.getByTestId('duplicate-record')).toBeEnabled();
   await page.unroute(related);
   await panel.getByRole('button', { name: '再試行', exact: true }).click();
+  // the pressed button is gone; focus stays in the panel, on its heading
+  await expect(panel.getByRole('heading', { name: '関連', exact: true })).toBeFocused();
   await expect(panel.getByTestId('related-error')).toHaveCount(0);
   await expect(
     panel.getByTestId('related-group-journal_entry').locator(`[data-id="${invoice.journalEntryId}"]`),
   ).toBeVisible();
+});
+
+test('document-links AC-1/AC-5: a read-only user sees the related panel but neither 複製 nor a quick action', async ({
+  page,
+  request,
+}) => {
+  const { headers, companyId } = await qualitySession(request);
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const partner = await qualityPartner(request, headers, 'C2 閲覧 ' + suffix);
+  const invoice = await openInvoice(request, headers, partner.id, 'viewer ' + suffix);
+  const email = `c2-viewer-${suffix}@example.com`;
+  const user = await api(request, headers, '/admin/users', { name: 'C2 閲覧 ' + suffix, email, password: PASSWORD });
+  await api(
+    request,
+    headers,
+    `/admin/users/${user.id}/companies/${companyId}`,
+    { expectedVersion: 0, roles: ['viewer'], accessScope: 'all', storeIds: [] },
+    'PUT',
+  );
+  await signInQuality(page, email, PASSWORD);
+  await page.goto(`/e/sales_invoice/${invoice.id}`);
+  await expect(page.getByTestId('record-title')).toHaveText(invoice.number);
+  const panel = page.getByTestId('related-panel');
+  await expect(
+    panel.getByTestId('related-group-journal_entry').locator(`[data-id="${invoice.journalEntryId}"]`),
+  ).toBeVisible();
+  // AC-1: no create permission on sales invoices; AC-5: none on payments either (the invoice has a balance)
+  expect(invoice.balance).not.toBe('0');
+  await expect(page.getByTestId('duplicate-record')).toHaveCount(0);
+  await expect(page.getByTestId('quick-action-sales_invoice.record_receipt')).toHaveCount(0);
+  await expect(page.getByTestId('record-links')).toHaveCount(0);
+});
+
+test('document-links AC-1: Back after the next user signs in opens a plain new form, not the previous user’s copy', async ({
+  page,
+  request,
+}) => {
+  const { headers, companyId } = await qualitySession(request);
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const partner = await qualityPartner(request, headers, 'C2 セッション ' + suffix);
+  const source = await openInvoice(request, headers, partner.id, 'session ' + suffix);
+  const email = `c2-sales-${suffix}@example.com`;
+  const user = await api(request, headers, '/admin/users', { name: 'C2 営業 ' + suffix, email, password: PASSWORD });
+  await api(
+    request,
+    headers,
+    `/admin/users/${user.id}/companies/${companyId}`,
+    { expectedVersion: 0, roles: ['sales'], accessScope: 'all', storeIds: [] },
+    'PUT',
+  );
+  await signInQuality(page);
+  await page.goto(`/e/sales_invoice/${source.id}`);
+  await page.getByTestId('duplicate-record').click();
+  await expect(page.getByTestId('seed-notice')).toContainText(source.number);
+  // the seeded form is not dirty, so logging out does not ask; the next user signs in on the same tab
+  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel('メールアドレス', { exact: true }).fill(email);
+  await page.getByLabel('パスワード', { exact: true }).fill(PASSWORD);
+  await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+  await expect(page).not.toHaveURL(/\/login/);
+  // Back returns to the previous user's seeded entry: the page opens, but without that user's values
+  await page.goBack();
+  await expect(page).toHaveURL(/\/e\/sales_invoice\/new$/);
+  const form = page.getByTestId('record-form');
+  await expect(form).toHaveAttribute('data-mode', 'create');
+  await expect(page.getByTestId('seed-notice')).toHaveCount(0);
+  await expect(form.locator('div[data-field="note"] textarea')).toHaveValue('');
 });

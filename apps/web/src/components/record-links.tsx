@@ -1,33 +1,44 @@
 // document-links AC-1/AC-5/AC-7: 複製 and quick actions on a record page, and the notice above a seeded new-record form.
 // Both re-read the source record first: a failed read or a changed version opens nothing and says why (AC-7). The
-// new-record page receives the values through router history state (lib/duplicate.ts); nothing is created until saved.
+// new-record page receives the values through router history state (lib/duplicate.ts), bound to the session that made
+// them; nothing is created until saved.
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
-import { isApiError } from '../api/client.ts';
+import { useState } from 'react';
+import { getCompanyId, getUser, isApiError } from '../api/client.ts';
 import { keys, useMeta } from '../api/queries.ts';
 import { fetchFreshRecord } from '../api/related.ts';
 import type { EntityMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
-import { duplicateSeed, seedFromState, seedState, todayLocal, type DraftSeed } from '../lib/duplicate.ts';
+import { duplicateSeed, seedFromState, seedState, type DraftSeed } from '../lib/duplicate.ts';
 import { shortId } from '../lib/format.ts';
+import { businessToday } from '../lib/operations.ts';
 import { quickActionSeed, quickActionsFor } from '../lib/quick-actions.ts';
 import { isWorkforceManaged } from '../lib/workforce-entity.ts';
 import { Button } from '../ui/index.ts';
 import { useToast } from './toast.tsx';
 
 /** Number, display value or short id: how a record is named in notices and links. */
-export function recordTitle(entity: EntityMeta, record: RecordJson): string {
+function recordTitle(entity: EntityMeta, record: RecordJson): string {
   if (typeof record.number === 'string' && record.number) return record.number;
   const v = entity.displayField ? record[entity.displayField] : undefined;
   if (typeof v === 'string' && v) return v;
   return shortId(record.id);
 }
 
-/** The draft seed in the current location's history state, when it is meant for `entity`'s new-record page. */
+/** The signed-in tenant, user and company: a draft seed is used only in the session that made it. */
+function sessionOwner(): string {
+  const user = getUser();
+  return `${user?.tenantId ?? ''}:${user?.id ?? ''}:${getCompanyId() ?? ''}`;
+}
+
+/**
+ * The draft seed in the current location's history state, when it is meant for `entity`'s new-record page and was made
+ * in this session (Back after logging in as someone else, or after a company switch, opens a plain new form).
+ */
 export function useDraftSeed(entity: string): DraftSeed | undefined {
   const state = useRouterState({ select: (s) => s.location.state });
-  return useMemo(() => seedFromState(state, entity), [state, entity]);
+  return seedFromState(state, entity, sessionOwner());
 }
 
 export interface RecordLinkActionsProps {
@@ -89,7 +100,7 @@ export function RecordLinkActions({ entity, record, blocked }: RecordLinkActions
       await navigate({
         to: '/e/$entity/new',
         params: { entity: seed.entity },
-        state: (prev) => ({ ...prev, ...seedState(seed) }),
+        state: (prev) => ({ ...prev, ...seedState(seed, sessionOwner()) }),
       });
     } finally {
       setBusy(null);
@@ -105,7 +116,9 @@ export function RecordLinkActions({ entity, record, blocked }: RecordLinkActions
           disabled={busy !== null || blocked !== undefined}
           title={blocked}
           onClick={() =>
-            void launch(action.id, (fresh) => quickActionSeed(action, fresh, todayLocal(), recordTitle(entity, fresh)))
+            void launch(action.id, (fresh) =>
+              quickActionSeed(action, fresh, businessToday(), recordTitle(entity, fresh)),
+            )
           }
         >
           {t(action.label)}
@@ -118,7 +131,7 @@ export function RecordLinkActions({ entity, record, blocked }: RecordLinkActions
           title={blocked}
           onClick={() =>
             void launch('duplicate', (fresh) =>
-              duplicateSeed(entity, fresh, entities, todayLocal(), recordTitle(entity, fresh)),
+              duplicateSeed(entity, fresh, entities, businessToday(), recordTitle(entity, fresh)),
             )
           }
         >

@@ -1,10 +1,17 @@
 // Related records of one record (document-links AC-2/AC-3): what it references and what references it, grouped by
 // entity, at most RELATED_LIMIT per entity. Links come from the registry only: `ref` fields, the `<x>Entity` + `<x>Id`
 // pair convention (polymorphic links such as journal_entry.sourceEntity/sourceId and payment_allocation.invoiceEntity/
-// invoiceId), document lines (their links count as the document's; a line that references the record is reported as its
-// parent document) and the amendedFrom chain. Every read goes through Repository with the caller's Context, so read
-// permission, row rules, company/site/store scope and field masks apply per related entity; an entity the caller cannot
-// read, or whose linking field is masked for the caller, is left out entirely (no group, no count).
+// invoiceId), document lines (their links count as the document's; a line that references the record, or one of the
+// record's lines, is reported as its parent document, and a link to another document's line as that document) and the
+// amendedFrom chain. Every read goes through Repository with the caller's Context, so read permission, row rules,
+// company/site/store scope and field masks apply per related entity; an entity the caller cannot read, or whose linking
+// field is masked for the caller, is left out entirely (no group, no count).
+//
+// The pair convention is inferred from field names, and the kernel does not check the pair on write the way it checks a
+// `ref`. A new `<x>Entity` + `<x>Id` pair must therefore be serverOwned or validated on write (the target entity is
+// registered and the record is visible to the writer, as attachments' assertLinkTarget does); otherwise anyone who may
+// create the source could add made-up "referenced by" entries to any record whose id they know.
+// apps/api/test/related.db.test.ts pins the reviewed pairs.
 import type { Context } from './context.ts';
 import type { EntityDef } from './dsl/entity.ts';
 import type { Domain } from './dsl/types.ts';
@@ -48,7 +55,11 @@ export interface RelatedGroup {
   label: Label;
   kind: 'entity' | 'document';
   items: RelatedItem[];
-  /** True when more than RELATED_LIMIT records matched (only the first RELATED_LIMIT are returned). */
+  /**
+   * True when more than RELATED_LIMIT records matched (only the first RELATED_LIMIT are returned). A hint, possibly
+   * conservative: when more than 500 lines reference the record, it is set without checking that the remaining lines
+   * belong to documents the caller may read.
+   */
   more: boolean;
 }
 
@@ -61,7 +72,7 @@ export interface RelatedResult {
 type Raw = Record<string, unknown>;
 
 /** One link a source entity can hold: `idField` names the target id; `entityField` (polymorphic) the target entity. */
-interface LinkSpec {
+export interface LinkSpec {
   idField: string;
   entityField?: string;
   /** Target entity names; `any` for a free-text entity field. */
@@ -71,8 +82,11 @@ interface LinkSpec {
 const ENTITY_SUFFIX = 'Entity';
 const ID_SUFFIX = 'Id';
 
-/** `ref` fields and `<x>Entity` (text/enum) + `<x>Id` (uuid/text) pairs of an entity, in declaration order. */
-export function linkSpecs(entity: EntityDef): LinkSpec[] {
+/**
+ * `ref` fields and `<x>Entity` (text/enum) + `<x>Id` (uuid/text) pairs of an entity, in declaration order: the links the
+ * related-records reader follows.
+ */
+export function relatedLinkSpecs(entity: EntityDef): LinkSpec[] {
   const fields = entity.config.fields;
   const out: LinkSpec[] = [];
   for (const [name, fd] of Object.entries(fields)) {
@@ -107,8 +121,10 @@ function listable(ctx: Context, entity: EntityDef): boolean {
   return (entity.scope === 'tenant' || Boolean(ctx.companyId)) && can(ctx, entity, 'read');
 }
 
+type LineParents = Map<string, { parent: EntityDef; parentField: string }>;
+
 /** line entity name -> its document and parent field. */
-function lineParents(): Map<string, { parent: EntityDef; parentField: string }> {
+function lineParents(): LineParents {
   const out = new Map<string, { parent: EntityDef; parentField: string }>();
   for (const doc of registry.allEntities())
     for (const l of doc.doc?.lines ?? [])
@@ -147,7 +163,14 @@ class Groups {
   private readonly byEntity = new Map<string, { entity: EntityDef; items: Map<string, RelatedItem>; more: boolean }>();
   constructor(private readonly self: { entity: string; id: string }) {}
 
-  add(entity: EntityDef, rows: readonly Raw[], relation: RelatedRelation, via: string, more = false): void {
+  /** `via` names the linking field, for all rows or per row id. */
+  add(
+    entity: EntityDef,
+    rows: readonly Raw[],
+    relation: RelatedRelation,
+    via: string | ((id: string) => string),
+    more = false,
+  ): void {
     let group = this.byEntity.get(entity.name);
     if (!group) {
       group = { entity, items: new Map(), more: false };
@@ -161,7 +184,7 @@ class Groups {
         group.more = true;
         continue;
       }
-      group.items.set(id, itemOf(entity, row, relation, via));
+      group.items.set(id, itemOf(entity, row, relation, typeof via === 'string' ? via : via(id)));
     }
   }
 
@@ -189,66 +212,126 @@ async function readByIds(
   return { rows: res.items as Raw[], more: res.total > res.items.length };
 }
 
-/** Outgoing links of one row: target entity -> ids, labelled with the linking field. */
-function collectTargets(
-  entity: EntityDef,
-  row: Raw,
-  skip: ReadonlySet<string>,
-  prefix: string,
-  into: Map<string, { via: string; ids: Set<string> }>,
-): void {
-  for (const link of linkSpecs(entity)) {
+/** target entity -> target id -> the linking field it was first reached through. */
+type Targets = Map<string, Map<string, string>>;
+
+function addTarget(into: Targets, target: string, id: string, via: string): void {
+  let ids = into.get(target);
+  if (!ids) {
+    ids = new Map();
+    into.set(target, ids);
+  }
+  if (!ids.has(id)) ids.set(id, via);
+}
+
+/** Outgoing links of one row, each id labelled with its own linking field. */
+function collectTargets(entity: EntityDef, row: Raw, skip: ReadonlySet<string>, prefix: string, into: Targets): void {
+  for (const link of relatedLinkSpecs(entity)) {
     if (skip.has(link.idField)) continue;
     const target = link.entityField ? row[link.entityField] : link.targets[0];
     const id = row[link.idField];
     if (typeof target !== 'string' || !registry.hasEntity(target) || !canTarget(link, target)) continue;
     if (typeof id !== 'string' || !isUuid(id)) continue;
-    const slot = into.get(target) ?? { via: `${prefix}${link.idField}`, ids: new Set<string>() };
-    slot.ids.add(id);
-    into.set(target, slot);
+    addTarget(into, target, id, `${prefix}${link.idField}`);
   }
 }
 
-async function outgoing(ctx: Context, entity: EntityDef, record: Raw, groups: Groups): Promise<void> {
-  const targets = new Map<string, { via: string; ids: Set<string> }>();
+/** Document id of each of `ids` (rows of the line entity `line`); empty when the caller may not read the parent field. */
+async function documentsOfLines(
+  ctx: Context,
+  line: EntityDef,
+  parentField: string,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0 || !listable(ctx, line) || !readable(ctx, line, [parentField])) return out;
+  const res = await repo(ctx, line).list({ where: { id: { $in: [...ids] } }, limit: LINE_SCAN });
+  for (const row of res.items as Raw[]) if (isId(row[parentField])) out.set(row.id as string, row[parentField]);
+  return out;
+}
+
+/**
+ * Records this one references (header fields, then lines). A link to a line of another document stands for that
+ * document. Returns the ids of the record's own lines the caller may read (for the links that point at them).
+ */
+async function outgoing(
+  ctx: Context,
+  entity: EntityDef,
+  record: Raw,
+  parents: LineParents,
+  groups: Groups,
+): Promise<Map<string, string[]>> {
+  const targets: Targets = new Map();
+  const ownLines = new Map<string, string[]>();
   collectTargets(entity, publicOutput(entity, record), new Set(), '', targets);
   for (const l of entity.doc?.lines ?? []) {
     const line = registry.entity(l.entity);
     if (!listable(ctx, line) || !readable(ctx, line, [l.parentField])) continue;
     const res = await repo(ctx, line).list({ where: { [l.parentField]: record.id as string }, limit: LINE_SCAN });
+    ownLines.set(
+      line.name,
+      (res.items as Raw[]).map((row) => row.id as string),
+    );
     for (const row of res.items as Raw[])
       collectTargets(line, publicOutput(line, row), new Set([l.parentField]), `${line.name}.`, targets);
   }
-  for (const [name, { via, ids }] of targets) {
-    const target = registry.entity(name);
-    const { rows, more } = await readByIds(ctx, target, [...ids]);
-    groups.add(target, rows, 'references', via, more);
+  for (const [name, ids] of [...targets]) {
+    const parent = parents.get(name);
+    if (!parent) continue;
+    targets.delete(name);
+    const docs = await documentsOfLines(ctx, registry.entity(name), parent.parentField, [...ids.keys()]);
+    for (const [lineId, via] of ids) {
+      const doc = docs.get(lineId);
+      if (doc) addTarget(targets, parent.parent.name, doc, via);
+    }
   }
+  for (const [name, ids] of targets) {
+    const target = registry.entity(name);
+    const { rows, more } = await readByIds(ctx, target, [...ids.keys()]);
+    groups.add(target, rows, 'references', (id) => ids.get(id) ?? '', more);
+  }
+  return ownLines;
 }
 
-async function incoming(ctx: Context, entity: EntityDef, id: string, groups: Groups): Promise<void> {
-  const parents = lineParents();
+/**
+ * Records referencing this one, or one of its own lines (`ownLines`; only through links that name the line entity, not
+ * free-text `<x>Entity` pairs). A referencing line stands for its document; the record's own lines are left out.
+ */
+async function incoming(
+  ctx: Context,
+  entity: EntityDef,
+  id: string,
+  ownLines: ReadonlyMap<string, readonly string[]>,
+  parents: LineParents,
+  groups: Groups,
+): Promise<void> {
+  const targets: [string, readonly string[]][] = [[entity.name, [id]], ...ownLines];
   for (const source of registry.allEntities()) {
-    for (const link of linkSpecs(source)) {
-      if (!canTarget(link, entity.name)) continue;
+    for (const link of relatedLinkSpecs(source)) {
       const parent = parents.get(source.name);
       // The record's own lines are part of the record, not related records.
       if (parent && parent.parent.name === entity.name && parent.parentField === link.idField) continue;
-      if (!listable(ctx, source) || !readable(ctx, source, [link.idField, link.entityField])) continue;
-      const where: Domain = { [link.idField]: id };
-      if (link.entityField) where[link.entityField] = entity.name;
-      const via = `${source.name}.${link.idField}`;
-      if (!parent) {
-        const res = await repo(ctx, source).list({ where, limit: RELATED_LIMIT });
-        groups.add(source, res.items as Raw[], 'referenced_by', via, res.total > res.items.length);
-        continue;
+      for (const [targetName, targetIds] of targets) {
+        if (targetIds.length === 0 || !canTarget(link, targetName)) continue;
+        if (targetName !== entity.name && link.targets === 'any') continue;
+        if (!listable(ctx, source) || !readable(ctx, source, [link.idField, link.entityField])) continue;
+        const where: Domain = {
+          [link.idField]: targetIds.length === 1 ? (targetIds[0] as string) : { $in: [...targetIds] },
+        };
+        if (link.entityField) where[link.entityField] = targetName;
+        const via = `${source.name}.${link.idField}`;
+        if (!parent) {
+          const res = await repo(ctx, source).list({ where, limit: RELATED_LIMIT });
+          groups.add(source, res.items as Raw[], 'referenced_by', via, res.total > res.items.length);
+          continue;
+        }
+        // A line that references the record stands for its document.
+        if (!readable(ctx, source, [parent.parentField])) continue;
+        const lines = await repo(ctx, source).list({ where, limit: LINE_SCAN });
+        const ids = [...new Set((lines.items as Raw[]).map((r) => r[parent.parentField]).filter(isId))];
+        const { rows, more } = await readByIds(ctx, parent.parent, ids);
+        groups.add(parent.parent, rows, 'referenced_by', via, more || lines.total > lines.items.length);
       }
-      // A line that references the record stands for its document.
-      if (!readable(ctx, source, [parent.parentField])) continue;
-      const lines = await repo(ctx, source).list({ where, limit: LINE_SCAN });
-      const ids = [...new Set((lines.items as Raw[]).map((r) => r[parent.parentField]).filter(isId))];
-      const { rows, more } = await readByIds(ctx, parent.parent, ids);
-      groups.add(parent.parent, rows, 'referenced_by', via, more || lines.total > lines.items.length);
     }
   }
 }
@@ -291,8 +374,9 @@ async function amendmentChain(ctx: Context, entity: EntityDef, record: Raw, grou
 export async function relatedRecords(ctx: Context, entity: EntityDef, id: string): Promise<RelatedResult> {
   const record = (await repo(ctx, entity).get(id)) as Raw;
   const groups = new Groups({ entity: entity.name, id });
+  const parents = lineParents();
   if (entity.kind === 'document') await amendmentChain(ctx, entity, record, groups);
-  await outgoing(ctx, entity, record, groups);
-  await incoming(ctx, entity, id, groups);
+  const ownLines = await outgoing(ctx, entity, record, parents, groups);
+  await incoming(ctx, entity, id, ownLines, parents, groups);
   return { entity: entity.name, id, groups: groups.result(ctx.appliedPacks ?? []) };
 }

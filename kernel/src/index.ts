@@ -168,8 +168,10 @@ export {
 export { EXPORT_ROWS_LIMIT } from './actions/export-rows.ts';
 export { registerPackActions } from './actions/pack.ts';
 export {
+  relatedLinkSpecs,
   relatedRecords,
   RELATED_LIMIT,
+  type LinkSpec as RelatedLinkSpec,
   type RelatedGroup,
   type RelatedItem,
   type RelatedRelation,

@@ -1,7 +1,8 @@
 // document-links AC-2/AC-3 over REST with the real modules: GET /api/:entity/:id/related for a submitted sales invoice
 // that a receipt allocated (payment_allocation.invoiceId stands for its payment) and that posted a journal entry
-// (journalEntryId and journal_entry.sourceEntity/sourceId), and the per-role omission of unreadable entities.
-import { companyMemberships, hashPassword, newId, runAction, users } from '@daifuku/kernel';
+// (journalEntryId and journal_entry.sourceEntity/sourceId), the per-item linking field on a posted purchase invoice, the
+// per-role omission of unreadable entities, and the reviewed list of user-writable <x>Entity/<x>Id link pairs.
+import { companyMemberships, hashPassword, newId, registry, relatedLinkSpecs, runAction, users } from '@daifuku/kernel';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -186,8 +187,44 @@ describe('document-links AC-3: per-role reads over REST', () => {
     expect(denied.status).toBe(403);
     expect(denied.body.error).toMatchObject({ code: 'PERMISSION_DENIED' });
     expect((await get(`/api/purchase_invoice/${bill.id}/related`)).status).toBe(200);
+    // AC-2: once posted, the control account (header) and the expense account (line) each carry their own field
+    const posted = await act('purchase_invoice.submit', { id: bill.id });
+    const accounts = group((await get(`/api/purchase_invoice/${bill.id}/related`)).body, 'account')?.items ?? [];
+    expect(accounts.find((a) => a.id === posted.controlAccountId)?.via).toBe('controlAccountId');
+    expect(accounts.find((a) => a.id === expense.items[0]?.id)?.via).toBe('purchase_invoice_line.accountId');
     expect((await get(`/api/sales_invoice/${newId()}/related`)).status).toBe(404);
     expect((await get(`/api/no_such_entity/${newId()}/related`)).status).toBe(404);
     expect((await get('/api/sales_invoice/not-a-uuid/related')).status).toBe(400);
+  });
+});
+
+describe('document-links AC-3: <x>Entity/<x>Id link pairs', () => {
+  // A pair is followed by name only, and the kernel does not check it on write the way it checks a `ref`. Each pair a
+  // user may write must therefore check its target on write (docs/architecture/runtime-and-data.md#関連記録の読取).
+  // A new pair fails here until its write path has been reviewed and added to this list.
+  const WRITE_CHECKED: Record<string, string> = {
+    'attachment.linkedEntity/linkedId': 'modules/attachments/src/hooks/integrity.ts (assertLinkTarget)',
+    'payment_allocation.invoiceEntity/invoiceId': 'modules/payment/src/hooks/lines.ts (loadInvoice, same partner)',
+    'stock_entry.sourceEntity/sourceId': 'modules/inventory/src/hooks/entry.ts (cleared unless a module writes)',
+    'stock_ledger.sourceEntity/sourceId': 'modules/inventory/src/hooks/guard.ts (module writes only)',
+  };
+  it('AC-3: every pair is server-owned or in the reviewed list of write-checked pairs', () => {
+    const pairs = registry.allEntities().flatMap((entity) =>
+      relatedLinkSpecs(entity)
+        .filter((link) => link.entityField !== undefined)
+        .map((link) => ({
+          pair: `${entity.name}.${String(link.entityField)}/${link.idField}`,
+          serverOwned: entity.config.fields[link.idField]?.opts.serverOwned === true,
+        })),
+    );
+    expect(pairs.filter((p) => p.serverOwned).map((p) => p.pair)).toEqual(
+      expect.arrayContaining(['journal_entry.sourceEntity/sourceId']),
+    );
+    expect(
+      pairs
+        .filter((p) => !p.serverOwned)
+        .map((p) => p.pair)
+        .sort(),
+    ).toEqual(Object.keys(WRITE_CHECKED).sort());
   });
 });

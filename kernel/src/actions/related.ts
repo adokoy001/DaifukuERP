@@ -17,7 +17,7 @@ const relatedItem = z.object({
   via: z.string(),
 });
 
-export const relatedOutput = z.object({
+const relatedOutput = z.object({
   entity: z.string(),
   id: z.uuid(),
   groups: z.array(

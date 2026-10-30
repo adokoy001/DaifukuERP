@@ -1,18 +1,20 @@
-// document-links AC-1/AC-7: what a copy carries over, how a seed survives router state, and that a seeded form saves as
-// one create request with new lines only (no ids, numbers, statuses or server-owned values).
+// document-links AC-1/AC-7: what a copy carries over, how a seed survives router state (only in the session that made
+// it), and that a seeded form saves as one create request with new lines only (no ids, numbers, statuses or server-owned
+// values).
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import { formFingerprint } from './dirty.ts';
 import {
   duplicateSeed,
   isCopyable,
+  NOT_COPIED,
   seedFromState,
   seededLines,
   seededValues,
   seedState,
-  todayLocal,
   type DraftSeed,
 } from './duplicate.ts';
+import { businessToday } from './operations.ts';
 import { lineSpecsOf, planSave } from './save.ts';
 
 const L = (ja: string, en: string) => ({ ja, en });
@@ -212,6 +214,20 @@ describe('document-links AC-1: duplicating a record', () => {
     });
   });
 
+  it('AC-1: a supplier bill number (not unique in the schema, but one specific bill) is not copied', () => {
+    expect(NOT_COPIED.purchase_invoice).toEqual(['supplierInvoiceNo']);
+    const bill: EntityMeta = {
+      ...invoice,
+      name: 'purchase_invoice',
+      label: L('仕入請求書', 'Purchase invoice'),
+      displayField: 'supplierInvoiceNo',
+      fields: [field('partnerId', 'ref', { required: true, ref: 'partner' }), field('supplierInvoiceNo', 'text')],
+      lines: [],
+    };
+    const seed = duplicateSeed(bill, { ...submitted, supplierInvoiceNo: 'B-0912' }, [bill], '2026-10-29', 'B-0912');
+    expect(seed.values).toEqual({ partnerId: submitted.partnerId });
+  });
+
   it('AC-1: fields the seed leaves out keep their defaults', () => {
     const seed: DraftSeed = { ...duplicateSeed(invoice, submitted, entities, '2026-10-29', 'x'), values: {} };
     expect(seededValues(invoice, seed)).toMatchObject({ currency: 'JPY', priceIncludesTax: false, note: '' });
@@ -220,26 +236,35 @@ describe('document-links AC-1: duplicating a record', () => {
 
 describe('document-links AC-1/AC-7: the seed in router history state', () => {
   const seed = duplicateSeed(invoice, submitted, entities, '2026-10-29', 'INV-2026-0007');
+  const owner = 'tenant-1:user-a:company-1';
   it('AC-1: round-trips through history state for the same entity only', () => {
-    const state = JSON.parse(JSON.stringify({ key: 'abc', ...seedState(seed) })) as unknown;
-    expect(seedFromState(state, 'sales_invoice')).toEqual(seed);
-    expect(seedFromState(state, 'payment')).toBeUndefined();
+    const state = JSON.parse(JSON.stringify({ key: 'abc', ...seedState(seed, owner) })) as unknown;
+    expect(seedFromState(state, 'sales_invoice', owner)).toEqual({ ...seed, owner });
+    expect(seedFromState(state, 'payment', owner)).toBeUndefined();
+  });
+  it('AC-1: a seed is ignored in another session (another user, tenant or company in the same tab) or without one', () => {
+    const state = JSON.parse(JSON.stringify(seedState(seed, owner))) as unknown;
+    for (const other of ['tenant-1:user-b:company-1', 'tenant-1:user-a:company-2', 'tenant-2:user-a:company-1', ''])
+      expect(seedFromState(state, 'sales_invoice', other)).toBeUndefined();
+    expect(seedFromState({ draftSeed: seed }, 'sales_invoice', owner)).toBeUndefined();
   });
   it('AC-7: malformed or foreign state is ignored (the page opens without initial values only when no seed was sent)', () => {
+    const owned = { ...seed, owner };
     for (const state of [
       undefined,
       null,
       'x',
       {},
-      { draftSeed: { ...seed, kind: 'other' } },
-      { draftSeed: { ...seed, values: [] } },
-      { draftSeed: { ...seed, lines: { sales_invoice_line: ['x'] } } },
-      { draftSeed: { ...seed, source: { ...seed.source, mode: 'other' } } },
+      { draftSeed: { ...owned, kind: 'other' } },
+      { draftSeed: { ...owned, values: [] } },
+      { draftSeed: { ...owned, lines: { sales_invoice_line: ['x'] } } },
+      { draftSeed: { ...owned, source: { ...owned.source, mode: 'other' } } },
     ])
-      expect(seedFromState(state, 'sales_invoice')).toBeUndefined();
+      expect(seedFromState(state, 'sales_invoice', owner)).toBeUndefined();
   });
-  it('AC-1: today is the browser calendar date', () => {
-    expect(todayLocal(new Date(2026, 9, 29, 23, 59))).toBe('2026-10-29');
-    expect(todayLocal(new Date(2027, 0, 5, 0, 1))).toBe('2027-01-05');
+  it('AC-1: today is the business date in Japan time (as the server fills default: today), not the browser zone', () => {
+    expect(businessToday(new Date('2026-10-29T14:59:00Z'))).toBe('2026-10-29');
+    expect(businessToday(new Date('2026-10-29T15:00:00Z'))).toBe('2026-10-30');
+    expect(businessToday(new Date('2026-12-31T15:30:00Z'))).toBe('2027-01-01');
   });
 });

@@ -1,6 +1,8 @@
 // document-links AC-1/AC-5/AC-7: initial values for a new record ("draft seed") — built from a record by 複製 or from a
 // quick action, handed to /e/:entity/new through router history state, and turned into form state by record-form.tsx.
-// Pure (duplicate.test.ts). Nothing is created until the user saves.
+// Pure (duplicate.test.ts). Nothing is created until the user saves. History state outlives the session (it survives
+// reloads, logout and a company switch in the same tab), so a seed carries the session it was made in and is ignored in
+// any other.
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import { extFieldsOf, extInitialValues } from './ext.ts';
 import { initialValues, type FormValues } from './form.ts';
@@ -31,11 +33,22 @@ export interface DraftSeed {
   /** line entity -> rows without ids (they are new rows of the new record). */
   lines: Record<string, Record<string, unknown>[]>;
   source: SeedSource;
+  /** Session identity (tenant, user, company) the seed was made in; set by seedState. */
+  owner?: string;
 }
 
 export const SEED_KIND = 'daifuku.draft-seed.v1';
 /** Router history state key. */
-export const SEED_STATE_KEY = 'draftSeed';
+const SEED_STATE_KEY = 'draftSeed';
+
+/**
+ * AC-1: values that identify one specific external document although the schema does not make them unique (a supplier's
+ * bill number is also the purchase invoice's title). Copying them would create a second bill with last month's number.
+ */
+export const NOT_COPIED: Readonly<Record<string, readonly string[]>> = {
+  purchase_invoice: ['supplierInvoiceNo'],
+  trade_billing: ['supplierInvoiceNo'],
+};
 
 let seedCounter = 0;
 export function seedKey(): string {
@@ -43,16 +56,10 @@ export function seedKey(): string {
   return `${Date.now().toString(36)}-${seedCounter}`;
 }
 
-/** The browser's calendar date as YYYY-MM-DD (the date a person means by "today"). */
-export function todayLocal(now = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
 /**
  * AC-1: fields a copy leaves out — server-owned / read-only (totals, status, journal links), timestamps, hidden fields,
- * and values that must differ per record (`unique`: codes, the numbering field). System columns, `docstatus`, `number`
- * and `amendedFrom` are not entity fields and are never copied either.
+ * and values that must differ per record (`unique`: codes, the numbering field; NOT_COPIED for the entity). System
+ * columns, `docstatus`, `number` and `amendedFrom` are not entity fields and are never copied either.
  */
 export function isCopyable(field: FieldMeta): boolean {
   return !field.serverOwned && !field.readOnly && !field.hidden && !field.unique && field.kind !== 'timestamp';
@@ -94,7 +101,10 @@ function lineMetas(entity: EntityMeta, entities: readonly EntityMeta[]): { line:
   });
 }
 
-/** AC-1: a copy of `record` as a new draft of the same entity (no ids, numbers, statuses or server-owned values). */
+/**
+ * AC-1: a copy of `record` as a new draft of the same entity (no ids, numbers, statuses or server-owned values).
+ * `today` is the business date (Asia/Tokyo, lib/operations.ts businessToday), as the server's `default: 'today'`.
+ */
 export function duplicateSeed(
   entity: EntityMeta,
   record: RecordJson,
@@ -111,7 +121,7 @@ export function duplicateSeed(
     kind: SEED_KIND,
     key: seedKey(),
     entity: entity.name,
-    values: copyFields(entity.fields, record, today, new Set()),
+    values: copyFields(entity.fields, record, today, new Set(NOT_COPIED[entity.name] ?? [])),
     ext: copyExt(entity, record, today),
     lines,
     source: {
@@ -128,11 +138,15 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** A seed read back from router history state: only a well-formed seed for `entity` is used (state survives reloads). */
-export function seedFromState(state: unknown, entity: string): DraftSeed | undefined {
+/**
+ * A seed read back from router history state: only a well-formed seed for `entity`, made in the current session
+ * (`owner`: tenant, user and company), is used. State survives reloads, logout and company switches in the same tab.
+ */
+export function seedFromState(state: unknown, entity: string, owner: string): DraftSeed | undefined {
   const seed = isObject(state) ? state[SEED_STATE_KEY] : undefined;
   if (!isObject(seed) || seed.kind !== SEED_KIND || seed.entity !== entity || typeof seed.key !== 'string')
     return undefined;
+  if (typeof seed.owner !== 'string' || seed.owner !== owner) return undefined;
   if (!isObject(seed.values) || !isObject(seed.ext) || !isObject(seed.lines) || !isObject(seed.source))
     return undefined;
   const lines = seed.lines;
@@ -148,9 +162,9 @@ export function seedFromState(state: unknown, entity: string): DraftSeed | undef
   return seed as unknown as DraftSeed;
 }
 
-/** Router history state carrying the seed (spread over the current state by the caller). */
-export function seedState(seed: DraftSeed): Record<string, unknown> {
-  return { [SEED_STATE_KEY]: seed };
+/** Router history state carrying the seed, bound to the session `owner` (spread over the current state by the caller). */
+export function seedState(seed: DraftSeed, owner: string): Record<string, unknown> {
+  return { [SEED_STATE_KEY]: { ...seed, owner } };
 }
 
 /**

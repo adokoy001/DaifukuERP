@@ -142,7 +142,7 @@ function RecordView({
         onStatus={setFormStatus}
         actionBusy={actionBusy}
       />
-      {record ? <RelatedPanel entity={entity} id={record.id} /> : null}
+      {record ? <RelatedPanel entity={entity} id={record.id} version={record.version} /> : null}
       {record && !isWorkforceManaged(entity.name) ? <AttachmentsPanel entity={entity} id={record.id} /> : null}
       {record ? <AuditPanel entity={entity} id={record.id} /> : null}
     </div>
