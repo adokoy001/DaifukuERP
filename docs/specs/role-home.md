@@ -1,6 +1,6 @@
 # Spec: role-home（役割別ホーム）
 
-- 状態: draft
+- 状態: implemented（2026-10-30、作業記録 [2026-10-30-role-home](../log/2026-10-30-role-home.md)）
 - モジュール: `apps/web`（ホーム `/`、`apps/web/src/pages/home-page.tsx`） ／ 依存: [inbox](inbox.md)（C3、受信箱カード）、[close-guide](close-guide.md)（C4、`accounting.close_readiness`）、[ui-kit](ui-kit.md)（D1）、[navigation-assist](navigation-assist.md)（D2、保存境界 `lib/assist-storage.ts`）、[reporting-pivot](reporting-pivot.md)（分析データセット）、[restaurant-operations](restaurant-operations.md)（運営ボード）、[employee-shift-planner](employee-shift-planner.md)（シフト）。並行中の [setup-health](setup-health.md)（B3）には依存しない（印を付けた差込口だけ置く）
 - ADR: 不要。表示層だけの変更で、新しい action・API・閲覧経路・DSL・kernel port・依存パッケージを足さない。ホームのカードは `/meta` で呼べると分かっている既存の action・REST 読取・分析データセットだけを呼び出し、権限と会社・店舗・拠点の境界は呼び出し先の既存の検査に任せる
 - 作成: 2026-10-30 ／ 作成者: agent（C6 の spec 担当セッション、`wip/role-home`）。設計の元は [完成度向上の実装計画](../completion-plan.md) C6。作業記録は実装時に `docs/log/2026-10-30-role-home.md`
@@ -73,7 +73,7 @@
 - 新規（Web）:
   - `apps/web/src/lib/role-home.ts`（純粋関数: `availableHomeLayouts(meta, catalog, tenantAdmin)`、`resolveHomeLayout(available, stored)`、`homeLayoutKey`/`parseHomeLayout`（`assist-storage` の上）、カードごとの読取計画 `plannedHomeReads(layout, meta, catalog)`、要約 `agingSummary`・`cashSummary`・`closeSummary`・`attendanceSummary`・`shiftTodaySummary`・`missingReportsSummary`、エラーの分類 `homeReadFailure`、空のビューのリンク `emptyViewLinks`）
   - `apps/web/src/lib/role-home.test.ts`（Web unit）
-  - `apps/web/src/api/role-home.ts`（React hook: `useHomeLayout`（保存と切替）、`useHomeRead(source, input, enabled)`（query key に tenant・利用者・会社、`staleTime: 0`、`gcTime: 0`、`retry: false`、`refetchInterval: false`、`refetchOnWindowFocus: false`、`refetchOnReconnect: false`）、`useHomeAnalytics`）
+  - `apps/web/src/api/role-home.ts`（React hook: `useHomeLayout`（保存と切替）、`useHomeRead(source, input, enabled)`（query key に tenant・利用者・会社、`staleTime: 0`、`gcTime: 0`、`retry: false`、`refetchInterval: false`、`refetchOnWindowFocus: false`、`refetchOnReconnect: false`。`HOME_READ_OPTIONS`）、`useHomeRefresh`（「更新」）、`SWITCH_SETTLE_MS`（AC-15）。分析カタログとスナップショットも `useHomeRead` で読む）
   - `apps/web/src/components/role-home-card.tsx`（カードの枠: 題名・範囲の注記・読込中・失敗・権限なし・リンク）、`apps/web/src/components/role-home-accounting.tsx`、`role-home-store.tsx`、`role-home-employee.tsx`、`role-home-admin.tsx`、`apps/web/src/role-home.css`（色はトークンのみ、分岐点は 480 / 768 / 1024 / 1280）
   - `apps/web/e2e/role-home.spec.ts`（ブラウザ）
 - 変更（Web）:
