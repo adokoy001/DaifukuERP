@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 light-tier-speed（light の短縮: 静的検査と DB 工程の並行、DB suite の shard 分割）
 
 - セッション: A4 実装（Opus 5.5、worktree `wip/light-tier-speed`、基準 `ff65a6c`、他エージェントと同居する 4 CPU の一時 container、試験 DB `daifuku_test_w9` と shard DB `daifuku_test_w9_shard_2`/`_3`、04:35〜UTC） ／ 担当: agent ／ 対象: [docs/specs/light-tier-speed.md](../specs/light-tier-speed.md)
-- 計測: tokens=null（未計測）, agent_minutes=約 200（04:35〜07:55 UTC。light 15 回の計測待ち約 150 分を含む）, human_minutes=0, rework_lines=約 10（commit 前に自分の試験の誤った期待値 2 件を直した。LPT の手計算の誤りと、lane の開始順を決め打ちした比較）, gate_failures=1（実装後の kernel の light 1 回が既存の時間依存の試験 `identity-rate-limit` で失敗。下記）。レビュー後の修正（修正担当、別セッション）: agent_minutes=約 65（08:37〜09:45 UTC。light 3 回の待ち約 30 分を含む）, rework_lines=約 550（`scripts/gate.mjs`・`scripts/gate.d.mts`・`kernel/src/test-database*.ts` の追加と変更。試験と文書を除く）, gate_failures=2（修正後の light の 1 回目は既存の `identity-runner` の固定ポート、2 回目は自分の sandbox の試験の時間の競合。3 回目で成功）
+- 計測: tokens=null（未計測）, agent_minutes=約 200（04:35〜07:55 UTC。light 15 回の計測待ち約 150 分を含む）, human_minutes=0, rework_lines=約 10（commit 前に自分の試験の誤った期待値 2 件を直した。LPT の手計算の誤りと、lane の開始順を決め打ちした比較）, gate_failures=1（実装後の kernel の light 1 回が既存の時間依存の試験 `identity-rate-limit` で失敗。下記）。レビュー後の修正（修正担当、別セッション）: agent_minutes=約 65（08:37〜09:45 UTC。light 3 回の待ち約 30 分を含む）, rework_lines=約 550（`scripts/gate.mjs`・`scripts/gate.d.mts`・`kernel/src/test-database*.ts` の追加と変更。試験と文書を除く）, gate_failures=2（修正後の light の 1 回目は既存の `identity-runner` の固定ポート、2 回目は自分の sandbox の試験の時間の競合。3 回目で成功）。2 回目のレビュー後の修正（修正担当、別セッション）: agent_minutes=約 25（09:49〜10:15 UTC。light 1 回の待ち約 4 分を含む）, rework_lines=0（試験と文書だけ。`scripts/gate.mjs` は変えていない）, gate_failures=0
 
 ## 決めたこと（と理由）
 
@@ -49,6 +49,8 @@
 - [実測] 修正後の light の 1 回目（08:58、`daifuku_test_w9_shard_2` は初回で空から作成）: unit の `apps/api/test/identity-runner.test.ts`（固定ポート 3109/5189 を使う試験）が 1 件失敗し、DB の 2 shard は 383 秒で `cancelled`（`stopped after unit failed`）、終了コード 1、worktree のプロセスは残らなかった。新しい出力の実例になった: 終了行に秒と失敗したファイル（`unit: failed 160.1s (exit 1: apps/api/test/identity-runner.test.ts)`）、`FAIL` 行、shard ごとの開始行、`db: created empty shard database daifuku_test_w9_shard_2`。この試験は単独では成功した（3 件、2.8 秒）。2 回目（09:06）は自分の sandbox の試験 2 件が時間の競合で失敗した（下の「見つけた問題と修正」）。
 - [実測] 修正後の最終状態の `pnpm gate:light`（3 回目、09:14、基準 `origin/main`@`431dda5`、変更 292 ファイル、kernel の変更で DB 全件に昇格）: **639.4 秒で成功**（load average 平均 6.5、2.5〜10.0）。静的 lane 314.8 秒（format 46.9、型 18.5 / 25.9 / 41.1、lint 43.5、unit 111.4 秒で 154 ファイル / 1,591 試験、deploy 26.8）、DB 639.3 秒（shard 1 `daifuku_test_w9` 65 ファイル / 432 試験 638.8 秒、shard 2 `daifuku_test_w9_shard_2` 66 ファイル / 391 試験 638.0 秒、見積りは 522.9 / 523 秒）。`.runtime/gate/durations.json` に 131 suite の所要時間が残った。shard 2 は直前の中断した 2 回の実行で一部のテンプレートを作ってあった。
 - [実測] 修正後の `pnpm test:db:templates` と `-- --drop`（3 回目の light の後）: `daifuku_test_w9` のテンプレート 37 件（431.4 MB）、`daifuku_test_w9_shard_2` のテンプレート 39 件（450.6 MB）と shard DB 1 件を一覧し、すべて消した。残ったのは `daifuku_test_w9` だけ（`pg_database` で確認）。
+- [実測] 2 回目の修正（修正担当、09:49〜 UTC）: 足した 2 件は 2.5 秒と 3.0 秒で成功し、`scripts/test/gate.test.ts` は 129 件成功（40.4 秒）。shard の sandbox の 6 件を 5 回続けて実行して全件成功し、CPU を占有する busy loop 4 本の下（load average 5.0）でも成功した。足した試験が回帰を捕まえることを、検証と同じ mutation を `scripts/gate.mjs` に当てて確かめた（戻して成功）: M14（`cancelOthers` が owner ごとに最初の子だけ止める）は fail-fast の試験が `vitest-runs.jsonl` に shard 2 の実行が残って失敗（30.7 秒）、M16（`interruptCurrent` が owner ごとに 1 つだけ止める）と M15（最初の 1 つだけ止める）は SIGTERM の試験が「still running after 20 s」で失敗。M8（shard ごとの interrupted の記録の削除）と M9（`ensureShardDatabases` 内の名前の確認の削除）は引き続き生き残る（M8 は `runSteps` も `isInterrupted()` を見るため挙動が変わらず、M9 は `shardDatabases()` が規則内の名前しか作らないための予備の確認）。
+- [実測] 2 回目の修正の `pnpm gate:light --base HEAD`（10:00、変更 3 ファイル = 本修正の試験・spec・log、`daifuku_test_w9`）: **252.9 秒で成功**（開始時の load average 3.4）。静的 lane 253.1 秒（format 39.4、型 11.8 / 15.7 / 25.3、lint 28.3、unit 106.0 秒で 154 ファイル / 1,593 試験、deploy 26.0）、DB 53.4 秒（常に実行する 5 ファイルを 2 shard: `daifuku_test_w9` 1 ファイル 47.2 秒、`daifuku_test_w9_shard_2` 4 ファイル 31.1 秒。shard DB は空から作成）。branch 全体（kernel の変更で DB 全件）の light は 1 回目の修正の 3 回目（639.4 秒）が最新で、本修正では再実行していない。その後 `pnpm test:db:templates -- --drop` でテンプレート 5 件と `daifuku_test_w9_shard_2` を消し、残ったのは `daifuku_test_w9` だけ（`pg_database` で確認）。
 - [レビュー] 並行実行の安全性（spec の表）: DB suite のポート・ファイル・role・DB 作成・接続先の読み方、静的工程の書込み先をソースで確認した。
 - [未検証] CI（CI は light を使わないため対象外）。CPU が 4 以外の環境での既定の shard 数。macOS での動作。
 - [未検証] `pnpm gate:full`（統合担当が実行する。`kernel/` と `scripts/gate.mjs` の変更は昇格パターン）。
@@ -81,6 +83,15 @@
 - [minor] test-tiers AC-4 に shard 時の追記が無い — 追記した。
 - [nit] 引継ぎの「done」 — 引継ぎは「実装済み、gate:light 成功、`pnpm gate`・`gate:full` は未実行」と書く（統合担当が full を実行してから完了とする）。
 - 試験の期待値の変更: 本作業項目で足した試験のうち 2 か所を、挙動の変更に合わせて直した。表の `concurrency:` 行の期待（`DB shards up to 2` → `DB shards 2 of 2`）と、`_shard_12` を shard DB と認める期待（否定の例に移した）。弱めてはいない。
+
+## 2 回目のレビュー指摘への対応（2026-10-30、修正担当）
+
+修正後の検証（mutation 16 件）で、上の [major] のうち 1 点が未解決と判定された: fail-fast（他の lane の失敗）と gate への SIGTERM で **すべての** shard の process が止まることを、自動試験が確かめていない。既存の単体試験は fake の runCommand が自分で `cancelled` を返すため結果の合成しか見ず、`GATE_DB_SHARDS=2` の sandbox 4 件はどれも正常に終わり、実プロセスの SIGTERM の試験は 1 shard だった。`createSession` の `cancelOthers` や `interruptCurrent` を「owner ごとに最初の子だけ止める」に壊しても（検証の M14・M16）全件成功していた。指摘は妥当と判断した。`scripts/gate.mjs` は変えていない（現在の実装は正しく、試験が欠けていた）。
+
+- `scripts/test/gate.test.ts` の「sharded light runs as processes」に 2 件を足した。fake の vitest に `FAKE_HOLD`（ms）を足し、指定時は開始時に孫 process を起こして自分と孫の pid を `vitest-started.jsonl` に記録し、成功の終了を `FAKE_HOLD` ms 後にする（止められなければ孫を止めて終わり、終わりを `vitest-runs.jsonl` に記録する）。`prepare` に package.json の script の上書きを渡せるようにした（既存の 4 件は変わらない）。
+  - `AC-5 a failing static step stops every DB shard process and its descendants and reports each shard cancelled`: format:check は 2 つの shard の vitest が起動した後に失敗する。終了コード 1、両 shard の vitest がそれぞれの DB（`daifuku_test_x` と `_shard_2`）で起動していたこと、5 秒以内に両 shard の vitest と孫がすべて止まること、`vitest-runs.jsonl` が空（どの shard も最後まで実行されていない）、gate が保留の 30 秒を待たずに終わること、db が `cancelled`（`stopped after format failed`）で両 shard が `cancelled` であることを確かめる。
+  - `AC-5 SIGTERM to the gate stops every DB shard process and its descendants and reports interrupted`: 両 shard の vitest の起動後に gate へ SIGTERM。20 秒以内に終了コード 143、5 秒以内に両 shard の vitest と孫がすべて止まること、`vitest-runs.jsonl` が空、報告が `interrupted` で db と両 shard が `failed`（`failed` の試験名は空）であることを確かめる。
+- 検証の probe（固定の待ち 13 秒と、vitest の記録の有無だけを見るもの）と違い、起動の記録を待ってから失敗・中断させ、残った pid を直接確かめるため、待ちの時間に依存せず、実行も短い（2.5 秒と 3.0 秒）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

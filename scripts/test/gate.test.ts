@@ -2813,9 +2813,11 @@ describe('light-tier-speed AC-6 failure output and durations', () => {
 
 describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes', () => {
   // A sandbox light run with GATE_DB_SHARDS=2 and a kernel change (every DB suite over two shards). Fakes stand in for
-  // gate-select (FAKE_FILES), vitest (records each run in vitest-runs.jsonl, fails files named *fail* at once, passes
-  // others after 1.5 s per file, writes vitest's results cache from the copy it read at its start) and the postgres
-  // driver of ensureShardDatabases (FAKE_PG: create or foreign). The URLs name a port nothing listens on, so even a real driver could not reach a server.
+  // gate-select (FAKE_FILES), vitest (records each run in vitest-runs.jsonl when it ends, fails files named *fail* at
+  // once, passes others after 1.5 s per file or after FAKE_HOLD ms, writes vitest's results cache from the copy it read
+  // at its start) and the postgres driver of ensureShardDatabases (FAKE_PG: create or foreign). With FAKE_HOLD the fake
+  // vitest also starts a grandchild and records both pids in vitest-started.jsonl at its start. The URLs name a port
+  // nothing listens on, so even a real driver could not reach a server.
   const owner = 'postgres://daifuku_owner:owner@127.0.0.1:1/daifuku_test_x';
   const app = 'postgres://daifuku_app:app@127.0.0.1:1/daifuku_test_x';
   const { NODE_PATH: _nodePath, ...inherited } = process.env;
@@ -2855,7 +2857,16 @@ describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes',
     "const cache = 'node_modules/.vite/vitest/x/results.json';",
     "const start = existsSync(cache) ? JSON.parse(readFileSync(cache, 'utf8')).results : [];",
     "const failing = files.filter((file) => file.includes('fail'));",
+    'let grandchild = null;',
+    'if (process.env.FAKE_HOLD) {',
+    "  const { spawn } = require('node:child_process');",
+    "  grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+    "  appendFileSync('vitest-started.jsonl', JSON.stringify({ pid: process.pid, grandchild: grandchild.pid,",
+    '    owner: process.env.TEST_DATABASE_URL_OWNER }) + "\\n");',
+    '}',
     'setTimeout(() => {',
+    // A held run that is not stopped ends after FAKE_HOLD ms like a passing vitest run, its grandchild with it.
+    '  if (grandchild) grandchild.kill();',
     '  const results = new Map(start.map(([key, value]) => [key, value]));',
     "  for (const file of files) results.set('db:' + file, { duration: 1500, failed: failing.includes(file) });",
     "  mkdirSync('node_modules/.vite/vitest/x', { recursive: true });",
@@ -2870,7 +2881,7 @@ describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes',
     '  }',
     "  console.log(' Test Files  ' + files.length + ' passed (' + files.length + ')');",
     // A failing run ends at once and a passing one after 1.5 s per file, so that two shards end well apart.
-    '}, failing.length ? 0 : files.length * 1500);',
+    '}, failing.length ? 0 : Number(process.env.FAKE_HOLD || files.length * 1500));',
     '',
   ].join('\n');
   const driver = [
@@ -2896,8 +2907,11 @@ describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes',
       JSON.stringify({ name: `@daifuku/${name}`, private: true, scripts: { typecheck: ok } }),
     ]),
   );
-  const prepare = () => {
-    const dir = sandbox(scripts, { ...appFiles, '.gitignore': '.runtime/\nnode_modules/\n' });
+  const prepare = (overrides: Record<string, string> = {}, files: Record<string, string> = {}) => {
+    const dir = sandbox(
+      { ...scripts, ...overrides },
+      { ...appFiles, ...files, '.gitignore': '.runtime/\nnode_modules/\n' },
+    );
     writeFileSync(join(dir, 'scripts/gate-select.mjs'), select);
     writeFileSync(join(dir, 'scripts/check-assurance.mjs'), '');
     mkdirSync(join(dir, 'kernel'), { recursive: true });
@@ -3050,6 +3064,111 @@ describe('light-tier-speed AC-2 AC-3 AC-5 AC-6 sharded light runs as processes',
       expect(lines(dir, 'vitest-runs.jsonl')).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
+
+  // Fail-fast and interruption reach every shard process. Each shard's fake vitest holds for HOLD ms after recording
+  // its pid and its grandchild's; a shard left running would keep its processes alive and record its end in
+  // vitest-runs.jsonl, and the gate would wait for it.
+  const HOLD = '30000';
+  const four = 'a.db.test.ts,b.db.test.ts,c.db.test.ts,d.db.test.ts';
+  type Started = { pid: number; grandchild: number; owner: string };
+  const started = (dir: string) => lines(dir, 'vitest-started.jsonl') as Started[];
+  const processes = (dir: string) => started(dir).flatMap((entry) => [entry.pid, entry.grandchild]);
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const waitFor = async (condition: () => boolean, ms: number) => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (condition()) return true;
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    return condition();
+  };
+  const stopAll = (dir: string, extra: (number | undefined)[] = []) => {
+    for (const pid of [...processes(dir), ...extra])
+      if (pid && alive(pid))
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+    rmSync(dir, { recursive: true, force: true });
+  };
+  it('AC-5 a failing static step stops every DB shard process and its descendants and reports each shard cancelled', async () => {
+    // format:check fails once both shards' vitest processes have started.
+    const failLater = [
+      "import { existsSync, readFileSync } from 'node:fs';",
+      "const count = () => (existsSync('vitest-started.jsonl') ? readFileSync('vitest-started.jsonl', 'utf8').trim().split('\\n').length : 0);",
+      'setInterval(() => { if (count() >= 2) process.exit(1); }, 50);',
+      'setTimeout(() => process.exit(2), 40_000);',
+      '',
+    ].join('\n');
+    const dir = prepare({ 'format:check': 'node fail-later.mjs' }, { 'fail-later.mjs': failLater });
+    try {
+      const begun = Date.now();
+      const result = light(dir, { FAKE_PG: 'create', FAKE_FILES: four, FAKE_HOLD: HOLD });
+      const seconds = (Date.now() - begun) / 1000;
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      expect(
+        started(dir)
+          .map((entry) => entry.owner)
+          .sort(),
+      ).toEqual([owner, `${owner}_shard_2`]);
+      expect(await waitFor(() => processes(dir).every((pid) => !alive(pid)), 5_000)).toBe(true);
+      // No shard ran to its end, and the gate did not wait for one.
+      expect(lines(dir, 'vitest-runs.jsonl')).toEqual([]);
+      expect(seconds).toBeLessThan(Number(HOLD) / 1000);
+      const report = sandboxReport(dir, 'light');
+      expect(report?.steps.find((item) => item.id === 'format')).toMatchObject({ result: 'failed' });
+      const db = report?.steps.find((item) => item.id === 'db');
+      expect(db).toMatchObject({ result: 'cancelled', reason: 'stopped after format failed' });
+      expect(db?.shards?.map((shard) => [shard.database, shard.result])).toEqual([
+        ['daifuku_test_x', 'cancelled'],
+        ['daifuku_test_x_shard_2', 'cancelled'],
+      ]);
+    } finally {
+      stopAll(dir);
+    }
+  }, 90_000);
+  it('AC-5 SIGTERM to the gate stops every DB shard process and its descendants and reports interrupted', async () => {
+    const dir = prepare();
+    let gate: ReturnType<typeof spawn> | undefined;
+    try {
+      const child = spawn(process.execPath, [join(dir, 'scripts/gate.mjs'), '--tier', 'light'], {
+        cwd: dir,
+        env: { ...env, FAKE_PG: 'create', FAKE_FILES: four, FAKE_HOLD: HOLD },
+        stdio: 'ignore',
+      });
+      gate = child;
+      const exited = new Promise<number | null>((done) => child.once('exit', (code) => done(code)));
+      expect(await waitFor(() => started(dir).length >= 2, 30_000)).toBe(true);
+      expect(
+        started(dir)
+          .map((entry) => entry.owner)
+          .sort(),
+      ).toEqual([owner, `${owner}_shard_2`]);
+      child.kill('SIGTERM');
+      const timeout = new Promise<string>((done) => setTimeout(() => done('still running after 20 s'), 20_000));
+      expect(await Promise.race([exited, timeout])).toBe(143);
+      expect(await waitFor(() => processes(dir).every((pid) => !alive(pid)), 5_000)).toBe(true);
+      expect(lines(dir, 'vitest-runs.jsonl')).toEqual([]);
+      const report = sandboxReport(dir, 'light');
+      expect(report?.result).toBe('interrupted');
+      const db = report?.steps.find((item) => item.id === 'db');
+      expect(db?.result).toBe('failed');
+      expect(db?.shards?.map((shard) => [shard.database, shard.result, shard.failed])).toEqual([
+        ['daifuku_test_x', 'failed', []],
+        ['daifuku_test_x_shard_2', 'failed', []],
+      ]);
+    } finally {
+      stopAll(dir, [gate?.pid]);
     }
   }, 90_000);
 });

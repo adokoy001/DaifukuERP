@@ -103,7 +103,7 @@
 5. 実行中の light に SIGTERM を送り、両 lane と全 shard の子孫が残らないことを確認する（unit 試験の sandbox と、実リポジトリでの手動実行）。
 6. `pnpm test:db:templates` と `-- --drop` で shard DB とそのテンプレートが一覧・削除され、試験 DB 自身と他の DB が残ることを確認する。
 7. `pnpm gate:light` を最終状態で実行する（`kernel/` を変えたため DB 全件に昇格する）。
-8. （レビュー後に追加）`scripts/test/gate.test.ts` の shard 実行の試験（fake の runCommand による `runShardedDb`・`availableShards` の単体試験と、fake の gate-select・vitest・postgres driver を置いた sandbox で `GATE_DB_SHARDS=2` の light を実プロセスで実行する試験）と、`kernel/test/test-template.db.test.ts` の AC-7（使い捨ての基名の shard DB、規則外の名前、shard DB の無いテンプレート、使用中のテンプレート）が成功する。
+8. （レビュー後に追加）`scripts/test/gate.test.ts` の shard 実行の試験（fake の runCommand による `runShardedDb`・`availableShards` の単体試験と、fake の gate-select・vitest・postgres driver を置いた sandbox で `GATE_DB_SHARDS=2` の light を実プロセスで実行する試験。他の lane の失敗と gate への SIGTERM で両 shard の vitest とその子孫がすべて止まることを含む）と、`kernel/test/test-template.db.test.ts` の AC-7（使い捨ての基名の shard DB、規則外の名前、shard DB の無いテンプレート、使用中のテンプレート）が成功する。
 
 結果は [作業記録](../log/2026-10-30-light-tier-speed.md) に記す。手順 1〜7 は実施した（手順 3 は同居負荷の高い時間帯で、負荷の低い時間帯の実装後は未計測。手順 7 は 814.7 秒で成功、DB 131 ファイルを 2 shard で実行）。手順 8 はレビュー後に実施し、修正後の最終状態で手順 7 を再実行した639.4 秒で成功、load average 平均 6.5。
 
