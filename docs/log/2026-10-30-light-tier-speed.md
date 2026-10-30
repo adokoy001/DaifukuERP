@@ -96,6 +96,7 @@
 ## 統合時の修正（2026-10-30、統合担当）
 
 - 上記で記録した `apps/api/test/identity-rate-limit.db.test.ts` の不安定なテスト（失敗した login の上限が固定 300 秒窓をまたぐと 429 にならない）は、同じファイルの他 2 件と同じく `vi.useFakeTimers({ toFake: ['Date'] })` で Date を固定した。期待値は変えていない（テストを弱めていない）。lane 並列化で負荷が上がると窓をまたぐ確率が上がるため、本項目の統合で直した。
+- 第5波の統合時の `gate:full`（負荷平均 12〜16）で `scripts/test/gate.test.ts` の「AC-9 SIGTERM to the gate stops the running step…」が `Unexpected end of JSON input` で落ちた。試験用の子プロセスが `pids.json` を `writeFileSync` で書き、試験は存在を見た直後に読むため、書きかけの空ファイルを読むことがあった（試験側の競合で、gate の不具合ではない）。2 つの試験用スクリプト（`pids.json` と `<名前>-pids.json`）を一時名に書いてから `renameSync` する形に直した。期待値は変えていない。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

@@ -1517,11 +1517,13 @@ describe('AC-13 CLI and dry-run', () => {
 });
 
 describe('AC-9 interruption stops the whole process tree', () => {
+  // The pid file is written to a temporary name and renamed, so a reader that sees it exist never reads it half written.
   const slow = [
     "import { spawn } from 'node:child_process';",
-    "import { writeFileSync } from 'node:fs';",
+    "import { renameSync, writeFileSync } from 'node:fs';",
     "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
-    "writeFileSync('pids.json', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));",
+    "writeFileSync('pids.json.tmp', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));",
+    "renameSync('pids.json.tmp', 'pids.json');",
     'setInterval(() => {}, 1000);',
     '',
   ].join('\n');
@@ -2308,12 +2310,14 @@ describe('light-tier-speed AC-5 AC-6 parallel light runs as processes', () => {
     }
     return condition();
   };
+  // Written to a temporary name and renamed: a reader that sees the pid file exist never reads it half written.
   const slow = (name: string) =>
     [
       "import { spawn } from 'node:child_process';",
-      "import { writeFileSync } from 'node:fs';",
+      "import { renameSync, writeFileSync } from 'node:fs';",
       "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
-      `writeFileSync('${name}.json', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));`,
+      `writeFileSync('${name}.json.tmp', JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));`,
+      `renameSync('${name}.json.tmp', '${name}.json');`,
       'setInterval(() => {}, 1000);',
       '',
     ].join('\n');
