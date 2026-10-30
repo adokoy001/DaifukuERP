@@ -1,5 +1,5 @@
 // @daifuku/l10n-jp public API. Importing this package registers the `l10n_jp` module (after accounting and tax) and its
-// overrides for `purchase.exempt_supplier_credit_ratio` and `sales.invoice_html`.
+// overrides for `purchase.exempt_supplier_credit_ratio`, `sales.invoice_html` and `fixed_assets.depreciation_rules`.
 export { JapanModule, seedJapan, registerJapanOverrides } from './module.ts';
 
 export { JP_CHART_OF_ACCOUNTS, seedChartOfAccounts, type SeedAccount } from './seeds/chart-of-accounts.ts';
@@ -43,3 +43,10 @@ export {
 
 export { JAPAN_FILING_PROFILES, registerJapanFilingProfiles } from './filing/profiles.ts';
 export { JAPAN_PAYROLL_PROVIDER, registerJapanPayrollProvider } from './payroll/provider.ts';
+export {
+  JAPAN_FIXED_ASSET_RULES,
+  JAPAN_FIXED_ASSET_RULES_OVERRIDE,
+  JP_DECLINING_200_RATES,
+  JP_STRAIGHT_LINE_RATES,
+  japanFixedAssetRules,
+} from './fixed-assets/rules.ts';

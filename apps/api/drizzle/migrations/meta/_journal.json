@@ -169,6 +169,13 @@
       "when": 1793390992265,
       "tag": "0023_expense_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793391098147,
+      "tag": "0024_fixed_assets",
+      "breakpoints": true
     }
   ]
 }

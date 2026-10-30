@@ -51,7 +51,8 @@
     "@daifuku/mod-pos-integration": "workspace:*",
     "@fastify/websocket": "^11.3.0",
     "ws": "^8.21.3",
-    "@daifuku/mod-edge-integration": "workspace:*"
+    "@daifuku/mod-edge-integration": "workspace:*",
+    "@daifuku/mod-fixed-assets": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

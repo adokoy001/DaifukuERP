@@ -15,6 +15,7 @@ import { INVOICE_HTML_OVERRIDE } from './services/invoice-render-data.ts';
 import { renderInvoiceHtml } from './services/invoice-html.ts';
 import { EXEMPT_SUPPLIER_CREDIT_RATIO_OVERRIDE, exemptSupplierCreditRatio } from './services/transitional-credit.ts';
 import { toWareki } from './services/wareki.ts';
+import { JAPAN_FIXED_ASSET_RULES_OVERRIDE, japanFixedAssetRules } from './fixed-assets/rules.ts';
 
 /** Idempotent per company: tax rates (delegated), chart of accounts, then default settings. */
 export async function seedJapan(ctx: Context): Promise<void> {
@@ -31,6 +32,7 @@ export function registerJapanOverrides(): void {
   // print-templates AC-8: printed documents write the Japanese era through this override (ADR-0011: the era table
   // stays in l10n/jp). Called with one argument, so toWareki uses its default era table.
   registry.registerOverride(PRINT_ERA_DATE_OVERRIDE, (date: string) => toWareki(date));
+  registry.registerOverride(JAPAN_FIXED_ASSET_RULES_OVERRIDE, japanFixedAssetRules);
 }
 
 export const JapanModule = defineModule({

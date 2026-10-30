@@ -20,6 +20,7 @@ import { EdgeIntegrationModule } from '@daifuku/mod-edge-integration';
 import { TradeModule } from '@daifuku/mod-trade';
 import { BankingModule } from '@daifuku/mod-banking';
 import { TaxFilingModule } from '@daifuku/mod-tax-filing';
+import { FixedAssetsModule } from '@daifuku/mod-fixed-assets';
 import { JapanModule } from '@daifuku/l10n-jp';
 
 export const businessModules: readonly ModuleDef[] = [
@@ -44,5 +45,6 @@ export const businessModules: readonly ModuleDef[] = [
   TradeModule,
   BankingModule,
   TaxFilingModule,
+  FixedAssetsModule,
   JapanModule,
 ];
