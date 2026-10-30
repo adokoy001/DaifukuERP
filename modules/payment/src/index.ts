@@ -71,7 +71,14 @@ export {
   type PostingInput,
 } from './services/posting.ts';
 
-export { assertDirectionRole, SYSTEM_OWNED_FIELDS, DIRECTION_HINT } from './hooks/validate.ts';
+export {
+  assertDirectionRole,
+  assertNotClearingAmendment,
+  SYSTEM_OWNED_FIELDS,
+  DIRECTION_HINT,
+  CLEARING_AMEND_HINT,
+} from './hooks/validate.ts';
+export { createClearingPayment, type ClearingPaymentInput } from './clearing.ts';
 export { FROZEN_HINT } from './hooks/lines.ts';
 export { ALLOCATION_HINT, loadAllocationLines } from './hooks/submit.ts';
 

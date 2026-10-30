@@ -16,6 +16,7 @@
     "@daifuku/mod-banking": "workspace:*",
     "@daifuku/mod-tax-filing": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-expense": "workspace:*",
     "@daifuku/mod-workforce-evidence": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.34",

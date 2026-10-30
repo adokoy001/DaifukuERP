@@ -29,6 +29,7 @@
     "@daifuku/pack-farm": "workspace:*",
     "@daifuku/pack-restaurant-chain": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-expense": "workspace:*",
     "@daifuku/mod-industry-operations": "workspace:*",
     "@daifuku/pack-industry-catalog": "workspace:*",
     "@daifuku/mod-workforce-evidence": "workspace:*",

@@ -1,4 +1,4 @@
-import { Decimal, newId, repo, type ContextParams } from '@daifuku/kernel';
+import { Decimal, newId, repo, runAction, type ContextParams } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
 import { leaveBalance } from '../src/leave-balance.ts';
@@ -279,6 +279,54 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
     await expect(
       call(f.db, f.payroll.params, 'settle_expense', { ...input, expectedVersion: final.version }),
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+  });
+  it('expense-settlement AC-1 stores the payment method (default personal), freezes it after submit and returns it in the portals', async () => {
+    const w = await worker();
+    const plain = await expense(w);
+    expect((await expenseRow(plain.row.id)).paymentMethod).toBe('personal');
+    const card = await expense(w, { paymentMethod: 'corporate_card' });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('corporate_card');
+    await expect(expense(w, { paymentMethod: 'cheque' })).rejects.toMatchObject({ code: 'VALIDATION' });
+    const changed = await call(f.db, w.params, 'save_expense', {
+      ...card.input,
+      expenseId: card.row.id,
+      expectedVersion: card.row.version,
+      paymentMethod: 'advance',
+    });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('advance');
+    // omitted on a later save: the stored method stays
+    const kept = await call(f.db, w.params, 'save_expense', {
+      ...card.input,
+      paymentMethod: undefined,
+      expenseId: card.row.id,
+      expectedVersion: changed.version,
+    });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('advance');
+    const submitted = await call(f.db, w.params, 'submit_expense', {
+      expenseId: card.row.id,
+      expectedVersion: kept.version,
+    });
+    await expect(
+      call(f.db, w.params, 'save_expense', {
+        ...card.input,
+        expenseId: card.row.id,
+        expectedVersion: submitted.version,
+        paymentMethod: 'personal',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    const mine = (await f.db.run(w.params, (ctx) => runAction(ctx, 'workforce.my_portal', { period: '2026-09' }))) as {
+      expenses: { id: string; paymentMethod: string }[];
+    };
+    expect(Object.fromEntries(mine.expenses.map((e) => [e.id, e.paymentMethod]))).toMatchObject({
+      [plain.row.id]: 'personal',
+      [card.row.id]: 'advance',
+    });
+    const managed = (await f.db.run(f.manager.params, (ctx) =>
+      runAction(ctx, 'workforce.management_portal', { period: '2026-09' }),
+    )) as {
+      expenses: { id: string; paymentMethod: string }[];
+    };
+    expect(managed.expenses.find((e) => e.id === card.row.id)?.paymentMethod).toBe('advance');
   });
   it('requires headquarters and a real settlement date; cancelled submissions cannot be approved', async () => {
     const w = await worker();

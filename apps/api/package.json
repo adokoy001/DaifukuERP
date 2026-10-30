@@ -59,6 +59,7 @@
     "@daifuku/mod-banking": "workspace:*",
     "@daifuku/mod-tax-filing": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-expense": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
     "typescript": "^6.0.3",

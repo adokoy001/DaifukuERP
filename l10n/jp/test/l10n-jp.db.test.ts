@@ -188,6 +188,13 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
       subtype: '仮払消費税',
       partnerRequired: false,
     });
+    // expense-settlement AC-19 / D13: 仮払金 for advances to employees (expense.accounts.advance)
+    expect(pick('1800')).toMatchObject({
+      name: '仮払金',
+      type: 'asset',
+      subtype: 'その他流動資産',
+      partnerRequired: false,
+    });
     expect(pick('2200')).toMatchObject({ name: '仮受消費税', type: 'liability', subtype: '仮受消費税' });
     expect(pick('2300')).toMatchObject({ name: '未払消費税', type: 'liability' });
     expect(pick('3000')).toMatchObject({ name: '元入金', type: 'equity', subtype: '元入金' });
@@ -239,7 +246,8 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
     expect(all.items.filter((a) => a.partnerRequired).map((a) => a.code)).toEqual(['1300', '2100']);
     const types = new Map<string, number>();
     for (const a of all.items) types.set(a.type, (types.get(a.type) ?? 0) + 1);
-    expect(Object.fromEntries(types)).toEqual({ asset: 6, liability: 6, equity: 4, revenue: 2, expense: 14 });
+    // 7 assets: 1800 仮払金 added by expense-settlement (D13); 4 equity: 3900 期首残高仮勘定 added by opening-balances
+    expect(Object.fromEntries(types)).toEqual({ asset: 7, liability: 6, equity: 4, revenue: 2, expense: 14 });
     // codes are the primary key of the seed: the table itself has no duplicates
     expect(new Set(JP_CHART_OF_ACCOUNTS.map((a) => a.code)).size).toBe(JP_CHART_OF_ACCOUNTS.length);
   });

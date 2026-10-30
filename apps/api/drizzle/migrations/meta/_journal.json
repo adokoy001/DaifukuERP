@@ -162,6 +162,13 @@
       "when": 1793389147430,
       "tag": "0022_event_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793390992265,
+      "tag": "0023_expense_settlement",
+      "breakpoints": true
     }
   ]
 }

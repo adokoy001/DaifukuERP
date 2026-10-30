@@ -54,6 +54,7 @@ export const JP_CHART_OF_ACCOUNTS: readonly SeedAccount[] = [
   asset('1300', '売掛金', '売掛金', { partnerRequired: true }),
   asset('1400', '商品', '棚卸資産'),
   asset('1500', '仮払消費税', '仮払消費税', { taxRole: 'input_tax' }),
+  asset('1800', '仮払金', 'その他流動資産'),
   asset('1900', '前払金', 'その他流動資産'),
   liability('2100', '買掛金', '買掛金', { partnerRequired: true }),
   liability('2150', '未払金', '未払金'),

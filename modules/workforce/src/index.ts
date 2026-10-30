@@ -12,6 +12,13 @@ export {
   type PayslipHtmlRenderer,
   type DeductionKind,
 } from './services/payslip-html.ts';
+export {
+  settleExpensesForSource,
+  reopenExpensesForSource,
+  lockEmployeeForSettlement,
+  type SettleExpensesInput,
+  type ReopenExpensesInput,
+} from './expense-settlement.ts';
 export * from './shift-contract.ts';
 export * from './payroll-rules/port.ts';
 

@@ -10,6 +10,9 @@ export const WORKFORCE_ROLES = [
 export const attendanceStatuses = ['working', 'break', 'closed', 'submitted', 'approved', 'returned'] as const;
 export const requestStatuses = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 export const expenseStatuses = ['draft', 'submitted', 'approved', 'returned', 'settled', 'cancelled'] as const;
+/** How the employee paid (expense-settlement AC-1): out of pocket, company card, or from a provisional advance. */
+export const EXPENSE_PAYMENT_METHODS = ['personal', 'corporate_card', 'advance'] as const;
+export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
 export const deductionKinds = [
   'income_tax',
   'resident_tax',
@@ -102,6 +105,8 @@ export const expenseSaveInput = z
     description: reason,
     amount: money,
     evidence: z.string().trim().min(1).max(1000),
+    // Optional on the wire so an idempotent replay of an older request keeps its snapshot; stored default `personal`.
+    paymentMethod: z.enum(EXPENSE_PAYMENT_METHODS).optional(),
   })
   .strict();
 export const expenseSubmitInput = z.object({ expenseId: id, expectedVersion: version }).strict();
@@ -199,6 +204,7 @@ export const expenseSummary = z.object({
   description: z.string(),
   amount: z.string(),
   evidence: z.string(),
+  paymentMethod: z.enum(EXPENSE_PAYMENT_METHODS),
   status: z.enum(expenseStatuses),
   reviewReason: z.string().nullable(),
   paidOn: date.nullable(),
