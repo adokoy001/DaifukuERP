@@ -25,6 +25,7 @@ import { lineSpecsOf, planSave, type LineSpecMeta } from '../lib/save.ts';
 import { S } from '../strings.ts';
 import { formFingerprint } from '../lib/dirty.ts';
 import { lineLockReason } from '../lib/line-lock.ts';
+import { seededLines, seededValues, type DraftSeed } from '../lib/duplicate.ts';
 import { AllocationPicker, useAllocationConvention } from './allocation-picker.tsx';
 import { FieldWidget } from './fields/field-widget.tsx';
 import { LineGrid } from './line-grid.tsx';
@@ -38,6 +39,8 @@ export interface RecordFormProps {
   onCancel: () => void;
   onStatus?: (status: { dirty: boolean; saving: boolean }) => void;
   actionBusy?: boolean;
+  /** document-links AC-1/AC-5: initial values of a new record (複製 / quick action); ignored when `record` is given. */
+  initial?: DraftSeed | undefined;
 }
 
 interface FormState {
@@ -51,9 +54,18 @@ interface FormState {
   conflict: boolean;
 }
 
-function freshState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined): FormState {
-  const values = { ...initialValues(entity.fields, record), ...extInitialValues(extFieldsOf(entity), record) };
-  const lines = linesFromRecord(specs, record);
+function freshState(
+  entity: EntityMeta,
+  specs: readonly LineSpecMeta[],
+  record: RecordJson | undefined,
+  seed?: DraftSeed,
+): FormState {
+  // A seed is the new record's starting point: the baseline, so only the user's own edits make the form dirty.
+  const seeded = !record && seed ? seed : undefined;
+  const values = seeded
+    ? seededValues(entity, seeded)
+    : { ...initialValues(entity.fields, record), ...extInitialValues(extFieldsOf(entity), record) };
+  const lines = seeded ? seededLines(specs, seeded) : linesFromRecord(specs, record);
   return {
     values,
     lines,
@@ -66,15 +78,20 @@ function freshState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: 
   };
 }
 
-function useFormState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined) {
-  const [state, setState] = useState<FormState>(() => freshState(entity, specs, record));
+function useFormState(
+  entity: EntityMeta,
+  specs: readonly LineSpecMeta[],
+  record: RecordJson | undefined,
+  seed: DraftSeed | undefined,
+) {
+  const [state, setState] = useState<FormState>(() => freshState(entity, specs, record, seed));
   // A refetched record (after save, reload or someone else's change) resets the form; keyed on version so typing is not clobbered.
   useEffect(() => {
     setState((s) => {
-      if (formFingerprint(s.values, s.lines) === s.baseline) return freshState(entity, specs, record);
+      if (formFingerprint(s.values, s.lines) === s.baseline) return freshState(entity, specs, record, seed);
       return record?.version !== s.record?.version ? { ...s, conflict: true } : s;
     });
-  }, [entity, specs, record]);
+  }, [entity, specs, record, seed]);
   const setValue = (name: string, v: FormValue) =>
     setState((s) => {
       const fieldErrors = { ...s.fieldErrors };
@@ -253,14 +270,22 @@ function HeaderFields({ entity, state, setValue, editCtx, locked }: HeaderFields
   );
 }
 
-export function RecordForm({ entity, record, onSaved, onCancel, onStatus, actionBusy = false }: RecordFormProps) {
+export function RecordForm({
+  entity,
+  record,
+  onSaved,
+  onCancel,
+  onStatus,
+  actionBusy = false,
+  initial,
+}: RecordFormProps) {
   const { t } = useLocale();
   const qc = useQueryClient();
   const meta = useMeta();
   const mode: 'create' | 'update' = record ? 'update' : 'create';
   const specs = useMemo(() => lineSpecsOf(entity, meta.data?.entities ?? []), [entity, meta.data]);
   const conv = useAllocationConvention(entity);
-  const { state, setState, setValue, setRows } = useFormState(entity, specs, record);
+  const { state, setState, setValue, setRows } = useFormState(entity, specs, record, initial);
   const exitAllowed = useRef(false);
   const { submit, saving } = useSave({
     entity,

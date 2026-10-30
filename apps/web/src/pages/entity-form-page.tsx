@@ -21,6 +21,10 @@ import { EntityMissing, LoadingView, MetaError } from './status-views.tsx';
 import { canRetainData } from '../lib/read-recovery.ts';
 import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
 import { PageHeader } from '../ui/index.ts';
+// document-links (C2): 複製 / quick actions, the seeded new-record notice, the 関連 panel.
+import { RecordLinkActions, SeedNotice, useDraftSeed } from '../components/record-links.tsx';
+import { RelatedPanel } from '../components/related-panel.tsx';
+import type { DraftSeed } from '../lib/duplicate.ts';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -50,7 +54,15 @@ function SystemInfo({ record }: { record: RecordJson }) {
   );
 }
 
-function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson | undefined }) {
+function RecordView({
+  entity,
+  record,
+  seed,
+}: {
+  entity: EntityMeta;
+  record: RecordJson | undefined;
+  seed?: DraftSeed | undefined;
+}) {
   const { t } = useLocale();
   const toast = useToast();
   const navigate = useNavigate();
@@ -63,7 +75,13 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
       ? t({ ja: '変更を保存してから操作してください', en: 'Save your changes before continuing' })
       : undefined;
   const toList = () => void navigate({ to: '/e/$entity', params: { entity: entity.name } });
-  const toRecord = (id: string) => void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id } });
+  // A record created from a seed replaces the seeded /new entry, so Back does not reopen the prefilled form.
+  const toRecord = (id: string) =>
+    void navigate({
+      to: '/e/$entity/$id',
+      params: { entity: entity.name, id },
+      replace: !record && seed !== undefined,
+    });
   const onSaved = (rec: RecordJson, mode: 'create' | 'update') => {
     if (mode === 'create') {
       toast.success(t(S.created));
@@ -95,6 +113,7 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
           record ? (
             <>
               <PrintButton entity={entity} record={record} />
+              <RecordLinkActions entity={entity} record={record} blocked={blocked} />
               <DocActions
                 entity={entity}
                 record={record}
@@ -112,15 +131,18 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
       />
       {record ? <SystemInfo record={record} /> : null}
       <WorkforceWorkflowLink entity={entity.name} />
+      {!record && seed ? <SeedNotice seed={seed} /> : null}
       <RecordForm
-        key={record?.id ?? 'new'}
+        key={record?.id ?? `new:${seed?.key ?? ''}`}
         entity={entity}
         record={record}
+        initial={seed}
         onSaved={onSaved}
         onCancel={toList}
         onStatus={setFormStatus}
         actionBusy={actionBusy}
       />
+      {record ? <RelatedPanel entity={entity} id={record.id} /> : null}
       {record && !isWorkforceManaged(entity.name) ? <AttachmentsPanel entity={entity} id={record.id} /> : null}
       {record ? <AuditPanel entity={entity} id={record.id} /> : null}
     </div>
@@ -133,6 +155,7 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   const id = mode === 'edit' ? params.id : undefined;
   const { meta, entity } = useEntityMeta(name);
   const record = useRecord(name, entity ? id : undefined);
+  const seed = useDraftSeed(name);
   if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
@@ -154,7 +177,7 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   }
   return (
     <ReadRecoveryProvider sources={[meta]}>
-      <RecordView entity={entity} record={undefined} />
+      <RecordView entity={entity} record={undefined} seed={seed} />
     </ReadRecoveryProvider>
   );
 }

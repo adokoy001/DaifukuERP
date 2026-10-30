@@ -27,6 +27,8 @@ export interface FieldMeta {
   refDisplayField?: string;
   hidden: boolean;
   immutable: boolean;
+  /** The value must differ per record (unique field, one-field composite unique, numbering field); not copied by 複製. */
+  unique?: true;
   multiline?: boolean;
   /** Display scale. Money fields without an explicit scale: the company currency's minor units when known (else 6). */
   scale?: number;
@@ -104,10 +106,19 @@ function describeField(name: string, fd: AnyField, opts: MetaOptions): FieldMeta
   return meta;
 }
 
+/** document-links AC-1: the value must differ per record (field `unique`, a one-field composite unique, the numbering field). */
+function isUniqueField(entity: EntityDef, name: string): boolean {
+  if (entity.config.fields[name]?.opts.unique === true) return true;
+  if ((entity.config.unique ?? []).some((group) => group.length === 1 && group[0] === name)) return true;
+  const naming = entity.config.naming;
+  return naming?.type === 'field' && naming.field === name;
+}
+
 export function fieldMeta(entity: EntityDef, name: string, opts: MetaOptions = {}): FieldMeta {
   const fd = entity.config.fields[name];
   if (!fd || fd.opts.outputHidden) throw new Error(`no public field ${name}`);
   const meta = describeField(name, fd, opts);
+  if (isUniqueField(entity, name)) meta.unique = true;
   const override = registry.labelOverrides(entity.name, opts.appliedPacks)?.fields?.[name];
   if (override) meta.label = override;
   return meta;

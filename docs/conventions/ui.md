@@ -121,6 +121,15 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 - 配分合計 > 金額 のあいだは「保存」を送信前に止め、保存済みの記録でも 配分合計 > 金額 なら「確定」を押せない（サーバは確定時に再検証する）。
 - 計算はすべて `lib/decimal.ts` の文字列演算（ADR-0010）。
 
+## 複製・関連・クイック操作（document-links）
+
+[spec](../specs/document-links.md)。記録の画面（`pages/entity-form-page.tsx`）の見出しに「複製」とクイック操作、フォームの下に「関連」パネルを出す。
+
+- **複製**（`components/record-links.tsx`、`lib/duplicate.ts`）: entity の `create` 権限があり、従業員の専用画面で扱う entity でないときに出す。押すと記録を読み直し（`fetchFreshRecord`）、版が表示中と違えば開かずに最新を読み込んで理由を出す。読み直しに失敗したら開かずに理由を出す（AC-7）。持ち越すのは入力できる field と、読める明細の入力できる列だけ。`serverOwned` / `readOnly` / `hidden` / timestamp / `FieldMeta.unique`（kernel が field の `unique`、1 列の複合 unique、`naming: { type: 'field' }` の field に付ける）は持ち越さない。system 列・`docstatus`・`number`・`amendedFrom` は entity field ではないので入らない。既定値のある date field は今日、ほかの date field は空欄（支払期日などは保存時に再計算される）。
+- **初期値の受け渡し**: 新規画面 `/e/:entity/new` へ router の history state `draftSeed`（`DraftSeed`、`seedFromState` が形と entity を検査）で渡す。再読込しても残る。`RecordForm` は `initial` を受け取り、seed を基準値（baseline）にする。利用者が変えたときだけ「未保存の変更」になる。seed の無い項目は通常の既定値。明細は全行が新しい行（id なし）。保存するまで何も作らない。保存して開く記録の画面は `/new` の履歴を置き換える（戻るで初期値入りのフォームを開き直さない）。フォームの上に `SeedNotice`（元の記録へのリンク、元の日付）を出す。
+- **クイック操作**（`lib/quick-actions.ts`）: 推論せず `QUICK_ACTIONS` に宣言する（`source` / `target` / `label` / `fills` / `applies` / `build`）。対象 entity・埋める field・明細 entity が /meta にあり、対象の `create` 権限があるときだけ出す（AC-6）。初版は 売上請求書 →「入金を記録」、仕入請求書 →「支払を記録」で、確定済みかつ残高 > 0 のときに区分・取引先・今日・残高・消込明細 1 行を入れる。押したときの読み直しは複製と同じ。
+- **関連パネル**（`components/related-panel.tsx`、`api/related.ts`）: `GET /api/:entity/:id/related` を記録の query key の下（`[...keys.record(entity, id), 'related']`）で読むので、保存・確定・取消で記録を無効化すると一緒に読み直す。フォームは待たない。失敗はパネルの中だけに出して再試行を置く（`role="alert"` にしない）。document の group を先に並べる。伝票状態は `DocstatusBadge` ではなく `related-docstatus` の Badge（画面の `docstatus` test id を 1 つに保つ）。
+
 ## 小数の表示（web-phase15 AC-4 / AC-8）
 
 - 最小桁: money（`FieldMeta.money: true`）は `FieldMeta.scale`（kernel が会社通貨から解決。JPY = 0）。scale が無いか 6 以上（kernel が通貨を知らなかったときの保存桁）なら `/auth/me` の `company.currency` の最小単位（ISO 4217、未知の通貨は 2、会社が無ければ 0）。money でない decimal（数量・率）は 0。TableResult の decimal 列は money の区別が無いので通貨の桁。

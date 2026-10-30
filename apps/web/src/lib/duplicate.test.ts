@@ -1,0 +1,245 @@
+// document-links AC-1/AC-7: what a copy carries over, how a seed survives router state, and that a seeded form saves as
+// one create request with new lines only (no ids, numbers, statuses or server-owned values).
+import { describe, expect, it } from 'vitest';
+import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
+import { formFingerprint } from './dirty.ts';
+import {
+  duplicateSeed,
+  isCopyable,
+  seedFromState,
+  seededLines,
+  seededValues,
+  seedState,
+  todayLocal,
+  type DraftSeed,
+} from './duplicate.ts';
+import { lineSpecsOf, planSave } from './save.ts';
+
+const L = (ja: string, en: string) => ({ ja, en });
+function field(name: string, kind: string, extra: Partial<FieldMeta> = {}): FieldMeta {
+  return {
+    name,
+    kind,
+    label: L(name, name),
+    required: false,
+    hasDefault: false,
+    hidden: false,
+    immutable: false,
+    ...extra,
+  };
+}
+const base = { module: 'sales', scope: 'company' as const, hasExt: true, ops: ['read' as const, 'create' as const] };
+
+// Shapes as GET /meta serves modules/sales (sales-invoice.ts, sales-invoice-line.ts), trimmed.
+const invoice: EntityMeta = {
+  ...base,
+  name: 'sales_invoice',
+  kind: 'document',
+  label: L('売上請求書', 'Sales invoice'),
+  displayField: undefined,
+  fields: [
+    field('currency', 'enum', {
+      required: true,
+      hasDefault: true,
+      defaultValue: 'JPY',
+      immutable: true,
+      values: ['JPY'],
+    }),
+    field('partnerId', 'ref', { required: true, ref: 'partner' }),
+    field('date', 'date', { required: true, hasDefault: true }),
+    field('dueDate', 'date'),
+    field('priceIncludesTax', 'bool', { required: true, hasDefault: true, defaultValue: false }),
+    field('total', 'decimal', { serverOwned: true, readOnly: true, money: true }),
+    field('status', 'enum', { serverOwned: true, readOnly: true, values: ['draft', 'open', 'paid', 'cancelled'] }),
+    field('note', 'text', { multiline: true }),
+    field('journalEntryId', 'ref', { serverOwned: true, readOnly: true, ref: 'journal_entry' }),
+    field('cancelledDate', 'date', { serverOwned: true, readOnly: true, hidden: true }),
+    field('externalCode', 'text', { unique: true }),
+    field('createdNote', 'timestamp'),
+  ],
+  extFields: [field('ext.costCenter', 'text'), field('ext.syncedAt', 'text', { serverOwned: true, readOnly: true })],
+  views: { list: [], form: 'auto', search: [] },
+  lines: [{ entity: 'sales_invoice_line', parentField: 'invoiceId' }],
+};
+const line: EntityMeta = {
+  ...base,
+  name: 'sales_invoice_line',
+  kind: 'entity',
+  label: L('売上請求明細', 'Sales invoice line'),
+  displayField: undefined,
+  fields: [
+    field('invoiceId', 'ref', { required: true, ref: 'sales_invoice' }),
+    field('seq', 'int', { required: true, hasDefault: true }),
+    field('description', 'text', { required: true }),
+    field('quantity', 'decimal', { required: true, hasDefault: true, defaultValue: '1' }),
+    field('unitPrice', 'decimal', { required: true, money: true }),
+    field('amount', 'decimal', { serverOwned: true, readOnly: true, money: true }),
+  ],
+  views: { list: ['description', 'quantity', 'unitPrice', 'amount'], form: 'auto', search: [] },
+};
+const entities = [invoice, line];
+
+const submitted: RecordJson = {
+  id: '11111111-1111-4111-8111-111111111111',
+  tenantId: 't',
+  companyId: 'c',
+  createdAt: '2026-09-30T00:00:00Z',
+  updatedAt: '2026-09-30T00:00:00Z',
+  createdBy: 'u',
+  updatedBy: 'u',
+  version: 3,
+  docstatus: 1,
+  number: 'INV-2026-0007',
+  amendedFrom: '22222222-2222-4222-8222-222222222222',
+  currency: 'JPY',
+  partnerId: '33333333-3333-4333-8333-333333333333',
+  date: '2026-09-30',
+  dueDate: '2026-10-31',
+  priceIncludesTax: true,
+  total: '1100',
+  status: 'open',
+  note: 'Monthly fee',
+  journalEntryId: '44444444-4444-4444-8444-444444444444',
+  cancelledDate: null,
+  externalCode: 'EXT-7',
+  createdNote: '2026-09-30T01:00:00Z',
+  ext: { costCenter: 'CC-1', syncedAt: '2026-09-30' },
+  lines: {
+    sales_invoice_line: [
+      {
+        id: '55555555-5555-4555-8555-555555555555',
+        tenantId: 't',
+        companyId: 'c',
+        createdAt: '',
+        updatedAt: '',
+        createdBy: null,
+        updatedBy: null,
+        version: 1,
+        invoiceId: '11111111-1111-4111-8111-111111111111',
+        seq: 1,
+        description: 'Support',
+        quantity: '2.000000',
+        unitPrice: '500.000000',
+        amount: '1000',
+      },
+    ],
+  },
+};
+
+describe('document-links AC-1: duplicating a record', () => {
+  it('AC-1: copies entered values and lines; leaves out system, server-owned, numbering, status, unique and amendedFrom', () => {
+    const seed = duplicateSeed(invoice, submitted, entities, '2026-10-29', 'INV-2026-0007');
+    expect(seed.entity).toBe('sales_invoice');
+    expect(seed.values).toEqual({
+      currency: 'JPY',
+      partnerId: submitted.partnerId,
+      date: '2026-10-29',
+      dueDate: null,
+      priceIncludesTax: true,
+      note: 'Monthly fee',
+    });
+    for (const key of ['id', 'version', 'docstatus', 'number', 'amendedFrom', 'status', 'total', 'journalEntryId'])
+      expect(seed.values).not.toHaveProperty(key);
+    expect(seed.values).not.toHaveProperty('externalCode');
+    expect(seed.ext).toEqual({ costCenter: 'CC-1' });
+    expect(seed.lines).toEqual({
+      sales_invoice_line: [{ description: 'Support', quantity: '2.000000', unitPrice: '500.000000' }],
+    });
+    expect(seed.source).toEqual({
+      mode: 'duplicate',
+      entity: 'sales_invoice',
+      id: submitted.id,
+      title: 'INV-2026-0007',
+      date: '2026-09-30',
+    });
+  });
+
+  it('AC-1: the copyable rule — server-owned, read-only, hidden, unique and timestamp fields are never copied', () => {
+    expect(isCopyable(field('note', 'text'))).toBe(true);
+    expect(isCopyable(field('currency', 'enum', { immutable: true }))).toBe(true);
+    for (const extra of [{ serverOwned: true }, { readOnly: true }, { hidden: true }, { unique: true }])
+      expect(isCopyable(field('x', 'text', extra))).toBe(false);
+    expect(isCopyable(field('at', 'timestamp'))).toBe(false);
+  });
+
+  it('AC-1: line entities the caller cannot read (absent from /meta) are not copied', () => {
+    const seed = duplicateSeed(invoice, submitted, [invoice], '2026-10-29', 'INV');
+    expect(seed.lines).toEqual({});
+  });
+
+  it('AC-1: a seeded form starts clean (baseline = seed) and saves as one create with new lines only', () => {
+    const seed = duplicateSeed(invoice, submitted, entities, '2026-10-29', 'INV-2026-0007');
+    const specs = lineSpecsOf(invoice, entities);
+    const values = seededValues(invoice, seed);
+    const lines = seededLines(specs, seed);
+    expect(values).toMatchObject({
+      partnerId: submitted.partnerId,
+      date: '2026-10-29',
+      dueDate: '',
+      note: 'Monthly fee',
+      priceIncludesTax: true,
+      'ext.costCenter': 'CC-1',
+      'ext.syncedAt': '',
+    });
+    expect(lines.sales_invoice_line?.[0]?.id).toBeUndefined();
+    expect(lines.sales_invoice_line?.[0]?.values).toMatchObject({
+      description: 'Support',
+      quantity: '2',
+      unitPrice: '500',
+    });
+    const baseline = formFingerprint(values, lines);
+    expect(formFingerprint(seededValues(invoice, seed), seededLines(specs, seed))).toBe(baseline);
+    expect(formFingerprint({ ...values, note: 'changed' }, lines)).not.toBe(baseline);
+    const plan = planSave({
+      entity: invoice,
+      mode: 'create',
+      record: undefined,
+      values,
+      specs,
+      lines,
+      originalLines: {},
+      requiredMessage: 'required',
+    });
+    expect(plan.hasErrors).toBe(false);
+    expect(plan.body).toEqual({
+      currency: 'JPY',
+      partnerId: submitted.partnerId,
+      date: '2026-10-29',
+      priceIncludesTax: true,
+      note: 'Monthly fee',
+      ext: { costCenter: 'CC-1' },
+      lines: { sales_invoice_line: [{ description: 'Support', quantity: '2', unitPrice: '500' }] },
+    });
+  });
+
+  it('AC-1: fields the seed leaves out keep their defaults', () => {
+    const seed: DraftSeed = { ...duplicateSeed(invoice, submitted, entities, '2026-10-29', 'x'), values: {} };
+    expect(seededValues(invoice, seed)).toMatchObject({ currency: 'JPY', priceIncludesTax: false, note: '' });
+  });
+});
+
+describe('document-links AC-1/AC-7: the seed in router history state', () => {
+  const seed = duplicateSeed(invoice, submitted, entities, '2026-10-29', 'INV-2026-0007');
+  it('AC-1: round-trips through history state for the same entity only', () => {
+    const state = JSON.parse(JSON.stringify({ key: 'abc', ...seedState(seed) })) as unknown;
+    expect(seedFromState(state, 'sales_invoice')).toEqual(seed);
+    expect(seedFromState(state, 'payment')).toBeUndefined();
+  });
+  it('AC-7: malformed or foreign state is ignored (the page opens without initial values only when no seed was sent)', () => {
+    for (const state of [
+      undefined,
+      null,
+      'x',
+      {},
+      { draftSeed: { ...seed, kind: 'other' } },
+      { draftSeed: { ...seed, values: [] } },
+      { draftSeed: { ...seed, lines: { sales_invoice_line: ['x'] } } },
+      { draftSeed: { ...seed, source: { ...seed.source, mode: 'other' } } },
+    ])
+      expect(seedFromState(state, 'sales_invoice')).toBeUndefined();
+  });
+  it('AC-1: today is the browser calendar date', () => {
+    expect(todayLocal(new Date(2026, 9, 29, 23, 59))).toBe('2026-10-29');
+    expect(todayLocal(new Date(2027, 0, 5, 0, 1))).toBe('2027-01-05');
+  });
+});

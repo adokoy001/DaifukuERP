@@ -1,6 +1,6 @@
 // Spec AC-5: REST sugar over the generic entity actions (<entity>.list/get/create/update/delete/submit/cancel/amend)
-// plus GET /api/:entity/:id/audit. csv-import AC-1/AC-10: POST /api/:entity/import and the header template.
-// No business logic here; everything delegates to the kernel.
+// plus GET /api/:entity/:id/related (<entity>.related) and /audit. csv-import AC-1/AC-10: POST /api/:entity/import and
+// the header template. No business logic here; everything delegates to the kernel.
 import {
   assertImportable,
   auditTrail,
@@ -174,6 +174,15 @@ export function registerRestRoutes(app: FastifyInstance, opts: { db: Database })
       const { id, op } = parse(opParams, req.params, 'params');
       const body = parse(documentInput, req.body ?? {}, 'body');
       return act(req, `${entityOf(req.params)}.${op}`, { id, ...body });
+    },
+  );
+  // document-links AC-2/AC-3: delegates to the derived read action <entity>.related.
+  app.get(
+    '/api/:entity/:id/related',
+    { schema: tagId('Related records (referenced, referencing, amendment chain), up to 50 per entity') },
+    async (req) => {
+      const { id } = parse(idParams, req.params, 'params');
+      return act(req, `${entityOf(req.params)}.related`, { id });
     },
   );
   app.get('/api/:entity/:id/audit', { schema: tagId('Audit trail of a record (newest first)') }, async (req) => {

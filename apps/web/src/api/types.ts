@@ -37,6 +37,8 @@ export interface FieldMeta {
   refDisplayField?: string;
   hidden: boolean;
   immutable: boolean;
+  /** The value must differ per record (unique / one-field composite unique / numbering field); 複製 leaves it out. */
+  unique?: boolean;
   multiline?: boolean;
   /** Display scale. Money without an explicit scale: the company currency's minor units (6 when the API had no currency). */
   scale?: number;

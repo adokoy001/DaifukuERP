@@ -67,6 +67,17 @@ Repositoryの変更は [audit](../../kernel/src/audit.ts) に記録されます�
 
 銀行の生CSVは入力として検証し、保存する原資料は正規化した明細です。口座番号、出力バイト、申告資料のsnapshotは汎用DTO/監査で非公開にする項目を明示し、必要な内容だけ専用actionで返します。会計と給与の申告資料は別entity・別ロールで管理します。`contentHash` / `contentHashBytes` は内容比較用のSHA-256であり、銀行・行政の署名、受理、真正性の証明にはなりません。
 
+## 関連記録の読取
+
+[関連記録の読取](../../kernel/src/related.ts)は、1 件の記録から「参照している記録」と「参照されている記録」を entity ごとに最大 50 件返します（[spec](../specs/document-links.md)）。全 entity に派生する読取 action `<entity>.related`（`permission: { entity, op: 'read' }`、[登録](../../kernel/src/actions/related.ts)）と REST `GET /api/:entity/:id/related` から呼びます。辿るのは registry にある宣言だけです。
+
+- `ref` field（`@company` を除く）。`journalEntryId` もこれに含まれます。
+- 同じ entity にある `<x>Entity`（text / enum）と `<x>Id`（uuid / text）の組。`journal_entry.sourceEntity/sourceId`、`payment_allocation.invoiceEntity/invoiceId`、`attachment.linkedEntity/linkedId`、在庫の `sourceEntity/sourceId` が該当します。enum なら値に挙がった entity だけを対象にします。別 entity を uuid で指す項目を新しく作るときは、この組の名前にすると関連として辿られます。
+- document の明細。明細の参照は親 document の参照として扱い、記録を参照している明細は親 document として返します（自分自身の明細は返しません）。
+- `amendedFrom` の訂正元（遡る）と訂正版（下る）。それぞれ 50 段まで。
+
+読取はすべて呼出者の `Context` で `Repository` を通るため、read 権限・行の権限・会社/拠点/店舗の境界・field の mask が関連 entity ごとに効きます。読めない entity と、連結に使う field が mask / outputHidden の entity は、group ごと（件数も）返しません。対象の記録自体が読めなければ NotFound / PermissionDenied です。逆仕訳のように 2 段先の記録（請求書 → 仕訳 → 逆仕訳）は返さず、仕訳の関連で辿ります。ext field の ref は対象外です。
+
 ## 検索条件の日時と範囲
 
 RepositoryのDomainはJSONで表現します。同じ項目の複数演算子はすべてANDで評価します。例えば `{ "createdAt": { "$gte": "2026-09-01T00:00:00+09:00", "$lt": "2026-10-01T00:00:00+09:00" } }` はJSTの9月だけを対象にし、上限を無視しません。`$and` で分けた条件も同じ意味です。

@@ -34,6 +34,8 @@ const CONVERTED = [
   'components/error-details.tsx',
   'components/inbox-card.tsx',
   'inbox.css',
+  'components/related-panel.tsx',
+  'components/record-links.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

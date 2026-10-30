@@ -1,9 +1,10 @@
 # Spec: document-links（伝票の複製・関連伝票・クイック操作）
 
-- 状態: draft
-- モジュール: `kernel`（関連記録の読取）、`apps/api`（`GET /api/:entity/:id/related`）、`apps/web`（汎用フォーム） ／ 依存: [ui-kit](ui-kit.md)
-- ADR: 不要（既存の読取権限と作成 API の組合せ）
-- 作成: 2026-10-29 ／ 作成者: agent（計画セッション）。設計の元は [完成度向上の実装計画](../completion-plan.md) C2
+- 状態: implemented（2026-10-29）
+- モジュール: `kernel`（関連記録の読取、派生 action `<entity>.related`、`FieldMeta.unique`）、`apps/api`（`GET /api/:entity/:id/related`）、`apps/web`（汎用フォーム） ／ 依存: [ui-kit](ui-kit.md)
+- ADR: 不要（既存の読取権限と作成 API の組合せ。関連の辿り方は [データと処理経路](../architecture/runtime-and-data.md#関連記録の読取) に記す）
+- 作成: 2026-10-29 ／ 作成者: agent（計画セッション）。設計の元は [完成度向上の実装計画](../completion-plan.md) C2。実装時の変更は「未決事項」の末尾
+- 記録: [作業記録](../log/2026-10-29-document-links.md)
 
 ## 目的（1段落）
 
@@ -11,40 +12,51 @@
 
 ## 受入基準（EARS）
 
-- AC-1 WHEN 利用者が create 権限のある entity の記録で「複製」を押した THE SYSTEM SHALL 新規作成画面を開き、元の記録の入力可能な値と明細を初期値として入れる。system 列・`serverOwned`・採番・状態・`unique` な field（コードなど）・訂正元は持ち越さない。保存するまでは何も作成しない。
-- AC-2 WHEN `GET /api/:entity/:id/related` が呼ばれた THE SYSTEM SHALL この記録を `ref` で参照する記録（逆参照）と、この記録が `ref` で参照する記録（順参照）を、entity ごとに最大 50 件、番号または表示名・状態・日付つきで返す。`amendedFrom` による訂正元・訂正先と `journalEntryId` による仕訳を含める。
-- AC-3 THE SYSTEM SHALL 関連記録の読取に、要求者の read 権限・行の権限・会社・拠点・本人の境界を entity ごとに適用し、読めない entity は結果に含めない（件数も返さない）。
-- AC-4 WHEN 記録の画面を開いた THE SYSTEM SHALL 「関連」パネルに AC-2 の結果を entity ごとにまとめて表示し、各記録へ移動できる。読込は画面の表示を妨げない。
-- AC-5 THE SYSTEM SHALL 次のクイック操作を確定済みの記録に表示する: 売上請求書 →「入金を記録」、仕入請求書 →「支払を記録」。押すと入出金の新規画面を、区分・取引先・金額（未消込残高）・消込明細（その請求書）を初期値として開く。操作は入出金の create 権限がある場合だけ表示する。
-- AC-6 THE SYSTEM SHALL クイック操作の対応を `apps/web/src/lib/quick-actions.ts` の宣言で管理し、対象 entity が meta に無い会社では表示しない。
-- AC-7 IF 初期値に使う元の記録を読み直した結果が版の変化や権限の喪失で取得できない THEN THE SYSTEM SHALL 新規画面を初期値なしで開かず、理由を表示する。
+- AC-1 WHEN 利用者が create 権限のある entity の記録で「複製」を押した THE SYSTEM SHALL 新規作成画面を開き、元の記録の入力可能な値と、読める明細の入力可能な列を初期値として入れる。system 列・`serverOwned`・`readOnly`・`hidden`・timestamp・採番（`number`、`naming: { type: 'field' }` の field）・状態（`docstatus` と serverOwned の状態）・`unique` な field（field の `unique` と 1 列の複合 unique。`FieldMeta.unique` で配信）・訂正元（`amendedFrom`）は持ち越さない。既定値のある date field は今日の日付、ほかの date field は空欄にする。保存するまでは何も作成しない。
+- AC-2 WHEN `GET /api/:entity/:id/related`（派生 action `<entity>.related`、`permission: { entity, op: 'read' }`）が呼ばれた THE SYSTEM SHALL この記録を参照する記録（逆参照）と、この記録が参照する記録（順参照）を、entity ごとに最大 50 件（超えたら `more: true`）、番号・表示名・状態・日付・関係（参照先 / 参照元 / 訂正元 / 訂正版）・連結 field つきで返す。辿るのは `ref` field、同じ entity の `<x>Entity` + `<x>Id` の組、document の明細（明細の参照は親の参照、記録を参照する明細は親 document として返し、自分の明細は返さない）、`amendedFrom` の訂正元・訂正先の連鎖（各 50 段まで）。`journalEntryId` による仕訳と、仕訳の `sourceEntity/sourceId` による起票元を含む。
+- AC-3 THE SYSTEM SHALL 関連記録の読取に、要求者の read 権限・行の権限・会社・拠点・本人の境界・field の mask を entity ごとに適用し、読めない entity と連結 field を読めない entity は結果に含めない（件数も返さない）。対象の記録自体が読めない場合は PERMISSION_DENIED / NOT_FOUND を返す。
+- AC-4 WHEN 記録の画面を開いた THE SYSTEM SHALL 「関連」パネルに AC-2 の結果を entity ごとにまとめて（document の group を先に）表示し、各記録へ移動できる。読込は画面の表示を妨げず、失敗はパネル内に表示して再試行できる。
+- AC-5 THE SYSTEM SHALL 次のクイック操作を確定済みで残高が 0 より大きい記録に表示する: 売上請求書 →「入金を記録」、仕入請求書 →「支払を記録」。押すと入出金の新規画面を、区分・取引先・日付（今日）・金額（未消込残高）・消込明細（その請求書、残高）を初期値として開く。操作は入出金の create 権限がある場合だけ表示する。
+- AC-6 THE SYSTEM SHALL クイック操作の対応を `apps/web/src/lib/quick-actions.ts` の宣言で管理し、対象 entity・埋める field・明細 entity が meta に無い会社では表示しない。
+- AC-7 WHEN 「複製」またはクイック操作を押した THE SYSTEM SHALL 元の記録を読み直す。IF 読み直しが権限の喪失などで失敗した、または版が表示中から変わっていた THEN THE SYSTEM SHALL 新規画面を開かず理由を表示する（版の変化では最新の内容を読み込む）。
 - AC-8 THE SYSTEM SHALL 文言を日本語と英語で持ち、390px 幅で操作できる。
 
 ## 関係するファイル・インターフェース（名指し）
 
-- kernel: `kernel/src/related.ts`（新規。`registry` の ref から逆参照・順参照を求め、`Repository` の list で読む）、`kernel/src/index.ts`
-- api: `apps/api/src/routes/rest.ts`（`/related` を既存の entity 経路と同じく action へ委譲、または派生 action）
-- web: `apps/web/src/pages/entity-form-page.tsx`、`apps/web/src/components/related-panel.tsx`（新規）、`apps/web/src/lib/duplicate.ts`、`apps/web/src/lib/quick-actions.ts`（新規）、`apps/web/src/components/record-form.tsx`（初期値の受け取り）
-- docs: `docs/manual/02-basics.md`、`docs/manual/05-daily.md`
+- kernel: `kernel/src/related.ts`（新規。registry から連結を求め、`Repository` の list / find で読む）、`kernel/src/actions/related.ts`（新規。`registerRelatedActions()`、`registerCrudActions()` の末尾で 1 回呼ぶ）、`kernel/src/meta.ts`（`FieldMeta.unique`）、`kernel/src/index.ts`
+- api: `apps/api/src/routes/rest.ts`（`GET /api/:entity/:id/related` を `<entity>.related` へ委譲）
+- web: `apps/web/src/pages/entity-form-page.tsx`、`apps/web/src/components/related-panel.tsx`（新規）、`apps/web/src/components/record-links.tsx`（新規。複製・クイック操作のボタン、`SeedNotice`、`useDraftSeed`）、`apps/web/src/api/related.ts`（新規）、`apps/web/src/lib/duplicate.ts`（新規）、`apps/web/src/lib/quick-actions.ts`（新規）、`apps/web/src/components/record-form.tsx`（`initial` の受け取り）、`apps/web/src/api/types.ts`（`FieldMeta.unique`）
+- docs: `docs/manual/02-basics.md`、`docs/manual/05-daily.md`、`docs/conventions/ui.md`、`docs/architecture/runtime-and-data.md`
 
 ## データ・業務ルール（出典）
 
-- 訂正（`amendedFrom`）と確定済み伝票の不変 — ADR-0006。消込の検証は既存の入出金の規則（[payment](payment.md)）に従う。
+- 訂正（`amendedFrom`）と確定済み伝票の不変 — ADR-0006。消込の検証は既存の入出金の規則（[payment](payment.md)）に従う。複製・クイック操作は既存の `<entity>.create` を呼ぶだけで、新しい書込経路を作らない。
 
 ## スコープ外（明記）
 
 - 見積 → 受注などの商流の変換（既存の trade 画面で対応済み）
 - 複数記録の一括複製、定期的な自動複製
 - 関連記録の図示
+- 2 段先の記録（請求書 → 仕訳 → 逆仕訳）。仕訳の関連で辿る
+- ext field の ref を辿ること
 
 ## 検証手順（E2E、実行して記録する）
 
 1. `pnpm gate:light`（kernel を変更するため DB 全件へ昇格）
-2. DB: 逆参照・順参照・訂正・仕訳の取得、読めない entity の除外、行の権限、50 件上限（AC-2、AC-3）
-3. 単体: 複製で持ち越さない field の判定、クイック操作の初期値（AC-1、AC-5、AC-6）
-4. ブラウザ: 確定済み請求書の複製 → 保存で新しい下書き、「入金を記録」→ 保存 → 確定で請求書が消し込まれる、関連パネルに入金と仕訳が出る、390px（AC-1〜AC-8）
-5. `pnpm gate:full`
+2. DB: `kernel/test/related.db.test.ts`（逆参照・順参照・`<x>Entity`/`<x>Id`・明細の親への置換・訂正の連鎖・50 件上限、読めない entity / mask された連結 field の除外、行の権限、別会社、派生 action の権限）、`apps/api/test/related.db.test.ts`（実 module の売上請求書・入金・仕訳・訂正、REST の 403 / 404 / 400）（AC-2、AC-3）
+3. 単体: `apps/web/src/lib/duplicate.test.ts`（持ち越さない field、今日の日付、seed の検査、seed からの保存内容）、`apps/web/src/lib/quick-actions.test.ts`（表示条件、初期値）（AC-1、AC-5、AC-6、AC-7）
+4. ブラウザ: `apps/web/e2e/document-links.spec.ts` — 確定済み請求書の複製 → 保存で新しい下書き、「入金を記録」→ 保存 → 確定で請求書が消し込まれる、関連パネルに入金と仕訳が出る、版の変化と読み直し失敗で開かない、390px と英語（AC-1〜AC-8）
+5. `pnpm gate:full`（統合担当が実行）
 
 ## 未決事項（利用者の判断待ち）
 
-- 複製時に日付を今日へ置き換えるか（初版は置き換える。元の日付は表示のみ）。
+- 複製時に日付を今日へ置き換えるか — 実装では「既定値が今日の date field（請求日・日付）は今日、ほかの date field（支払期日など）は空欄」とした。支払期日は保存時に取引先の条件から再計算されるため、古い期日を持ち越すより安全と判断した。元の日付はフォーム上のお知らせに表示する。利用者の確認待ち。
+
+### 実装時に変えた点（計画の草案から）
+
+- 草案は「registry の `ref` から」だけだったが、入金の消込明細（`payment_allocation.invoiceEntity/invoiceId`）と仕訳の起票元（`journal_entry.sourceEntity/sourceId`）は `ref` ではなく uuid のため、同じ entity の `<x>Entity` + `<x>Id` の組も辿るようにした（DSL 拡張なしの命名規約。既存の 6 entity が同じ形）。
+- 記録を参照しているのが明細（`payment_allocation` など）なら、明細ではなく親 document（入出金）を返す。自分自身の明細は関連に含めない。
+- 逆仕訳は仕訳の `reversalOf` で仕訳を指し、請求書を直接指さない（`sourceEntity` が空）ため、請求書の関連には出ない。仕訳の関連で辿る。
+- 複製で持ち越さない `unique` を Web が判定できるよう、`FieldMeta.unique` を追加した（field の `unique`、1 列の複合 unique、採番 field）。
+- クイック操作は「確定済み」に加えて「残高 > 0」を条件にした（入金済みの請求書には出さない）。日付（今日）も初期値に入れる。
+- AC-7 を「押したときに読み直し、失敗または版の変化で開かない」と具体化した。

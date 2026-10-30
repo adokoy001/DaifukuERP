@@ -168,6 +168,14 @@ export {
 export { EXPORT_ROWS_LIMIT } from './actions/export-rows.ts';
 export { registerPackActions } from './actions/pack.ts';
 export {
+  relatedRecords,
+  RELATED_LIMIT,
+  type RelatedGroup,
+  type RelatedItem,
+  type RelatedRelation,
+  type RelatedResult,
+} from './related.ts';
+export {
   applyPack,
   readAppliedPacks,
   appliedPacksOf,

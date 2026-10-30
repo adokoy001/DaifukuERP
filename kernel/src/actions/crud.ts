@@ -17,6 +17,7 @@ import { publicOutput } from '../public-output.ts';
 import { isImportable } from '../import-values.ts';
 import { registerImportAction } from './import.ts';
 import { registerExportRowsAction } from './export-rows.ts';
+import { registerRelatedActions } from './related.ts';
 
 const idInput = z.object({ id: z.uuid() });
 const versionInput = idInput.extend({ expectedVersion: z.number().int().min(1).optional() });
@@ -39,8 +40,9 @@ async function withLines(
 }
 
 /**
- * Registers generic CRUD actions (with `<entity>.export_rows`) for every entity that has none yet, and `<entity>.import`
- * for importable masters (csv-import AC-1, ADR-0028). Call once after all modules are imported (line entities are known only then).
+ * Registers generic CRUD actions (with `<entity>.export_rows`) for every entity that has none yet, `<entity>.import`
+ * for importable masters (csv-import AC-1, ADR-0028) and the related-record actions (related.ts). Call once after all
+ * modules are imported (line entities are known only then).
  */
 export function registerCrudActions(): void {
   for (const entity of registry.allEntities()) {
@@ -52,6 +54,7 @@ export function registerCrudActions(): void {
     }
     if (!registry.hasAction(`${entity.name}.import`) && isImportable(entity)) registerImportAction(entity);
   }
+  registerRelatedActions();
 }
 
 function registerReadActions(entity: EntityDef): void {
