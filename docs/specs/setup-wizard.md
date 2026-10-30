@@ -1,6 +1,6 @@
 # Spec: setup-wizard（初回セットアップウィザード）
 
-- 状態: draft
+- 状態: implemented（2026-10-30、作業記録 [2026-10-30-setup-wizard](../log/2026-10-30-setup-wizard.md)）
 - モジュール: `kernel`（設定 `setup.progress`、会社の所属人数、設定定義の表示属性 `managedBy`）、`apps/runtime`（設定の登録）、`apps/api`（`GET /meta/setup-status`）、`apps/web`（`/setup`、ホームの「セットアップを続ける」カード、`/admin/companies` の作成後の導線） ／ 依存: [settings-console](settings-console.md)（B1）、[company-admin](company-admin.md)（B2）、[setup-health](setup-health.md)（B3）、[ui-kit](ui-kit.md)、[form-ergonomics](form-ergonomics.md)（未保存の確認の文言）
 - ADR: [ADR-0027](../adr/0027-setting-presentation.md) に §8 を追記（`setup.progress` の定義、表示属性 `managedBy`、「新しい書込経路を作らない」規則、所属人数の読取）。新しい ADR は作らない（ADR-0034 は使わない）
 - 作成: 2026-10-29 ／ 作成者: agent（計画セッションが draft）。2026-10-30 spec writer（`wip/setup-wizard`、基点 `8d40672`）が B1〜B3 の実装に合わせて改訂（末尾の「改訂の記録」）。設計の元は [完成度向上の実装計画](../completion-plan.md) B4
@@ -85,14 +85,14 @@ AC-1〜AC-10 は 2026-10-29 の draft の番号と意味を保った（文言は
 - kernel:
   - `kernel/src/setup-progress.ts`（新規）: `SETUP_PROGRESS_KEY = 'setup.progress'`、`SETUP_STEP_IDS`（上表の 9 id、表示順）、`type SetupStepId`、`setupStepRecordSchema`、`setupProgressSchema`、`SETUP_PROGRESS_SETTING`（`SettingDef`）、`ensureSetupProgressSetting()`（冪等。`ensureCompanyProfileSetting` と同じ形）、`setupProgressOf(settings)`（合わない値は `{}`）
   - `kernel/src/company-access.ts`: `activeCompanyMemberCount(ctx)`（`companyMemberIdentities` の隣。`user_company_memberships` と `users` を `ctx.db` で、tenant・company・`users.active` の条件を明示して数える。要求者が admin ロールかつ全社の所属でなければ `PermissionDenied`、会社が無ければ `NotFound`。件数だけを返す）
-  - `kernel/src/registry.ts`（`SettingDef.managedBy?: { href: string; label: Label }`）、`kernel/src/setting-presentation.ts`（`checkSettingDef` の検査。アプリ内の経路の規則は `kernel/src/health.ts` の `isHealthHref` と共通の関数にする。循環 import を避けるため小さな共通モジュールへ移してよい）、`kernel/src/index.ts`（公開）
+  - `kernel/src/registry.ts`（`SettingDef.managedBy?: { href: string; label: Label }`）、`kernel/src/setting-presentation.ts`（`checkSettingDef` の検査。アプリ内の経路の規則は `kernel/src/app-href.ts` の `isAppHref` に移し、`kernel/src/health.ts` の `isHealthHref` もそれを呼ぶ）、`kernel/src/index.ts`（公開）
 - runtime: `apps/runtime/src/index.ts`（`loadRuntime` が `ensureSetupProgressSetting()` を呼ぶ）
 - api:
   - `apps/api/src/setup-status.ts`（新規）: `SETUP_STEPS`（id・順・日英ラベル・任意・判定に使う導入チェックの項目 id または `setup.*` 条件）、`deriveSetupStatus({ health, facts, progress })`（純粋関数。unit 試験の対象）、`collectSetupFacts(ctx)`（`runHealthChecks(ctx)`、`activeCompanyMemberCount`、`appliedPacksOf(company.settings)`、`registry.hasEntity` / `repo(ctx, registry.entity('account' | 'workforce_pay_policy')).count(where)` による件数。各条件は `withSavepoint` の中）、`setupStatus(ctx)`（admin の検査 → 収集 → 導出）
   - `apps/api/src/routes/setup-status.ts`（新規。`registerSetupStatusRoutes(app, { db })`、`GET /meta/setup-status`、`readOnlySnapshot: true`）、`apps/api/src/server.ts`（登録）、`apps/api/src/routes/settings.ts`（`SettingOut.managedBy` を返す）
 - web:
-  - `apps/web/src/pages/setup-page.tsx`（新規。stepper、段階の切替、未保存の確認、権限の説明）、`apps/web/src/components/setup-*.tsx`（新規。段階一覧と各段階）、`apps/web/src/components/setup-card.tsx`（新規。ホームのカード）、`apps/web/src/api/setup.ts`（新規。`useSetupStatus(enabled)`、`setupStatusKey`、進捗の保存は `useSaveSetting` を使う）、`apps/web/src/lib/setup-wizard.ts`（新規。純粋関数: 初期段階の選択、`proposeFiscalYear({ today, endMonth, years, check })`、`buildProgress(progress, change, now)`（応答の `progress` に変更を重ねる。変更しない段階の記録を保つ）、カードの表示判定、段階一覧のキー操作の移動先、在庫の目安の文言）
-  - 既存の部品への追加（どれも省略可の prop で、既存の呼出しは変わらない）: `components/setting-card.tsx`（`onDirtyChange?`、`draftValue?`（入力欄の初期値。未保存の変更として扱う）、`managedBy` の読取専用表示）、`components/access-create-user.tsx`（`onCreated?(user)`）、`components/access-invite-user.tsx`（`onInvited?(userId)`）、`components/access-memberships.tsx`（`initialCompanyId?`）、`pages/templates-page.tsx`（`TemplateCard` と適用の確認を export する、または `components/template-card.tsx` へ移す）
+  - `apps/web/src/pages/setup-page.tsx`（新規。stepper、段階の切替、未保存の確認、権限の説明）、`apps/web/src/components/setup-stepper.tsx`（段階一覧）・`setup-shared.tsx`（段階の props、点検の一覧、保存の失敗、未保存の束ね `useDirtyKeys`）・`setup-setting-steps.tsx`（段階 1・3〜6）・`setup-fiscal-step.tsx`（段階 2）・`setup-people-steps.tsx`（段階 7〜9）（新規）、`apps/web/src/components/setup-card.tsx`（新規。ホームのカード）、`apps/web/src/api/setup.ts`（新規。`useSetupStatus(enabled)`、`setupStatusKey`、進捗の保存は `useSaveSetting` を使う）、`apps/web/src/lib/setup-wizard.ts`（新規。純粋関数: 初期段階の選択、`proposeFiscalYear({ today, endMonth, years, check })`、`buildProgress(progress, change, now)`（応答の `progress` に変更を重ねる。変更しない段階の記録を保つ）、カードの表示判定、段階一覧のキー操作の移動先、在庫の目安の文言）
+  - 既存の部品への追加（どれも省略可の prop で、既存の呼出しは変わらない）: `components/setting-card.tsx`（`onDirtyChange?`、`draftValue?`（入力欄の初期値。未保存の変更として扱う）、`onSettled?`（保存の成否にかかわらず呼ぶ。状態の取り直し）、`managedBy` の読取専用表示）、`components/access-create-user.tsx`（`onCreated?(user)`）、`components/access-invite-user.tsx`（`onInvited?(userId)`）、`components/access-memberships.tsx`（`initialCompanyId?`）、`pages/templates-page.tsx`（`TemplateCard` を export。適用の確認は既存の `ActionConfirm` を段階の中で使う）、`components/workforce-initialize.tsx`（`onDone?`）
   - `apps/web/src/router.tsx`（`/setup`、`validateSearch` で `step` を段階 id に限る）、`apps/web/src/lib/navigation-data.ts`（`/setup` の項目と条件 `'admin'`）、`apps/web/src/lib/navigation.ts`（条件 `'admin'` の判定）、`apps/web/src/lib/help.ts`（章）、`apps/web/src/lib/companies.ts`（`SETUP_DESTINATIONS`）、`apps/web/src/pages/home-page.tsx`（`<SetupCard />` の 1 要素と import だけ）、`apps/web/src/api/types.ts`（`SettingMeta.managedBy`）、`apps/web/src/ui/token-usage.test.ts`（新しい画面・部品を `CONVERTED` に追加）
 - 試験: 下の「検証手順」に列挙
 - docs: `docs/adr/0027-setting-presentation.md`（§8 と冒頭の「追記」の行、帰結の「読取専用の表示属性は B4 と合わせて検討」の解決）、`docs/manual/03-setup.md`（ウィザードを主手順に書き換え。help.ts と他の章が参照する見出し「設定画面」「会社プロフィール」「会計年度と会計期間」「勘定科目」「税率」を残す）、`docs/manual/01-install.md`（初回ログイン後に `/setup` を案内）、`docs/manual/08-admin.md`（「会社の追加と編集」の手順 3 を `/setup` に、「導入チェック」からウィザードへの言及）、`docs/manual/appendix-e-operations-control.md`（会社を増やす手順の続きとして `/setup`）
@@ -158,6 +158,12 @@ AC-1〜AC-10 は 2026-10-29 の draft の番号と意味を保った（文言は
 - 種類が「確認」の段階（勘定科目・税率）を、seed の値で条件を満たしていても管理者の確認（`completed`）まで未完了にするか（既定: しない。計画どおり実データで判定する）。
 
 ## 改訂の記録
+
+- 2026-10-30（implementer、実装時の補足。受入基準の意味は変えていない）
+  - 状態を implemented にした。「関係するファイル」を実装の名前（`kernel/src/app-href.ts`、段階の部品の 5 ファイル、`SettingCard.onSettled`、`WorkforceInitialize.onDone`）に合わせた。
+  - AC-1 の補足: `?step=` が無いまま開いたときは、最初の状態で決めた段階を `?step=` に置き換えて固定する（保存で「最初の未完了の段階」が変わっても、開いている段階が勝手に移らないように。ブラウザ試験 `company-admin.spec.ts` の保存後の確認で見つけた）。
+  - AC-9 の実装: 未保存の確認は TanStack Router の `useBlocker` 1 つで、段階の切替（`?step=` の置換え）・前へ・次へ・別の画面・ページを閉じる操作のすべてに掛かる。記録の保存中・段階の保存中（在庫の 2 つの保存、会計年度の作成、テンプレートの適用、利用者の編集）は移動させない。
+  - AC-7 の補足: 統合前の置き場所は、ホームの入口の操作（「すべての画面を探す」）の直後。
 
 - 2026-10-30（implementer、spec 批評への対応。下の表）
   - 採用: 1（カードは admin なら常に、`/meta/setup-status` を admin 以外は要求しない。AC-7・決定事項 19）、2（会計年度の継続の規則と (c)。AC-3）、3（`progress` を返して重ねる、記録の扱い。AC-5・AC-15・決定事項 5）、4（AC-8 は admin ロールの有無で隠す、403 は説明の表示。AC-8・AC-25）、6（会社の条件を明示、会社の無い Context は 404。AC-13）、7（「在庫を使う」の後の入庫の説明と、食い違いの表示。AC-4）、8（失敗の経路のブラウザ試験。検証 6）、9（計画からの逸脱を記録し、`fail` はスキップしてもカードに残す。状態の決め方・AC-7・決定事項 3）、10（免税事業者の扱いを製品の挙動として書く）、11（業種の目安の根拠を pack の実装とカタログに絞る）、12（`managedBy` のリンクは admin だけ。AC-12）、13（roving tabindex、`completed` は strict。AC-10・AC-11）。

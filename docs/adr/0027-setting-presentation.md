@@ -2,7 +2,7 @@
 
 - 状態: 採択（2026-10-29）／ 確信度: 中
 - 関連: [ADR-0013](0013-hexagonal-ports.md)（L1 設定 `registerSetting`）、[ADR-0015](0015-packs.md)（pack の設定既定値）、[受入基準](../specs/settings-console.md)、[UI 規約](../conventions/ui.md)
-- 追記: §6 B2 の `company.profile`（[company-admin](../specs/company-admin.md)、2026-10-30）、§7 B3 の導入チェックの登録 port（[setup-health](../specs/setup-health.md)、2026-10-30）。追記予定: B4 の `setup.progress`（[setup-wizard](../specs/setup-wizard.md)）
+- 追記: §6 B2 の `company.profile`（[company-admin](../specs/company-admin.md)、2026-10-30）、§7 B3 の導入チェックの登録 port（[setup-health](../specs/setup-health.md)、2026-10-30）。§8 B4 の `setup.progress`・表示属性 `managedBy`・ウィザードの書込経路の規則（[setup-wizard](../specs/setup-wizard.md)、2026-10-30）
 
 ## 背景
 
@@ -96,6 +96,16 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 - **読取専用**: `GET /meta/health` は点検全体を読取専用のトランザクション（`withContext` の `readOnlySnapshot`。repeatable read、read only）で実行する。点検は読むだけ（直すのは各画面）で、書こうとした点検は DB が拒否し、その項目だけが `warn` になる（DB 試験で確認）。
 - **owner 接続の例外（ADR-0004）**: `system.migrations` の件数は readiness と同じく `drizzle.__drizzle_migrations` を読むが、app role にはこの表の権限が無い。そこで要求の処理の中で owner 接続を使う唯一の例外として、`apps/api/src/deployment/readiness.ts` の `appliedMigrationsReader(owner)` が作る関数（固定の 2 文: 表の有無と、適用記録の hash と時刻）だけを運用点検に渡す。点検は owner の `Database` を受け取らず、返すのは件数だけ。app role に権限を与える案は、移行の仕組み（drizzle の表）の権限管理を変えることになるため採らなかった（2026-10-30 レビュー指摘で、owner の `Database` を渡していた初版から変更）。
 
+### 8. セットアップウィザードの記録 `setup.progress` と表示属性 `managedBy`（2026-10-30 追記、[setup-wizard](../specs/setup-wizard.md)）
+
+B4 のセットアップウィザード（`/setup`）のため、kernel に設定 1 件と表示属性 1 つ、件数の読取 1 つを足す。新しい書込みの API・action・表は作らない。
+
+- **`setup.progress`**（`kernel/src/setup-progress.ts`）: kernel が登録する会社設定。schema は段階 id（`company_profile`・`fiscal_year`・`chart_of_accounts`・`tax`・`invoice_issuer`・`inventory`・`industry_template`・`users`・`workforce`、`SETUP_STEP_IDS`）ごとの省略可の記録と `updatedAt`。記録は `{ state: 'completed', at }` か `{ state: 'skipped', at, reason }`（理由は前後の空白を除いて 1〜200 文字）で、どちらも strict（`completed` に理由を付けると 400）。最上位の未知の key は保存時に捨てる。表示属性は `category: 'system'`、全 10 細目の日英ラベル、説明、`managedBy: { href: '/setup' }`。`default` は宣言しない。`ensureSetupProgressSetting()`（冪等）を apps/runtime の `loadRuntime` が `company.profile` と同じく呼ぶ。読取は `setupProgressOf(settings)`（合わない値は記録なし `{}`）。
+- **状態は実データで決める**: ウィザードの各段階の完了は `GET /meta/setup-status`（apps/api、admin・会社全体の所属だけ）が、§7 の導入チェックの安定 id（`company.profile`・`accounting.fiscal_period`・`tax.standard_rate`・`sales.issuer`・`inventory.stock_settings`）の `ok` と、API が計算する簡単な条件（`setup.chart_of_accounts`・`setup.industry_template`・`setup.users`・`setup.workforce_policy`。満たさないときは `warn`）で決める。`setup.progress` は「確認した」「理由を付けてスキップした」の補助記録で、完了を決めない（条件を満たす → done、満たさずスキップの記録がある → skipped、それ以外 → todo）。応答は保存値そのもの（`progress`）も返し、画面はそれに変更を重ねて丸ごと保存する（返さない段階の記録を消さない）。読取は §7 と同じく読取専用のトランザクションで、点検の `extra`（運用点検と owner 接続の例外）は使わない。
+- **`managedBy?: { href, label }`**（`SettingDef` の表示属性）: その設定を専用の画面が扱うことを示す。設定画面は入力欄・「保存」・「既定に戻す」を出さず、状態・説明・「<label>で変更」のリンク（admin のとき。settings ロールには「会社の管理者が<label>の画面で変更します」の文）・変更履歴だけを出す。§1 の規則どおり表示だけで、`PUT` / `DELETE` の検証・保存・権限は変えない（API からは従来どおり書ける）。登録時に `href` がアプリ内の経路であること（`isHealthHref` と同じ規則。共通の `kernel/src/app-href.ts` の `isAppHref`）と `label` が日英を持つことを `checkSettingDef` が検査する。帰結の「読取専用の表示属性は B4 と合わせて検討する」への答え。`packs.applied` にはこの項目では付けていない（setup-wizard の未決事項）。
+- **ウィザードは新しい書込経路を作らない**: 各段階の保存は既存の `PUT /meta/settings/:key`、`POST /actions/accounting.open_fiscal_year`、`POST /actions/pack.apply`、`POST /admin/users`・`PUT /admin/users/:id/companies/:companyId`、`POST /auth/invitations`、`POST /actions/workforce.initialize_policy` と、記録の `PUT /meta/settings/setup.progress` だけで行い、それぞれの権限検査（設定は admin か settings、年度は `fiscal_year` の create、テンプレートは admin、利用者はテナント管理者、勤怠は `workforce_hr` / `workforce_payroll` か admin）をそのまま通す。段階を足すときも同じ規則に従い、ウィザード専用の書込みの API を作らない。
+- **会社の所属人数** `activeCompanyMemberCount(ctx)`（`kernel/src/company-access.ts`、`companyMemberIdentities` の隣）: `user_company_memberships` と `users` を、`tenant_id = ctx.tenantId AND company_id = ctx.companyId AND users.active` を条件に明示して数える（この表の RLS はテナントの境界だけで、会社の境界は条件で守る）。admin ロールかつ会社全体の所属でなければ `PermissionDenied`、会社の無い Context は `NotFound`。件数だけを返し、氏名やメールを返さない。
+
 ## 却下した案
 
 - **zod の `.meta()` / `.describe()` に表示情報を載せる**: JSON Schema の `title` / `description` は単一文字列で、`{ ja, en }` の規約（[コード規約](../conventions/code-style.md)）と合わない。独自 key を JSON Schema に混ぜると、API の schema を検証器に渡す利用者が困る。
@@ -108,5 +118,5 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 + module / pack の作者は `fields` を書くだけで、設定画面が日英のラベル・選択式・既定値・履歴付きになる。
 + 定義の誤り（property 名の綴り違い、既定値の型違い）が import 時に落ちる。
 − 既存の設定定義に表示属性を書いた（module 7: tax・sales・purchase・payment・inventory・contract・industry-operations、pack 3: example・retail・real-estate）。object 設定の細目ラベルと enum のラベルを書き忘れると単体試験が落ちる。
-− `packs.applied` のような記録用の設定は、画面では「既定に戻す」を出さない（既定値の宣言が無い JSON 入力の記録。`canReset`）が、API の `DELETE /meta/settings/packs.applied` と JSON の編集ではまだ消せる。読取専用の表示属性は B4 の `setup.progress` と合わせて検討する。
+− `packs.applied` のような記録用の設定は、画面では「既定に戻す」を出さない（既定値の宣言が無い JSON 入力の記録。`canReset`）が、API の `DELETE /meta/settings/packs.applied` と JSON の編集ではまだ消せる。読取専用の表示属性は B4 で `managedBy` として足した（§8）。`setup.progress` は設定画面で編集できないが、API の `PUT` / `DELETE` では従来どおり書ける（表示属性は権限を変えない）。`packs.applied` への適用は未決。
 − 「既定に戻す」はテンプレートが書いた値ではなく module の既定値に戻す（§5）。
