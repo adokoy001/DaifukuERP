@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 機械用資格情報（API キー、F2）
 
 - セッション: workflow wf_2b353e03-822（round 7）の F2 実装者、base `ffc2f42`、branch `wip/machine-credentials` ／ 担当: agent ／ 対象: [docs/specs/machine-credentials.md](../specs/machine-credentials.md)
-- 計測: tokens=null（このセッションからは取得できない）, agent_minutes=約 150, human_minutes=0, rework_lines=約 60（下の「見つけた問題と修正」）, gate_failures=0（gate:light の結果は下の検証を参照）
+- 計測: tokens=null（このセッションからは取得できない）, agent_minutes=約 160, human_minutes=0, rework_lines=約 70（下の「見つけた問題と修正」）, gate_failures=2（gate:light の 1 回目は自分の同時実行による unit の失敗、2 回目は既存の migration 試験の前提の誤り。3 回目で通過）
 
 ## 決めたこと（と理由）
 
@@ -17,7 +17,7 @@
 - **ADR は新番号を使わず ADR-0023 に追補**した（予約の ADR-0035 は未使用）。ADR-0007 に `actor.type='machine'` の 1 行。
 - **発行の画面試験は identity 試験群に置いた**。通常のブラウザー試験の API は本人確認を設定しないため step-up が 401 になる。enterprise-identity と同じく本人確認を設定した fixture（`identity-e2e-server.ts`）で動かし、fixture にこの試験専用のテナント管理者 2 名を足した（enterprise-identity が初期管理者のパスワードと MFA を変えるので、それに依存しないため）。通常の試験群では未設定時の案内・非管理者・英語・390px・axe を確かめる。
 - 発行の Dialog は `IdentityStepUp`（`ControlDialog`）を入れ子にせず、kit の `Dialog` の中に現在のパスワード欄（MFA 登録済みなら認証コード欄）を置き、`api/identity.ts` の `stepUp` を呼んでから発行する。サーバーの検証エラーを欄ごとに示し最初の誤りへ焦点を移すため。step-up の token は 4 分以内なら再試行に使い回す（発行の失敗で transaction が巻き戻るので未使用のまま残る）。
-- Dialog 内の文は `<div>` にした。既存の `.action-dialog p`（`styles.css`）が段落を 12px・`#6d7890` にし、kit の notice・欄のエラーの色より優先されて WCAG のコントラストを満たさない（identity 試験の axe で検出）。共有の CSS は直していない（他の Dialog にも同じ規則が効く。下の「次のセッションへ」）。
+- Dialog 内の文は `<div>` にした。既存の `.action-dialog p`（`styles.css`、layer の外）が段落を 12px・灰色にし、kit の notice・欄のエラーの色より優先されるため。同じ規則の色 `#6d7890` は 12px で 4.43:1 と WCAG AA を満たさず（identity 試験の axe で検出）、共有の 1 行なので `--text-muted`（4.5:1）に直した。
 - `restaurant_chain` の確認・提出は `ctx.actor.id` を記録するだけで自己承認の判定を持たないので変えていない（鍵で行えば資格情報の id が残る。代理 AI でエージェント名が残るのと同じ）。spec の対象 module（workforce・tax-filing・workforce-evidence）だけを `requireHumanUserId` に委ねた。
 
 ## やったこと
@@ -36,19 +36,22 @@
 - [実測] MCP: `apps/mcp/test/machine-credentials.db.test.ts` 3 件（AC-24〜AC-26）、`apps/mcp/test/config.test.ts` 9 件（AC-24、AC-25）。既存の `identity-mfa.db.test.ts` は `refreshAgentContext` の引数の追加に合わせて呼出しだけ直した（判定は変えていない）。
 - [実測] 回帰: kernel の DB 全件と、API の access-admin・account-security・edge-relay・api・enterprise-identity・identity-rate-limit・company-admin・workforce-evidence、MCP の DB 全件を一括実行（42 files / 324 tests、695 秒、自分の DB `daifuku_test_f2mc`）。
 - [実測] web 単体: `lib/machine-credentials.test.ts`、`navigation.test.ts`（AC-31）、`help.test.ts`（manual 08 の節の存在）、`token-usage.test.ts`（CONVERTED）。
-- [実測] ブラウザー（通常の試験群、slot 29、industry project 込み）: `machine-credentials.spec.ts` 3 件、`navigation.spec.ts` 5 件、`access-management.spec.ts` 1 件、industry 3 件の計 12 件が通過（2.9 分）。`--no-deps` では navigation と access-management の各 1 件が業種会社の不在で失敗した（環境の既知の制約。industry project 込みで通過を確認）。
-- [実測] ブラウザー（identity 試験群、`pnpm test:identity:e2e`、専用 DB `daifuku_e2e_test_enterprise_f2mc`、終了後に削除）: enterprise-identity 3 件と `machine-credentials-identity.spec.ts` 2 件の計 5 件が通過（2.3 分）。発行の未入力表示、`admin` の注意、step-up、秘密の一度だけの表示と見出しへの焦点、コピー（headless ではクリップボードが使えず手動コピーの案内の経路）、390px のはみ出しなし、秘密表示中の axe、閉じた後と再読込後に画面・storage・URL・一覧の応答に秘密が無いこと、鍵で `GET /api/partner` が 200、最終使用の表示、Esc で取りやめて「失効」へ焦点、失効後の行・告知・「履歴」への焦点、同じ鍵の 401、履歴の発行・失効・拒否、発行者のテナント管理者解除の確認文に件数が出て鍵が失効すること。
+- [実測] ブラウザー（通常の試験群、slot 29、industry project 込み）: `machine-credentials.spec.ts` 3 件、`navigation.spec.ts` 5 件、`access-management.spec.ts` 1 件、industry 3 件の計 12 件が通過（2.9 分）。共有の `.action-dialog p` の色を変えた後に、`a11y.spec.ts`・`company-admin.spec.ts`（Dialog の axe を含む）を加えて再実行し 50 件が通過（4.5 分、15:15）。`--no-deps` では navigation と access-management の各 1 件が業種会社の不在で失敗した（環境の既知の制約。industry project 込みで通過を確認）。
+- [実測] ブラウザー（identity 試験群、`pnpm test:identity:e2e`、専用 DB `daifuku_e2e_test_enterprise_f2mc`、毎回削除）: 最終の実行（15:10、発行フォームの axe と `.action-dialog p` の色の変更の後）で enterprise-identity 3 件と `machine-credentials-identity.spec.ts` 2 件の計 5 件が通過（1.3 分）。その前の 1 回は gate:light と同時に走らせたため enterprise-identity の最初のログインが負荷で 10 秒を超えて失敗した（自分の試験は通過。変更していない経路）。発行の未入力表示、`admin` の注意、step-up、秘密の一度だけの表示と見出しへの焦点、コピー（headless ではクリップボードが使えず手動コピーの案内の経路）、390px のはみ出しなし、秘密表示中の axe、閉じた後と再読込後に画面・storage・URL・一覧の応答に秘密が無いこと、鍵で `GET /api/partner` が 200、最終使用の表示、Esc で取りやめて「失効」へ焦点、失効後の行・告知・「履歴」への焦点、同じ鍵の 401、履歴の発行・失効・拒否、発行者のテナント管理者解除の確認文に件数が出て鍵が失効すること。
 - [実測] 手動の確認（spec の検証手順 4）: 専用 DB `daifuku_f2_manual`（`db:reset`、終了後に削除）で `IDENTITY_ENCRYPTION_KEY` を設定した API を port 3199 で起動し、curl でログイン → step-up → `POST /admin/tokens` → 鍵で `GET /api/partner` 200 → 別会社の `x-company-id` 403 → 鍵で `/auth/me` 403 → 失効 200 → 同じ鍵が 401（同一の本文）→ 履歴が `use_denied:revoked, revoke:manual check, use_denied:company_mismatch, issue`。API のログに鍵の一部（12 文字）が出ていないことを grep で確認。用途 MCP の鍵で `DAIFUKU_API_KEY=… pnpm -s -C <worktree> --filter @daifuku/mcp start` を SDK の stdio クライアントで起動し、`partner_list` が一覧を返し、起動ログに資格情報の id・名前・会社・ロールが出て鍵は出ないことを確認。
-- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`: 結果は下の追記を参照。
+- [実測] `GATE_DB_SHARDS=1 pnpm gate:light`（自分の DB `daifuku_test_f2mc`）: 1 回目（14:00）は unit の 2 件が失敗した。`identity-runner.test.ts` は自分が同時に走らせた identity 試験群が port 5189 を使っていたため（EADDRINUSE）、`password-hash.test.ts` は負荷（load average 約 21）で 5 秒の上限を超えたため。どちらも自分の同時実行が原因で、DB lane は fail-fast で取消された。2 回目（14:11、ほかの試験を止めて実行）は static lane（format・docs・assurance・typecheck 3 種・lint・unit 1,733 件・deploy）が通過、DB lane は 137 files 中 3 件が失敗した: `boolean-migration.db.test.ts` と `ext-index-migration.db.test.ts` は試験の前提の誤り（下の「見つけた問題と修正」）、`apps/edge/test/actual-api.db.test.ts` は API fixture の起動待ち 30 秒の超過（負荷時）で、負荷が下がった後に 3 件を単独で再実行して通過（15 tests、77 秒）。3 回目（14:48、試験の修正後）は **通過**: static lane 全段（unit 164 files / 1,733 tests）、DB lane 137 files / 919 tests、計 1,243.5 秒（`result=passed`）。終了後に `pnpm test:db:templates -- --drop` で自分の DB の template 65 個（742.8 MB）を削除し、DB `daifuku_test_f2mc` も削除した。
 - [レビュー] 秘密を保持するのは発行の Dialog の mutation の結果だけ（`gcTime: 0`、閉じるときに `reset()`、一覧の cache へ書かない）。URL・storage・toast・console に書く経路が無いことをコードで確認し、上の identity 試験で画面・storage・URL・応答を実測。
 - [未検証] `pnpm gate:full`（統合担当が実行）。CI。
 - [未確認] RFC 6750（Bearer Token Usage）と OWASP の Secrets Management / REST Security Cheat Sheet の一次資料。2026-10-30 にこのセッションから `www.rfc-editor.org` と `cheatsheetseries.owasp.org` への接続が proxy に拒否され（`connect_rejected`）、`docs/domain/` に内容と確認日を書けなかった。設計の根拠は既存の [機器連携の設計根拠](../domain/edge-relay-security.md)（RFC 9700）に依る。
 
 ## 見つけた問題と修正（発見経路つき）
 
+- 共有の `.action-dialog p`（`styles.css`）の文字色 `#6d7890` が 12px で 4.43:1 しかなく、kit の `Dialog` の説明文が WCAG AA を満たさなかった — 発見: identity 試験の axe（発行フォーム）、修正: `--text-muted`（4.5:1）に変更。Dialog 内の自分の文は `<div>` にした（notice・欄のエラーの色がこの規則に上書きされないように）。
+
 - kernel DB 試験で kernel 単体の登録に無いロール（`sales`、`edge_manager`）を使っていた — 発見: 実測（400）、修正: kernel 試験は `settings` / `admin` にした。
 - 発行の Dialog の確認文・コピーの結果の文字が `.action-dialog p` の灰色（コントラスト 4.43）になった — 発見: identity 試験の axe、修正: Dialog 内の文を `<div>` に。
 - 非管理者の試験が画面の遷移そのもの（Web の URL）を API 呼出しと数えていた、`aria-disabled` のボタンを Playwright が押せなかった — 発見: ブラウザー試験、修正: 試験側で API の URL に限定・`force` クリック。
+- `apps/api/test/boolean-migration.db.test.ts` と `ext-index-migration.db.test.ts` が、旧版からの更新の前後で public の全制約を比較していたため、後の migration が表を足す（`0018_machine_credentials`）だけで失敗した — 発見: gate:light の DB lane、修正: 更新前に存在した relation の制約だけを比較するよう試験を直した（試験の誤りの修正で、既存の relation の制約は引き続き完全一致を要求する）。E2（recurring-journals）が自分の branch で同じ修正（commit `8083d57`）をしていたので、統合で衝突しないよう同一の hunk を当てた（`8374d96`）。
 - identity 試験群の 1 回目は別の workflow の identity 試験と port 3109 で衝突し、相手の fixture に接続して失敗した — 発見: 実測（fixture の起動失敗の表示）、対処: 相手の終了を待ち、port が空いていることを確かめてから再実行。相手の試験へ数回のログイン要求が届いた可能性がある。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
@@ -64,4 +67,4 @@
 ## 次のセッションへ
 
 - 統合時: migration の番号（`0018_machine_credentials`）は round 5・6 の migration と衝突しうるので、統合順に振り直し `pnpm db:generate` の snapshot を作り直す。`router.tsx`・`navigation-data.ts`・`help.ts`・`help.test.ts`・`token-usage.test.ts` の CONVERTED・`playwright.config.ts` / `playwright.identity.config.ts` の `testIgnore` / `testMatch` の追加を統合する。
-- `.action-dialog p`（`styles.css`）の灰色は kit の `Dialog` を使う他の画面の段落にも効き、12px で WCAG のコントラストを満たさない。共有の CSS の修正は別項目で扱う。
+- `.action-dialog p`（`styles.css`）の色はこの項目で `--text-muted` に直したが、規則そのものが layer の外にあり kit の notice・欄のエラーより優先される。kit の Dialog の段落の扱いを整理するなら別項目で（統合時に他の branch が同じ行を変えていないか確認する）。
