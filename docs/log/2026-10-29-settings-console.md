@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-29 設定定義の表示属性と設定画面の再構成（B1）
 
 - セッション: 完成度向上計画 B1（workflow の作業項目、worktree `wip/settings-console`、基点 `ebc7574`）／ 担当: agent ／ 対象: [docs/specs/settings-console.md](../specs/settings-console.md)
-- 計測: tokens=null（未計測）, agent_minutes=約120, human_minutes=0, rework_lines=約60（e2e のロケーター変更、依存循環の解消、チェックボックスの必須印、リセット可否の追加）, gate_failures=2（gate:quick の eslint 1 件・依存境界 1 件。どちらも修正後に成功）
+- 計測: tokens=null（未計測）, agent_minutes=約120（実装）＋約75（2026-10-30 のレビュー対応）, human_minutes=0, rework_lines=約60（実装中: e2e のロケーター変更、依存循環の解消、チェックボックスの必須印、リセット可否の追加）＋約930（レビュー対応の差分。試験と文書を含む）, gate_failures=2（gate:quick の eslint 1 件・依存境界 1 件。どちらも修正後に成功。レビュー対応では typecheck 1 件を gate 前に修正）
 
 ## 決めたこと（と理由）
 
@@ -42,7 +42,7 @@
 - [未検証] `pnpm gate:full`（統合担当が実行）。ブラウザ試験の全件（82 + 本件 4 件）は未実行で、実行したのは上記 3 spec。
 - [未検証] 無効タブを飛ばすキーボード操作のブラウザでの確認（無効タブを持つ画面が無い。`nextTabIndex` の unit のみ）。
 - [未検証] A2 の axe 検査（並行作業）での設定画面の結果。
-- [未検証] 勘定科目が 500 件を超える会社の選択欄、モバイル実機。
+- [未検証] 勘定科目が 500 件を超える会社の選択欄（実データ。2026-10-30 にブラウザ試験で API 応答を差し替えて確認した。下記）、モバイル実機。
 
 ## 見つけた問題と修正（発見経路つき）
 
@@ -51,6 +51,42 @@
 - e2e: 必須印 `*` がラベルの文字に含まれ `getByLabel(exact)` が一致しない、単一値ではカードの group と入力欄が同じ名前になる — 発見: E2E、修正: コード選択欄の `*` を `aria-hidden`、select に `required`、ロケーターを role + name に。
 - 単一値の boolean に必須印が出てチェックボックスの名前に `*` が混ざる — 発見: E2E の想定確認、修正: boolean の単一値は必須にしない。
 - registry ↔ setting-presentation の型 import の循環 — 発見: gate:quick（依存境界）、修正: 構造型。
+- 履歴の操作者名が `x-agent-id`（自由な文字列）から他の利用者の名前に解決され、なりすませた — 発見: レビュー（再現試験つき）、修正: user の行と `onBehalfOf` だけを解決（2026-10-30）。
+- `setSetting` がロックなしで変更前を読み、重なった書込みで履歴の変更前が誤る — 発見: レビュー（競合試験つき）、修正: `lockedCompanySettings`（2026-10-30）。
+- 一覧が 500 件で切れると正しいコードを「見つかりません」と誤表示／任意の細目を空に戻せない／まだ無いコードを単一値に入れられない — 発見: レビュー、修正: 引き直し・「指定しない」・「コードを直接入力…」（2026-10-30）。
+- ADR-0027 の `packs.applied` のリセット・説明の検査の記述が実装と食い違い、nullable の object で検査と画面の規則が食い違う — 発見: レビュー（試行）、修正: ADR の記述と `settingShape` の最上位の規則（2026-10-30）。
+- 履歴が既定値の使われていた側を「未設定」と表示、`tax.rounding` の説明に英語の property 名、403 を読込失敗と表示 — 発見: レビュー、修正: 文の変更（2026-10-30）。
+
+## レビュー対応（2026-10-30、修正担当 agent）
+
+レビューの指摘 21 件（重複 2 組を除くと 19 件）をコードと照合し、すべて妥当と判断した。16 件は指摘どおりに直し、3 件は主な部分だけを直した（理由は下記の「一部だけ対応」）。
+
+### 決めたこと（と理由）
+
+- **履歴の操作者名は利用者であることが確かな id にだけ解決する（重大）。** agent の行の `actorId` は要求ヘッダー `x-agent-id`（MCP ではログイン時の agent 名）の自由な文字列で検証されない。従来は全行の `actorId` を users と突き合わせたため、settings ロールの利用者が他人の id を `x-agent-id` に入れると、履歴に「Admin（Spoofer の代理）」と出た。`actorType: 'user'` の行の操作者と、agent 行の `onBehalfOf`（認証済みの呼出し元）だけを名前に解決する。
+- **`setSetting` も会社行を `FOR UPDATE` で読む。** `deleteSetting` と共通の `lockedCompanySettings` にした。重なった書込みでも後の書込みが前の確定を待つので、監査の変更前が一つ前の変更後と一致する（AC-12 の「変わった細目」も正しくなる）。
+- **最上位が union の schema には表示属性を付けさせない。** 画面（`settingForm`）は最上位の `anyOf` を JSON 入力にするため、kernel の `settingShape` も最上位の union と `type` が `object` そのものでない object を「その他」にした（nullable の object・enum）。nullable の文字列は `type: ["string","null"]` で両側とも単一値。画面側を union の展開に合わせる案より、検査を画面に合わせる方が変更が小さく、既存の設定に影響しない（全設定の走査試験で確認）。
+- **設定の `description` も日英を登録時に検査する**（ADR の記述どおりに）。
+- **コード選択欄**: 全件数（`total`）が一覧の 500 件を超えるときは、一覧に無い保存値を `where={"code":…}`（勘定科目は `isActive` 付き）で 1 件引き直し、見つからないときだけ警告する（`codeIsMissing`）。任意の細目には常に「指定しない」を出す。select の末尾に「コードを直接入力…」を置き、まだ無いコードも入力できるようにした（ADR-0027 の「設定 → 科目を後から作る」順序。単一値の `inventory.default_warehouse` には JSON 切替が無いため）。一覧の取得が 403 のときは「参照する権限が無い」と書き、細目の説明を入力欄でも select でも `aria-describedby` に入れた。
+- **履歴で会社に値が無かった側は「既定値（4000）」と書く。** 既定値の宣言が無い設定だけ「未設定」。オブジェクトの一部の細目が無いだけのときは、その細目の扱いが module ごとに違うため「未設定」のまま。
+- **保存値が定義に合わない状態を判定する関数（`storedValueInvalid`）と文（`invalidStoredText`）を lib に移し**、印を「定義に合わない値」（warning）にした。既定値の無い設定では「未設定として扱われている」と書く。
+- **テンプレートが書いた値は会社の値として扱う（ADR-0027 §5 を追加）。** 「既定に戻す」は module の既定値に戻す。テンプレートを適用した会社では確認の画面に注意を出し、マニュアルにテンプレートの値へ戻す方法（入れ直す、`pack:apply --force`）を書いた。テンプレートごとの既定値を画面に出すことはしていない。
+- **リセット中は確認ボタンを無効にして「戻しています…」と出す。** Esc で閉じることは止めていない（kit `Dialog` に閉じさせない仕組みが無い。閉じても要求は続き、結果はトーストで出る）。
+- **kit `Tabs` は選択中のタブを一覧の見える範囲に入れる**（`scrollToShow`。一覧の内側だけを動かし、ページは動かさない）。端のフェードは入れていない。
+- 使っていない `SC.noDefault` と `SettingTab.count` を消した。spec の状態を「implemented（gate:full とブラウザ全件は統合担当）」にした。`tax.rounding` の説明から `mode:` / `unit:` を除いた。
+- 一部だけ対応: (1) 「直接入力の注記が細目ごとに繰り返される」は、各入力欄の説明として読み上げに要るので残した（文は権限の文に変えた）。(2) 「Esc でリセット中のダイアログが閉じる」は上記のとおり。(3) タブの「続きがある」手がかり（端のフェード）は入れていない。
+
+### 検証
+
+- [実測] 新しい DB 試験 4 件（`apps/api/test/settings-console.db.test.ts`、計 18 件、約 15 秒、`daifuku_test_w5`）: `x-agent-id` に Admin の id を入れた settings 利用者の PUT が `actorName: null`・`onBehalfOfName: '設定 担当'` になる、2 つの書込みを重ねても（`setSetting` 同士、`deleteSetting` と `setSetting`）履歴の変更前が一つ前の変更後と一致する、定義に合わない保存値（`revenue: 5`）が `value: null, isDefault: false` で返る、別会社 B の設定の履歴が会社 A に出ず、A だけの所属の settings 利用者は B の履歴・リセットで 403。
+- [実測] 修正前の `kernel/src/settings.ts`（HEAD）に戻して同じ DB 試験を流し、なりすましと重なった書込みの 2 件が失敗することを確かめてから戻した（試験が欠陥を捉えることの確認）。
+- [実測] 単体: `kernel/test/setting-presentation.test.ts` 28 件（設定の説明の日英、最上位 union への `fields` / `valueLabels` の拒否、nullable の文字列は単一値）、`apps/web/src/lib/settings-console.test.ts`（500 件で切れた一覧の判定 `codeIsMissing`、`storedValueInvalid` / `invalidStoredText`、`templatesApplied`、履歴の「既定値（…）」、画面側の最上位 union の扱い）、`apps/web/src/ui/ui-kit.test.ts`（`scrollToShow`）。
+- [実測] `pnpm gate:light --base ebc7574` 成功（18.9 分。kernel の変更で DB を全件に昇格: 117 ファイル 719 件 897 秒、unit 134 ファイル 1,263 件 87.5 秒、format:check・docs・台帳・typecheck（root / api / web）・lint（警告 4 件は既存ファイルの関数行数）・test:deploy も成功）。ブラウザ試験と並行して走らせた。
+- [実測] ブラウザ（`e2e-run.sh … 2`、隔離 fixture DB）: `settings-console.spec.ts` 5 件を `--no-deps` で先に成功（32 秒）。続けて `settings-console.spec.ts`・`ui-kit.spec.ts`・`navigation.spec.ts` を industry project 込みで実行し 23 件すべて成功（2.9 分）。新しい確認: 業界タブ「賃貸管理の勘定科目」の「敷金の入出金口座」を「指定しない」にして保存すると `bank` が保存値から消える・必須の細目には「指定しない」が出ない、倉庫を「コードを直接入力…」で `W-LATER` にして保存・入力欄へ焦点・「一覧から選ぶ」で戻ると警告、勘定科目の応答を 500 件＋全 620 件に差し替えると一覧外の 4000 は引き直しで「4000 科目4000」と出て警告なし・引き直しで見つからない 2200 だけ警告・「先頭 500 件だけ（全 620 件）」の表示、403 のときの権限の文と細目の説明（`toHaveAccessibleDescription`）、履歴の「既定値（4000）」「既定値（いいえ）」、リセット中の確認ボタンが無効で「戻しています…」、390px で `?tab=system` のタブが一覧の見える範囲にある。
+- [レビュー] 390px のリセットのダイアログのスクリーンショットを目視（テンプレート未適用の会社なので注意文は出ない）。
+- [未検証] テンプレートを適用した会社での確認画面の注意文（`templatesApplied` の unit と描画のコードレビューのみ）。実データで科目が 500 件を超える会社。
+- [未検証] `pnpm gate:full` とブラウザ試験の全件（統合担当）。
+- 所要: 約 75 分（照合 15 分、修正 30 分、試験と文書 30 分。gate:light とブラウザ試験の待ち時間を含む）。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
 

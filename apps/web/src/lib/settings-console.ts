@@ -1,6 +1,6 @@
 // Settings console (docs/specs/settings-console.md AC-8..AC-12): tabs by category, order inside a tab, how a setting
 // becomes form fields (object / single value / raw JSON), and the text of defaults and history entries. Pure.
-import type { JsonSchema, Label, Locale, SettingChange, SettingMeta } from '../api/types.ts';
+import type { CodeList, CodeOption, JsonSchema, Label, Locale, SettingChange, SettingMeta } from '../api/types.ts';
 import { formatTimestamp, shortId } from './format.ts';
 import { schemaFields, type RefResolver, type SchemaField } from './schema.ts';
 
@@ -17,14 +17,21 @@ export const SC = {
   tabs: L('設定の分類', 'Setting categories'),
   usingDefault: L('既定値を使用中', 'Using the default'),
   customized: L('会社の値', 'Company value'),
+  invalidBadge: L('定義に合わない値', 'Invalid stored value'),
   notSet: L('未設定', 'Not set'),
   defaultIs: L('既定値', 'Default'),
-  noDefault: L('既定値なし（未設定のまま使われます）', 'No default (used as not set)'),
+  /** A history side that was unset while the setting declares a default (AC-12). */
+  defaultValueIs: L('既定値（{value}）', 'Default ({value})'),
   invalidStored: L(
     '保存されている値が定義に合わないため、既定値が使われています。保存し直すか、既定に戻してください。',
     'The stored value no longer matches the definition, so the default applies. Save again or reset to the default.',
   ),
+  invalidStoredNoDefault: L(
+    '保存されている値が定義に合わないため、未設定として扱われています。保存し直すか、既定に戻してください。',
+    'The stored value no longer matches the definition, so the setting is treated as not set. Save again or reset it.',
+  ),
   reset: L('既定に戻す', 'Reset to default'),
+  resetting: L('戻しています…', 'Resetting…'),
   resetTitle: L('「{label}」を既定に戻す', 'Reset "{label}" to the default'),
   resetDone: L('既定に戻しました', 'Reset to the default'),
   resetBack: L('戻る', 'Go back'),
@@ -36,6 +43,10 @@ export const SC = {
     '会社の値を削除し、未設定に戻します。変更は履歴に残ります。',
     'The company value is removed and the setting is not set again. The change stays in the history.',
   ),
+  resetTemplateNote: L(
+    'テンプレートを適用した会社では、テンプレートが書いた値も会社の値です。既定に戻すと、テンプレートの値ではなくモジュールの既定値になります。',
+    'In a company with an applied template, values the template wrote are company values too: resetting goes back to the module default, not to the template value.',
+  ),
   history: L('変更履歴', 'Change history'),
   historyEmpty: L('変更の記録はありません', 'No changes recorded'),
   historyNote: L('直近 20 件、新しい順', 'Latest 20, newest first'),
@@ -45,6 +56,14 @@ export const SC = {
   yes: L('はい', 'Yes'),
   no: L('いいえ', 'No'),
   choose: L('選択してください', 'Choose…'),
+  /** The empty choice of an optional code field (the module's own fallback applies). */
+  notSpecified: L('指定しない', 'Not specified'),
+  typeCode: L('コードを直接入力…', 'Type a code…'),
+  pickCode: L('一覧から選ぶ', 'Pick from the list'),
+  typedNote: L(
+    '一覧に無いコードも保存できます（後から科目・倉庫を作る場合）。',
+    'A code that is not in the list can be saved too (when the record is created later).',
+  ),
   codeMissing: {
     'account-code': L('「{code}」は有効な勘定科目にありません', '"{code}" is not an active account'),
     'warehouse-code': L('「{code}」は倉庫にありません', '"{code}" is not a warehouse'),
@@ -54,7 +73,17 @@ export const SC = {
     '一覧を読み込めないため、コードを直接入力してください。',
     'The list could not be loaded; enter the code directly.',
   ),
-  codesTruncated: L('先頭 {n} 件だけを表示しています。', 'Only the first {n} are listed.'),
+  codeForbidden: {
+    'account-code': L(
+      '勘定科目を参照する権限が無いため、コードを直接入力してください。',
+      'You cannot view accounts; enter the code directly.',
+    ),
+    'warehouse-code': L(
+      '倉庫を参照する権限が無いため、コードを直接入力してください。',
+      'You cannot view warehouses; enter the code directly.',
+    ),
+  },
+  codesTruncated: L('先頭 {n} 件だけを表示しています（全 {total} 件）。', 'Only the first {n} of {total} are listed.'),
 } as const;
 
 export function fill(label: Label, locale: Locale, vars: Record<string, string | number>): string {
@@ -80,20 +109,18 @@ const CATEGORY_ORDER = Object.keys(SETTING_CATEGORY_LABELS);
 export interface SettingTab {
   id: string;
   label: Label;
-  count: number;
 }
 
 /** AC-8: only categories that have settings, in the kernel's order; an unknown category comes last under its id. */
 export function settingTabs(settings: readonly SettingMeta[]): SettingTab[] {
-  const counts = new Map<string, number>();
-  for (const s of settings) counts.set(s.category, (counts.get(s.category) ?? 0) + 1);
+  const categories = [...new Set(settings.map((s) => s.category))];
   const rank = (id: string) => {
     const i = CATEGORY_ORDER.indexOf(id);
     return i === -1 ? CATEGORY_ORDER.length : i;
   };
-  return [...counts.keys()]
+  return categories
     .sort((a, b) => rank(a) - rank(b))
-    .map((id) => ({ id, label: SETTING_CATEGORY_LABELS[id] ?? L(id, id), count: counts.get(id) ?? 0 }));
+    .map((id) => ({ id, label: SETTING_CATEGORY_LABELS[id] ?? L(id, id) }));
 }
 
 /** AC-8: the `?tab=` value when it names a shown tab, else the first tab. */
@@ -150,6 +177,40 @@ export function settingForm(
  */
 export function canReset(setting: SettingMeta, mode: SettingFormMode): boolean {
   return !setting.isDefault && (mode !== 'json' || setting.defaultValue !== undefined);
+}
+
+/**
+ * AC-11: the company has a stored value that the definition rejects (GET returns `value: null` with `isDefault: false`);
+ * the module falls back to its default, or treats the setting as not set when there is none.
+ */
+export function storedValueInvalid(setting: SettingMeta): boolean {
+  return !setting.isDefault && setting.value === null;
+}
+
+/** AC-11: the warning for an invalid stored value, saying what applies instead. */
+export function invalidStoredText(setting: SettingMeta): Label {
+  return setting.defaultValue !== undefined ? SC.invalidStored : SC.invalidStoredNoDefault;
+}
+
+/** Whether any template (pack) is recorded as applied in this company (`packs.applied`, ADR-0015). */
+export function templatesApplied(settings: readonly SettingMeta[]): boolean {
+  const applied = settings.find((s) => s.key === 'packs.applied')?.value;
+  return typeof applied === 'object' && applied !== null && Object.keys(applied).length > 0;
+}
+
+/** AC-10: a stored code is neither in the list nor ruled out by it (the list is cut off), so look it up by itself. */
+export function codeLookupNeeded(code: string, list: CodeList): boolean {
+  return code !== '' && list.total > list.options.length && !list.options.some((o) => o.code === code);
+}
+
+/**
+ * AC-10: whether a stored code is flagged as missing: it is not in the list and either the list is complete or a
+ * direct lookup found nothing (`lookup` null). An unfinished or failed lookup (`undefined`) flags nothing.
+ */
+export function codeIsMissing(code: string, list: CodeList, lookup: CodeOption | null | undefined): boolean {
+  if (code === '' || list.options.some((o) => o.code === code)) return false;
+  if (list.total <= list.options.length) return true;
+  return lookup === null;
 }
 
 /** What the form starts from: the stored value, else the module default (AC-11), shaped for the form mode. */
@@ -227,11 +288,27 @@ export interface ChangeRow {
   after: string;
 }
 
-/** AC-12: what one history entry changed, per property for objects (unchanged properties are left out). */
+const unset = (v: unknown) => v === null || v === undefined;
+
+/**
+ * A side of a history entry where the company had no value: "default (4000)" when the setting declares a default (the
+ * module used it), else "not set". `name` picks one property of an object default.
+ */
+function unsetText(setting: SettingMeta, name: string | null, locale: Locale): string {
+  const fallback = name === null ? setting.defaultValue : asRecord(setting.defaultValue)?.[name];
+  if (unset(fallback)) return tr(SC.notSet, locale);
+  const labels = name === null ? setting.valueLabels : setting.fields?.[name]?.valueLabels;
+  return fill(SC.defaultValueIs, locale, { value: scalarText(fallback, locale, labels) });
+}
+
+/**
+ * AC-12: what one history entry changed, per property for objects (unchanged properties are left out). A side with no
+ * stored value (first save, reset) reads as the declared default, since that is what the module used.
+ */
 export function changeRows(setting: SettingMeta, change: SettingChange, locale: Locale): ChangeRow[] {
   const before = asRecord(change.before);
   const after = asRecord(change.after);
-  const objectOrUnset = (v: unknown) => v === null || v === undefined || asRecord(v) !== null;
+  const objectOrUnset = (v: unknown) => unset(v) || asRecord(v) !== null;
   if (
     setting.schema.type === 'object' &&
     (before || after) &&
@@ -244,21 +321,15 @@ export function changeRows(setting: SettingMeta, change: SettingChange, locale: 
       const a = after?.[name];
       if (JSON.stringify(b ?? null) === JSON.stringify(a ?? null)) continue;
       const labels = setting.fields?.[name]?.valueLabels;
-      rows.push({
-        label: fieldLabel(setting, name, locale),
-        before: scalarText(b ?? null, locale, labels),
-        after: scalarText(a ?? null, locale, labels),
-      });
+      const side = (record: Record<string, unknown> | null, v: unknown) =>
+        record === null ? unsetText(setting, name, locale) : scalarText(v ?? null, locale, labels);
+      rows.push({ label: fieldLabel(setting, name, locale), before: side(before, b), after: side(after, a) });
     }
     return rows;
   }
-  return [
-    {
-      label: '',
-      before: scalarText(change.before, locale, setting.valueLabels),
-      after: scalarText(change.after, locale, setting.valueLabels),
-    },
-  ];
+  const side = (v: unknown) =>
+    unset(v) ? unsetText(setting, null, locale) : scalarText(v, locale, setting.valueLabels);
+  return [{ label: '', before: side(change.before), after: side(change.after) }];
 }
 
 export function opLabel(op: string): Label {

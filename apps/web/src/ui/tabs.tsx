@@ -1,5 +1,6 @@
-// UI kit: Tabs — WAI-ARIA tabs with a roving tabindex and automatic activation (Arrow keys, Home, End).
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+// UI kit: Tabs — WAI-ARIA tabs with a roving tabindex and automatic activation (Arrow keys, Home, End). A tab list
+// wider than its box scrolls inside itself and keeps the selected tab in view (also when the selection comes from a URL).
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cx } from './cx.ts';
 
 export interface TabItem {
@@ -38,10 +39,26 @@ export interface TabsProps {
   className?: string;
 }
 
+/** How far to scroll a horizontal list so `tab` is inside `list` (0 when it already is). Rects in viewport pixels. */
+export function scrollToShow(list: { left: number; right: number }, tab: { left: number; right: number }): number {
+  if (tab.left < list.left) return tab.left - list.left;
+  if (tab.right > list.right) return Math.min(tab.right - list.right, tab.left - list.left);
+  return 0;
+}
+
 export function Tabs({ items, selected, onSelect, label, idPrefix, className }: TabsProps) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const list = useRef<HTMLDivElement>(null);
   const selectedIndex = items.findIndex((item) => item.id === selected && !item.disabled);
   const focusable = selectedIndex >= 0 ? selectedIndex : items.findIndex((item) => !item.disabled);
+  useEffect(() => {
+    // Only the list scrolls (never the page), so a selection from the URL is visible on a narrow screen.
+    const box = list.current;
+    const tab = refs.current[selectedIndex];
+    if (!box || !tab || box.scrollWidth <= box.clientWidth) return;
+    const delta = scrollToShow(box.getBoundingClientRect(), tab.getBoundingClientRect());
+    if (delta !== 0) box.scrollLeft += delta;
+  }, [selectedIndex]);
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const next = nextTabIndex(items, index, event.key);
     const target = next === undefined ? undefined : items[next];
@@ -51,7 +68,7 @@ export function Tabs({ items, selected, onSelect, label, idPrefix, className }: 
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label={label} className={cx('ui-tabs', className)}>
+    <div ref={list} role="tablist" aria-label={label} className={cx('ui-tabs', className)}>
       {items.map((item, index) => (
         <button
           key={item.id}

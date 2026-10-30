@@ -15,6 +15,7 @@ import {
   FormSection,
   nextTabIndex,
   PageHeader,
+  scrollToShow,
   Skeleton,
   SkeletonCard,
   SkeletonRows,
@@ -279,6 +280,15 @@ describe('ui-kit AC-11: Tabs', () => {
     expect(nextTabIndex(items, 0, 'End')).toBe(2);
     expect(nextTabIndex(items, 0, 'Enter')).toBeUndefined();
     expect(nextTabIndex([{ id: 'a', label: 'a', disabled: true }], 0, 'ArrowRight')).toBeUndefined();
+  });
+
+  it('settings-console AC-14: a tab list that scrolls brings the selected tab into view (left edge first)', () => {
+    const list = { left: 16, right: 374 };
+    expect(scrollToShow(list, { left: 100, right: 160 })).toBe(0);
+    expect(scrollToShow(list, { left: 420, right: 480 })).toBe(106);
+    expect(scrollToShow(list, { left: -50, right: 10 })).toBe(-66);
+    // A tab wider than the list keeps its start visible.
+    expect(scrollToShow(list, { left: 300, right: 800 })).toBe(284);
   });
 });
 

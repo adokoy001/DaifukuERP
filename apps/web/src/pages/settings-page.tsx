@@ -6,7 +6,7 @@ import { canEditSettings, useSettings } from '../api/settings.ts';
 import type { AppMeta } from '../api/types.ts';
 import { SettingCard } from '../components/setting-card.tsx';
 import { useLocale } from '../i18n.tsx';
-import { resolveTab, SC, settingsInTab, settingTabs } from '../lib/settings-console.ts';
+import { resolveTab, SC, settingsInTab, settingTabs, templatesApplied } from '../lib/settings-console.ts';
 import { S } from '../strings.ts';
 import { EmptyState, PageHeader, TabPanel, Tabs } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
@@ -38,6 +38,7 @@ function SettingsView({ meta }: { meta: AppMeta }) {
   const selected = resolveTab(search.tab, tabs);
   if (!selected) return <EmptyState title={t(S.settingsEmpty)} />;
   const select = (tab: string) => void navigate({ to: '/settings', search: { tab }, replace: true });
+  const withTemplates = templatesApplied(settings.data);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Tabs
@@ -51,7 +52,7 @@ function SettingsView({ meta }: { meta: AppMeta }) {
         <TabPanel key={tab.id} idPrefix={TAB_PREFIX} id={tab.id} selected={tab.id === selected}>
           <div className="flex min-w-0 flex-col gap-3">
             {settingsInTab(settings.data, tab.id, locale).map((s) => (
-              <SettingCard key={s.key} setting={s} meta={meta} />
+              <SettingCard key={s.key} setting={s} meta={meta} templatesApplied={withTemplates} />
             ))}
           </div>
         </TabPanel>

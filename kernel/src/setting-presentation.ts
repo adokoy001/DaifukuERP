@@ -115,6 +115,10 @@ function valueInfo(node: JsonNode): SettingValueInfo {
 /**
  * Object (fixed properties), scalar (string / number / boolean / enum) or other (records, arrays, unrepresentable).
  * Read from the same JSON Schema conversion the API sends, so the console and this check agree on property names.
+ * The top level follows the console's rule (apps/web settingForm): a union at the top (`anyOf` / `oneOf`, e.g. a
+ * nullable setting) and an object whose `type` is not exactly `object` are "other" (raw JSON), so `fields` / `widget`
+ * on them are refused instead of being ignored by the console. Properties are unwrapped like the console's form
+ * fields do (a nullable property is still a string field).
  */
 export function settingShape(schema: z.ZodType): SettingShape {
   let json: JsonNode;
@@ -123,11 +127,11 @@ export function settingShape(schema: z.ZodType): SettingShape {
   } catch {
     return { kind: 'other' };
   }
+  if (json.anyOf || json.oneOf) return { kind: 'other' };
   const info = valueInfo(json);
   if (info.type === 'object') {
-    const unwrapped = (json.anyOf ?? json.oneOf)?.find((m) => m.type !== 'null') ?? json;
-    const props = unwrapped.properties;
-    if (!props || Object.keys(props).length === 0) return { kind: 'other' };
+    const props = json.properties;
+    if (json.type !== 'object' || !props || Object.keys(props).length === 0) return { kind: 'other' };
     return { kind: 'object', properties: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, valueInfo(v)])) };
   }
   if (info.type === 'array' || (info.type === undefined && info.enum === undefined)) return { kind: 'other' };
@@ -165,6 +169,8 @@ function checkField(key: string, path: string, field: SettingFieldDef, info: Set
 export function checkSettingDef(def: SettingPresentation): void {
   const key = def.key;
   if (!isLabel(def.label)) throw new Error(`setting "${key}": label must have non-empty ja and en text`);
+  if (def.description !== undefined && !isLabel(def.description))
+    throw new Error(`setting "${key}": description must have non-empty ja and en text`);
   if (def.category !== undefined && !(SETTING_CATEGORIES as readonly string[]).includes(def.category))
     throw new Error(
       `setting "${key}": unknown category "${String(def.category)}" (use one of ${SETTING_CATEGORIES.join(', ')})`,

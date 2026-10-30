@@ -10,15 +10,17 @@ import { issuesToFieldErrors } from '../lib/form.ts';
 import { refResolverFrom, stripSettingKey, toFieldMeta, type SchemaField } from '../lib/schema.ts';
 import {
   actorText,
+  canReset,
   changeRows,
   changeTime,
   fill,
+  invalidStoredText,
   opLabel,
-  canReset,
   SC,
   settingForm,
   settingFormValue,
   settingPayload,
+  storedValueInvalid,
   valueText,
 } from '../lib/settings-console.ts';
 import { S } from '../strings.ts';
@@ -129,10 +131,16 @@ function SettingHistory({ setting, id }: { setting: SettingMeta; id: string }) {
 
 function ResetDialog({
   setting,
+  busy,
+  templateNote,
   onConfirm,
   onClose,
 }: {
   setting: SettingMeta;
+  /** The DELETE is in flight: the confirm button is disabled and says so. */
+  busy: boolean;
+  /** A template is applied in this company: say that reset goes to the module default, not the template value. */
+  templateNote: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -154,23 +162,38 @@ function ResetDialog({
       }
       onSubmit={(e) => {
         e.preventDefault();
-        onConfirm();
+        if (!busy) onConfirm();
       }}
       actions={
         <>
           <Button onClick={onClose} data-autofocus>
             {t(SC.resetBack)}
           </Button>
-          <Button type="submit" variant="danger">
-            {t(SC.reset)}
+          <Button type="submit" variant="danger" disabled={busy} aria-busy={busy}>
+            {busy ? t(SC.resetting) : t(SC.reset)}
           </Button>
         </>
       }
-    />
+    >
+      {templateNote ? (
+        <p className="text-xs text-text-secondary" data-testid="reset-template-note">
+          {t(SC.resetTemplateNote)}
+        </p>
+      ) : null}
+    </Dialog>
   );
 }
 
-export function SettingCard({ setting, meta }: { setting: SettingMeta; meta: AppMeta }) {
+export function SettingCard({
+  setting,
+  meta,
+  templatesApplied = false,
+}: {
+  setting: SettingMeta;
+  meta: AppMeta;
+  /** Some template is applied in this company (its values are company values; reset does not return to them). */
+  templatesApplied?: boolean;
+}) {
   const { t, locale } = useLocale();
   const toast = useToast();
   const refOf = useMemo(() => refResolverFrom(meta.entities), [meta.entities]);
@@ -184,7 +207,7 @@ export function SettingCard({ setting, meta }: { setting: SettingMeta; meta: App
   const historyId = useId();
   const idPrefix = `s-${setting.key.replace(/\./g, '-')}`;
   const busy = save.isPending || reset.isPending;
-  const invalidStored = !setting.isDefault && setting.value === null;
+  const invalidStored = storedValueInvalid(setting);
   const resettable = canReset(setting, mode);
 
   const submit = (e: FormEvent) => {
@@ -240,6 +263,10 @@ export function SettingCard({ setting, meta }: { setting: SettingMeta; meta: App
     <Badge tone="neutral" data-testid="setting-status">
       {t(setting.defaultValue !== undefined ? SC.usingDefault : SC.notSet)}
     </Badge>
+  ) : invalidStored ? (
+    <Badge tone="warning" data-testid="setting-status">
+      {t(SC.invalidBadge)}
+    </Badge>
   ) : (
     <Badge tone="accent" data-testid="setting-status">
       {t(SC.customized)}
@@ -280,8 +307,8 @@ export function SettingCard({ setting, meta }: { setting: SettingMeta; meta: App
             </p>
           ) : null}
           {invalidStored ? (
-            <div role="alert" className="ui-notice ui-notice-warning text-xs">
-              {t(SC.invalidStored)}
+            <div role="alert" className="ui-notice ui-notice-warning text-xs" data-testid="setting-invalid">
+              {t(invalidStoredText(setting))}
             </div>
           ) : null}
           <SettingFields fields={fields} form={form} disabled={busy} idPrefix={idPrefix} />
@@ -313,7 +340,13 @@ export function SettingCard({ setting, meta }: { setting: SettingMeta; meta: App
       </Card>
       {/* Outside the card: the dialog is a form of its own, and forms do not nest. */}
       {confirming ? (
-        <ResetDialog setting={setting} onConfirm={confirmReset} onClose={() => setConfirming(false)} />
+        <ResetDialog
+          setting={setting}
+          busy={reset.isPending}
+          templateNote={templatesApplied}
+          onConfirm={confirmReset}
+          onClose={() => setConfirming(false)}
+        />
       ) : null}
     </>
   );

@@ -71,7 +71,28 @@ function assertSettingsAccess(ctx: Context, op: 'update' | 'delete' | 'audit'): 
   if (!isAdmin(ctx) && !ctx.roles.includes('settings')) throw new PermissionDenied('company_settings', op, ctx.roles);
 }
 
-/** Writes one setting (admin or role `settings`). Validated by the schema; audited as entity `company_settings`. */
+/**
+ * The context's company row locked FOR UPDATE until the transaction ends. setSetting and deleteSetting read the value
+ * they audit as "before" through it, so a write that overlaps another write of the same company waits for it and the
+ * audited history forms an unbroken chain (each before is the previous after).
+ */
+async function lockedCompanySettings(ctx: Context): Promise<{ id: string; settings: Record<string, unknown> }> {
+  if (!ctx.companyId) throw new NotFound('company', 'null');
+  const rows = await ctx.db
+    .select({ id: companies.id, settings: companies.settings })
+    .from(companies)
+    .where(and(eq(companies.tenantId, ctx.tenantId), eq(companies.id, ctx.companyId)))
+    .limit(1)
+    .for('update');
+  const company = rows[0];
+  if (!company) throw new NotFound('company', ctx.companyId);
+  return { id: company.id, settings: (company.settings ?? {}) as Record<string, unknown> };
+}
+
+/**
+ * Writes one setting (admin or role `settings`). Validated by the schema; audited as entity `company_settings` with the
+ * value read under the row lock (lockedCompanySettings).
+ */
 export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType<T>, value: unknown): Promise<T> {
   assertSettingsAccess(ctx, 'update');
   const parsed = schema.safeParse(value);
@@ -81,7 +102,7 @@ export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType
       parsed.error.issues.map((i) => ({ path: [key, ...i.path.map(String)].join('.'), message: i.message })),
     );
   }
-  const company = await getCompany(ctx);
+  const company = await lockedCompanySettings(ctx);
   const before = company.settings[key];
   const patch = JSON.stringify({ [key]: parsed.data });
   await ctx.db
@@ -95,20 +116,13 @@ export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType
 /**
  * Removes the company's stored value so the module falls back to its default (ADR-0027). Same access as setSetting;
  * audited as `company_settings` op `delete` with the previous value and `null`. Returns false (nothing written, no
- * audit) when the company has no stored value. The company row is locked so the audited value is the one removed.
+ * audit) when the company has no stored value. The company row is locked (lockedCompanySettings) so the audited value is
+ * the one removed.
  */
 export async function deleteSetting(ctx: Context, key: string): Promise<boolean> {
   assertSettingsAccess(ctx, 'delete');
-  if (!ctx.companyId) throw new NotFound('company', 'null');
-  const rows = await ctx.db
-    .select({ id: companies.id, settings: companies.settings })
-    .from(companies)
-    .where(and(eq(companies.tenantId, ctx.tenantId), eq(companies.id, ctx.companyId)))
-    .limit(1)
-    .for('update');
-  const company = rows[0];
-  if (!company) throw new NotFound('company', ctx.companyId);
-  const stored = (company.settings ?? {}) as Record<string, unknown>;
+  const company = await lockedCompanySettings(ctx);
+  const stored = company.settings;
   if (!Object.hasOwn(stored, key)) return false;
   await ctx.db
     .update(companies)
@@ -125,8 +139,12 @@ export interface SettingChange {
   op: string;
   actorType: string;
   actorId: string;
-  /** Display name of the acting user (or null when the actor is not a user of this tenant). */
+  /**
+   * Display name of the acting user: only for `actorType: 'user'` rows whose actor is a user of this tenant, else null.
+   * An agent's id is the caller-supplied `x-agent-id` (not verified), so it is never resolved to a user's name.
+   */
   actorName: string | null;
+  /** The authenticated user an agent acted for (always a user id). */
   onBehalfOf: string | null;
   onBehalfOfName: string | null;
   action: string | null;
@@ -144,7 +162,9 @@ function keyValue(snapshot: unknown, key: string): unknown {
 /**
  * The latest `limit` (max 100) audited changes of one setting of the context's company, newest first: every
  * `company_settings` audit row whose before or after snapshot carries the key (setSetting, deleteSetting, pack:apply,
- * seeds). Same access as setSetting. Actor names come from the tenant's users (name only).
+ * seeds). Same access as setSetting. Names come from the tenant's users (name only) and are resolved only for ids that
+ * are known to be users: the actor of a `user` row and the `onBehalfOf` of an agent row (the authenticated caller).
+ * An agent's own id is free text from the request, so it is shown as is.
  */
 export async function settingHistory(ctx: Context, key: string, limit = 20): Promise<SettingChange[]> {
   assertSettingsAccess(ctx, 'audit');
@@ -163,7 +183,11 @@ export async function settingHistory(ctx: Context, key: string, limit = 20): Pro
     )
     .orderBy(desc(auditLog.at), desc(auditLog.id))
     .limit(Math.max(1, Math.min(limit, 100)));
-  const ids = [...new Set(rows.flatMap((r) => [r.actorId, r.onBehalfOf ?? '']).filter((id) => UUID_RE.test(id)))];
+  const userIds = rows.flatMap((r) => [
+    ...(r.actorType === 'user' ? [r.actorId] : []),
+    ...(r.onBehalfOf ? [r.onBehalfOf] : []),
+  ]);
+  const ids = [...new Set(userIds.filter((id) => UUID_RE.test(id)))];
   const names = new Map<string, string>();
   if (ids.length > 0) {
     const people = await ctx.db
@@ -178,7 +202,7 @@ export async function settingHistory(ctx: Context, key: string, limit = 20): Pro
     op: r.op,
     actorType: r.actorType,
     actorId: r.actorId,
-    actorName: names.get(r.actorId) ?? null,
+    actorName: r.actorType === 'user' ? (names.get(r.actorId) ?? null) : null,
     onBehalfOf: r.onBehalfOf,
     onBehalfOfName: r.onBehalfOf ? (names.get(r.onBehalfOf) ?? null) : null,
     action: r.action,

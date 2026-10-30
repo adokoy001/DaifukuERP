@@ -101,7 +101,7 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 部品は翻訳済みの文字列を受け取り、`useLocale()` を呼ばない（`renderToStaticMarkup` で単体検査できるようにするため）。`ui/` が import してよいのは React と `components/icon.tsx` だけ。
 
-`Tabs` の最初の利用者は設定画面（`/settings`、[settings-console](../specs/settings-console.md)）。ブラウザ試験 `e2e/settings-console.spec.ts` で、roving tabindex（選択中のタブだけが Tab 順に入る）、← → による移動と選択（端で反対側へ回る）、Home / End、Tab でタブ一覧からパネルへ出ることを確かめた。無効タブを飛ばす動きは、無効タブを持つ画面がまだ無いため `nextTabIndex` の unit だけで確かめている。選択を URL に残す画面は `onSelect` で `navigate({ search: { tab }, replace: true })` し、`validateSearch` で知らない値を捨て、`resolveTab` のように表示中のタブに無い値は先頭のタブへ倒す。
+`Tabs` の最初の利用者は設定画面（`/settings`、[settings-console](../specs/settings-console.md)）。ブラウザ試験 `e2e/settings-console.spec.ts` で、roving tabindex（選択中のタブだけが Tab 順に入る）、← → による移動と選択（端で反対側へ回る）、Home / End、Tab でタブ一覧からパネルへ出ることを確かめた。無効タブを飛ばす動きは、無効タブを持つ画面がまだ無いため `nextTabIndex` の unit だけで確かめている。選択を URL に残す画面は `onSelect` で `navigate({ search: { tab }, replace: true })` し、`validateSearch` で知らない値を捨て、`resolveTab` のように表示中のタブに無い値は先頭のタブへ倒す。タブ一覧が枠より広いとき（390px の設定画面は 8 タブ）は一覧の内側だけが横に動き、選択中のタブを一覧の見える範囲に入れる（`scrollToShow`。URL から選ばれたタブも読み込み時に見える。ページ全体はスクロールさせない）。端のフェードなど「続きがある」手がかりはまだ無い。
 
 ### 大きさ
 
@@ -152,13 +152,14 @@ meta に宣言的なヒントは無い（web-phase15 時点）。次の**全部*
 
 - `fields`（object schema の property ごと）: `label`（日英）、必要なら `description`、`widget`、enum なら `valueLabels`。**全 property の日英ラベルと全 enum 値のラベルが必須**（`apps/runtime/test/setting-labels.test.ts` が全 module・全 pack を読み込んで検査する）。綴り違いの property 名や型の合わない widget は登録時に `Error` になる。
 - 単一値の設定は定義の直下に `widget` / `valueLabels`。boolean はチェックボックス、enum は選択肢、整数は数値の欄になる（JSON 入力にはならない）。record・配列は従来どおり JSON 入力。
-- 勘定科目のコードは `widget: 'account-code'`、倉庫のコードは `'warehouse-code'`、住所・振込先などの長文は `'textarea'`。コードの選択欄は有効な勘定科目（`isActive`）・倉庫を利用者自身の権限で `GET /api/<entity>?orderBy=code:asc&limit=500` から読み、「コード 名称」で並べる。保存値はコード文字列のまま。
+- 勘定科目のコードは `widget: 'account-code'`、倉庫のコードは `'warehouse-code'`、住所・振込先などの長文は `'textarea'`。コードの選択欄は有効な勘定科目（`isActive`）・倉庫を利用者自身の権限で `GET /api/<entity>?orderBy=code:asc&limit=500` から読み、「コード 名称」で並べる。保存値はコード文字列のまま。全件数（`total`）が 500 を超えるときは、一覧に無い保存値を `where={"code":…}` で 1 件引いてから「見つかりません」と判断する（`codeIsMissing`）。任意の細目には常に「指定しない」を出す。末尾の「コードを直接入力…」で入力欄に切り替えられる（まだ無いコードを先に設定する導入手順のため。焦点は切り替えた欄へ）。一覧が読めないときは入力欄に倒し、403 は権限の文、それ以外は読込失敗の文にする。説明（`fields[].description`）は select でも入力欄でも `aria-describedby` に入れる。
 - `default` に module の `getSetting` の fallback と同じ値を書く。画面は会社に値が無いとき「既定値を使用中」と既定値を表示し、入力欄も既定値から始める。
 - `category` は key の先頭から決まる（`tax`→消費税、`payment`→会計、pack・業界の key→業界 など。ADR-0027）。違う分類に置くときだけ書く。`order` はタブ内の並び（無ければラベル順）。
 
 画面の決まり:
 
 - タブは設定がある分類だけ。選択は `?tab=` に残す。タブ内のカードは `components/setting-card.tsx`（kit の `Card` + `FormSection`）。
-- 会社の値があるカードに「既定に戻す」を出し、kit の `Dialog` で確認する（最初の焦点は「戻る」）。実行後はボタンが消えるので、焦点はそのカードの「保存」に移す。既定値の無い JSON の記録（`packs.applied`）には出さない。
-- 「変更履歴」は `GET /meta/settings/:key/audit` の直近 20 件を、時刻・op（変更 / 既定に戻す）・操作者・変わった細目の「変更前 → 変更後」で並べる。表ではなくリストにして 390px で横にはみ出さないようにする。
+- 会社の値があるカードに「既定に戻す」を出し、kit の `Dialog` で確認する（最初の焦点は「戻る」）。DELETE の応答待ちの間は確認ボタンを無効にして「戻しています…」と出す。実行後はボタンが消えるので、焦点はそのカードの「保存」に移す。既定値の無い JSON の記録（`packs.applied`）には出さない。テンプレートを適用した会社では、確認の画面に「テンプレートの値ではなく module の既定値に戻る」旨を添える（ADR-0027 §5）。
+- 保存値が定義に合わないカードは状態の印を「定義に合わない値」（warning）にし、既定値の有無で文を変えた警告を出す（`storedValueInvalid`、`invalidStoredText`）。
+- 「変更履歴」は `GET /meta/settings/:key/audit` の直近 20 件を、時刻・op（変更 / 既定に戻す）・操作者・変わった細目の「変更前 → 変更後」で並べる。会社に値が無かった側は、既定値の宣言があれば「既定値（4000）」、無ければ「未設定」。表ではなくリストにして 390px で横にはみ出さないようにする。
 - 表示用の文言とロジック（タブ、並び、既定値の文、履歴の要約）は `lib/settings-console.ts` に置き、unit で確かめる。

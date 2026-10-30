@@ -45,11 +45,11 @@ registry.registerSetting({
 
 - `fields` の key が schema の property に無い／schema が固定 property の object でない（record・配列・単一値）のに `fields` がある。
 - `widget` / `valueLabels` を object schema に付けた／`fields` を単一値に付けた。
-- ラベル・説明に `ja` と `en` の両方が無い。未知の `category` / `widget`、整数でない `order`。
+- 設定のラベル・設定の説明（`description`）・細目のラベルと説明・enum 値のラベルに `ja` と `en` の両方が無い。未知の `category` / `widget`、整数でない `order`。
 - `account-code` / `warehouse-code` / `textarea` を string 以外に付けた。`valueLabels` の key が enum 値に無い。
 - `default` が schema を通らない。
 
-property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, { io: 'input' })` から読む（`settingShape`）。画面と検査が同じ表現を見るので、zod の包み（`.default()`、`.optional()`、nullable）の違いで食い違わない。
+property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, { io: 'input' })` から読む（`settingShape`）。最上位の判定は画面（`apps/web` の `settingForm`）と同じ規則にする: 最上位が union（`anyOf` / `oneOf`。nullable の object や nullable の enum はこうなる）か、`type` が `object` そのものでない object は「その他」（JSON 入力）として扱い、`fields` / `widget` / `valueLabels` を登録時に拒否する（画面が黙って無視しないように）。nullable の文字列は `type: ["string", "null"]` で union にならないので単一値のまま。property の中の nullable は画面のフォームと同じく外して読む。この規則で、zod の包み（`.default()`、`.optional()`、nullable）の違いで画面と検査が食い違わない（両側に単体試験がある）。
 
 リポジトリ内のすべての object 設定が全 property の日英ラベルを、すべての enum が全値のラベルを持つことは、全 module と全 pack を読み込んで registry を走査する単体試験（`apps/runtime/test/setting-labels.test.ts`）で保つ。
 
@@ -57,15 +57,21 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 
 - `GET /meta/settings`: 従来の `key / label / description / schema / value` に `category`（解決済み）、`order`、`fields`、`widget`、`valueLabels`、`defaultValue`（宣言があるとき）、`isDefault`（会社に保存値が無いとき true）を足す。保存値が schema に合わないときは従来どおり `value: null` で、`isDefault: false` になる（画面は「保存値が定義に合わない」と警告する）。
 - `DELETE /meta/settings/:key`: kernel の `deleteSetting` が会社の保存値を消す。会社行を `FOR UPDATE` で読み、監査 `company_settings` に op `delete`、変更前 `{ key: 値 }`、変更後 `{ key: null }` を記録する。保存値が無ければ何も書かず監査もしない。どちらも `GET` と同じ形で返す。未宣言の key は 404。
-- `GET /meta/settings/:key/audit`: kernel の `settingHistory` が `company_settings` の監査のうち、変更前か変更後の snapshot にその key を持つ行（`setSetting`、`deleteSetting`、pack 適用、seed）を新しい順に 20 件返す。各行は時刻・op・操作者（同じ tenant の利用者なら名前だけを添える。メールは返さない）・その key の変更前後の値。
+- `setSetting`（`PUT`）も同じ関数（`lockedCompanySettings`）で会社行を `FOR UPDATE` で読んでから変更前の値を記録する。同じ会社への書込みが重なっても後の書込みは前の書込みの確定を待つので、履歴の各行の変更前は一つ前の行の変更後と一致する（履歴と「変わった細目」の表示が実際の変化と食い違わない）。
+- `GET /meta/settings/:key/audit`: kernel の `settingHistory` が `company_settings` の監査のうち、変更前か変更後の snapshot にその key を持つ行（`setSetting`、`deleteSetting`、pack 適用、seed）を新しい順に 20 件返す。各行は時刻・op・操作者・その key の変更前後の値。操作者の名前（同じ tenant の利用者の `name` だけ。メールは返さない）は、利用者であることが確かな id にだけ添える: `actorType: 'user'` の行の操作者と、agent の行の `onBehalfOf`（認証済みの呼出し元）。agent 自身の id は要求ヘッダー `x-agent-id`（MCP ではログイン時の agent 名）の自由な文字列で検証されないので、利用者の id と同じ文字列でも名前に解決しない（`actorName: null`。画面は `agent:<id>（<利用者> の代理）`）。
 - 権限は 3 つとも `PUT` と同じ境界: admin か `settings` ロール、かつ所属の `accessScope` が店舗・拠点限定でない。kernel の `setSetting` / `deleteSetting` / `settingHistory` が同じ関数で検査するので、route を経ない呼出しでも同じになる。
 
 ### 4. 画面
 
 - `/settings` は設定がある分類だけを kit の `Tabs` で並べ、選択を `?tab=` に保つ。タブ内は `order`、次に表示言語のラベル順。
 - object は property ごと、単一値は 1 つの入力（boolean はチェックボックス、enum は選択肢ラベル付きの select、整数は数値）、record などは従来の JSON 入力。
-- `account-code` は有効な勘定科目（`isActive: true`）、`warehouse-code` は倉庫を、利用者自身の権限で `GET /api/<entity>` から読んで「コード 名称」の select にする（新しい読取経路は作らない）。保存値が一覧に無ければその値を残したまま警告する。一覧を読めないときはコードの直接入力に戻る。
-- 会社に値が無いカードは「既定値を使用中」と既定値を表示し、フォームは既定値から始まる。値があるカードには「既定に戻す」（kit `Dialog` で確認）と、全カードに「変更履歴」を出す。
+- `account-code` は有効な勘定科目（`isActive: true`）、`warehouse-code` は倉庫を、利用者自身の権限で `GET /api/<entity>` から読んで「コード 名称」の select にする（新しい読取経路は作らない）。保存値が一覧に無ければその値を残したまま警告する。一覧は先頭 500 件までで、全件数（`total`）がそれより多いときは、一覧に無い保存値を同じ条件の `where={"code":…}` で 1 件だけ引き直し、見つからないときだけ警告する。任意の細目（schema で optional）には常に「指定しない」の選択肢を出し、空にすると module 側の省略時の扱いになる。select の末尾の「コードを直接入力…」で、まだ存在しないコードも入力できる（「設定 → 科目・倉庫を後から作る」順序を残すため。下の「却下した案」）。一覧を読めないときはコードの直接入力に戻り、403 なら「参照する権限が無い」と、それ以外は「読み込めない」と表示する。
+- 会社に値が無いカードは「既定値を使用中」と既定値を表示し、フォームは既定値から始まる。値があるカードには「既定に戻す」（kit `Dialog` で確認）を出す。ただし既定値の宣言が無い JSON 入力の記録（`packs.applied`、`canReset`）には出さない（消すと会社の全テンプレートが無効になるため）。全カードに「変更履歴」を出す。履歴で会社に値が無かった側は、既定値の宣言があれば「既定値（4000）」、無ければ「未設定」と書く。
+- 保存値が schema に合わないカードは「定義に合わない値」の印と警告を出す。警告の文は、既定値の宣言があれば「既定値が使われている」、無ければ「未設定として扱われている」。
+
+### 5. 既定値とテンプレートが書いた値
+
+「既定値」は module の宣言した `default`（`getSetting` の fallback）だけを指す。テンプレート（pack）の適用が書いた値（例: 賃貸管理の `sales.accounts.revenue = 4200`）は、ほかの保存値と同じ**会社の値**として扱う。そのため「既定に戻す」はテンプレートの値ではなく module の既定値（`sales.accounts.revenue = 4000`）に戻す。テンプレートを適用した会社（`packs.applied` が空でない）では、確認の画面にその旨を添える。テンプレートの値に戻すには、その値を入れ直すか、`pnpm pack:apply <name> --force`（API `pack.apply` の `force`。そのテンプレートの設定をすべて上書きし、seed も再実行する。ADR-0015）を使う。テンプレートごとの既定値を画面に出すことはしていない（設定定義は module ごとで、pack の既定値は pack 側の `settings` にあるため）。
 
 ## 却下した案
 
@@ -79,4 +85,5 @@ property 名と enum 値は、API が返すのと同じ `z.toJSONSchema(schema, 
 + module / pack の作者は `fields` を書くだけで、設定画面が日英のラベル・選択式・既定値・履歴付きになる。
 + 定義の誤り（property 名の綴り違い、既定値の型違い）が import 時に落ちる。
 − 既存の設定定義に表示属性を書いた（module 7: tax・sales・purchase・payment・inventory・contract・industry-operations、pack 3: example・retail・real-estate）。object 設定の細目ラベルと enum のラベルを書き忘れると単体試験が落ちる。
-− `packs.applied` のような記録用の設定も「既定に戻す」で消せる（従来の `PUT {}` と同じ結果）。読取専用の表示属性は B4 の `setup.progress` と合わせて検討する。
+− `packs.applied` のような記録用の設定は、画面では「既定に戻す」を出さない（既定値の宣言が無い JSON 入力の記録。`canReset`）が、API の `DELETE /meta/settings/packs.applied` と JSON の編集ではまだ消せる。読取専用の表示属性は B4 の `setup.progress` と合わせて検討する。
+− 「既定に戻す」はテンプレートが書いた値ではなく module の既定値に戻す（§5）。

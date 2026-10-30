@@ -18,6 +18,7 @@ export { PageHeader, type PageHeaderProps } from './page-header.tsx';
 export { Skeleton, SkeletonCard, SkeletonRows, type SkeletonProps } from './skeleton.tsx';
 export {
   nextTabIndex,
+  scrollToShow,
   TabPanel,
   tabPanelId,
   tabId,

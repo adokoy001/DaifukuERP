@@ -7,6 +7,9 @@ import {
   actorText,
   canReset,
   changeRows,
+  codeIsMissing,
+  codeLookupNeeded,
+  invalidStoredText,
   opLabel,
   resolveTab,
   SC,
@@ -15,6 +18,8 @@ import {
   settingPayload,
   settingsInTab,
   settingTabs,
+  storedValueInvalid,
+  templatesApplied,
   valueParts,
   valueText,
 } from './settings-console.ts';
@@ -75,12 +80,12 @@ describe('settings-console AC-8: tabs and order', () => {
   ];
 
   it('AC-8: only categories with settings, in the kernel order; an unknown category comes last under its id', () => {
-    expect(settingTabs(list).map((tab) => [tab.id, tab.label.ja, tab.count])).toEqual([
-      ['tax', '消費税', 1],
-      ['sales', '販売', 2],
-      ['industry', '業界', 2],
-      ['system', 'システム', 1],
-      ['future', 'future', 1],
+    expect(settingTabs(list).map((tab) => [tab.id, tab.label.ja])).toEqual([
+      ['tax', '消費税'],
+      ['sales', '販売'],
+      ['industry', '業界'],
+      ['system', 'システム'],
+      ['future', 'future'],
     ]);
   });
 
@@ -174,6 +179,42 @@ describe('settings-console AC-10/AC-11: form modes and the default', () => {
     expect(settingForm(record, noRefs)).toEqual({ mode: 'json', fields: [] });
   });
 
+  it('AC-10: the same top-level rule as the kernel check: a union is raw JSON, a nullable string is one field', () => {
+    // kernel settingShape refuses fields / widget on these (kernel/test/setting-presentation.test.ts), so no
+    // presentation is silently dropped here.
+    const nullableObject = setting({ key: 'x.obj', schema: { anyOf: [accountsSchema, { type: 'null' }] } });
+    expect(settingForm(nullableObject, noRefs)).toEqual({ mode: 'json', fields: [] });
+    const nullableString = setting({
+      key: 'x.code',
+      schema: { type: ['string', 'null'] },
+      widget: 'warehouse-code',
+    });
+    expect(settingForm(nullableString, noRefs)).toMatchObject({
+      mode: 'scalar',
+      fields: [{ name: 'value', kind: 'text', widget: 'warehouse-code' }],
+    });
+  });
+
+  it('AC-10: a stored code beyond a cut-off list is looked up before it is flagged as missing', () => {
+    const options = Array.from({ length: 500 }, (_, i) => ({ code: String(1000 + i), name: `科目${i}` }));
+    const cut = { options, total: 620 };
+    const complete = { options: options.slice(0, 3), total: 3 };
+    // In the list: never flagged, never looked up.
+    expect(codeLookupNeeded('1001', cut)).toBe(false);
+    expect(codeIsMissing('1001', cut, undefined)).toBe(false);
+    // Not in a complete list: flagged without a lookup.
+    expect(codeLookupNeeded('9999', complete)).toBe(false);
+    expect(codeIsMissing('9999', complete, null)).toBe(true);
+    // Beyond a cut-off list: looked up; flagged only when the lookup finds nothing.
+    expect(codeLookupNeeded('9100', cut)).toBe(true);
+    expect(codeIsMissing('9100', cut, undefined)).toBe(false);
+    expect(codeIsMissing('9100', cut, { code: '9100', name: '雑損失' })).toBe(false);
+    expect(codeIsMissing('9100', cut, null)).toBe(true);
+    // An empty (not specified) value is never flagged.
+    expect(codeLookupNeeded('', cut)).toBe(false);
+    expect(codeIsMissing('', complete, null)).toBe(false);
+  });
+
   it('AC-11: reset is offered for a stored value, but not for a raw-JSON record without a default (packs.applied)', () => {
     expect(canReset(salesAccounts, 'object')).toBe(false);
     expect(canReset({ ...salesAccounts, isDefault: false }, 'object')).toBe(true);
@@ -201,6 +242,25 @@ describe('settings-console AC-10/AC-11: form modes and the default', () => {
     expect(settingFormValue({ ...flag, value: true, isDefault: false }, 'scalar')).toEqual({ value: true });
     expect(settingPayload('scalar', { value: true })).toBe(true);
     expect(settingPayload('object', { a: 1 })).toEqual({ a: 1 });
+  });
+
+  it('AC-11: a stored value the definition rejects is flagged, and the warning says what applies instead', () => {
+    expect(storedValueInvalid(salesAccounts)).toBe(false);
+    const stored = { ...salesAccounts, isDefault: false, value: { receivable: '1', revenue: '2', taxPayable: '3' } };
+    expect(storedValueInvalid(stored)).toBe(false);
+    const broken = { ...salesAccounts, isDefault: false, value: null };
+    expect(storedValueInvalid(broken)).toBe(true);
+    expect(invalidStoredText(broken)).toEqual(SC.invalidStored);
+    const issuer = setting({ key: 'sales.issuer', schema: accountsSchema, isDefault: false, value: null });
+    expect(invalidStoredText(issuer)).toEqual(SC.invalidStoredNoDefault);
+    expect(SC.invalidStoredNoDefault.ja).not.toContain('既定値が使われ');
+  });
+
+  it('AC-11: the reset dialog notes template values only when a template is applied', () => {
+    const applied = setting({ key: 'packs.applied', schema: { type: 'object' }, value: {} });
+    expect(templatesApplied([applied, salesAccounts])).toBe(false);
+    expect(templatesApplied([{ ...applied, value: { retail: { at: '2026-10-01' } }, isDefault: false }])).toBe(true);
+    expect(templatesApplied([salesAccounts])).toBe(false);
   });
 
   it('AC-11: the default reads as labelled parts in the current language', () => {
@@ -242,24 +302,53 @@ describe('settings-console AC-12: history entries', () => {
     expect(changeRows(salesAccounts, base, 'ja')).toEqual([{ label: '売上高', before: '4000', after: '4100' }]);
   });
 
-  it('AC-12: the first save and a reset show every property against "not set"', () => {
+  it('AC-12: the first save and a reset show every property against the default the module used', () => {
     const first = changeRows(salesAccounts, { ...base, before: null }, 'ja');
     expect(first.map((r) => [r.label, r.before, r.after])).toEqual([
-      ['売掛金', '未設定', '1300'],
-      ['売上高', '未設定', '4100'],
-      ['taxPayable', '未設定', '2200'],
+      ['売掛金', '既定値（1300）', '1300'],
+      ['売上高', '既定値（4000）', '4100'],
+      ['taxPayable', '既定値（2200）', '2200'],
     ]);
     const reset = changeRows(salesAccounts, { ...base, op: 'delete', after: null }, 'en');
-    expect(reset[1]).toEqual({ label: 'Revenue', before: '4000', after: 'Not set' });
+    expect(reset[1]).toEqual({ label: 'Revenue', before: '4000', after: 'Default (4000)' });
     expect(opLabel('delete')).toEqual(SC.opDelete);
     expect(opLabel('update')).toEqual(SC.opUpdate);
   });
 
-  it('AC-12: a single value change is one row; booleans read yes/no', () => {
+  it('AC-12: "not set" stays for a setting without a default, and for a property missing from a stored object', () => {
+    const { defaultValue: _omit, ...withoutDefault } = salesAccounts;
+    const issuer = setting({ ...withoutDefault, key: 'sales.issuer' });
+    expect(changeRows(issuer, { ...base, before: null }, 'ja')[1]).toEqual({
+      label: '売上高',
+      before: '未設定',
+      after: '4100',
+    });
+    const partial = changeRows(salesAccounts, { ...base, before: { receivable: '1300' } }, 'ja');
+    expect(partial.map((r) => [r.label, r.before, r.after])).toEqual([
+      ['売上高', '未設定', '4100'],
+      ['taxPayable', '未設定', '2200'],
+    ]);
+  });
+
+  it('AC-12: a single value change is one row; booleans read yes/no; an unset side reads as the default', () => {
     const flag = setting({ key: 'contract.auto_submit' });
     expect(changeRows(flag, { ...base, before: false, after: true }, 'ja')).toEqual([
       { label: '', before: 'いいえ', after: 'はい' },
     ]);
+    const withDefault = setting({ key: 'contract.auto_submit', defaultValue: false });
+    expect(changeRows(withDefault, { ...base, before: null, after: true }, 'ja')).toEqual([
+      { label: '', before: '既定値（いいえ）', after: 'はい' },
+    ]);
+    const rule = setting({
+      key: 'contract.default_proration',
+      schema: { type: 'string', enum: ['daily', 'none'] },
+      defaultValue: 'daily',
+      valueLabels: { daily: { ja: '日割り', en: 'Daily' }, none: { ja: '満額', en: 'Full' } },
+    });
+    expect(changeRows(rule, { ...base, op: 'delete', before: 'none', after: null }, 'en')).toEqual([
+      { label: '', before: 'Full', after: 'Default (Daily)' },
+    ]);
+    expect(changeRows(flag, { ...base, before: null, after: true }, 'ja')[0]?.before).toBe('未設定');
   });
 
   it('AC-12: the actor is the user name; unknown actors show type and a short id; agents name the user', () => {

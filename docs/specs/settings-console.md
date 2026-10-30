@@ -1,6 +1,6 @@
 # Spec: settings-console（設定定義の表示属性と設定画面の再構成）
 
-- 状態: implemented
+- 状態: implemented（gate:light と関連ブラウザ試験は実行済み。`pnpm gate:full` とブラウザ試験の全件は統合担当が実行する）
 - モジュール: `kernel`（registry の `SettingDef`、`setting-presentation.ts`、`settings.ts`）、`apps/api/src/routes/settings.ts`、`apps/web/src/pages/settings-page.tsx`、各 module / pack の設定定義 ／ 依存: [ui-kit](ui-kit.md)（D1）
 - ADR: [ADR-0027](../adr/0027-setting-presentation.md)（設定定義の表示属性。B2 の会社プロフィール、B4 の `setup.progress` を後で追記）を新規作成。[ADR-0013](../adr/0013-hexagonal-ports.md) の L1 に追記
 - 作成: 2026-10-29 ／ 作成者: agent（計画セッション）。設計の元は [完成度向上の実装計画](../completion-plan.md) B1。実装: 2026-10-29 agent（B1 実装セッション、ブランチ `wip/settings-console`）。実装で変えた点は「未決事項」の末尾に記録した
@@ -71,3 +71,13 @@
 - AC-9 / AC-10: 単一値の設定を JSON 入力ではなく 1 つの入力（boolean はチェックボックスで必須印なし）にした。科目の一覧は利用者自身の権限で `GET /api/account?where={"isActive":true}` から読み（新しい読取経路を作らない）、読めないときはコード入力に戻る。一覧は 500 件まで（超えたら表示で知らせる）。
 - AC-11: 既定値の宣言が無い JSON の記録（`packs.applied`）には「既定に戻す」を出さない。消すと会社の全テンプレートが無効になるため（従来の JSON 編集は残す）。リセット後はボタンが消えるので焦点をそのカードの「保存」に移す。保存値が定義に合わないときの警告を足した。各 module / pack の定義に `default` を足した（画面に既定値を出すため。applyPack は保存値を上書きしないので挙動は変わらない）。
 - AC-13: enum 値のラベルも検査対象にした。走査は `apps/runtime` の `loadRuntime({ schema: true })` で全 pack を読み込む。
+
+### レビュー対応（2026-10-30）
+
+- AC-6: 操作者の名前は `actorType: 'user'` の行の操作者と agent 行の `onBehalfOf` にだけ解決する。agent の id（`x-agent-id` の自由な文字列）が他の利用者の id と同じでも、その利用者の名前を出さない（なりすましの防止）。
+- AC-5 / AC-6: `setSetting` も会社行を `FOR UPDATE` で読んでから変更前を記録する（`deleteSetting` と共通の `lockedCompanySettings`）。重なった書込みでも履歴の変更前が一つ前の変更後と一致する。
+- AC-2: 設定の `description` の日英も登録時に検査する。最上位が union（nullable の object・enum）の schema は画面が JSON 入力にするので、`fields` / `widget` / `valueLabels` を登録時に拒否する（画面と検査の規則を揃えた）。
+- AC-10: 一覧が 500 件で切れるときは、一覧に無い保存値を 1 件だけ引き直してから警告する。任意の細目には常に「指定しない」を出す。「コードを直接入力…」で一覧に無いコードも入力できる。一覧が 403 のときは権限の文を出し、細目の説明を入力欄でも読み上げる。
+- AC-11: 保存値が定義に合わないカードは印を「定義に合わない値」にし、既定値の無い設定では「未設定として扱われている」と書く。リセット中は確認ボタンを無効にする。テンプレートを適用した会社では、確認の画面に「テンプレートの値ではなく既定値に戻る」旨を出す（ADR-0027 §5）。
+- AC-12: 会社に値が無かった側は、既定値の宣言があれば「既定値（4000）」と表示する（「未設定」は既定値の無い設定だけ）。
+- AC-14: タブ一覧が横にはみ出すとき、選択中のタブ（URL から選ばれたものを含む）を一覧の見える範囲に入れる。

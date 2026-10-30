@@ -125,6 +125,39 @@ describe('settings-console AC-2: definition errors at registration', () => {
     ).toThrow(/widget "account-code" needs a plain string value/);
   });
 
+  it('AC-2: a setting description without both languages is refused (like labels and field descriptions)', () => {
+    expect(() =>
+      register({ label: label('a', 'a'), description: { ja: '説明', en: '' }, schema: z.boolean() }),
+    ).toThrow(/description must have non-empty ja and en text/);
+    expect(() =>
+      register({ label: label('a', 'a'), description: { ja: ' ', en: 'Text' }, schema: z.boolean() }),
+    ).toThrow(/description must have non-empty ja and en text/);
+    expect(() =>
+      register({ label: label('a', 'a'), description: label('説明', 'Text'), schema: z.boolean() }),
+    ).not.toThrow();
+  });
+
+  it('AC-2: fields / widget on a nullable (top-level union) setting are refused: the console renders it as raw JSON', () => {
+    expect(() =>
+      register({
+        label: label('科目', 'Accounts'),
+        schema: accounts.nullable(),
+        fields: { receivable: { label: label('売掛金', 'AR'), widget: 'account-code' } },
+      }),
+    ).toThrow(/fields are only for object schemas/);
+    expect(() =>
+      register({
+        label: label('ランク', 'Rank'),
+        schema: z.enum(['A', 'B']).nullable(),
+        valueLabels: { A: label('重点', 'Key') },
+      }),
+    ).toThrow(/widget\/valueLabels describe a single value/);
+    // A nullable string is `type: ["string", "null"]` (no union), which the console renders as one string field.
+    expect(() =>
+      register({ label: label('倉庫', 'Warehouse'), schema: z.string().nullable(), widget: 'warehouse-code' }),
+    ).not.toThrow();
+  });
+
   it('AC-2: value labels must name enum values; widget/valueLabels on an object schema are refused', () => {
     expect(() =>
       register({ label: label('ランク', 'Rank'), schema: z.enum(['A', 'B']), valueLabels: { Z: label('Z', 'Z') } }),
@@ -188,6 +221,15 @@ describe('settingShape (the JSON Schema view the console renders)', () => {
       kind: 'object',
       properties: { mode: { type: 'string', enum: ['a', 'b'] }, note: { type: 'string' }, n: { type: 'number' } },
     });
+  });
+
+  it('a union at the top level (nullable object or enum) is "other", as the console renders it as raw JSON', () => {
+    expect(settingShape(accounts.nullable())).toEqual({ kind: 'other' });
+    expect(settingShape(z.enum(['a', 'b']).nullable())).toEqual({ kind: 'other' });
+    expect(settingShape(z.string().nullable())).toEqual({ kind: 'scalar', type: 'string' });
+    expect(settingShape(z.union([z.string(), z.number()]))).toEqual({ kind: 'other' });
+    // A default around an object keeps a plain `type: object`, so it is still an object.
+    expect(settingShape(accounts.default({ receivable: '1', revenue: '2' }))).toMatchObject({ kind: 'object' });
   });
 
   it('scalars keep their type; records and arrays are "other"', () => {

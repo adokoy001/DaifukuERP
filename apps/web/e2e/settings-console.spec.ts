@@ -162,7 +162,9 @@ test('settings-console AC-9/AC-10/AC-11/AC-12: pick a sales posting account, see
     await expect(entries.first()).toContainText('売上高: 4100');
     await expect(entries.first()).toContainText('9999');
     await expect(entries.first()).not.toContainText('売掛金');
-    await expect(entries.nth(1)).toContainText('売上高: 未設定');
+    // The first save: the unset side reads as the default the module used (not "not set").
+    await expect(entries.nth(1)).toContainText('売上高: 既定値（4000）');
+    await expect(entries.nth(1)).not.toContainText('未設定');
 
     // AC-11: reset through the kit Dialog; Escape keeps the value and returns focus to the opener.
     const resetButton = accounts.getByRole('button', { name: '既定に戻す', exact: true });
@@ -187,6 +189,7 @@ test('settings-console AC-9/AC-10/AC-11/AC-12: pick a sales posting account, see
     expect(await storedSetting(request, headers, 'sales.accounts')).toMatchObject({ isDefault: true, value: null });
     await expect(entries.first()).toContainText('既定に戻す');
     await expect(entries.first()).toContainText('売上高: 9999');
+    await expect(entries.first()).toContainText('既定値（4000）');
     await page.screenshot({ path: test.info().outputPath('settings-sales-history.png'), fullPage: true });
   });
 });
@@ -217,14 +220,18 @@ test('settings-console AC-9/AC-10: checkboxes, warehouse picker, enum labels and
   await expect(issuer.getByRole('textbox', { name: '登録番号', exact: true })).toBeVisible();
   await expect(issuer.getByText('T と数字 13 桁', { exact: false })).toBeVisible();
 
-  // A user who may not read accounts (e.g. only the settings role) types the code instead of picking it.
+  // A user who may not read accounts (e.g. only the settings role) types the code instead of picking it; the note
+  // names the permission (not a load failure) and the field keeps its help text.
   await page.route('**/api/account?*', (route) => route.fulfill(failedRead(403)));
   await page.reload();
   const typed = card(page, 'sales.accounts').getByRole('textbox', { name: '売上高', exact: true });
   await expect(typed).toBeEditable();
-  await expect(
-    card(page, 'sales.accounts').getByText('一覧を読み込めないため', { exact: false }).first(),
-  ).toBeVisible();
+  await expect(typed).toHaveAccessibleDescription(/勘定科目を参照する権限が無いため/);
+  await expect(card(page, 'sales.accounts').getByText('一覧を読み込めないため', { exact: false })).toHaveCount(0);
+  await tab(page, '会計').click();
+  const cash = card(page, 'payment.accounts').getByRole('textbox', { name: '現金', exact: true });
+  await expect(cash).toHaveAccessibleDescription(/権限が無いため.*支払方法が現金のときの口座/);
+  await tab(page, '販売').click();
   await page.unroute('**/api/account?*');
 
   await page.evaluate(() => localStorage.setItem('daifuku.locale', 'en'));
@@ -238,6 +245,81 @@ test('settings-console AC-9/AC-10: checkboxes, warehouse picker, enum labels and
   await expect(issuer.getByRole('textbox', { name: 'Registration number', exact: true })).toBeVisible();
 });
 
+test('settings-console AC-10: optional codes can be emptied, a code can be typed, a cut-off list is not misread', async ({
+  page,
+  request,
+}) => {
+  await withDefaults(
+    request,
+    ['real_estate.accounts', 'inventory.default_warehouse', 'sales.accounts'],
+    async (headers) => {
+      await signInQuality(page);
+      // An optional code field offers "not specified" even while it holds a code (the module's own fallback applies).
+      await page.goto('/settings?tab=industry');
+      const rental = card(page, 'real_estate.accounts');
+      const bank = rental.getByRole('combobox', { name: '敷金の入出金口座', exact: true });
+      await expect(bank).toHaveValue('1100');
+      await expect(bank).toHaveAccessibleDescription(/省略時は入出金の勘定科目の普通預金/);
+      await bank.selectOption({ label: '指定しない' });
+      await rental.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(rental.getByTestId('setting-status')).toHaveText('会社の値');
+      const stored = (await storedSetting(request, headers, 'real_estate.accounts')).value as Record<string, unknown>;
+      expect(stored).toMatchObject({ deposit: '2500', rentRevenue: '4200', deduction: '4100' });
+      expect(stored).not.toHaveProperty('bank');
+      // A required code field has no empty choice once it holds a code.
+      await expect(
+        rental
+          .getByRole('combobox', { name: '預り金（敷金）', exact: true })
+          .locator('option', { hasText: '指定しない' }),
+      ).toHaveCount(0);
+
+      // A code that does not exist yet can be typed (the warehouse is created later) and is flagged after saving.
+      await page.goto('/settings?tab=inventory');
+      const warehouseCard = card(page, 'inventory.default_warehouse');
+      await warehouseCard
+        .getByRole('combobox', { name: '既定の倉庫コード', exact: true })
+        .selectOption({ label: 'コードを直接入力…' });
+      const typed = warehouseCard.getByRole('textbox', { name: '既定の倉庫コード', exact: true });
+      await expect(typed).toBeFocused();
+      await typed.fill('W-LATER');
+      await warehouseCard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(warehouseCard.getByTestId('setting-status')).toHaveText('会社の値');
+      expect((await storedSetting(request, headers, 'inventory.default_warehouse')).value).toBe('W-LATER');
+      await warehouseCard.getByRole('button', { name: '一覧から選ぶ', exact: true }).click();
+      const picker = warehouseCard.getByRole('combobox', { name: '既定の倉庫コード', exact: true });
+      await expect(picker).toBeFocused();
+      await expect(warehouseCard.getByTestId('code-missing-value')).toHaveText('「W-LATER」は倉庫にありません');
+
+      // More active accounts than the list holds: a stored code beyond it is looked up by itself before any warning.
+      await page.route('**/api/account?*', (route) => {
+        const where = JSON.parse(new URL(route.request().url()).searchParams.get('where') ?? '{}') as { code?: string };
+        if (typeof where.code === 'string') {
+          const items =
+            where.code === '2200' ? [] : [{ id: `id-${where.code}`, code: where.code, name: `科目${where.code}` }];
+          return route.fulfill({ json: { items, total: items.length, limit: 1, offset: 0 } });
+        }
+        const items = Array.from({ length: 500 }, (_, i) => ({
+          id: `a${i}`,
+          code: `0${String(i).padStart(3, '0')}`,
+          name: `科目${i}`,
+        }));
+        return route.fulfill({ json: { items, total: 620, limit: 500, offset: 0 } });
+      });
+      await page.goto('/settings?tab=sales');
+      const accounts = card(page, 'sales.accounts');
+      const revenue = accounts.getByRole('combobox', { name: '売上高', exact: true });
+      await expect(revenue.locator('option:checked')).toHaveText('4000 科目4000');
+      await expect(revenue).not.toHaveAttribute('aria-invalid', 'true');
+      await expect(accounts.getByTestId('code-missing-revenue')).toHaveCount(0);
+      await expect(accounts.getByTestId('codes-truncated-revenue')).toHaveText(
+        '先頭 500 件だけを表示しています（全 620 件）。',
+      );
+      await expect(accounts.getByTestId('code-missing-taxPayable')).toHaveText('「2200」は有効な勘定科目にありません');
+      await page.unroute('**/api/account?*');
+    },
+  );
+});
+
 test('settings-console AC-14: the console works at 390px without horizontal page scroll', async ({ page, request }) => {
   await withDefaults(request, ['contract.auto_submit'], async (headers) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -248,6 +330,19 @@ test('settings-console AC-14: the console works at 390px without horizontal page
     // The tab list scrolls inside itself instead of widening the page.
     expect(await tablist(page).evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     await page.screenshot({ path: test.info().outputPath('settings-sales-390.png'), fullPage: true });
+    // A tab selected from the URL is scrolled into the visible part of the list.
+    await page.goto('/settings?tab=system');
+    await expect(tab(page, 'システム')).toHaveAttribute('aria-selected', 'true');
+    await expect
+      .poll(async () => {
+        const list = await tablist(page).boundingBox();
+        const selected = await tab(page, 'システム').boundingBox();
+        return (
+          !!list && !!selected && selected.x >= list.x - 1 && selected.x + selected.width <= list.x + list.width + 1
+        );
+      })
+      .toBe(true);
+    await page.goto('/settings?tab=sales');
 
     await tab(page, '契約').click();
     const auto = card(page, 'contract.auto_submit');
@@ -256,7 +351,7 @@ test('settings-console AC-14: the console works at 390px without horizontal page
     await expect(auto.getByTestId('setting-status')).toHaveText('会社の値');
     expect((await storedSetting(request, headers, 'contract.auto_submit')).value).toBe(true);
     await auto.getByRole('button', { name: '変更履歴', exact: true }).click();
-    await expect(auto.getByTestId('setting-history-entry').first()).toContainText('未設定');
+    await expect(auto.getByTestId('setting-history-entry').first()).toContainText('既定値（いいえ）');
     await expect(auto.getByTestId('setting-history-entry').first()).toContainText('はい');
     await assertNoOverflow(page);
     await auto.getByRole('button', { name: '既定に戻す', exact: true }).click();
@@ -266,8 +361,19 @@ test('settings-console AC-14: the console works at 390px without horizontal page
     expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
     await assertNoOverflow(page);
     await page.screenshot({ path: test.info().outputPath('settings-reset-390.png') });
+    // While the DELETE is in flight the confirm button is disabled and says so (no second press).
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/meta/settings/contract.auto_submit', async (route) => {
+      if (route.request().method() === 'DELETE') await held;
+      await route.continue();
+    });
     await dialog.getByRole('button', { name: '既定に戻す', exact: true }).click();
+    const pending = dialog.getByRole('button', { name: '戻しています…', exact: true });
+    await expect(pending).toBeDisabled();
+    release();
     await expect(auto.getByTestId('setting-status')).toHaveText('既定値を使用中');
+    await page.unroute('**/meta/settings/contract.auto_submit');
     expect(await storedSetting(request, headers, 'contract.auto_submit')).toMatchObject({ isDefault: true });
   });
 });

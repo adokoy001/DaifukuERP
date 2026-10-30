@@ -2,14 +2,18 @@
 // the module default, audited), the per-key history, and the same access boundary as PUT.
 import {
   auditTrail,
+  companies,
   companyMemberships,
   deleteSetting,
   getCompany,
   hashPassword,
   newId,
+  registry,
+  setSetting,
   settingHistory,
   users,
 } from '@daifuku/kernel';
+import { eq, sql } from 'drizzle-orm';
 import { freshDb, type TestDb } from '@daifuku/kernel/testing';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -52,6 +56,8 @@ interface ChangeOut {
   actorType: string;
   actorId: string;
   actorName: string | null;
+  onBehalfOf: string | null;
+  onBehalfOfName: string | null;
   before: unknown;
   after: unknown;
 }
@@ -59,7 +65,7 @@ interface ChangeOut {
 async function call(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   url: string,
-  opts: { body?: unknown; token?: string | null } = {},
+  opts: { body?: unknown; token?: string | null; headers?: Record<string, string> } = {},
 ): Promise<JsonResponse> {
   const t = opts.token === undefined ? adminToken : opts.token;
   const res = await app.inject({
@@ -68,6 +74,7 @@ async function call(
     headers: {
       ...(t ? { authorization: `Bearer ${t}` } : {}),
       ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...opts.headers,
     },
     ...(opts.body !== undefined ? { payload: JSON.stringify(opts.body) } : {}),
   });
@@ -80,6 +87,8 @@ async function login(email: string, password: string): Promise<string> {
   const res = await call('POST', '/auth/login', { body: { email, password }, token: null });
   return (res.body as { token: string }).token;
 }
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function member(
   email: string,
@@ -155,6 +164,25 @@ describe('settings-console AC-4: GET /meta/settings carries presentation and the
     expect(byKey.get('sales.issuer')).not.toHaveProperty('defaultValue');
     expect(byKey.get('packs.applied')).toMatchObject({ category: 'system', isDefault: true });
     for (const s of list) expect(typeof s.isDefault).toBe('boolean');
+  });
+
+  it('AC-4/AC-11: a stored value the schema rejects reads as value null with isDefault false (the screen warns)', async () => {
+    const stored = { receivable: '1300', revenue: 5, taxPayable: '2200' };
+    await db.owner.drizzle
+      .update(companies)
+      .set({ settings: sql`${companies.settings} || ${JSON.stringify({ 'sales.accounts': stored })}::jsonb` })
+      .where(eq(companies.id, db.companyId));
+    try {
+      const listed = (await settingsList(settingsToken)).find((s) => s.key === 'sales.accounts');
+      expect(listed).toMatchObject({ value: null, isDefault: false, defaultValue: { revenue: '4000' } });
+    } finally {
+      await db.owner.drizzle
+        .update(companies)
+        .set({ settings: sql`${companies.settings} - 'sales.accounts'::text` })
+        .where(eq(companies.id, db.companyId));
+    }
+    const restored = (await settingsList()).find((s) => s.key === 'sales.accounts');
+    expect(restored).toMatchObject({ value: null, isDefault: true });
   });
 
   it('AC-4: after PUT the value is stored and isDefault is false (the settings role may read and write)', async () => {
@@ -245,6 +273,51 @@ describe('settings-console AC-6: GET /meta/settings/:key/audit', () => {
     expect(changes[19]).toMatchObject({ before: 'W2', after: 'W3' });
   });
 
+  it('AC-6: an agent id (free text from x-agent-id) is never shown as a user name; the user it acted for is', async () => {
+    const res = await call('PUT', '/meta/settings/inventory.auto_issue_on_sales', {
+      body: { value: false },
+      token: settingsToken,
+      headers: { 'x-agent-id': db.adminUserId },
+    });
+    expect(res.status).toBe(200);
+    const changes = (await call('GET', '/meta/settings/inventory.auto_issue_on_sales/audit')).body as ChangeOut[];
+    expect(changes[0]).toMatchObject({
+      actorType: 'agent',
+      actorId: db.adminUserId,
+      actorName: null,
+      onBehalfOf: settingsUserId,
+      onBehalfOfName: '設定 担当',
+      after: false,
+    });
+    await call('DELETE', '/meta/settings/inventory.auto_issue_on_sales');
+  });
+
+  it('AC-6: overlapping writes wait for the company row, so each audited before is the previous after', async () => {
+    const key = 'inventory.default_warehouse';
+    const schema = registry.setting(key).schema;
+    // A write that holds its transaction open while a second write of the same key starts.
+    const slowSet = db.run({}, async (ctx) => {
+      await setSetting(ctx, key, schema, 'RACE-A');
+      await sleep(400);
+    });
+    await sleep(100);
+    await Promise.all([slowSet, db.run({}, (ctx) => setSetting(ctx, key, schema, 'RACE-B'))]);
+    const slowDelete = db.run({}, async (ctx) => {
+      await deleteSetting(ctx, key);
+      await sleep(400);
+    });
+    await sleep(100);
+    await Promise.all([slowDelete, db.run({}, (ctx) => setSetting(ctx, key, schema, 'RACE-C'))]);
+    const history = await db.run({}, (ctx) => settingHistory(ctx, key, 5));
+    expect(history.slice(0, 4).map((c) => [c.op, c.before, c.after])).toEqual([
+      ['update', null, 'RACE-C'],
+      ['delete', 'RACE-B', null],
+      ['update', 'RACE-A', 'RACE-B'],
+      ['update', history[3]?.before ?? null, 'RACE-A'],
+    ]);
+    for (let i = 0; i + 1 < history.length; i++) expect(history[i]?.before).toEqual(history[i + 1]?.after);
+  });
+
   it('AC-6: an undeclared key is 404; a key that never changed has an empty history', async () => {
     expect((await call('GET', '/meta/settings/nope.nothing/audit')).status).toBe(404);
     const empty = await call('GET', '/meta/settings/purchase.accounts/audit');
@@ -290,6 +363,45 @@ describe('settings-console AC-7: the same boundary as PUT', () => {
     await expect(
       db.run({ roles: ['settings'] }, (ctx) => settingHistory(ctx, 'contract.auto_submit')),
     ).resolves.toEqual(expect.any(Array));
+  });
+
+  it('AC-7: history and reset stay inside the company; a member of another company is refused', async () => {
+    const other = newId();
+    await db.owner
+      .sql`insert into companies (id, tenant_id, code, name) values (${other}, ${db.tenantId}, 'SET-B', 'B社')`;
+    const both = await member('settings-both@example.com', '両社 設定', ['settings']);
+    await db.owner.drizzle
+      .insert(companyMemberships)
+      .values({ tenantId: db.tenantId, userId: both.id, companyId: other, roles: ['settings'], accessScope: 'all' });
+    const inB = { 'x-company-id': other };
+    const put = await call('PUT', '/meta/settings/contract.default_proration', {
+      body: { value: 'none' },
+      token: both.token,
+      headers: inB,
+    });
+    expect(put.status).toBe(200);
+    const auditB = await call('GET', '/meta/settings/contract.default_proration/audit', {
+      token: both.token,
+      headers: inB,
+    });
+    expect(auditB.status).toBe(200);
+    expect(auditB.body as ChangeOut[]).toHaveLength(1);
+    const auditA = await call('GET', '/meta/settings/contract.default_proration/audit', { token: both.token });
+    expect(auditA).toMatchObject({ status: 200, body: [] });
+    expect((await settingsList(both.token)).find((s) => s.key === 'contract.default_proration')).toMatchObject({
+      isDefault: true,
+    });
+    // A settings member of company A only cannot read or reset company B's setting.
+    for (const method of ['GET', 'DELETE'] as const) {
+      const url = `/meta/settings/contract.default_proration${method === 'GET' ? '/audit' : ''}`;
+      const res = await call(method, url, { token: settingsToken, headers: inB });
+      expect(res.status, `${method} ${url}`).toBe(403);
+    }
+    const stillB = await call('GET', '/meta/settings/contract.default_proration/audit', {
+      token: both.token,
+      headers: inB,
+    });
+    expect(stillB.body as ChangeOut[]).toHaveLength(1);
   });
 
   it('AC-7: unauthenticated calls are 401', async () => {

@@ -10,7 +10,15 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import { request } from './client.ts';
-import type { ListResponse, SettingChange, SettingMeta, SettingWidget } from './types.ts';
+import type {
+  CodeList,
+  CodeOption,
+  ListResponse,
+  RecordJson,
+  SettingChange,
+  SettingMeta,
+  SettingWidget,
+} from './types.ts';
 
 export const settingsKey = ['settings'] as const;
 export const settingHistoryKey = (key: string) => ['settings', 'history', key] as const;
@@ -62,19 +70,23 @@ export function useSettingHistory(key: string, enabled: boolean): UseQueryResult
   });
 }
 
-export interface CodeOption {
-  code: string;
-  name: string;
-}
+type CodeWidget = Exclude<SettingWidget, 'textarea'>;
 
 /** Account codes from active accounts, warehouse codes from every warehouse (code order, up to the API page limit). */
-const CODE_SOURCES: Record<Exclude<SettingWidget, 'textarea'>, { entity: string; where?: Record<string, unknown> }> = {
+const CODE_SOURCES: Record<CodeWidget, { entity: string; where?: Record<string, unknown> }> = {
   'account-code': { entity: 'account', where: { isActive: true } },
   'warehouse-code': { entity: 'warehouse' },
 };
 export const CODE_OPTION_LIMIT = 500;
 
-export function useCodeOptions(widget: Exclude<SettingWidget, 'textarea'>): UseQueryResult<CodeOption[]> {
+function codeOptions(rows: readonly RecordJson[]): CodeOption[] {
+  return rows.flatMap((row) =>
+    typeof row.code === 'string' ? [{ code: row.code, name: typeof row.name === 'string' ? row.name : '' }] : [],
+  );
+}
+
+/** AC-10: the first CODE_OPTION_LIMIT codes and how many there are in all (a longer list is cut off). */
+export function useCodeOptions(widget: CodeWidget): UseQueryResult<CodeList> {
   const source = CODE_SOURCES[widget];
   return useQuery({
     queryKey: ['settings', 'codes', widget],
@@ -82,10 +94,25 @@ export function useCodeOptions(widget: Exclude<SettingWidget, 'textarea'>): UseQ
       const params = new URLSearchParams({ orderBy: 'code:asc', limit: String(CODE_OPTION_LIMIT), offset: '0' });
       if (source.where) params.set('where', JSON.stringify(source.where));
       const list = await request<ListResponse>(`/api/${source.entity}?${params.toString()}`, { signal });
-      return list.items.flatMap((row) =>
-        typeof row.code === 'string' ? [{ code: row.code, name: typeof row.name === 'string' ? row.name : '' }] : [],
-      );
+      const options = codeOptions(list.items);
+      return { options, total: Math.max(list.total, options.length) };
     },
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** AC-10: one stored code looked up by itself (same source and filter), for a code beyond a cut-off list; null = none. */
+export function useCodeLookup(widget: CodeWidget, code: string, enabled: boolean): UseQueryResult<CodeOption | null> {
+  const source = CODE_SOURCES[widget];
+  return useQuery({
+    queryKey: ['settings', 'codes', widget, 'lookup', code],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ limit: '1', offset: '0', where: JSON.stringify({ ...source.where, code }) });
+      const list = await request<ListResponse>(`/api/${source.entity}?${params.toString()}`, { signal });
+      return codeOptions(list.items)[0] ?? null;
+    },
+    enabled: enabled && code !== '',
     staleTime: 60_000,
     retry: false,
   });

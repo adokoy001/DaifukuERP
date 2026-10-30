@@ -183,6 +183,18 @@ export interface SettingMeta {
   isDefault: boolean;
 }
 
+/** One choice of a settings code picker (settings-console AC-10): an account or warehouse code and its name. */
+export interface CodeOption {
+  code: string;
+  name: string;
+}
+
+/** The first page of code choices and how many rows the API has in all (a longer list is cut off). */
+export interface CodeList {
+  options: readonly CodeOption[];
+  total: number;
+}
+
 /** GET /meta/settings/:key/audit (kernel settingHistory). `before` / `after` are the key's values (null = unset). */
 export interface SettingChange {
   id: string;
@@ -190,6 +202,7 @@ export interface SettingChange {
   op: string;
   actorType: string;
   actorId: string;
+  /** Name of the acting user (user rows only; an agent's id is never resolved to a name). */
   actorName: string | null;
   onBehalfOf: string | null;
   onBehalfOfName: string | null;
