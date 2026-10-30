@@ -1,7 +1,7 @@
 # 作業記録: 2026-10-30 opening-balances（期首残高の取込、B6）
 
 - セッション: 完成度向上の実装計画 B6 の実装（spec 作成セッションの worktree を引き継ぎ、ブランチ `wip/opening-balances`） ／ 担当: agent ／ 対象: [docs/specs/opening-balances.md](../specs/opening-balances.md)
-- 計測: tokens=null, agent_minutes=__AGENT_MINUTES__, human_minutes=0, rework_lines=__REWORK__, gate_failures=__GATE_FAILURES__
+- 計測: tokens=null, agent_minutes=125, human_minutes=0, rework_lines=70, gate_failures=0
 
 ## 決めたこと（と理由）
 
@@ -29,11 +29,11 @@
 ## 検証（何を・どう確認したか。コードレビューか実測かを明記）
 
 - [実測] unit: `modules/accounting/test/opening-balances.test.ts`（11 件: 期首残高日・行の分類・セル・合計）、`apps/web/src/lib/opening-balances.test.ts`（8 件: 見出しの照合・行の組立て・雛形・エラー CSV・理由の日英・段の有効化）。
-- [実測] DB: `modules/accounting/test/opening-balances.db.test.ts`（17 件）、`modules/sales/test/opening-receivables.db.test.ts`（15 件）、`modules/purchase/test/opening-payables.db.test.ts`（9 件）、`modules/inventory/test/opening-stock.db.test.ts`（12 件）、`apps/api/test/opening-balances.db.test.ts`（3 件、golden と 413 と会社の分離）、`apps/mcp/test/opening-balances-tools.db.test.ts`（2 件）。同時実行（D-14）は区分ごとに 2 本の接続（別トランザクション）で `Promise.allSettled` し、1 回だけ確定して他方が 409 / `exists` / `stock_exists` になることを確かめた。
+- [実測] DB: `modules/accounting/test/opening-balances.db.test.ts`（17 件）、`modules/sales/test/opening-receivables.db.test.ts`（16 件）、`modules/purchase/test/opening-payables.db.test.ts`（9 件）、`modules/inventory/test/opening-stock.db.test.ts`（13 件）、`apps/api/test/opening-balances.db.test.ts`（3 件、golden と 413 と会社の分離）、`apps/mcp/test/opening-balances-tools.db.test.ts`（2 件）。同時実行（D-14）は区分ごとに 2 本の接続（別トランザクション）で `Promise.allSettled` し、1 回だけ確定して他方が 409 / `exists` / `stock_exists` になることを確かめた。
 - [実測] golden（AC-30）: fixture の 4 つの CSV を REST で取り込み、試算表の期首借方・期首貸方が開始仕訳の CSV の科目ごとの純額と一致、3900 が 0、売掛金年齢表（期首日時点）の取引先ごとの残高と期日区分、買掛金年齢表、在庫評価の数量・金額（round6(数量 × 単価)、例 30 × 1333.333333 = 39999.99999）が一致。
-- [実測] ブラウザ: `apps/web/e2e/opening-balances.spec.ts`（1 件、slot 4、`--project=chromium --no-deps`）__E2E_RESULT__。画面検索から開く、貸借不一致で「取り込む」無効、4 ファイルの取込、仮勘定 0、試算表の期首欄（API）、開始仕訳の取消と再取込、axe（日本語 1280px・390px、serious/critical なし）、390px で横はみ出しなし、英語表示。
-- [実測] 計測（spec 検証手順 5、この開発コンテナ・Fastify の inject、他のエージェントと共有の 4 CPU）: __PERF__
-- [実測] `pnpm gate:light`（DB `daifuku_test_w13`）: __GATE_LIGHT__
+- [実測] ブラウザ: `apps/web/e2e/opening-balances.spec.ts`（1 件、slot 4、`--project=chromium --no-deps`）: 1 回目は失敗（下の「見つけた問題」の仮勘定のメモ）、修正後に通過（13.5 秒）。上限の変更後の最終確認: `opening-balances`・`settings-console`・`navigation`・`close-guide` の 15 件を `--no-deps` で実行して 14 件通過、残る 1 件（`navigation` の店舗従業員、業界の会社が要る試験）は業界の project 付き（`--no-deps` なし）で `navigation.spec.ts` を実行し 8 件すべて通過（2.5 分）。画面検索から開く、貸借不一致で「取り込む」無効、4 ファイルの取込、仮勘定 0、試算表の期首欄（API）、開始仕訳の取消と再取込、axe（日本語 1280px・390px、serious/critical なし）、390px で横はみ出しなし、英語表示。
+- [実測] 計測（spec 検証手順 5、この開発コンテナ・Fastify の inject、他のエージェントと共有の 4 CPU）: 2 回測った。(1) 売掛金 1,000 行・在庫 5,000 行・開始仕訳 498 行（負荷平均 9〜11、同時に別の DB 試験も走っていた）: 標準出力の取りこぼしで所要時間を直接は取れず、DB の作成時刻から下限を見積もった — 売掛金 1,000 行の実行は最初と最後の期首請求書の作成時刻の差で約 530 秒、在庫 5,000 行の実行は約 98 秒（事前確認もほぼ同じ）。(2) 売掛金 200 行・在庫 1,000 行・開始仕訳 498 行（負荷平均約 10、ファイルへ記録）: 開始仕訳 事前確認 6.7 秒・実行 5.9 秒、売掛金 200 行 事前確認 28.5 秒・実行 30.5 秒（1 件約 0.15 秒）、在庫 1,000 行 事前確認 18.4 秒・実行 17.9 秒。売掛金の取込中の勧告ロックの最大は 202〜204 件（期首請求書 1 件に 1 つ、`pg_locks` の `advisory`）。サーバーの `max_locks_per_transaction` は 64、`max_connections` 100。→ spec の規則（1,000 行の実行が 60 秒超なら上限を下げる）に従い、売掛金・買掛金を 200 行、在庫を 2,000 行に下げた（開始仕訳は 1,000 行のまま）。spec AC-15・AC-23・Q-5、マニュアル 03、ADR-0030 を直し、上限超過の DB 試験を足した。計測の試験ファイルは一時的なもので、リポジトリには残していない（`apps/api/test/zz-opening-perf.db.test.ts` として実行後に削除）。
+- [実測] `pnpm gate:light`（DB `daifuku_test_w13`）: 通過、2,101 秒（format 42 秒、typecheck 30 秒・api 53 秒・web 68 秒、lint 49 秒（既存の警告 5 件、エラーなし）、unit 156 ファイル 1,568 件 168 秒、DB は kernel の公開面の変更で全件に昇格して 137 ファイル 882 件 1,667 秒、deploy 23 秒）。共有の 4 CPU、負荷平均 5〜12。assurance が `PV-FILING-01`（申告準備の根拠）の再確認を求めた: l10n/jp の科目表の変更による。対象の試験 `l10n/jp/test/filing-source-model.db.test.ts` は gate の DB で通過し、3900 は申告の対応付けに無く残高 0 なら出力に入らない（上の Q-7 のレビュー）。
 - [レビュー] AC-7 の relay・拠点限定の文脈: 5 つの action は `storeAccess`・`siteAccess`・`relayAccess` を宣言しないので kernel が 403（店舗限定は DB 試験で実測、拠点・relay はレビュー）。AC-22 の受信箱の期日超過・関連伝票: 期首請求書は通常の請求書の列（`status`・`dueDate`）をそのまま持つので既存の集計の対象（レビュー。試験なし）。
 - [未検証] Shift_JIS のファイルでの取込（判別は B5 の部品）。実際の MCP クライアントからの取込。小売パックの最初の月次締めの手順（マニュアルの記述のみ）。`pnpm gate:full`（統合担当が実行）。
 
@@ -41,6 +41,9 @@
 
 - 仮勘定へ回した行に摘要を書くと、仮勘定の明細から元の科目が消え、状況の注意で科目を名指しできなかった — 発見: E2E（ブラウザ試験の 1 回目の失敗）、修正: `clearingMemo(account, memo)` で常に元の科目を先に付ける（AC-12 の文言も更新）。
 - spec 批評の指摘（16 件）— 発見: spec 批評（レビュー）、修正: spec の更新コミット `docs(spec): resolve the opening-balances spec critique`。
+- 売掛金 1,000 行の実行が 60 秒を大きく超えた（約 530 秒、負荷下）— 発見: 計測（検証手順 5）、修正: 上限を売掛金・買掛金 200 行・在庫 2,000 行に下げた（spec Q-5）。
+- 3900 の追加で `l10n/jp/test/l10n-jp.db.test.ts` の区分ごとの件数（equity 3 → 4）が変わった — 発見: DB 試験、修正: データの追加に伴う期待値の更新と 3900 の属性の検査を追加（弱体化ではない）。
+- `opening_balance` 列の追加で、移行の試験 2 件が失敗した — 発見: DB 試験。`apps/api/test/industry-templates.db.test.ts` は migration 0007 の古いスキーマに現在の registry の `sales_invoice.create` で下書きを作っていたため、後の migration の列（0018）が無く INSERT が失敗した。古い列だけの SQL で下書きを作るように直した（`legacy-fixture.ts` と同じ方針。確かめる内容「既存の伝票が残る」は同じ）。`apps/api/test/commerce-finance-migration.db.test.ts` は移行前後の `select *` を比べるため、0018 が既存の請求書に足す `opening_balance = false` を期待値に明示した（0017 の `expectedBooleanUserFacts` と同じ扱い。元の列はすべてそのまま比べる）。
 - 試験の誤り（自分で直したもの、弱体化ではない）: 仮勘定の残高の符号（借方 + の約束で 300,000 − 200,000 = +100,000）、買掛金年齢表の列名（`balance`）、1,000 行 × 2 セル × 1,000 字では 2 MB に届かなかった入力、ヘッダの `'` は数式の先頭文字の前でだけ外れること。
 
 ## 未実施（減らさない。完了したら「済」を付けて残す）
@@ -52,7 +55,7 @@
 
 ## 判断待ち（利用者）
 
-- spec の Q-1〜Q-8 は既定のまま実装した（Q-1 経理だけの利用者は売掛金・買掛金・在庫を取り込めない、Q-3 3900、Q-4 事業主貸・借はマニュアルで注意、Q-5 行数の上限は計測を見て __Q5__）。
+- spec の Q-1〜Q-8 は既定のまま実装した（Q-1 経理だけの利用者は売掛金・買掛金・在庫を取り込めない、Q-3 3900、Q-4 事業主貸・借はマニュアルで注意、Q-5 は計測で売掛金・買掛金 200 行・在庫 2,000 行に下げた）。
 
 ## 次のセッションへ
 
