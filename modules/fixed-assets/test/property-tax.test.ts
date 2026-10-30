@@ -2,7 +2,7 @@
 import { Decimal } from '@daifuku/kernel';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { propertyTaxRows, UNSET_MUNICIPALITY, type PropertyTaxAsset } from '../src/index.ts';
+import { propertyTaxRows, type PropertyTaxAsset } from '../src/index.ts';
 
 const D = (v: number) => Decimal.from(String(v));
 const ORDER = ['structure', 'machinery', 'vessel', 'aircraft', 'vehicle', 'tools'];
@@ -64,7 +64,7 @@ describe('property tax aggregate (AC-22)', () => {
     ]);
   });
 
-  it('AC-22: an empty municipality is grouped as （未設定） after named ones', () => {
+  it('AC-22: an empty municipality is grouped as one unset row (null, shown as （未設定）) after named ones', () => {
     const rows = propertyTaxRows(
       [
         { municipality: null, propertyTaxClass: 'tools', acquisitionDate: '2020-01-01', disposedOn: null, cost: D(1) },
@@ -80,7 +80,7 @@ describe('property tax aggregate (AC-22)', () => {
       '2027-01-01',
       ORDER,
     );
-    expect(rows.map((r) => r.municipality)).toEqual(['港区', UNSET_MUNICIPALITY]);
+    expect(rows.map((r) => r.municipality)).toEqual(['港区', null]);
   });
 
   it('AC-22: 計 = 前年前 − 減少 + 取得 for any assets', () => {

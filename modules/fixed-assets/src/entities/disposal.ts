@@ -33,7 +33,10 @@ export const FixedAssetDisposal = defineDocument({
     }),
     proceedsAccountId: f.ref('account', {
       label: label('売却代金の科目', 'Proceeds account'),
-      description: label('空欄なら設定 fixed_assets.accounts の proceeds', 'Empty: fixed_assets.accounts proceeds'),
+      description: label(
+        '空欄なら設定「固定資産の転記科目」の売却代金の科目',
+        'Empty: the proceeds account of the setting “Fixed asset posting accounts”',
+      ),
     }),
     partnerId: f.ref('partner', { label: label('売却先', 'Buyer') }),
     memo: f.text({ label: label('メモ', 'Memo'), multiline: true, maxLength: 1000 }),

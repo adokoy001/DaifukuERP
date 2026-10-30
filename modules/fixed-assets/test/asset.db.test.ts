@@ -4,7 +4,7 @@ import { repo, setSetting, StateError, ValidationError } from '@daifuku/kernel';
 import { Account, JournalEntry } from '@daifuku/mod-accounting';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FIXED_ASSET_ACCOUNTS_KEY, FixedAsset, fixedAssetAccountsSchema } from '../src/index.ts';
-import { caught, issues, setupEnv, type Env, type Row } from './db-setup.ts';
+import { caught, issues, secondCompany, seedCompany, setupEnv, type Env, type Row } from './db-setup.ts';
 
 const NOW = new Date('2027-09-15T03:00:00Z');
 let env: Env;
@@ -163,6 +163,39 @@ describe('validation (AC-2, AC-3)', () => {
     expect(
       issues(await caught(create({ ...g7, openingAccumulatedDepreciation: '100000', openingRevisedBase: '900000' }))),
     ).toContain('openingRevisedBase');
+  });
+});
+
+describe('no fiscal year at registration (AC-3)', () => {
+  it('AC-3: an asset in service before the first fiscal year without opening values is never booked as new', async () => {
+    const companyC = await secondCompany(env, 'T3');
+    const inC = { companyId: companyC };
+    await seedCompany(env, { fiscalYears: [], companyId: companyC });
+    // No fiscal year yet: the AC-3 check cannot apply, so the save is accepted.
+    const asset = await env.act<Asset>(
+      'fixed_asset.create',
+      {
+        ...(await input({ acquisitionDate: '2020-04-01', inServiceDate: '2020-04-01' })),
+        assetAccountId: await env.account('1925', companyC),
+      },
+      inC,
+    );
+    await env.act('accounting.open_fiscal_year', { startDate: '2026-04-01' }, inC);
+    const p = await env.act<{ lines: unknown[]; skipped: Record<string, number> }>(
+      'fixed_assets.preview_depreciation',
+      { periodId: await env.periodId('2026-10', companyC) },
+      inC,
+    );
+    expect([p.lines.length, p.skipped.opening_required]).toEqual([0, 1]);
+    const d = await env.act<Row & { id: string; disposalYearDepreciation: string | null }>(
+      'fixed_asset_disposal.create',
+      { assetId: asset.id, date: '2026-10-20', kind: 'retirement' },
+      inC,
+    );
+    expect(d.disposalYearDepreciation).toBeNull();
+    const e = await caught(env.act('fixed_asset_disposal.submit', { id: d.id }, inC));
+    expect(e).toBeInstanceOf(StateError);
+    expect((e as StateError).details?.reason).toBe('opening_required');
   });
 });
 

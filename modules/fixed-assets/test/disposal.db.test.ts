@@ -1,9 +1,19 @@
 // Postgres tests of retirements and sales (docs/specs/fixed-assets.md AC-17..AC-20, AC-35; golden D1, D2, D3, D7).
 // Test DB: TEST_DATABASE_URL*. Today is 2027-09-15 (JST); fiscal years run April–March (FY2026, FY2027).
-import { DOCSTATUS, repo, runAction, setSetting, StateError, ValidationError, type Context } from '@daifuku/kernel';
+import {
+  DOCSTATUS,
+  repo,
+  runAction,
+  setSetting,
+  StateError,
+  ValidationError,
+  withLock,
+  type Context,
+} from '@daifuku/kernel';
 import { Account, loadLines } from '@daifuku/mod-accounting';
 import { Partner } from '@daifuku/mod-partner';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { FIXED_ASSETS_LOCK } from '../src/domain-write.ts';
 import { FixedAsset, RULES_CONFIRMATION_KEY, rulesConfirmationSchema } from '../src/index.ts';
 import { caught, issues, setupEnv, type Env, type Row } from './db-setup.ts';
 import { TEST_RULES } from './fixture-rules.ts';
@@ -270,5 +280,89 @@ describe('refusals (AC-20, AC-35)', () => {
     );
     expect((await submit(d.items[0]?.id as string)).docstatus).toBe(DOCSTATUS.submitted);
     expect(await env.run({}, (ctx) => repo(ctx, Account).count())).toBeGreaterThan(0);
+  });
+});
+
+function latch() {
+  let release = () => undefined as void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+/** Lock requests waiting in this test database (optionally of one lock type). */
+async function waitingLocks(locktype?: string): Promise<number> {
+  const [row] = await env.db.owner.sql<{ n: number }[]>`
+    select count(*)::int as n from pg_locks l join pg_stat_activity a on a.pid = l.pid
+    where a.datname = current_database() and not l.granted and (${locktype ?? null}::text is null or l.locktype = ${locktype ?? null})`;
+  return row?.n ?? 0;
+}
+async function until(condition: () => Promise<boolean>): Promise<void> {
+  const started = Date.now();
+  while (!(await condition())) {
+    if (Date.now() - started > 15_000) throw new Error('timed out waiting for the lock state');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+/** Holds the company lock of the fixed-assets module in its own transaction until released. */
+async function holdCompanyLock() {
+  const held = latch();
+  const release = latch();
+  const done = env.run({}, (ctx) =>
+    withLock(ctx, FIXED_ASSETS_LOCK, async () => {
+      held.release();
+      await release.promise;
+    }),
+  );
+  await held.promise;
+  return { release: release.release, done };
+}
+
+describe('lock order (ADR-0020)', () => {
+  it('AC-4 AC-20: a financial edit during a disposal submit waits for the submit instead of deadlocking', async () => {
+    const id = await g1Asset('L1');
+    const d = await draft({ assetId: id, date: '2027-08-20', kind: 'retirement' });
+    const lock = await holdCompanyLock();
+    let submitting: Promise<unknown> = Promise.resolve();
+    let editing: Promise<unknown> = Promise.resolve();
+    try {
+      // The submit takes the asset row first, then queues for the company lock.
+      submitting = submit(d.id);
+      await until(async () => (await waitingLocks('advisory')) === 1);
+      // The edit queues for the asset row (before, it took the row and queued for the company lock: 40P01).
+      editing = env.act('fixed_asset.update', { id, patch: { usefulLife: 4 } });
+      await until(async () => (await waitingLocks()) >= 2);
+    } finally {
+      lock.release();
+    }
+    const [submitted, edited] = await Promise.allSettled([submitting, editing, lock.done]);
+    expect(submitted.status).toBe('fulfilled');
+    expect(edited.status).toBe('rejected');
+    const reason = (edited as PromiseRejectedResult).reason as StateError;
+    expect(reason).toBeInstanceOf(StateError);
+    expect(reason.details?.reason).toBe('asset_frozen');
+    const asset = await env.run({}, (ctx) => repo(ctx, FixedAsset).get(id));
+    expect([asset.status, asset.usefulLife]).toEqual(['disposed', 5]);
+  });
+
+  it('AC-4: a name or memo edit never waits for the company lock', async () => {
+    const id = await assetId('X1');
+    const lock = await holdCompanyLock();
+    let finished = false;
+    let sawWait = false;
+    const editing = env.act('fixed_asset.update', { id, patch: { memo: 'edited while locked' } }).finally(() => {
+      finished = true;
+    });
+    try {
+      while (!finished && !sawWait) {
+        sawWait = (await waitingLocks('advisory')) > 0;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    } finally {
+      lock.release();
+    }
+    await Promise.all([editing, lock.done]);
+    expect(sawWait).toBe(false);
+    expect((await env.run({}, (ctx) => repo(ctx, FixedAsset).get(id))).memo).toBe('edited while locked');
   });
 });

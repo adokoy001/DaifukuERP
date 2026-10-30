@@ -142,7 +142,8 @@ const containsDate = (y: FiscalYearLike, d: LocalDate): boolean => y.startDate <
  * AC-9: every fiscal year from the asset's first year (service year, or the opening year) through `targetYearId`, with
  * the opening book value taken from the actual bookings (`bookedByYear`, by fiscal year id). `years` is sorted by start
  * date. Returns [] when the target year is before the first year. A service month before the company's first fiscal
- * year (no opening values) starts at the first year with the full cost (AC-3 refuses that case at registration).
+ * year (no opening values) starts at the first year with the full cost: callers must not book such an asset (AC-3 refuses
+ * it at registration when the company has a fiscal year; plan.ts `needsOpening` skips it in runs and disposals).
  */
 export function walkYears(
   asset: WalkAsset,

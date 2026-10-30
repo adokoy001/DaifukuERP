@@ -86,7 +86,19 @@ export interface BookedHistory {
   lastDate: Map<string, LocalDate>;
 }
 
-/** Booked amounts of submitted runs per asset and fiscal year (optionally only for `assetIds`). */
+/**
+ * Groups one aggregate call may return: the kernel caps aggregate results at 10,000 rows without an error, so a call
+ * that reaches it may have dropped groups and the history is refused instead of summed partially.
+ */
+export const HISTORY_GROUP_LIMIT = 10_000;
+export const HISTORY_RANGE_HINT =
+  'The booked depreciation of one fiscal year spans more assets than one query can sum (10,000). This size is not supported yet.';
+
+/**
+ * Booked amounts of submitted runs per asset and fiscal year (optionally only for `assetIds`). One aggregate per fiscal
+ * year (and per 500 runs of it), so a call returns at most one group per asset booked in that year; a call that reaches
+ * HISTORY_GROUP_LIMIT fails closed (a dropped group would make the next run book the year again).
+ */
 export async function bookedHistory(
   ctx: Context,
   runs: readonly RunRow[],
@@ -94,17 +106,29 @@ export async function bookedHistory(
 ): Promise<BookedHistory> {
   const byAsset = new Map<string, Map<string, Decimal>>();
   const lastDate = new Map<string, LocalDate>();
-  const ids = runs.map((r) => r.id);
-  for (let i = 0; i < ids.length; i += PAGE) {
-    const chunk = ids.slice(i, i + PAGE);
+  if (assetIds && assetIds.length === 0) return { byAsset, lastDate };
+  const runsByYear = new Map<string, string[]>();
+  for (const r of runs) {
+    const ids = runsByYear.get(r.fiscalYearId) ?? [];
+    ids.push(r.id);
+    runsByYear.set(r.fiscalYearId, ids);
+  }
+  const chunks = [...runsByYear.values()].flatMap((ids) =>
+    Array.from({ length: Math.ceil(ids.length / PAGE) }, (_, i) => ids.slice(i * PAGE, (i + 1) * PAGE)),
+  );
+  for (const chunk of chunks) {
     const where: Domain = { runId: { $in: chunk } };
     if (assetIds) where.assetId = { $in: [...assetIds] };
-    if (assetIds && assetIds.length === 0) break;
     const rows = await repo(ctx, DepreciationRunLine).aggregate({
       where,
       groupBy: ['assetId', 'fiscalYearId'],
       metrics: { amount: { sum: 'amount' }, last: { max: 'date' } },
+      limit: HISTORY_GROUP_LIMIT,
     });
+    if (rows.length >= HISTORY_GROUP_LIMIT)
+      throw new StateError('Fixed asset history exceeds the supported range', HISTORY_RANGE_HINT, {
+        reason: 'history_too_large',
+      });
     for (const r of rows) {
       const asset = String(r.assetId);
       const year = String(r.fiscalYearId);

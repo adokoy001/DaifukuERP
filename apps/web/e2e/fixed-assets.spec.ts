@@ -1,7 +1,8 @@
 // Fixed assets in the browser (docs/specs/fixed-assets.md AC-32..AC-34, AC-35): register an asset through the generic
-// form (labelled groups), preview on /finance/depreciation with the run blocked while the rate tables are unverified,
-// record the confirmation in the settings, run, run again (nothing due), retire the asset, a viewer sees no run
-// button, English, 390px and axe. Data: a fresh synthetic company (commerceFixture).
+// form (labelled groups), preview on /finance/depreciation with the run blocked while the rules are unverified,
+// record the confirmation in the settings, check the populated screen at 390px with axe (table, rules viewer open,
+// confirm dialog), run (focus lands on the period heading), run again (nothing due), retire the asset; a viewer sees
+// no run button; English, 390px and axe on an empty preview. Data: a fresh synthetic company (commerceFixture).
 import { existsSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -85,10 +86,18 @@ test('fixed-assets AC-32..AC-35: register, preview blocked while unverified, con
   await page.goto('/finance/depreciation');
   await expect(page.getByTestId('depreciation-line')).toHaveCount(1);
   await expect(page.getByTestId('depreciation-amount')).toHaveText('10,000');
+  // AC-32: the 科目 column (expense / accumulated depreciation, filled from the settings).
+  await expect(page.getByTestId('depreciation-accounts')).toHaveText('6700 / 1929');
   await expect(page.getByTestId('depreciation-run')).toBeDisabled();
   await expect(page.getByTestId('depreciation-blockers')).toContainText('照合');
-  await page.getByText('償却率表を見る', { exact: false }).click();
-  await expect(page.getByTestId('depreciation-rules')).toContainText('別表第八');
+  // AC-35: the viewer lists every legal parameter the postings use, with the method named and the dates they apply to.
+  await page.getByTestId('depreciation-rules').locator('summary').click();
+  const rulesView = page.getByTestId('depreciation-rules');
+  await expect(rulesView.getByRole('heading', { name: /^定額法 — 耐用年数省令 別表第八/ })).toBeVisible();
+  await expect(rulesView.getByRole('heading', { name: /^定率法（200%） — 耐用年数省令 別表第十/ })).toBeVisible();
+  for (const name of ['備忘価額', '償却方法の制限', '耐用年数の例'])
+    await expect(rulesView.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(rulesView.getByRole('link', { name: /laws\.e-gov\.go\.jp/ }).first()).toBeVisible();
 
   // AC-35: record the confirmation of the current rule set in the settings console.
   const rules = await api<Row & { id: string }>(request, h, '/actions/fixed_assets.depreciation_rules', {});
@@ -102,14 +111,30 @@ test('fixed-assets AC-32..AC-35: register, preview blocked while unverified, con
   await card.getByRole('button', { name: '保存', exact: true }).click();
   expect((await saved).ok()).toBe(true);
 
-  // AC-32: run through the kit dialog; the result is announced and the preview is taken again.
+  // AC-34: the populated screen at 390px: no horizontal overflow, axe with the table, the rules viewer and the dialog.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/finance/depreciation');
   await expect(page.getByTestId('depreciation-rules-confirmed')).toBeVisible();
+  await expect(page.getByTestId('depreciation-line')).toHaveCount(1);
+  await page.waitForLoadState('networkidle');
+  await assertNoOverflow(page);
+  await axe(page, { screen: 'depreciation', locale: 'ja', width: 390 });
+  await page.getByTestId('depreciation-rules').locator('summary').click();
+  await expect(page.getByTestId('depreciation-rules').getByRole('heading', { name: '備忘価額' })).toBeVisible();
+  await assertNoOverflow(page);
+  await axe(page, { screen: 'depreciation', locale: 'ja', width: 390 });
+
+  // AC-32: run through the kit dialog; the result is announced, the preview is taken again and focus does not drop to
+  // the page body although the run button is now disabled.
   await page.getByTestId('depreciation-run').click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('1 件、合計 10,000 円');
+  await axe(page, { screen: 'depreciation', locale: 'ja', width: 390 });
   await dialog.getByTestId('depreciation-confirm').click();
   await expect(page.getByTestId('depreciation-announcement')).toContainText('償却を計上しました');
+  await expect(page.getByTestId('depreciation-period-heading')).toBeFocused();
+  await expect(page.getByTestId('depreciation-run')).toBeDisabled();
+  await page.setViewportSize({ width: 1280, height: 844 });
   await expect(page.getByTestId('depreciation-nothing')).toBeVisible();
   await expect(page.getByTestId('depreciation-runs').locator('li')).toHaveCount(1);
   await expect(page.getByTestId('depreciation-entry-link')).toBeVisible();
@@ -138,7 +163,7 @@ test('fixed-assets AC-32..AC-35: register, preview blocked while unverified, con
   expect(asset.status).toBe('disposed');
 });
 
-test('fixed-assets AC-32 AC-34: a viewer sees no run button; English, 390px and axe on the screen', async ({
+test('fixed-assets AC-32 AC-34: a viewer sees no run button; English, 390px and axe on an empty preview', async ({
   page,
   request,
 }) => {

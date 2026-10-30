@@ -1,12 +1,14 @@
 // Pure helpers of the depreciation-run screen (docs/specs/fixed-assets.md AC-32..AC-34): the preview payload of
 // fixed_assets.preview_depreciation, the URL search, and the texts the page shows (blockers, totals, results).
-import type { Label, Locale } from '../api/types.ts';
+import type { AppMeta, Label, Locale } from '../api/types.ts';
 import { formatDecimal } from './format.ts';
 
 export const PREVIEW_ACTION = 'fixed_assets.preview_depreciation';
 export const RUN_ACTION = 'fixed_assets.run_depreciation';
 export const RULES_ACTION = 'fixed_assets.depreciation_rules';
-export const RULES_SETTING_HREF = '/settings?tab=accounting';
+export const OPEN_FISCAL_YEAR_ACTION = 'accounting.open_fiscal_year';
+/** The settings console tab with the rules confirmation (a router Link: `to` + `search`). */
+export const RULES_SETTING_LINK = { to: '/settings', search: { tab: 'accounting' } } as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,6 +44,9 @@ export interface PreviewLine {
   amount: string;
   expenseAccountId: string;
   accumulatedAccountId: string;
+  /** Codes for the 科目 column; null when the server could not read the accounts. */
+  expenseAccountCode: string | null;
+  accumulatedAccountCode: string | null;
   switched: boolean;
 }
 
@@ -76,9 +81,10 @@ export interface RunResult {
   rulesVerified: boolean;
 }
 
+/** Same texts as the fixed_asset method labels of the register and its form. */
 export const METHOD_LABEL: Readonly<Record<string, Label>> = {
   straight_line: { ja: '定額法', en: 'Straight-line' },
-  declining_200: { ja: '定率法', en: 'Declining balance' },
+  declining_200: { ja: '定率法（200%）', en: 'Declining balance (200%)' },
 };
 
 export const BLOCKER_LABEL: Readonly<Record<Blocker, Label>> = {
@@ -149,6 +155,7 @@ const SKIP_LABEL: Readonly<Record<string, Label>> = {
   fully_depreciated: { ja: '償却済み', en: 'fully depreciated' },
   already_booked: { ja: 'この期間に計上済み', en: 'already booked in this period' },
   nothing_due: { ja: '計上額 0', en: 'nothing due' },
+  opening_required: { ja: '移行時の値が必要', en: 'opening values required' },
 };
 
 /** "未供用 2 件、償却済み 1 件" — skipped assets by reason (zero reasons left out). */
@@ -164,4 +171,55 @@ export function methodText(line: Pick<PreviewLine, 'method' | 'usefulLife' | 'sw
   const years = locale === 'ja' ? `${line.usefulLife} 年` : `${line.usefulLife} y`;
   const switched = line.switched ? (locale === 'ja' ? '・改定償却率' : ', revised rate') : '';
   return `${method} ${years}${switched}`;
+}
+
+/** "6700 / 1929": the expense and the accumulated-depreciation account of a line (AC-32 科目). */
+export function accountsText(line: Pick<PreviewLine, 'expenseAccountCode' | 'accumulatedAccountCode'>): string {
+  return `${line.expenseAccountCode ?? '—'} / ${line.accumulatedAccountCode ?? '—'}`;
+}
+
+/** The registered rule set as fixed_assets.depreciation_rules returns it (the parts the screen shows). */
+export interface RulesView {
+  id: string;
+  verifiedOn: string | null;
+  sources: string[];
+  memorandum: { kind: string; acquiredFrom: string; acquiredTo: string | null; amount: string; source: string }[];
+  rateTables: {
+    method: string;
+    acquiredFrom: string;
+    acquiredTo: string | null;
+    source: string;
+    rows: { usefulLife: number; rate: string; revisedRate: string | null; guaranteeRate: string | null }[];
+  }[];
+  methodRestrictions: {
+    assetClass: string;
+    acquiredFrom: string;
+    acquiredTo: string | null;
+    methods: string[];
+    source: string;
+  }[];
+  usefulLifeExamples: { label: Label; assetClass: string; usefulLife: number; table: string }[];
+}
+
+/** "2007-04-01 〜" / "2007-04-01 – 2012-03-31": the acquisition dates a row of the rules applies to. */
+export function acquiredText(row: { acquiredFrom: string; acquiredTo: string | null }, locale: Locale): string {
+  const to = row.acquiredTo ?? '';
+  return locale === 'ja' ? `${row.acquiredFrom} 〜 ${to}`.trim() : `${row.acquiredFrom} – ${to}`.trim();
+}
+
+/** Heading of a rate table: the method in the viewer's language, then the statutory table. */
+export function rateTableTitle(table: Pick<RulesView['rateTables'][number], 'method' | 'source'>, locale: Locale) {
+  return `${METHOD_LABEL[table.method]?.[locale] ?? table.method} — ${table.source}`;
+}
+
+const KIND_LABEL: Readonly<Record<string, Label>> = {
+  tangible: { ja: '有形', en: 'Tangible' },
+  intangible: { ja: '無形', en: 'Intangible' },
+};
+export const kindText = (kind: string, locale: Locale): string => KIND_LABEL[kind]?.[locale] ?? kind;
+
+/** The label of an asset class from the fixed_asset metadata (the code when the metadata has none). */
+export function assetClassText(meta: Pick<AppMeta, 'entities'>, assetClass: string, locale: Locale): string {
+  const field = meta.entities.find((e) => e.name === 'fixed_asset')?.fields.find((f) => f.name === 'assetClass');
+  return field?.valueLabels?.[assetClass]?.[locale] ?? assetClass;
 }

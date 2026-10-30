@@ -4,12 +4,16 @@ import { describe, expect, it } from 'vitest';
 import type { ActionMeta, AppMeta } from '../api/types.ts';
 import { helpTopicFor } from './help.ts';
 import {
+  accountsText,
+  acquiredText,
+  assetClassText,
   BLOCKER_LABEL,
   BLOCKERS,
   canRun,
   methodText,
   parseDepreciationSearch,
   PREVIEW_ACTION,
+  rateTableTitle,
   runAnnouncement,
   runBlockers,
   skippedText,
@@ -44,6 +48,8 @@ const preview = (over: Partial<DepreciationPreview> = {}): DepreciationPreview =
       amount: '10000',
       expenseAccountId: 'e',
       accumulatedAccountId: 'c',
+      expenseAccountCode: '6700',
+      accumulatedAccountCode: '1929',
       switched: true,
     },
   ],
@@ -51,7 +57,14 @@ const preview = (over: Partial<DepreciationPreview> = {}): DepreciationPreview =
   assetCount: 1,
   overLimit: false,
   runs: [],
-  skipped: { disposed: 0, not_in_service: 2, fully_depreciated: 0, already_booked: 1, nothing_due: 0 },
+  skipped: {
+    disposed: 0,
+    not_in_service: 2,
+    fully_depreciated: 0,
+    already_booked: 1,
+    nothing_due: 0,
+    opening_required: 0,
+  },
   priorYearPending: null,
   blockers: [],
   ...over,
@@ -82,8 +95,14 @@ describe('depreciation screen (AC-32)', () => {
     expect(totalText(preview(), 'ja')).toBe('1 件、合計 10,000 円');
     expect(totalText(preview(), 'en')).toBe('1 asset, total 10,000 yen');
     expect(skippedText(preview().skipped, 'ja')).toBe('未供用 2 件、この期間に計上済み 1 件');
+    expect(skippedText({ ...preview().skipped, opening_required: 1 }, 'en')).toBe(
+      '2 not in service, 1 already booked in this period, 1 opening values required',
+    );
     expect(methodText(preview().lines[0] as DepreciationPreview['lines'][number], 'ja')).toBe(
-      '定率法 5 年・改定償却率',
+      '定率法（200%） 5 年・改定償却率',
+    );
+    expect(methodText(preview().lines[0] as DepreciationPreview['lines'][number], 'en')).toBe(
+      'Declining balance (200%) 5 y, revised rate',
     );
     const run = {
       id: 'r',
@@ -99,6 +118,35 @@ describe('depreciation screen (AC-32)', () => {
     expect(runAnnouncement({ created: false, existingRuns: [run], rulesVerified: false }, '2026-10', 'en')).toBe(
       'Nothing was due for 2026-10; no entry was created.',
     );
+  });
+
+  it('AC-32: the accounts column shows the expense and accumulated codes; a missing code is a dash', () => {
+    const line = preview().lines[0] as DepreciationPreview['lines'][number];
+    expect(accountsText(line)).toBe('6700 / 1929');
+    expect(accountsText({ ...line, accumulatedAccountCode: null })).toBe('6700 / —');
+  });
+
+  it('AC-32 AC-34 AC-35: the rules viewer names the method and the acquisition dates in both languages', () => {
+    expect(rateTableTitle({ method: 'declining_200', source: '耐用年数省令 別表第十' }, 'en')).toBe(
+      'Declining balance (200%) — 耐用年数省令 別表第十',
+    );
+    expect(rateTableTitle({ method: 'straight_line', source: '耐用年数省令 別表第八' }, 'ja')).toBe(
+      '定額法 — 耐用年数省令 別表第八',
+    );
+    expect(acquiredText({ acquiredFrom: '2007-04-01', acquiredTo: null }, 'ja')).toBe('2007-04-01 〜');
+    expect(acquiredText({ acquiredFrom: '2007-04-01', acquiredTo: '2012-03-31' }, 'en')).toBe(
+      '2007-04-01 – 2012-03-31',
+    );
+    const meta = {
+      entities: [
+        {
+          name: 'fixed_asset',
+          fields: [{ name: 'assetClass', valueLabels: { software: { ja: 'ソフトウエア', en: 'Software' } } }],
+        },
+      ],
+    } as unknown as Pick<AppMeta, 'entities'>;
+    expect(assetClassText(meta, 'software', 'en')).toBe('Software');
+    expect(assetClassText(meta, 'building', 'ja')).toBe('building');
   });
 
   it('AC-33: the screen is listed in the finance workspace only with the preview action; help maps to the chapter', () => {

@@ -201,8 +201,13 @@ export async function rulesConfirmation(ctx: Context, rules: DepreciationRuleSet
   return confirmationState(rules, recorded);
 }
 
+/**
+ * AC-35: what a confirmation covers — every legal parameter a posting uses: the rate tables and the acquisition dates
+ * they apply to, the memorandum values and their dates, the method restrictions, and the module's rounding (amounts cut
+ * down to the yen; its primary source is open, spec Q6).
+ */
 export const RULES_UNVERIFIED_HINT =
-  'Compare the rate tables returned by fixed_assets.depreciation_rules with 耐用年数省令 別表第八・第十 and record the rule set id and the date in setting fixed_assets.rules_confirmation, or install a country pack whose rules are verified.';
+  'Compare every parameter returned by fixed_assets.depreciation_rules with the primary sources — the rate tables and the acquisition dates they apply to (耐用年数省令 別表第八・第十), the memorandum values and their dates (法人税法施行令 第61条), the method restrictions (施行令 第48条の2) — and accept the rounding (yearly, monthly and disposal amounts cut down to the yen), then record the rule set id and the date in setting fixed_assets.rules_confirmation, or install a country pack whose rules are verified.';
 
 /** AC-35: postings refuse rules that are neither verified by the pack nor confirmed by the company. */
 export async function assertRulesUsable(ctx: Context, rules: DepreciationRuleSet): Promise<void> {

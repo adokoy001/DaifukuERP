@@ -106,6 +106,8 @@ export const rate = (r: string, revised: string | null = null, guarantee: string
 });
 
 export const SL5 = rate('0.200', null, null, 5);
+/** G10: 3 years (0.334), whose amounts are not whole yen before truncation. */
+export const SL3 = rate('0.334', null, null, 3);
 export const DB10 = rate('0.200', '0.250', '0.06552', 10);
 export const DB5 = rate('0.400', '0.500', '0.10800', 5);
 export const DB4 = rate('0.500', '1.000', '0.12499', 4);

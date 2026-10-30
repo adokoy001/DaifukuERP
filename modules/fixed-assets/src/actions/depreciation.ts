@@ -2,6 +2,7 @@
 // D5, D6, D13, D14, D18). The preview never writes; the run books, under the company lock, every asset whose amount for
 // the period is above zero and that has no submitted line in the period yet: one run document, one journal entry.
 import {
+  can,
   Decimal,
   defineAction,
   label,
@@ -10,11 +11,10 @@ import {
   StateError,
   submitDocument,
   todayLocal,
-  ValidationError,
   withLock,
   type Context,
 } from '@daifuku/kernel';
-import { assertOpenPeriod, FiscalPeriod, JournalEntry } from '@daifuku/mod-accounting';
+import { Account, assertOpenPeriod, FiscalPeriod, JournalEntry } from '@daifuku/mod-accounting';
 import { z } from 'zod';
 import { FIXED_ASSETS_LOCK, withRunWrite } from '../domain-write.ts';
 import { DepreciationRun, DepreciationRunLine } from '../entities/depreciation-run.ts';
@@ -22,35 +22,10 @@ import { FixedAsset } from '../entities/fixed-asset.ts';
 import { assertRulesUsable, loadRules, rulesConfirmation } from '../rules.ts';
 import type { PeriodRow, RunRow } from '../services/history.ts';
 import { defaultPeriod } from '../services/periods.ts';
-import {
-  isTwelveMonthYear,
-  loadCalendar,
-  MAX_RUN_ASSETS,
-  planForPeriod,
-  SKIP_REASONS,
-  type Calendar,
-  type PeriodPlan,
-} from '../services/plan.ts';
+import { loadCalendar, MAX_RUN_ASSETS, planForPeriod, SKIP_REASONS, type Calendar } from '../services/plan.ts';
+import { assertPeriodRunnable, assertPlanRunnable, BLOCKERS, blockersOf } from '../services/run-checks.ts';
 
 export const NO_PERIOD_HINT = 'Open a fiscal year with accounting.open_fiscal_year first.';
-export const FUTURE_PERIOD_HINT =
-  'Run depreciation for a period once it has started: booking depreciation that has not happened yet would also block a later disposal.';
-export const OVER_LIMIT_HINT =
-  'One run books at most 500 assets (the journal line limit). Booking more assets in one period is not supported yet.';
-export const LATER_YEAR_HINT =
-  'These assets already have depreciation booked in a later fiscal year. Cancel the later runs first (newest first), then run this period.';
-export const TWELVE_MONTH_HINT = 'Depreciation supports fiscal years of twelve calendar months only.';
-
-const BLOCKERS = [
-  'period_closed',
-  'year_closed',
-  'future_period',
-  'not_twelve_months',
-  'rules_unverified',
-  'over_limit',
-  'later_year_booked',
-] as const;
-type Blocker = (typeof BLOCKERS)[number];
 
 const money = z.string();
 const previewLine = z.object({
@@ -65,6 +40,9 @@ const previewLine = z.object({
   amount: money,
   expenseAccountId: z.string(),
   accumulatedAccountId: z.string(),
+  /** Account codes for the screen's 科目 column (AC-32); null when the caller cannot read accounts. */
+  expenseAccountCode: z.string().nullable(),
+  accumulatedAccountCode: z.string().nullable(),
   switched: z.boolean(),
 });
 const runSummary = z.object({
@@ -132,15 +110,16 @@ function resolvePeriod(calendar: Calendar, periodId: string | undefined, ctx: Co
   return period;
 }
 
-function blockersOf(plan: PeriodPlan, calendar: Calendar, today: string, usable: boolean): Blocker[] {
-  const out: Blocker[] = [];
-  if (plan.period.isClosed) out.push('period_closed');
-  if (plan.year.isClosed) out.push('year_closed');
-  if (plan.period.startDate > today) out.push('future_period');
-  if (!isTwelveMonthYear(plan.year, calendar.periods)) out.push('not_twelve_months');
-  if (!usable) out.push('rules_unverified');
-  if (plan.lines.length > MAX_RUN_ASSETS) out.push('over_limit');
-  if (plan.laterYearCodes.length > 0) out.push('later_year_booked');
+/** Codes of the accounts of the shown lines (at most 2 × 500 ids). */
+async function accountCodes(ctx: Context, ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0 || !can(ctx, Account, 'read')) return new Map();
+  const out = new Map<string, string>();
+  for (let i = 0; i < unique.length; i += 500) {
+    const chunk = unique.slice(i, i + 500);
+    const found = await repo(ctx, Account).list({ where: { id: { $in: chunk } }, limit: chunk.length });
+    for (const a of found.items) out.set(a.id, a.code);
+  }
   return out;
 }
 
@@ -154,6 +133,11 @@ export async function previewDepreciation(ctx: Context, input: { periodId?: stri
   const plan = await planForPeriod(ctx, rules, calendar, period);
   const today = todayLocal(ctx.now());
   const total = plan.lines.reduce((s, l) => s.plus(l.amount), Decimal.zero());
+  const shown = plan.lines.slice(0, MAX_RUN_ASSETS);
+  const codes = await accountCodes(
+    ctx,
+    shown.flatMap((l) => [l.asset.expenseAccountId as string, l.asset.accumulatedAccountId as string]),
+  );
   return {
     period: {
       id: period.id,
@@ -171,7 +155,7 @@ export async function previewDepreciation(ctx: Context, input: { periodId?: stri
       confirmedOn: confirmation.confirmedOn,
       usable: confirmation.usable,
     },
-    lines: plan.lines.slice(0, MAX_RUN_ASSETS).map((l) => ({
+    lines: shown.map((l) => ({
       assetId: l.asset.id,
       code: l.asset.code,
       name: l.asset.name,
@@ -183,6 +167,8 @@ export async function previewDepreciation(ctx: Context, input: { periodId?: stri
       amount: l.amount.toString(),
       expenseAccountId: l.asset.expenseAccountId as string,
       accumulatedAccountId: l.asset.accumulatedAccountId as string,
+      expenseAccountCode: codes.get(l.asset.expenseAccountId as string) ?? null,
+      accumulatedAccountCode: codes.get(l.asset.accumulatedAccountId as string) ?? null,
       switched: l.switched,
     })),
     total: total.toString(),
@@ -193,7 +179,7 @@ export async function previewDepreciation(ctx: Context, input: { periodId?: stri
     priorYearPending: plan.priorYearPending
       ? { ...plan.priorYearPending, total: plan.priorYearPending.total.toString() }
       : null,
-    blockers: blockersOf(plan, calendar, today, confirmation.usable),
+    blockers: blockersOf(plan, calendar.periods, today, confirmation.usable),
   };
 }
 
@@ -227,36 +213,12 @@ export async function runDepreciation(ctx: Context, input: { periodId: string })
   const year = calendar.years.find((y) => y.id === period.fiscalYearId);
   if (!year) throw new StateError(`fiscal year of ${period.code} not found`, NO_PERIOD_HINT);
   await assertOpenPeriod(ctx, period.endDate);
-  if (!isTwelveMonthYear(year, calendar.periods))
-    throw new StateError(`fiscal year ${year.code} is not twelve calendar months`, TWELVE_MONTH_HINT, {
-      reason: 'not_twelve_months',
-    });
-  const today = todayLocal(ctx.now());
-  if (period.startDate > today)
-    throw new StateError(`fiscal period ${period.code} has not started yet`, FUTURE_PERIOD_HINT, {
-      reason: 'future_period',
-      periodId: period.id,
-      code: period.code,
-    });
+  assertPeriodRunnable(period, year, calendar.periods, todayLocal(ctx.now()));
   const rules = await loadRules(ctx);
   await assertRulesUsable(ctx, rules);
   const plan = await planForPeriod(ctx, rules, calendar, period, { withPriorYear: false });
   const rulesVerified = rules.verifiedOn !== null;
-  if (plan.lines.length > MAX_RUN_ASSETS)
-    throw new ValidationError(
-      `${plan.lines.length} assets are due in ${period.code}; one run books at most ${MAX_RUN_ASSETS}`,
-      [{ path: 'periodId', message: `more than ${MAX_RUN_ASSETS} assets (not supported yet)` }],
-      OVER_LIMIT_HINT,
-    );
-  if (plan.laterYearCodes.length > 0)
-    throw new StateError(
-      `depreciation is booked in a later fiscal year for ${plan.laterYearCodes.join(', ')}`,
-      LATER_YEAR_HINT,
-      {
-        reason: 'later_year_booked',
-        codes: plan.laterYearCodes,
-      },
-    );
+  assertPlanRunnable(plan);
   if (plan.lines.length === 0)
     return { created: false, existingRuns: await runSummaries(ctx, plan.runs), rulesVerified };
   const total = plan.lines.reduce((s, l) => s.plus(l.amount), Decimal.zero());

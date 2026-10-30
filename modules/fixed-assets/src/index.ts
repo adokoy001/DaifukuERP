@@ -12,6 +12,7 @@ export {
   FixedAsset,
   ASSET_STATUSES,
   ASSET_CLASS_LABELS,
+  ASSET_STATUS_LABELS,
   METHOD_LABELS,
   PROPERTY_TAX_CLASS_LABELS,
   type AssetStatus,
@@ -69,7 +70,7 @@ export { defaultPeriod, lastEndedPeriod, type PeriodLike } from './services/peri
 export { disposalJournalLines, imbalance, runJournalLines, type JournalLineSpec } from './services/posting.ts';
 export {
   propertyTaxRows,
-  UNSET_MUNICIPALITY,
+  UNSET_MUNICIPALITY_LABEL,
   type PropertyTaxAsset,
   type PropertyTaxRow,
 } from './services/property-tax.ts';
@@ -80,11 +81,19 @@ export {
   runDepreciationAction,
   previewOutput,
   runOutput,
+  type DepreciationPreview,
+} from './actions/depreciation.ts';
+export {
+  assertPeriodRunnable,
+  assertPlanRunnable,
+  blockersOf,
+  BLOCKERS,
   FUTURE_PERIOD_HINT,
   LATER_YEAR_HINT,
   OVER_LIMIT_HINT,
-  type DepreciationPreview,
-} from './actions/depreciation.ts';
+  TWELVE_MONTH_HINT,
+  type Blocker,
+} from './services/run-checks.ts';
 export {
   depreciationScheduleAction,
   propertyTaxSummaryAction,

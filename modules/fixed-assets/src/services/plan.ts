@@ -25,7 +25,15 @@ import {
   type PeriodRow,
   type RunRow,
 } from './history.ts';
-import { monthIndex, periodDue, walkYears, type FiscalYearLike, type WalkAsset, type YearState } from './schedule.ts';
+import {
+  monthIndex,
+  monthStart,
+  periodDue,
+  walkYears,
+  type FiscalYearLike,
+  type WalkAsset,
+  type YearState,
+} from './schedule.ts';
 
 export const SKIP_REASONS = [
   'disposed',
@@ -33,8 +41,22 @@ export const SKIP_REASONS = [
   'fully_depreciated',
   'already_booked',
   'nothing_due',
+  'opening_required',
 ] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
+
+export const OPENING_REQUIRED_HINT =
+  'Enter the opening date and the accumulated depreciation up to it (and, for the declining balance, the revised base) on the asset; it went into service before the first fiscal year of the company.';
+
+/**
+ * AC-3: an asset that went into service before the company's first fiscal year and has no opening values (registered
+ * or imported while the company had no fiscal year). Its earlier depreciation is unknown, so it is never booked as new.
+ */
+export function needsOpening(asset: Pick<AssetRow, 'inServiceDate' | 'openingDate'>, years: readonly FiscalYearLike[]) {
+  const first = years[0];
+  if (!first || asset.openingDate || !asset.inServiceDate) return false;
+  return monthStart(monthIndex(asset.inServiceDate)) < first.startDate;
+}
 
 /** Kernel line limit of one document (and of one journal entry): a run books at most this many assets (AC-15, D5). */
 export const MAX_RUN_ASSETS = 500;
@@ -151,6 +173,7 @@ export function assetDue(
     );
   if (!asset.inServiceDate || !asset.depreciationStart || asset.depreciationStart > periodEnd)
     return { kind: 'skip', reason: 'not_in_service' };
+  if (needsOpening(asset, years)) return { kind: 'skip', reason: 'opening_required' };
   const states = walkYears(basis.walk, years, bookedByYear, year.id);
   const state: YearState | undefined = states[states.length - 1];
   if (!state || state.year.id !== year.id || !state.calc) return { kind: 'skip', reason: 'not_in_service' };
@@ -197,6 +220,7 @@ const emptySkips = (): Record<SkipReason, number> => ({
   fully_depreciated: 0,
   already_booked: 0,
   nothing_due: 0,
+  opening_required: 0,
 });
 
 /** Assets with a submitted line in the period (booked once per asset and period, AC-13). */

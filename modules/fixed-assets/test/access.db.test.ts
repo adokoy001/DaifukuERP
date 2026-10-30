@@ -95,6 +95,14 @@ describe('company and store boundaries (AC-25, AC-26)', () => {
     expect(p.skipped.disposed).toBe(0);
     const t = await env.act<{ rows: unknown[] }>('fixed_assets.depreciation_schedule', {}, inB);
     expect(t.rows).toEqual([]);
+    const yearA = (await env.act<{ items: { id: string }[] }>('fiscal_year.list', { where: { code: 'FY2026' } }))
+      .items[0]?.id;
+    expect(await caught(env.act('fixed_assets.depreciation_schedule', { fiscalYearId: yearA }, inB))).toBeInstanceOf(
+      NotFound,
+    );
+    expect(await caught(env.act('fixed_assets.depreciation_schedule', { fiscalYearId: newId() }, inB))).toBeInstanceOf(
+      NotFound,
+    );
     expect(await env.run(inB, (ctx) => repo(ctx, FixedAsset).count())).toBe(0);
   });
 

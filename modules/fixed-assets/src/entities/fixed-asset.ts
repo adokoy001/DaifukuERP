@@ -22,6 +22,11 @@ export const METHOD_LABELS = {
   declining_200: label('定率法（200%）', 'Declining balance (200%)'),
 } as const;
 
+export const ASSET_STATUS_LABELS = {
+  active: label('使用中', 'Active'),
+  disposed: label('除却・売却済み', 'Disposed'),
+} as const;
+
 export const PROPERTY_TAX_CLASS_LABELS = {
   structure: label('構築物', 'Structures'),
   machinery: label('機械及び装置', 'Machinery and equipment'),
@@ -70,13 +75,16 @@ export const FixedAsset = defineEntity({
     accumulatedAccountId: f.ref('account', {
       label: label('減価償却累計額科目', 'Accumulated depreciation account'),
       description: label(
-        '空欄なら設定 fixed_assets.accounts から補完（ソフトウエアは資産科目＝直接法）',
-        'Empty: filled from setting fixed_assets.accounts (software: the asset account, direct method)',
+        '空欄なら設定「固定資産の転記科目」から補完（ソフトウエアは資産科目＝直接法）',
+        'Empty: filled from the setting “Fixed asset posting accounts” (software: the asset account, direct method)',
       ),
     }),
     expenseAccountId: f.ref('account', {
       label: label('減価償却費科目', 'Depreciation expense account'),
-      description: label('空欄なら設定 fixed_assets.accounts から補完', 'Empty: filled from fixed_assets.accounts'),
+      description: label(
+        '空欄なら設定「固定資産の転記科目」から補完',
+        'Empty: filled from the setting “Fixed asset posting accounts”',
+      ),
     }),
     location: f.text({ label: label('設置場所', 'Location'), maxLength: 200 }),
     municipality: f.text({ label: label('所在市区町村', 'Municipality'), maxLength: 100, index: true }),
@@ -112,7 +120,7 @@ export const FixedAsset = defineEntity({
       required: true,
       default: 'active',
       index: true,
-      labels: { active: label('使用中', 'Active'), disposed: label('除却・売却済み', 'Disposed') },
+      labels: ASSET_STATUS_LABELS,
     }),
     depreciationStart: f.date({ label: label('償却開始', 'Depreciation start'), serverOwned: true }),
     disposedOn: f.date({ label: label('除却・売却日', 'Disposed on'), serverOwned: true }),

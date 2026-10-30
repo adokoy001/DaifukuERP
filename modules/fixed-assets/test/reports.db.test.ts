@@ -76,8 +76,9 @@ describe('depreciation schedule (AC-21)', () => {
       '300000',
       '300000',
       '0',
-      'disposed',
+      '除却・売却済み',
     ]);
+    expect([s1?.assetClass, s1?.method, s1?.status]).toEqual(['工具、器具及び備品', '定額法', '使用中']);
     for (const r of t.rows)
       expect(Number(r.openingBookValue) + Number(r.increase) - Number(r.depreciation) - Number(r.decrease)).toBe(
         Number(r.closingBookValue),
@@ -98,6 +99,17 @@ describe('depreciation schedule (AC-21)', () => {
     ]).toEqual(['540000', '50000', '490000', '0', '0']);
     expect(t.rows.map((r) => r.code)).not.toContain('Z');
   });
+
+  it('AC-21 AC-34: cell labels follow the viewer language (class, method, status)', async () => {
+    const t = await env.act<Table>('fixed_assets.depreciation_schedule', {}, { locale: 'en' });
+    const s2 = t.rows.find((r) => r.code === 'S2');
+    expect([s2?.assetClass, s2?.method, s2?.status]).toEqual([
+      'Tools, furniture and fixtures',
+      'Straight-line',
+      'Disposed',
+    ]);
+    expect(t.meta?.truncated).toBeUndefined();
+  });
 });
 
 describe('property tax aggregate (AC-22)', () => {
@@ -111,6 +123,15 @@ describe('property tax aggregate (AC-22)', () => {
       ['6 工具、器具及び備品', '800000', 2, '300000', '0', '500000'],
     ]);
     expect(t.meta).toMatchObject({ assessmentDate: '2027-01-01', previousAssessmentDate: '2026-01-01' });
+  });
+
+  it('AC-22 AC-34: in English the class labels and the unset municipality are English', async () => {
+    const t = await env.act<Table>('fixed_assets.property_tax_summary', { year: 2028 }, { locale: 'en' });
+    expect(t.rows.map((r) => [r.municipality, r.propertyTaxClass])).toEqual([
+      ['渋谷区', '2 Machinery and equipment'],
+      ['渋谷区', '6 Tools, furniture and fixtures'],
+      ['(not set)', '6 Tools, furniture and fixtures'],
+    ]);
   });
 });
 

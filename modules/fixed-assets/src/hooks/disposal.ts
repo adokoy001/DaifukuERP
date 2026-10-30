@@ -19,10 +19,10 @@ import { Account, assertJpySettlement, postFromSource, reverseSourceEntry } from
 import { taxSummaryFor, type TaxCategory } from '@daifuku/mod-tax';
 import { FIXED_ASSETS_LOCK, withAssetState } from '../domain-write.ts';
 import { FixedAssetDisposal } from '../entities/disposal.ts';
-import { FixedAsset } from '../entities/fixed-asset.ts';
+import { FixedAsset, type AssetStatus } from '../entities/fixed-asset.ts';
 import { assertRulesUsable, loadRules } from '../rules.ts';
 import { loadYears, yearOfDate, type AssetRow } from '../services/history.ts';
-import { assetBasis, loadHistory } from '../services/plan.ts';
+import { assetBasis, loadHistory, needsOpening, OPENING_REQUIRED_HINT } from '../services/plan.ts';
 import { disposalJournalLines } from '../services/posting.ts';
 import { disposalDepreciation, monthIndex, monthStart, walkYears } from '../services/schedule.ts';
 import { resolveAccounts } from '../settings.ts';
@@ -68,6 +68,12 @@ export async function computeDisposal(ctx: Context, row: Row): Promise<DisposalC
     throw new StateError(`no fiscal year contains ${date}`, 'Open the fiscal year with accounting.open_fiscal_year.', {
       date,
     });
+  if (needsOpening(asset, years))
+    throw new StateError(
+      `fixed_asset ${asset.code} went into service before the first fiscal year and has no opening values`,
+      OPENING_REQUIRED_HINT,
+      { reason: 'opening_required', code: asset.code },
+    );
   const { booked } = await loadHistory(ctx, years, [asset.id]);
   const byYear = booked.byAsset.get(asset.id) ?? new Map<string, Decimal>();
   // A submitted disposal of this very document is not part of its own computation (drafts are never submitted).
@@ -143,7 +149,7 @@ async function onDraftSave(ctx: Context, { row }: HookArgs): Promise<void> {
   applyComputed(row, computed);
 }
 
-async function assertSubmittable(ctx: Context, row: Row, c: DisposalComputation): Promise<void> {
+async function assertSubmittable(ctx: Context, row: Row, c: DisposalComputation, priorStatus: string): Promise<void> {
   const issues: { path: string; message: string }[] = [];
   const date = row.date as LocalDate;
   const proceeds = dec(row.proceeds);
@@ -165,7 +171,7 @@ async function assertSubmittable(ctx: Context, row: Row, c: DisposalComputation)
     docstatus: DOCSTATUS.submitted,
     id: { $ne: row.id as string },
   });
-  if (other > 0 || c.asset.status === 'disposed')
+  if (other > 0 || priorStatus === 'disposed')
     throw new StateError(`fixed_asset ${c.asset.code} is already disposed`, DISPOSED_HINT, {
       reason: 'already_disposed',
     });
@@ -177,13 +183,33 @@ async function assertSubmittable(ctx: Context, row: Row, c: DisposalComputation)
     });
 }
 
-async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
+/**
+ * Lock order (ADR-0020): the asset row first, then the company lock — the order of an asset edit (the kernel's FOR NO
+ * KEY UPDATE on the row, then the asset hook's company lock). The state write takes the row lock at NO KEY UPDATE
+ * strength, so the run lines' FK KEY SHARE is not blocked; a refusal below rolls the state back with the transaction.
+ * The other-disposal count under the company lock is the authoritative "already disposed" check.
+ */
+async function setAssetState(
+  ctx: Context,
+  assetId: string,
+  state: { status: AssetStatus; disposedOn: LocalDate | null },
+) {
+  const prior = await repo(ctx, FixedAsset).get(assetId);
+  await withAssetState(ctx, (inner) => repo(inner, FixedAsset).update(assetId, state));
   await withLock(ctx, FIXED_ASSETS_LOCK, async () => undefined);
+  return prior;
+}
+
+async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
+  const prior = await setAssetState(ctx, row.assetId as string, {
+    status: 'disposed',
+    disposedOn: row.date as LocalDate,
+  });
   const rules = await loadRules(ctx);
   await assertRulesUsable(ctx, rules);
   await fillDefaults(ctx, row);
   const c = await computeDisposal(ctx, row);
-  await assertSubmittable(ctx, row, c);
+  await assertSubmittable(ctx, row, c, prior.status);
   applyComputed(row, c);
   const proceeds = dec(row.proceeds);
   await assertJpySettlement(ctx, proceeds.plus(c.taxAmount));
@@ -220,13 +246,10 @@ async function onBeforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
     lines,
   });
   row.journalEntryId = entry.id;
-  await withAssetState(ctx, (inner) =>
-    repo(inner, FixedAsset).update(c.asset.id, { status: 'disposed', disposedOn: row.date as LocalDate }),
-  );
 }
 
 async function onBeforeCancel(ctx: Context, { row, correctionDate }: HookArgs): Promise<void> {
-  await withLock(ctx, FIXED_ASSETS_LOCK, async () => undefined);
+  await setAssetState(ctx, row.assetId as string, { status: 'active', disposedOn: null });
   if (correctionDate) {
     const year = yearOfDate(await loadYears(ctx), row.date as LocalDate);
     if (year && (correctionDate < year.startDate || correctionDate > year.endDate))
@@ -244,9 +267,6 @@ async function onBeforeCancel(ctx: Context, { row, correctionDate }: HookArgs): 
     sourceId: row.id as string,
     date: correctionDate,
   });
-  await withAssetState(ctx, (inner) =>
-    repo(inner, FixedAsset).update(row.assetId as string, { status: 'active', disposedOn: null }),
-  );
 }
 
 export function registerDisposalHooks(): void {

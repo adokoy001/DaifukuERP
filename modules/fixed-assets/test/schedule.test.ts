@@ -13,7 +13,7 @@ import {
   type FiscalYearLike,
   type WalkAsset,
 } from '../src/index.ts';
-import { DB10, DB2, DB4, DB5, SL5, SYNTH, fiscalYears, rate } from './fixture-rules.ts';
+import { DB10, DB2, DB4, DB5, SL3, SL5, SYNTH, fiscalYears, rate } from './fixture-rules.ts';
 
 const D = (v: string | number) => Decimal.from(String(v));
 const ONE = D(1);
@@ -84,6 +84,16 @@ describe('straight line (AC-6, AC-8, AC-9)', () => {
     const fy = fiscalYears(2026, 1, 7);
     const g6 = asset({ cost: D(300_000), rate: SL5, memorandum: ZERO, inServiceDate: '2026-07-01' });
     expect(yearlyAmounts(g6, fy)).toEqual(['30000', '60000', '60000', '60000', '60000', '30000', '0']);
+  });
+
+  it('AC-6 AC-8 golden G10: fractional amounts are cut down to the yen (194,833.33 → 194,833), never rounded up', () => {
+    const fy = fiscalYears(2026, 1, 5);
+    const g10 = asset({ cost: D(1_000_000), rate: SL3, inServiceDate: '2026-06-01' });
+    expect(yearlyAmounts(g10, fy)).toEqual(['194833', '334000', '334000', '137166', '0']);
+    const first = allocate(D(194_833), 7).map(String);
+    expect([first[0], first[6]]).toEqual(['27833', '27835']);
+    const { booked } = runMonths(g10, fy, fy.slice(0, 4).flatMap(monthsOf));
+    expect([...booked.values()].map(String)).toEqual(['194833', '334000', '334000', '137166']);
   });
 
   it('AC-3 AC-9 golden G8: opening in July with 60,000 booked this year; skipping August books 20,000 in September', () => {
@@ -241,6 +251,15 @@ describe('disposal-year depreciation (AC-18, D22)', () => {
     expect(booked.get('FY2029')?.toString()).toBe('52500');
     const s = walkYears(g3, years, booked, 'FY2029').at(-1);
     expect(s && disposalDepreciation(s, monthIndex('2029-06-15'), ONE).toString()).toBe('10500');
+  });
+
+  it('AC-18 golden D8: the disposal limit is cut down to the yen (334,000 × 5 / 12 = 139,166.67 → 139,166)', () => {
+    const years = fiscalYears(2026, 1, 2);
+    const g10 = asset({ cost: D(1_000_000), rate: SL3, inServiceDate: '2026-06-01' });
+    const booked = new Map([['FY2026', D(194_833)]]);
+    const s = walkYears(g10, years, booked, 'FY2027').at(-1);
+    expect(s?.openingBookValue.toString()).toBe('805167');
+    expect(s && disposalDepreciation(s, monthIndex('2027-05-20'), ONE).toString()).toBe('139166');
   });
 
   it('AC-18 golden D6: software retired 2027-03-10 with Jan–Feb booked → 5,000', () => {

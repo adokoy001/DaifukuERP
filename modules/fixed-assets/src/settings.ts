@@ -82,8 +82,8 @@ export const FIXED_ASSET_SETTING_DEFS: readonly SettingDef[] = [
     key: RULES_CONFIRMATION_KEY,
     label: label('償却率表の照合記録', 'Depreciation rate table confirmation'),
     description: label(
-      '国別パックの償却率表が一次資料と未照合のとき、担当者が耐用年数省令の別表と照合した規則集合の id と照合日を記録します。記録が現在の規則集合を指すまで償却・除却の転記はできません。',
-      'When the country pack has not verified its rate tables, record the id of the rule set a person compared with the statutory tables and the date. Depreciation and disposal postings stay blocked until the record names the current rule set.',
+      '国別パックの償却規則が一次資料と未照合のとき、担当者が照合した規則集合の id と照合日を記録します。照合の対象は転記に使うすべての値です: 償却率表と適用する取得日（耐用年数省令 別表第八・第十）、備忘価額と適用する取得日（法人税法施行令 第61条）、償却方法の制限（同 第48条の2）、円未満の切捨て。記録が現在の規則集合を指すまで償却・除却の転記はできません。',
+      'When the country pack has not verified its depreciation rules, record the id of the rule set a person compared with the primary sources and the date. The comparison covers every value postings use: the rate tables and the acquisition dates they apply to (Useful Life Ordinance, Appended Tables 8 and 10), the memorandum values and their dates (Corporation Tax Act Order, art. 61), the method restrictions (art. 48-2) and the rounding down to the yen. Depreciation and disposal postings stay blocked until the record names the current rule set.',
     ),
     schema: rulesConfirmationSchema,
     default: RULES_CONFIRMATION_DEFAULT,

@@ -247,6 +247,15 @@ async function onSave(ctx: Context, { row, previous }: HookArgs): Promise<void> 
   if (previous) {
     const changed = changedFields(previous, row);
     if (capabilityWrite && changed.every((k) => STATE_FIELDS.has(k))) return;
+    // AC-4: the always-editable fields need neither the history check nor the company lock (lock order, ADR-0020).
+    if (changed.every((k) => (ALWAYS_EDITABLE as readonly string[]).includes(k))) {
+      if (changed.includes('propertyTaxClass') && !str(row.propertyTaxClass)) {
+        const rules = await loadRules(ctx);
+        row.propertyTaxClass = defaultPropertyTaxClass(rules, row.assetClass as AssetClass);
+      }
+      return;
+    }
+    // The kernel holds the asset row (FOR NO KEY UPDATE) here; the company lock comes second, as in the disposal hooks.
     await withLock(ctx, FIXED_ASSETS_LOCK, async () => undefined);
     const frozen = changed.filter(
       (k) => !(ALWAYS_EDITABLE as readonly string[]).includes(k) && k !== 'depreciationStart' && !STATE_FIELDS.has(k),
@@ -257,13 +266,6 @@ async function onSave(ctx: Context, { row, previous }: HookArgs): Promise<void> 
         FROZEN_HINT,
         { reason: 'asset_frozen', fields: frozen },
       );
-    if (frozen.length === 0 && changed.every((k) => (ALWAYS_EDITABLE as readonly string[]).includes(k))) {
-      if (changed.includes('propertyTaxClass') && !str(row.propertyTaxClass)) {
-        const rules = await loadRules(ctx);
-        row.propertyTaxClass = defaultPropertyTaxClass(rules, row.assetClass as AssetClass);
-      }
-      return;
-    }
   }
   const rules = await loadRules(ctx);
   await fillAccounts(ctx, row);

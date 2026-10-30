@@ -3,7 +3,7 @@
 // kit Dialog confirmation; everything else (register, disposals, reports) is the generic DSL screens.
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useClosePeriods } from '../api/close.ts';
 import { isApiError, request } from '../api/client.ts';
 import { useDepreciationPreview } from '../api/depreciation.ts';
@@ -12,14 +12,21 @@ import { useMeta } from '../api/queries.ts';
 import type { AppMeta, Label } from '../api/types.ts';
 import { Icon } from '../components/icon.tsx';
 import { useLocale } from '../i18n.tsx';
-import { periodOption, periodRange, type ClosePeriod } from '../lib/close-guide.ts';
+import { noFiscalPeriods, periodOption, periodRange, type ClosePeriod } from '../lib/close-guide.ts';
 import {
+  accountsText,
+  acquiredText,
+  assetClassText,
   BLOCKER_LABEL,
   canRun,
+  kindText,
+  METHOD_LABEL,
   methodText,
+  OPEN_FISCAL_YEAR_ACTION,
   PREVIEW_ACTION,
+  rateTableTitle,
   RULES_ACTION,
-  RULES_SETTING_HREF,
+  RULES_SETTING_LINK,
   RUN_ACTION,
   runAnnouncement,
   runBlockers,
@@ -27,6 +34,7 @@ import {
   totalText,
   yen,
   type DepreciationPreview,
+  type RulesView,
   type RunResult,
 } from '../lib/depreciation.ts';
 import { S } from '../strings.ts';
@@ -73,20 +81,33 @@ export function DepreciationPage() {
   return <DepreciationRun key={financeIdentity()} meta={meta.data} />;
 }
 
-interface RulesView {
-  id: string;
-  verifiedOn: string | null;
-  sources: string[];
-  rateTables: {
-    method: string;
-    source: string;
-    rows: { usefulLife: number; rate: string; revisedRate: string | null; guaranteeRate: string | null }[];
-  }[];
+/**
+ * A table of the rules viewer under a visible heading. Its rows hold no link or input, so the frame that scrolls
+ * sideways on a narrow screen takes focus itself (tabIndex 0, role region, named like the table; docs/conventions/ui.md).
+ */
+function RulesTable({ title, head, children }: { title: string; head: ReactNode[]; children: ReactNode }) {
+  return (
+    <div className="mt-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="ui-table-frame" tabIndex={0} role="region" aria-label={title}>
+        <table className="ui-table" aria-label={title}>
+          <thead>
+            <tr>{head}</tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
-/** AC-32: the rule set behind the preview, so a person can compare it with the statutory tables before recording. */
-function RulesDetails() {
-  const { t } = useLocale();
+/**
+ * AC-32 / AC-35: every legal parameter behind the postings, so a person can compare them with the primary sources before
+ * recording the confirmation (and look up useful-life examples later): sources, rate tables, memorandum values, method
+ * restrictions, the rounding, and the useful-life examples. Always reachable, collapsed.
+ */
+function RulesDetails({ meta }: { meta: AppMeta }) {
+  const { t, locale } = useLocale();
   const rules = useQuery({
     queryKey: ['finance', financeIdentity(), 'depreciation-rules'],
     queryFn: ({ signal }) =>
@@ -96,48 +117,139 @@ function RulesDetails() {
     networkMode: 'always',
   });
   if (!rules.data) return null;
+  const data = rules.data;
+  const right = cellAlignClass('right');
   return (
-    <details className="mt-2" data-testid="depreciation-rules">
-      <summary className="cursor-pointer text-sm font-semibold">
-        {t({ ja: `償却率表を見る（${rules.data.id}）`, en: `Show the rate tables (${rules.data.id})` })}
-      </summary>
-      <p className="mt-1 text-xs text-text-secondary">
-        {t({ ja: '出典: ', en: 'Sources: ' })}
-        {rules.data.sources.join(' / ')}
-      </p>
-      {rules.data.rateTables.map((table) => (
-        <div key={table.method} className="mt-2">
-          <p className="text-sm font-semibold">{table.source}</p>
-          <DataTableShell
-            columnCount={4}
-            label={table.source}
-            head={
-              <tr>
-                <th scope="col">{t({ ja: '耐用年数', en: 'Useful life' })}</th>
-                <th scope="col" className={cellAlignClass('right')}>
-                  {t({ ja: '償却率', en: 'Rate' })}
-                </th>
-                <th scope="col" className={cellAlignClass('right')}>
-                  {t({ ja: '改定償却率', en: 'Revised rate' })}
-                </th>
-                <th scope="col" className={cellAlignClass('right')}>
-                  {t({ ja: '保証率', en: 'Guarantee rate' })}
-                </th>
-              </tr>
-            }
+    <Card>
+      <details data-testid="depreciation-rules">
+        <summary className="cursor-pointer text-sm font-semibold">
+          {t({ ja: `償却の規則を見る（${data.id}）`, en: `Show the depreciation rules (${data.id})` })}
+        </summary>
+        <p className="mt-2 text-sm">
+          {t({
+            ja: '照合の対象は転記に使うすべての値です: 償却率表と適用する取得日、備忘価額と適用する取得日、償却方法の制限、端数処理（年額・月の配分・除却の年の限度額は円未満を切り捨て。切捨ての出典の箇所は未確認）。',
+            en: 'A confirmation covers every value postings use: the rate tables and the acquisition dates they apply to, the memorandum values and their dates, the method restrictions, and the rounding (yearly, monthly and disposal-year amounts are cut down to the yen; the primary source of this rounding is not yet confirmed).',
+          })}
+        </p>
+        <p className="mt-1 text-xs text-text-secondary">{t({ ja: '出典', en: 'Sources' })}</p>
+        <ul className="flex flex-col gap-1 text-xs">
+          {data.sources.map((url) => (
+            <li key={url} className="break-all">
+              <a href={url} target="_blank" rel="noreferrer" className="ui-link">
+                {url}
+              </a>
+            </li>
+          ))}
+        </ul>
+        {data.rateTables.map((table) => (
+          <RulesTable
+            key={`${table.method}-${table.acquiredFrom}`}
+            title={`${rateTableTitle(table, locale)}（${t({ ja: '取得日', en: 'acquired' })} ${acquiredText(table, locale)}）`}
+            head={[
+              <th key="life" scope="col">
+                {t({ ja: '耐用年数', en: 'Useful life' })}
+              </th>,
+              <th key="rate" scope="col" className={right}>
+                {t({ ja: '償却率', en: 'Rate' })}
+              </th>,
+              <th key="revised" scope="col" className={right}>
+                {t({ ja: '改定償却率', en: 'Revised rate' })}
+              </th>,
+              <th key="guarantee" scope="col" className={right}>
+                {t({ ja: '保証率', en: 'Guarantee rate' })}
+              </th>,
+            ]}
           >
             {table.rows.map((row) => (
               <tr key={row.usefulLife}>
                 <td>{row.usefulLife}</td>
-                <td className={cellAlignClass('right')}>{row.rate}</td>
-                <td className={cellAlignClass('right')}>{row.revisedRate ?? '—'}</td>
-                <td className={cellAlignClass('right')}>{row.guaranteeRate ?? '—'}</td>
+                <td className={right}>{row.rate}</td>
+                <td className={right}>{row.revisedRate ?? '—'}</td>
+                <td className={right}>{row.guaranteeRate ?? '—'}</td>
               </tr>
             ))}
-          </DataTableShell>
-        </div>
-      ))}
-    </details>
+          </RulesTable>
+        ))}
+        <RulesTable
+          title={t({ ja: '備忘価額', en: 'Memorandum values' })}
+          head={[
+            <th key="kind" scope="col">
+              {t({ ja: '区分', en: 'Kind' })}
+            </th>,
+            <th key="dates" scope="col">
+              {t({ ja: '取得日', en: 'Acquired' })}
+            </th>,
+            <th key="amount" scope="col" className={right}>
+              {t({ ja: '金額（円）', en: 'Amount (yen)' })}
+            </th>,
+            <th key="source" scope="col">
+              {t({ ja: '出典', en: 'Source' })}
+            </th>,
+          ]}
+        >
+          {data.memorandum.map((row) => (
+            <tr key={`${row.kind}-${row.acquiredFrom}`}>
+              <td>{kindText(row.kind, locale)}</td>
+              <td>{acquiredText(row, locale)}</td>
+              <td className={right}>{row.amount}</td>
+              <td>{row.source}</td>
+            </tr>
+          ))}
+        </RulesTable>
+        <RulesTable
+          title={t({ ja: '償却方法の制限', en: 'Method restrictions' })}
+          head={[
+            <th key="class" scope="col">
+              {t({ ja: '資産の種類', en: 'Asset class' })}
+            </th>,
+            <th key="dates" scope="col">
+              {t({ ja: '取得日', en: 'Acquired' })}
+            </th>,
+            <th key="methods" scope="col">
+              {t({ ja: '認められる方法', en: 'Allowed methods' })}
+            </th>,
+            <th key="source" scope="col">
+              {t({ ja: '出典', en: 'Source' })}
+            </th>,
+          ]}
+        >
+          {data.methodRestrictions.map((row) => (
+            <tr key={`${row.assetClass}-${row.acquiredFrom}`}>
+              <td>{assetClassText(meta, row.assetClass, locale)}</td>
+              <td>{acquiredText(row, locale)}</td>
+              <td>{row.methods.map((m) => METHOD_LABEL[m]?.[locale] ?? m).join(locale === 'ja' ? '、' : ', ')}</td>
+              <td>{row.source}</td>
+            </tr>
+          ))}
+        </RulesTable>
+        <RulesTable
+          title={t({ ja: '耐用年数の例', en: 'Useful-life examples' })}
+          head={[
+            <th key="label" scope="col">
+              {t({ ja: '資産', en: 'Asset' })}
+            </th>,
+            <th key="class" scope="col">
+              {t({ ja: '資産の種類', en: 'Asset class' })}
+            </th>,
+            <th key="years" scope="col" className={right}>
+              {t({ ja: '耐用年数', en: 'Useful life' })}
+            </th>,
+            <th key="table" scope="col">
+              {t({ ja: '出典の別表', en: 'Table' })}
+            </th>,
+          ]}
+        >
+          {data.usefulLifeExamples.map((row) => (
+            <tr key={`${row.assetClass}-${row.label.ja}`}>
+              <td>{t(row.label)}</td>
+              <td>{assetClassText(meta, row.assetClass, locale)}</td>
+              <td className={right}>{row.usefulLife}</td>
+              <td>{row.table}</td>
+            </tr>
+          ))}
+        </RulesTable>
+      </details>
+    </Card>
   );
 }
 
@@ -150,8 +262,8 @@ function RulesNotice({ preview }: { preview: DepreciationPreview }) {
       <div className="ui-notice ui-notice-warning" data-testid="depreciation-rules-confirmed">
         <p>
           {t({
-            ja: `償却率表（${rules.id}）は一次資料と未照合です。会社の照合記録（${rules.confirmedOn ?? ''}）に基づいて転記します。`,
-            en: `The rate tables (${rules.id}) are not verified against the primary sources; postings rely on the company confirmation of ${rules.confirmedOn ?? ''}.`,
+            ja: `償却の規則（${rules.id}）は一次資料と未照合です。会社の照合記録（${rules.confirmedOn ?? ''}）に基づいて転記します。`,
+            en: `The depreciation rules (${rules.id}) are not verified against the primary sources; postings rely on the company confirmation of ${rules.confirmedOn ?? ''}.`,
           })}
         </p>
       </div>
@@ -160,21 +272,20 @@ function RulesNotice({ preview }: { preview: DepreciationPreview }) {
     <div className="ui-notice ui-notice-danger" data-testid="depreciation-rules-unverified">
       <p>
         {t({
-          ja: `償却率表（${rules.id}）が一次資料と未照合で、会社の照合記録もありません。試算は表示しますが、実行（仕訳の作成）はできません。率表を耐用年数省令の別表第八・第十と照合し、設定「償却率表の照合記録」に規則集合の id と照合日を記録してください。`,
-          en: `The rate tables (${rules.id}) are not verified against the primary sources and the company has no confirmation. The preview is shown but the run (posting) is blocked. Compare the tables with 耐用年数省令 別表第八・第十 and record the rule set id and the date in the setting “Depreciation rate table confirmation”.`,
+          ja: `償却の規則（${rules.id}）が一次資料と未照合で、会社の照合記録もありません。試算は表示しますが、実行（仕訳の作成）はできません。下の「償却の規則を見る」の値（償却率表と適用する取得日、備忘価額、償却方法の制限、円未満の切捨て）を耐用年数省令の別表第八・第十と法人税法施行令で確かめ、設定「償却率表の照合記録」に規則集合の id と照合日を記録してください。`,
+          en: `The depreciation rules (${rules.id}) are not verified against the primary sources and the company has no confirmation. The preview is shown but the run (posting) is blocked. Check the values under “Show the depreciation rules” below (rate tables and their acquisition dates, memorandum values, method restrictions, rounding down to the yen) against the Useful Life Ordinance (耐用年数省令), Appended Tables 8 and 10, and the Corporation Tax Act Order, then record the rule set id and the date in the setting “Depreciation rate table confirmation”.`,
         })}
       </p>
       <p className="mt-1">
-        <a href={RULES_SETTING_HREF} className="ui-link">
+        <Link to={RULES_SETTING_LINK.to} search={RULES_SETTING_LINK.search} className="ui-link">
           {t({ ja: '設定を開く（会計）', en: 'Open the settings (Accounting)' })}
-        </a>
+        </Link>
       </p>
-      <RulesDetails />
     </div>
   );
 }
 
-function PreviewTable({ preview }: { preview: DepreciationPreview }) {
+function PreviewTable({ preview, busy }: { preview: DepreciationPreview; busy: boolean }) {
   const { t, locale } = useLocale();
   if (preview.lines.length === 0)
     return (
@@ -184,9 +295,10 @@ function PreviewTable({ preview }: { preview: DepreciationPreview }) {
     );
   return (
     <DataTableShell
-      columnCount={6}
+      columnCount={7}
       label={t({ ja: '計上予定の償却', en: 'Depreciation to book' })}
       testId="depreciation-preview"
+      busy={busy}
       head={
         <tr>
           <th scope="col">{t({ ja: '資産', en: 'Asset' })}</th>
@@ -203,6 +315,7 @@ function PreviewTable({ preview }: { preview: DepreciationPreview }) {
           <th scope="col" className={cellAlignClass('right')}>
             {t({ ja: '今回の額', en: 'This run' })}
           </th>
+          <th scope="col">{t({ ja: '科目（償却費 / 累計額）', en: 'Accounts (expense / accumulated)' })}</th>
         </tr>
       }
     >
@@ -221,6 +334,7 @@ function PreviewTable({ preview }: { preview: DepreciationPreview }) {
           <td className={cellAlignClass('right')} data-testid="depreciation-amount">
             {yen(line.amount)}
           </td>
+          <td data-testid="depreciation-accounts">{accountsText(line)}</td>
         </tr>
       ))}
       <tr>
@@ -230,6 +344,7 @@ function PreviewTable({ preview }: { preview: DepreciationPreview }) {
         <td className={cellAlignClass('right')} data-testid="depreciation-total">
           {yen(preview.total)}
         </td>
+        <td />
       </tr>
     </DataTableShell>
   );
@@ -245,9 +360,18 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
   const [confirm, setConfirm] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [failure, setFailure] = useState('');
+  // After a run the opener is disabled (nothing left to book): focus moves to the period heading once the preview is
+  // taken again (docs/conventions/ui.md, like the close guide).
+  const [focusStatus, setFocusStatus] = useState(false);
+  const statusHeading = useRef<HTMLHeadingElement>(null);
   const pickerId = useId();
   const data = preview.data;
   const mayRun = meta.actions.some((action) => action.name === RUN_ACTION);
+  const mayOpenYear = meta.actions.some((action) => action.name === OPEN_FISCAL_YEAR_ACTION);
+  const errorReason = preview.isError && isApiError(preview.error) ? preview.error.details?.reason : undefined;
+  const noPeriods = !data && noFiscalPeriods(periods.data, errorReason);
+  // A failed refresh keeps the previous preview on screen: it must not look current or allow a run.
+  const stale = preview.isError && data !== undefined;
 
   // AC-32: pin the server's default period in the URL (replace: no extra history entry).
   useEffect(() => {
@@ -260,6 +384,18 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
     setFailure('');
   }, [search.periodId]);
 
+  useEffect(() => {
+    if (!focusStatus || preview.isFetching) return;
+    statusHeading.current?.focus();
+    setFocusStatus(false);
+  }, [focusStatus, preview.isFetching]);
+
+  const previewAgain = () => {
+    void preview.refetch().then((result) => {
+      if (result.isSuccess) setFailure('');
+    });
+  };
+
   const run = () => {
     if (!data || command.isPending) return;
     setFailure('');
@@ -268,6 +404,7 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
       {
         onSuccess: (result) => {
           setConfirm(false);
+          setFocusStatus(true);
           setAnnouncement(runAnnouncement(result, data.period.code, locale));
         },
         onError: (error) => {
@@ -299,7 +436,7 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
           </span>
         }
         actions={
-          <Button onClick={() => void preview.refetch()} disabled={command.isPending} aria-busy={preview.isFetching}>
+          <Button onClick={previewAgain} disabled={command.isPending || noPeriods} aria-busy={preview.isFetching}>
             {t({ ja: '再試算', en: 'Preview again' })}
           </Button>
         }
@@ -308,48 +445,86 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
         {announcement}
       </p>
       <div className="flex flex-col gap-4">
-        <Card>
-          <FormSection
-            title={t({ ja: '会計期間', en: 'Fiscal period' })}
-            description={t({
-              ja: '最初は、今日より前に終わった最後の期間を選んでいます。同じ年度の未実行の月は、後の月でまとめて計上されます。',
-              en: 'Starts at the last period that ended before today. Months skipped in the same year are caught up by a later month.',
-            })}
-          >
-            <div className="flex flex-col gap-1">
-              <label htmlFor={pickerId} className="text-sm font-semibold text-text-secondary">
-                {t({ ja: '会計期間', en: 'Fiscal period' })}
-              </label>
-              <select
-                id={pickerId}
-                className="input w-full sm:max-w-md"
-                value={value}
-                disabled={command.isPending || options.length === 0}
-                onChange={(event) =>
-                  void navigate({ to: '/finance/depreciation', search: { periodId: event.target.value } })
-                }
-              >
-                {known ? null : <option value={value}>{t(S.loading)}</option>}
-                {options.map((period) => (
-                  <option key={period.id} value={period.id}>
-                    {periodOption(period, locale)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </FormSection>
-        </Card>
-        {preview.isError && !data ? (
-          <MetaError error={preview.error} retry={() => void preview.refetch()} />
+        {noPeriods ? (
+          <Card>
+            <EmptyState
+              titleAs="h2"
+              testId="depreciation-no-periods"
+              title={t({ ja: '会計年度がまだありません', en: 'No fiscal year yet' })}
+              description={t({
+                ja: '会計年度を開くと、その月ごとの会計期間ができ、この画面で償却を試算・実行できるようになります。',
+                en: 'Open a fiscal year to create its monthly periods; depreciation can then be previewed and run here.',
+              })}
+              action={
+                mayOpenYear ? (
+                  <Link to="/a/$action" params={{ action: OPEN_FISCAL_YEAR_ACTION }} className={buttonClass('primary')}>
+                    {t({ ja: '会計年度を開く', en: 'Open a fiscal year' })}
+                  </Link>
+                ) : undefined
+              }
+            />
+          </Card>
+        ) : (
+          <Card>
+            <FormSection
+              title={t({ ja: '会計期間', en: 'Fiscal period' })}
+              description={t({
+                ja: '最初は、今日より前に終わった最後の期間を選んでいます。同じ年度の未実行の月は、後の月でまとめて計上されます。',
+                en: 'Starts at the last period that ended before today. Months skipped in the same year are caught up by a later month.',
+              })}
+            >
+              <div className="flex flex-col gap-1">
+                <label htmlFor={pickerId} className="text-sm font-semibold text-text-secondary">
+                  {t({ ja: '会計期間', en: 'Fiscal period' })}
+                </label>
+                <select
+                  id={pickerId}
+                  className="input w-full sm:max-w-md"
+                  value={value}
+                  disabled={command.isPending || options.length === 0}
+                  onChange={(event) =>
+                    void navigate({ to: '/finance/depreciation', search: { periodId: event.target.value } })
+                  }
+                >
+                  {known ? null : (
+                    <option value={value}>{periods.isPending || preview.isPending ? t(S.loading) : '—'}</option>
+                  )}
+                  {options.map((period) => (
+                    <option key={period.id} value={period.id}>
+                      {periodOption(period, locale)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </FormSection>
+          </Card>
+        )}
+        {noPeriods ? null : preview.isError && !data ? (
+          <MetaError error={preview.error} retry={previewAgain} />
         ) : !data ? (
-          <div aria-busy="true" className="flex flex-col gap-4">
+          <>
             <p className="sr-only" aria-live="polite">
               {t(S.loading)}
             </p>
-            <SkeletonCard lines={4} />
-          </div>
+            <div aria-busy="true" className="flex flex-col gap-4">
+              <SkeletonCard lines={4} />
+            </div>
+          </>
         ) : (
           <>
+            {stale ? (
+              <div role="alert" className="ui-notice ui-notice-danger" data-testid="depreciation-stale">
+                <p>
+                  {t({
+                    ja: '最新の試算に失敗しました。表示は前回の結果です。実行するには試算をやり直してください。',
+                    en: 'The latest preview failed; this is the previous result. Preview again before running.',
+                  })}
+                </p>
+                <Button size="sm" className="mt-2" onClick={previewAgain} disabled={command.isPending}>
+                  {t({ ja: '試算をやり直す', en: 'Retry the preview' })}
+                </Button>
+              </div>
+            ) : null}
             {failure ? (
               <div role="alert" className="ui-notice ui-notice-danger" data-testid="depreciation-error">
                 <p>{failure}</p>
@@ -376,7 +551,14 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
             <Card data-testid="depreciation-status">
               <div className="flex flex-col gap-3 p-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-bold text-text-heading">{data.period.code}</h2>
+                  <h2
+                    ref={statusHeading}
+                    tabIndex={-1}
+                    className="text-lg font-bold text-text-heading"
+                    data-testid="depreciation-period-heading"
+                  >
+                    {data.period.code}
+                  </h2>
                   {data.period.isClosed ? (
                     <Badge tone="neutral">{t({ ja: '締め済み', en: 'Closed' })}</Badge>
                   ) : data.period.isFuture ? (
@@ -393,7 +575,15 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
                     ))}
                   </ul>
                 ) : null}
-                <PreviewTable preview={data} />
+                <PreviewTable preview={data} busy={preview.isFetching} />
+                {data.skipped.opening_required ? (
+                  <p className="ui-notice ui-notice-warning text-sm" data-testid="depreciation-opening-required">
+                    {t({
+                      ja: `事業供用が最初の会計年度より前で、移行時の値が無い資産が ${data.skipped.opening_required} 件あります。償却しないので、台帳で移行日と移行時の償却累計を入れてください。`,
+                      en: `${data.skipped.opening_required} assets went into service before the first fiscal year and have no opening values. They are not depreciated; enter the opening date and the opening accumulated depreciation in the register.`,
+                    })}
+                  </p>
+                ) : null}
                 {skippedText(data.skipped, locale) ? (
                   <p className="text-xs text-text-secondary" data-testid="depreciation-skipped">
                     {t({ ja: '計上しない資産: ', en: 'Not booked: ' })}
@@ -405,7 +595,7 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
                     <Button
                       variant="primary"
                       onClick={() => setConfirm(true)}
-                      disabled={!runnable || command.isPending || preview.isFetching}
+                      disabled={!runnable || stale || command.isPending || preview.isFetching}
                       data-testid="depreciation-run"
                     >
                       {t({ ja: '償却を実行', en: 'Run depreciation' })}
@@ -461,6 +651,7 @@ function DepreciationRun({ meta }: { meta: AppMeta }) {
                 )}
               </FormSection>
             </Card>
+            <RulesDetails meta={meta} />
           </>
         )}
       </div>

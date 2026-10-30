@@ -6,20 +6,24 @@ import {
   Decimal,
   defineAction,
   label,
+  MAX_REPORT_ROWS,
+  repo,
   StateError,
   tableResult,
   todayLocal,
   type Context,
+  type Label,
   type LocalDate,
 } from '@daifuku/kernel';
+import { FiscalYear } from '@daifuku/mod-accounting';
 import { z } from 'zod';
 import { DepreciationRunLine } from '../entities/depreciation-run.ts';
 import { FixedAssetDisposal } from '../entities/disposal.ts';
-import { ASSET_CLASS_LABELS, FixedAsset, METHOD_LABELS } from '../entities/fixed-asset.ts';
+import { ASSET_CLASS_LABELS, ASSET_STATUS_LABELS, FixedAsset, METHOD_LABELS } from '../entities/fixed-asset.ts';
 import { depreciationRuleSetSchema, loadRules, rulesConfirmation, type AssetClass } from '../rules.ts';
 import { allAssets, liveDisposals, loadYears, yearOfDate } from '../services/history.ts';
 import { loadHistory } from '../services/plan.ts';
-import { propertyTaxRows } from '../services/property-tax.ts';
+import { propertyTaxRows, UNSET_MUNICIPALITY_LABEL } from '../services/property-tax.ts';
 
 const ZERO = Decimal.zero();
 const dec = (v: unknown): Decimal =>
@@ -53,8 +57,26 @@ const SCHEDULE_TOTALS = [
   'closingAccumulated',
 ] as const;
 
-const classLabel = (c: string, locale: 'ja' | 'en') => ASSET_CLASS_LABELS[c as AssetClass]?.[locale] ?? c;
-const methodLabel = (m: string) => METHOD_LABELS[m as keyof typeof METHOD_LABELS]?.ja ?? m;
+type Locale = Context['locale'];
+const classLabel = (c: string, locale: Locale) => ASSET_CLASS_LABELS[c as AssetClass]?.[locale] ?? c;
+const methodLabel = (m: string, locale: Locale) => METHOD_LABELS[m as keyof typeof METHOD_LABELS]?.[locale] ?? m;
+
+/**
+ * docs/conventions/reports.md: at most MAX_REPORT_ROWS rows; beyond it the first rows are returned with
+ * `meta.truncated = true`, the totals still cover every row and the title says so.
+ */
+function capRows<T>(rows: readonly T[], title: Label): { rows: T[]; title: Label; meta: Record<string, unknown> } {
+  if (rows.length <= MAX_REPORT_ROWS) return { rows: [...rows], title, meta: {} };
+  const shown = MAX_REPORT_ROWS.toLocaleString('en-US');
+  return {
+    rows: rows.slice(0, MAX_REPORT_ROWS),
+    title: label(
+      `${title.ja}（先頭 ${shown} 行を表示。合計は全 ${rows.length.toLocaleString('en-US')} 行）`,
+      `${title.en} (first ${shown} rows shown; totals cover all ${rows.length.toLocaleString('en-US')} rows)`,
+    ),
+    meta: { truncated: true, totalRows: rows.length },
+  };
+}
 
 /** AC-21: the depreciation schedule of a fiscal year (default: the year containing today, else the last year). */
 export async function depreciationSchedule(ctx: Context, input: { fiscalYearId?: string | undefined }) {
@@ -63,6 +85,8 @@ export async function depreciationSchedule(ctx: Context, input: { fiscalYearId?:
     throw new StateError('the company has no fiscal year', 'Open a fiscal year with accounting.open_fiscal_year.', {
       reason: 'no_fiscal_period',
     });
+  // AC-25: another company's (or an unknown) fiscal year id is NOT_FOUND, like the preview's period id.
+  if (input.fiscalYearId) await repo(ctx, FiscalYear).get(input.fiscalYearId);
   const today = todayLocal(ctx.now());
   const year = input.fiscalYearId
     ? years.find((y) => y.id === input.fiscalYearId)
@@ -99,10 +123,10 @@ export async function depreciationSchedule(ctx: Context, input: { fiscalYearId?:
       assetId: a.id,
       code: a.code,
       name: a.name,
-      assetClass: classLabel(a.assetClass, 'ja'),
+      assetClass: classLabel(a.assetClass, ctx.locale),
       acquisitionDate: a.acquisitionDate,
       inServiceDate: a.inServiceDate ?? null,
-      method: methodLabel(a.method),
+      method: methodLabel(a.method, ctx.locale),
       usefulLife: a.usefulLife,
       cost,
       openingBookValue,
@@ -111,21 +135,25 @@ export async function depreciationSchedule(ctx: Context, input: { fiscalYearId?:
       decrease,
       closingBookValue,
       closingAccumulated,
-      status: disposedInYear || (a.disposedOn && a.disposedOn <= year.endDate) ? 'disposed' : 'active',
+      status:
+        ASSET_STATUS_LABELS[disposedInYear || (a.disposedOn && a.disposedOn <= year.endDate) ? 'disposed' : 'active'][
+          ctx.locale
+        ],
     };
   });
   const totals = Object.fromEntries(
     SCHEDULE_TOTALS.map((k) => [k, rows.reduce((s, r) => s.plus(r[k]), ZERO).toString()]),
   ) as Record<string, string>;
+  const capped = capRows(rows, label(`減価償却明細表 ${year.code}`, `Depreciation schedule ${year.code}`));
   return {
-    title: label(`減価償却明細表 ${year.code}`, `Depreciation schedule ${year.code}`),
+    title: capped.title,
     columns: SCHEDULE_COLUMNS,
-    rows: rows.map((r) => ({
+    rows: capped.rows.map((r) => ({
       ...r,
       ...Object.fromEntries(SCHEDULE_TOTALS.map((k) => [k, r[k].toString()])),
     })),
     totals,
-    meta: { fiscalYearId: year.id, fiscalYearCode: year.code, from: year.startDate, to: year.endDate },
+    meta: { fiscalYearId: year.id, fiscalYearCode: year.code, from: year.startDate, to: year.endDate, ...capped.meta },
   };
 }
 
@@ -182,18 +210,22 @@ export async function propertyTaxSummary(ctx: Context, input: { year?: number | 
   );
   const classText = (code: string) => {
     const c = classes.find((x) => x.code === code);
-    return c ? `${c.number} ${c.label.ja}` : code;
+    return c ? `${c.number} ${c.label[ctx.locale]}` : code;
   };
   const sum = (k: 'priorCost' | 'decreaseCost' | 'increaseCost' | 'totalCost') =>
     rows.reduce((s, r) => s.plus(r[k]), ZERO).toString();
-  return {
-    title: label(
+  const capped = capRows(
+    rows,
+    label(
       `償却資産申告の集計（${year}年度、賦課期日 ${current}）`,
       `Depreciable asset return aggregate ${year} (${current})`,
     ),
+  );
+  return {
+    title: capped.title,
     columns: PROPERTY_TAX_COLUMNS,
-    rows: rows.map((r) => ({
-      municipality: r.municipality,
+    rows: capped.rows.map((r) => ({
+      municipality: r.municipality ?? UNSET_MUNICIPALITY_LABEL[ctx.locale],
       propertyTaxClass: classText(r.propertyTaxClass),
       priorCost: r.priorCost.toString(),
       priorCount: r.priorCount,
@@ -210,7 +242,7 @@ export async function propertyTaxSummary(ctx: Context, input: { year?: number | 
       increaseCost: sum('increaseCost'),
       totalCost: sum('totalCost'),
     },
-    meta: { year, assessmentDate: current, previousAssessmentDate: previous, ruleSetId: rules.id },
+    meta: { year, assessmentDate: current, previousAssessmentDate: previous, ruleSetId: rules.id, ...capped.meta },
   };
 }
 
