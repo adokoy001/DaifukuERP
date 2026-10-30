@@ -87,6 +87,8 @@ const CONVERTED = [
   'pages/cash-forecast-page.tsx',
   'components/cash-forecast-chart.tsx',
   'cash-forecast.css',
+  // expense-settlement (docs/specs/expense-settlement.md)
+  'pages/expense-settlement-page.tsx',
 ];
 const KIT = readdirSync(SRC + 'ui')
   .filter((name) => /\.(tsx?|css)$/.test(name) && !name.endsWith('.test.ts'))

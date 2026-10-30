@@ -82,6 +82,7 @@ const MODULE_WORKSPACES: Readonly<Record<string, WorkspaceId>> = {
   inventory: 'inventory',
   workforce: 'workforce',
   workforce_evidence: 'workforce',
+  expense: 'finance',
   accounting: 'finance',
   payment: 'finance',
   banking: 'finance',
@@ -263,6 +264,17 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '取引年月日・取引金額・取引先で証憑を探し、リンク先の伝票と差替の履歴を確かめ、選んだ証憑をまとめてダウンロードします（電子帳簿保存法の検索要件）。',
       en: 'Find evidence by transaction date, amount and partner, check the linked document and the supersede history, and download selected evidence together.',
+    },
+  },
+  {
+    href: '/finance/expenses',
+    workspace: 'finance',
+    module: 'expense',
+    action: 'expense.settlement_candidates',
+    label: { ja: '経費精算', en: 'Expense settlement' },
+    description: {
+      ja: '承認済みの従業員経費から精算書を作り、仕訳と支払をまとめて記録します。',
+      en: 'Create expense settlements from approved employee expenses; the entry and the payment are recorded together.',
     },
   },
   {

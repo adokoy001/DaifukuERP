@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { formText, type ExpenseSummary } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
+import {
+  DEFAULT_EXPENSE_PAYMENT_METHOD,
+  EXPENSE_PAYMENT_METHODS,
+  expensePaymentMethodLabel,
+  expensePaymentMethods,
+} from '../lib/workforce.ts';
 import { WorkforceReceipts } from './workforce-receipts.tsx';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import {
@@ -54,6 +60,7 @@ function ExpenseForm({
             description: formText(data, 'description'),
             amount: formText(data, 'amount'),
             evidence: formText(data, 'evidence'),
+            paymentMethod: formText(data, 'paymentMethod') || DEFAULT_EXPENSE_PAYMENT_METHOD,
           },
         });
         onSaved(formText(data, 'expenseDate'));
@@ -92,6 +99,28 @@ function ExpenseForm({
           required
           defaultValue={expense?.amount ?? ''}
         />
+      </label>
+      <label>
+        {t({ ja: '支払方法', en: 'Payment method' })}
+        <select
+          className="input"
+          name="paymentMethod"
+          aria-label={t({ ja: '支払方法', en: 'Payment method' })}
+          required
+          defaultValue={expense?.paymentMethod ?? DEFAULT_EXPENSE_PAYMENT_METHOD}
+        >
+          {EXPENSE_PAYMENT_METHODS.map((method) => (
+            <option key={method} value={method}>
+              {t(expensePaymentMethods[method])}
+            </option>
+          ))}
+        </select>
+        <small>
+          {t({
+            ja: '自分で立て替えたか、会社の法人カードか、事前に受け取った仮払金から払ったかを選びます。',
+            en: 'Choose whether you paid yourself, with the company card, or from an advance you received.',
+          })}
+        </small>
       </label>
       <label>
         {t({ ja: '利用目的・内容', en: 'Purpose and details' })}
@@ -186,6 +215,7 @@ export function WorkforceExpenses({
               </header>
               <div className="workforce-record-meta">
                 <WorkforceMoney value={row.amount} />
+                <span data-testid="expense-payment-method">{t(expensePaymentMethodLabel(row.paymentMethod))}</span>
               </div>
               <p>{row.description}</p>
               <p>
@@ -197,8 +227,9 @@ export function WorkforceExpenses({
                 </p>
               ) : null}
               {row.paidOn ? (
-                <p>
-                  {t({ ja: '精算日', en: 'Reimbursed on' })}: {row.paidOn} · {row.paymentReference}
+                <p data-testid="expense-settled">
+                  {t({ ja: '精算日', en: 'Settled on' })}: {row.paidOn} ·{' '}
+                  {t({ ja: '精算書・精算記録番号', en: 'Settlement number' })}: {row.paymentReference}
                 </p>
               ) : null}
               <div className="workforce-record-actions">

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { dateTimeInput, minutesLabel, timeLabel } from './workforce.ts';
+import {
+  dateTimeInput,
+  DEFAULT_EXPENSE_PAYMENT_METHOD,
+  EXPENSE_PAYMENT_METHODS,
+  expensePaymentMethodLabel,
+  minutesLabel,
+  timeLabel,
+} from './workforce.ts';
+import { EXPENSE_PAYMENT_METHODS as CONTRACT_METHODS } from '@daifuku/mod-workforce/contract';
 import type { EntityMeta } from '../api/types.ts';
 import { workforceEntityForUi } from './workforce-entity.ts';
 
@@ -48,5 +56,18 @@ describe('workforce generic screens', () => {
       const original = entity(name);
       expect(workforceEntityForUi(original)).toBe(original);
     }
+  });
+});
+
+describe('expense payment methods (expense-settlement AC-1, AC-22)', () => {
+  it('AC-1 lists the contract methods with Japanese and English labels and defaults to paid personally', () => {
+    expect([...EXPENSE_PAYMENT_METHODS]).toEqual([...CONTRACT_METHODS]);
+    expect(DEFAULT_EXPENSE_PAYMENT_METHOD).toBe('personal');
+    expect(expensePaymentMethodLabel('corporate_card')).toEqual({ ja: '法人カード', en: 'Corporate card' });
+    expect(expensePaymentMethodLabel('advance').ja).toBe('仮払金から支払');
+  });
+  it('AC-22 an unknown or missing method reads as the default', () => {
+    expect(expensePaymentMethodLabel(undefined)).toEqual({ ja: '立替', en: 'Paid personally' });
+    expect(expensePaymentMethodLabel('cheque')).toEqual({ ja: '立替', en: 'Paid personally' });
   });
 });

@@ -15,6 +15,21 @@ export const workforceStatuses: Record<string, Label> = {
   settled: { ja: '精算済み', en: 'Settled' },
   confirmed: { ja: '確定済み', en: 'Confirmed' },
 };
+/** workforce_expense.paymentMethod (docs/specs/expense-settlement.md AC-1, AC-22): how the employee paid. */
+export const EXPENSE_PAYMENT_METHODS = ['personal', 'corporate_card', 'advance'] as const;
+export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
+export const DEFAULT_EXPENSE_PAYMENT_METHOD: ExpensePaymentMethod = 'personal';
+export const expensePaymentMethods: Record<ExpensePaymentMethod, Label> = {
+  personal: { ja: '立替', en: 'Paid personally' },
+  corporate_card: { ja: '法人カード', en: 'Corporate card' },
+  advance: { ja: '仮払金から支払', en: 'Paid from an advance' },
+};
+/** The label of a stored method; an unknown or missing value reads as the default (records older than the field). */
+export function expensePaymentMethodLabel(method: string | null | undefined): Label {
+  return (EXPENSE_PAYMENT_METHODS as readonly string[]).includes(method ?? '')
+    ? expensePaymentMethods[method as ExpensePaymentMethod]
+    : expensePaymentMethods[DEFAULT_EXPENSE_PAYMENT_METHOD];
+}
 export function workforceTone(status: string): 'positive' | 'pending' | 'negative' | undefined {
   if (['working', 'approved', 'settled', 'confirmed', 'accepted'].includes(status)) return 'positive';
   if (['break', 'pending', 'submitted'].includes(status)) return 'pending';

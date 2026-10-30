@@ -429,6 +429,11 @@ const evidenceRoute = createRoute({
   validateSearch: parseEvidenceSearch,
   component: lazyRouteComponent(() => import('./pages/evidence-page.tsx'), 'EvidencePage'),
 });
+const expenseSettlementRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/expenses',
+  component: lazyRouteComponent(() => import('./pages/expense-settlement-page.tsx'), 'ExpenseSettlementPage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -507,6 +512,7 @@ const routeTree = rootRoute.addChildren([
     openingRoute,
     recurringRoute,
     evidenceRoute,
+    expenseSettlementRoute,
     taxFilingRoute,
   ]),
 ]);

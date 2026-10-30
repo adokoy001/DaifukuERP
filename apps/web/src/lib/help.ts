@@ -22,6 +22,7 @@ const CASH_FORECAST = topic('appendix-l-commerce-bank-filing.md', '資金繰り�
 const INDUSTRY = topic('appendix-d-industry-templates.md');
 const DEVICES = topic('appendix-j-store-devices.md');
 const MONTHLY = '06-monthly.md';
+const EXPENSES = topic('expense-settlement.md');
 
 /** Dedicated screens (navigation-data.ts) and the fixed generic routes. */
 const SCREENS: Readonly<Record<string, HelpTopic>> = {
@@ -62,6 +63,8 @@ const SCREENS: Readonly<Record<string, HelpTopic>> = {
   '/finance/recurring': topic(MONTHLY, '定期仕訳を生成する'),
   // docs/specs/evidence-search.md AC-12
   '/finance/evidence': topic('02-basics.md', '証憑の検索'),
+  // expense-settlement (docs/specs/expense-settlement.md D19)
+  '/finance/expenses': EXPENSES,
 };
 /** Reports explained in the monthly chapter; every other table report uses the report-screen appendix. */
 const REPORTS: Readonly<Record<string, HelpTopic>> = {
@@ -98,6 +101,7 @@ const ENTITIES: readonly (readonly [RegExp, HelpTopic])[] = [
   [/^(?:restaurant_chain|appliance_store|farm)_/, INDUSTRY],
   [/^(?:franchise|group_accounting|pos_integration)_/, ENTERPRISE],
   [/^edge_/, DEVICES],
+  [/^expense_(?:settlement|advance)$/, EXPENSES],
 ];
 const BASICS = topic('02-basics.md');
 

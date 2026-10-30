@@ -3,7 +3,8 @@ import { formText, type ManagementPortal } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { businessToday } from '../lib/operations.ts';
-import { leavePortions, minutesLabel, timeLabel } from '../lib/workforce.ts';
+import { Link } from '@tanstack/react-router';
+import { expensePaymentMethodLabel, leavePortions, minutesLabel, timeLabel } from '../lib/workforce.ts';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceReceipts } from './workforce-receipts.tsx';
 import { WorkforceEmpty, WorkforceMoney, WorkforcePanel, WorkforceStatus } from './workforce-shared.tsx';
@@ -255,6 +256,7 @@ export function WorkforceReviews({
                   <div className="workforce-record-meta">
                     <span>{row.expenseDate}</span>
                     <WorkforceMoney value={row.amount} />
+                    <span>{t(expensePaymentMethodLabel(row.paymentMethod))}</span>
                   </div>
                   <p>{row.description}</p>
                   <p>
@@ -295,6 +297,11 @@ export function WorkforceReviews({
                           </button>
                         ))
                       : null}
+                    {row.status === 'approved' && actions.includes('expense.settlement_candidates') ? (
+                      <Link to="/finance/expenses" className="btn" data-testid="expense-to-settlement">
+                        {t({ ja: '経費精算へ', en: 'Go to expense settlement' })}
+                      </Link>
+                    ) : null}
                     {row.status === 'approved' && allowed('settle_expense') ? (
                       <button
                         type="button"

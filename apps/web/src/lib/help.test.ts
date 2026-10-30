@@ -103,6 +103,11 @@ describe('navigation-assist AC-6: help for this screen', () => {
     expect(helpTopicFor('/e/unknown_entity')).toEqual({ chapter: '02-basics.md' });
   });
 
+  it('expense-settlement AC-20 AC-21: the expense screens open the expense settlement chapter', () => {
+    for (const route of ['/finance/expenses', '/e/expense_settlement', '/e/expense_advance/new'])
+      expect(helpTopicFor(route), route).toEqual({ chapter: 'expense-settlement.md' });
+  });
+
   it('AC-6: screens without a chapter get no link', () => {
     for (const route of [
       '/',
