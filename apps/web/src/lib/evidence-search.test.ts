@@ -178,6 +178,8 @@ describe('URL search and criteria (AC-13, AC-14)', () => {
     for (const page of ['abc', 0, -1, 2.5])
       expect(criteriaFromSearch(merged({ page }), KINDS), String(page)).toMatchObject({ page: 1, ignored: ['page'] });
     expect(criteriaFromSearch(merged({ page: 1 }), KINDS)).toMatchObject({ page: 1, ignored: [] });
+    // an empty `?page=` counts as not given, like an empty criterion (integration review nit)
+    expect(criteriaFromSearch(merged({ page: '' }), KINDS)).toMatchObject({ page: 1, ignored: [] });
     expect(criteriaFromSearch(merged({ page: 7 }), KINDS)).toMatchObject({ page: 7, ignored: [] });
     // an empty value is "not given", not an invalid one
     expect(criteriaFromSearch(merged({ from: '', kind: '' }), KINDS)).toMatchObject({ ignored: [] });

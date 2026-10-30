@@ -19,7 +19,7 @@
 ## やったこと
 
 - kernel（ADR-0031）: `EntityConfig.lines`、`lineSpecs` / `lockParents` / `assertAggregateLimit` / `hasLines` / `EntityMeta.lines` / 関連記録 / CSV 取込の対象外判定が `config.lines` を読む、`saveLines` と `lockParents` の凍結を document に限定、entity の親への明細の作成も親を update でロック、`lines` つきの汎用更新でヘッダの更新中も `markReplacing`。
-- accounting: `recurring_journal`（明細 `recurring_journal_line`）、`recurring_journal_run`、`services/recurrence.ts`（純粋: 回の日付・次回日付・按分・検査・期間に対する計画）、`hooks/recurring.ts`、`actions/generate-recurring.ts`、`actions/recurring-schedule.ts`、`actions/todo.ts`（`accounting.todo`）、`settings.ts`（`accounting.recurring_auto_submit`、category accounting、order 30）、書込み権 2 つ、メニュー「定期仕訳」、移行 `0018_recurring_journals.sql`。
+- accounting: `recurring_journal`（明細 `recurring_journal_line`）、`recurring_journal_run`、`services/recurrence.ts`（純粋: 回の日付・次回日付・按分・検査・期間に対する計画）、`hooks/recurring.ts`、`actions/generate-recurring.ts`、`actions/recurring-schedule.ts`、`actions/todo.ts`（`accounting.todo`）、`settings.ts`（`accounting.recurring_auto_submit`、category accounting、order 30）、書込み権 2 つ、メニュー「定期仕訳」、移行 `0019_recurring_journals.sql`。
 - web: `pages/recurring-page.tsx`、`api/recurring.ts`、`lib/recurring.ts`、ルート `/finance/recurring`、画面カタログ、`help.ts`（06「定期仕訳を生成する」、05「定期仕訳を登録する」）、`CONVERTED`、`line-lock.ts` の `locked`、`record-form.tsx` から `recurringLineLock`。
 - 文書: ADR-0031、マニュアル 05「定期仕訳を登録する」・06「定期仕訳を生成する」と月末の流れ、`00-index.md`、`appendix-n-navigation.md`、`program-map.md`、`runtime-and-data.md`、`extension-guide.md`、`docs/domain/japan-tax.md#prepaid-expense`（11-3-1 の追加、注意文の中立化）、画面写真 `docs/manual/img/06-recurring.png`（ブラウザ試験の出力、合成会社）。
 

@@ -97,11 +97,12 @@ export const RecurringJournal = defineEntity({
   views: {
     list: ['name', 'kind', 'frequency', 'nextRunDate', 'isActive', 'lastOccurrenceDate'],
     search: ['name', 'description'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['name', 'description', 'isActive'],
-      ['kind', 'frequency', 'dayOfMonth', 'startDate', 'endDate'],
-      ['allocationPeriods'],
-      ['nextRunDate', 'lastOccurrenceDate'],
+      { label: label('基本', 'Basics'), fields: ['name', 'description', 'isActive'] },
+      { label: label('周期', 'Schedule'), fields: ['kind', 'frequency', 'dayOfMonth', 'startDate', 'endDate'] },
+      { label: label('按分', 'Allocation'), fields: ['allocationPeriods'] },
+      { label: label('生成の状況', 'Generation status'), fields: ['nextRunDate', 'lastOccurrenceDate'] },
     ],
   },
 });

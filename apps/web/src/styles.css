@@ -1140,7 +1140,8 @@
 }
 .action-dialog p {
   font-size: 12px;
-  color: #6d7890;
+  /* --text-muted reaches 4.5:1 on the dialog surface; the old #6d7890 was about 4.43:1 (evidence-search review). */
+  color: var(--text-muted);
   line-height: 1.9;
 }
 .correction-field {

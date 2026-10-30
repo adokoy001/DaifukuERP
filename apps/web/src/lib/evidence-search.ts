@@ -270,7 +270,8 @@ export function criteriaFromSearch(
   c.incomplete = take('incomplete', (v) => v === '1') === '1';
   const raw: unknown = search.page;
   const pageOk = typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= MAX_PAGE;
-  if (search.pageInvalid || (raw !== undefined && !pageOk)) ignored.push('page');
+  // An empty `?page=` counts as not given, as parseEvidenceSearch treats it (and as empty criteria are treated).
+  if (search.pageInvalid || (raw !== undefined && raw !== '' && !pageOk)) ignored.push('page');
   return { criteria: c, page: pageOk ? raw : 1, ignored: [...new Set(ignored)] };
 }
 

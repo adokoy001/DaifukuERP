@@ -150,7 +150,10 @@ export const SalesInvoice = defineDocument({
       { label: label('請求', 'Invoice'), fields: ['partnerId', 'date', 'dueDate', 'priceIncludesTax', 'currency'] },
       { label: label('金額', 'Amounts'), fields: ['subtotal', 'taxTotal', 'total', 'taxSummary'] },
       { label: label('入金', 'Receipt'), fields: ['paidAmount', 'balance', 'status'] },
-      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'journalEntryId', 'controlAccountId', 'openingBalance'] },
+      {
+        label: label('備考・仕訳', 'Note and posting'),
+        fields: ['note', 'journalEntryId', 'controlAccountId', 'openingBalance'],
+      },
     ],
   },
 });
