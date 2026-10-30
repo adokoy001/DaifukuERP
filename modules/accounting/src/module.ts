@@ -5,6 +5,7 @@ import { PartnerModule } from '@daifuku/mod-partner';
 import { fiscalPeriodHealthCheck } from './health.ts';
 import { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts';
 import { closeReadinessAction } from './actions/close-readiness.ts';
+import { generateRecurringAction } from './actions/generate-recurring.ts';
 import { generalLedgerAction } from './actions/general-ledger.ts';
 import { openFiscalYearAction } from './actions/open-fiscal-year.ts';
 import {
@@ -13,17 +14,22 @@ import {
   reverseOpeningBalancesAction,
 } from './actions/opening-balances.ts';
 import { postFromSourceAction } from './actions/post-from-source.ts';
+import { recurringScheduleAction } from './actions/recurring-schedule.ts';
 import { reverseEntryAction } from './actions/reverse-entry.ts';
 import { taxPeriodSummaryAction } from './actions/tax-period-summary.ts';
+import { accountingTodoAction } from './actions/todo.ts';
 import { trialBalanceAction } from './actions/trial-balance.ts';
 import { Account } from './entities/account.ts';
 import { FiscalPeriod } from './entities/fiscal-period.ts';
 import { FiscalYear } from './entities/fiscal-year.ts';
 import { JournalEntry } from './entities/journal-entry.ts';
 import { JournalLine } from './entities/journal-line.ts';
+import { RecurringJournal, RecurringJournalLine } from './entities/recurring-journal.ts';
+import { RecurringJournalRun } from './entities/recurring-journal-run.ts';
 import { registerFiscalDateHooks } from './hooks/fiscal-dates.ts';
 import { registerFreezeLinesHook } from './hooks/freeze-lines.ts';
 import { registerNoCancelHook } from './hooks/no-cancel.ts';
+import { registerRecurringHooks } from './hooks/recurring.ts';
 import { registerValidateEntryHook } from './hooks/validate-entry.ts';
 import { seedFiscalYear } from './seeds/fiscal-year.ts';
 import { registerAccountingSettings } from './settings.ts';
@@ -32,7 +38,16 @@ export const AccountingModule = defineModule({
   name: 'accounting',
   label: label('会計', 'Accounting'),
   depends: [PartnerModule.name],
-  entities: [Account, FiscalYear, FiscalPeriod, JournalEntry, JournalLine],
+  entities: [
+    Account,
+    FiscalYear,
+    FiscalPeriod,
+    JournalEntry,
+    JournalLine,
+    RecurringJournal,
+    RecurringJournalLine,
+    RecurringJournalRun,
+  ],
   actions: [
     openFiscalYearAction,
     postFromSourceAction,
@@ -46,6 +61,9 @@ export const AccountingModule = defineModule({
     importOpeningBalancesAction,
     reverseOpeningBalancesAction,
     openingBalanceStatusAction,
+    generateRecurringAction,
+    recurringScheduleAction,
+    accountingTodoAction,
   ],
   hooks: () => {
     registerValidateEntryHook();
@@ -53,6 +71,7 @@ export const AccountingModule = defineModule({
     registerFreezeLinesHook();
     registerFiscalDateHooks();
     registry.registerHealthCheck(fiscalPeriodHealthCheck);
+    registerRecurringHooks();
     registerAccountingSettings();
   },
   seed: seedFiscalYear,
@@ -63,6 +82,7 @@ export const AccountingModule = defineModule({
     { label: label('会計期間', 'Fiscal periods'), entity: FiscalPeriod.name, order: 33 },
     { label: label('試算表', 'Trial balance'), route: `/r/${trialBalanceAction.name}`, order: 34 },
     { label: label('消費税集計表', 'Consumption tax summary'), route: `/r/${taxPeriodSummaryAction.name}`, order: 35 },
+    { label: label('定期仕訳', 'Recurring journals'), entity: RecurringJournal.name, order: 36 },
   ],
   roles: { accounting: label('経理', 'Accounting') },
 });

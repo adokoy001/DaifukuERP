@@ -2,7 +2,7 @@
 // create/update inputs and the get output carry them, /meta reports them, and a parentField that is not a ref back to
 // the parent fails at definition time (when the line specs are first resolved).
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { createInputSchema, hasLines, recordJsonSchema, updateInputSchema } from '../src/actions/crud-schemas.ts';
 import type { Context, Db } from '../src/context.ts';
 import { makeContext } from '../src/db/client.ts';

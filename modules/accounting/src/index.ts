@@ -6,6 +6,8 @@ import type { FiscalPeriod } from './entities/fiscal-period.ts';
 import type { FiscalYear } from './entities/fiscal-year.ts';
 import type { JournalEntry } from './entities/journal-entry.ts';
 import type { JournalLine } from './entities/journal-line.ts';
+import type { RecurringJournal, RecurringJournalLine } from './entities/recurring-journal.ts';
+import type { RecurringJournalRun } from './entities/recurring-journal-run.ts';
 
 export { AccountingModule } from './module.ts';
 export {
@@ -23,6 +25,73 @@ export { FiscalYear } from './entities/fiscal-year.ts';
 export { FiscalPeriod } from './entities/fiscal-period.ts';
 export { JournalEntry } from './entities/journal-entry.ts';
 export { JournalLine } from './entities/journal-line.ts';
+export {
+  RecurringJournal,
+  RecurringJournalLine,
+  RECURRING_KINDS,
+  RECURRING_FREQUENCIES,
+  RECURRING_KIND_LABELS,
+  RECURRING_FREQUENCY_LABELS,
+} from './entities/recurring-journal.ts';
+export { RecurringJournalRun } from './entities/recurring-journal-run.ts';
+export {
+  generateRecurring,
+  generateRecurringAction,
+  generateRecurringInput,
+  generateRecurringOutput,
+  assertCanGenerate,
+  entryDescription,
+  MAX_RECURRING_ENTRIES,
+  RECURRING_GENERATED_EVENT,
+  RUN_STATUSES,
+  RUN_STOP_REASONS,
+  type GenerateRecurringInput,
+  type GenerateRecurringResult,
+  type RunStatus,
+  type RunStopReason,
+} from './actions/generate-recurring.ts';
+export {
+  recurringSchedule,
+  recurringScheduleAction,
+  RECURRING_SCHEDULE_COLUMNS,
+} from './actions/recurring-schedule.ts';
+export { accountingTodoAction } from './actions/todo.ts';
+export {
+  ACCOUNTING_SETTING_DEFS,
+  RECURRING_AUTO_SUBMIT_KEY,
+  RECURRING_AUTO_SUBMIT_DEFAULT,
+  recurringAutoSubmitSchema,
+  registerAccountingSettings,
+  loadRecurringAutoSubmit,
+} from './settings.ts';
+export { RECURRING_DELETE_HINT, RECURRING_DUPLICATE_HINT, RECURRING_RUN_HINT } from './hooks/recurring.ts';
+export {
+  allocationAmount,
+  allocationShares,
+  allocationTotal,
+  checkHeader,
+  checkLines,
+  checkTemplate,
+  dueOccurrences,
+  intervalMonths,
+  lastAllocationDate,
+  minorUnit,
+  nextOccurrence,
+  occurrenceAt,
+  periodState,
+  planTemplate,
+  slotDate,
+  PLAN_STATUSES,
+  STOP_REASONS,
+  type Occurrence,
+  type PlanStatus,
+  type PlannedOccurrence,
+  type RecurringFrequency,
+  type RecurringKind,
+  type Schedule,
+  type StopReason,
+  type TemplateLine,
+} from './services/recurrence.ts';
 
 export {
   openFiscalYear,
@@ -143,6 +212,9 @@ export type JournalEntryRow = Infer<typeof JournalEntry>;
 export type JournalEntryInsert = InsertInput<typeof JournalEntry>;
 export type JournalLineRow = Infer<typeof JournalLine>;
 export type JournalLineInsert = InsertInput<typeof JournalLine>;
+export type RecurringJournalRow = Infer<typeof RecurringJournal>;
+export type RecurringJournalLineRow = Infer<typeof RecurringJournalLine>;
+export type RecurringJournalRunRow = Infer<typeof RecurringJournalRun>;
 
 export { reverseSourceEntry } from './actions/reverse-source.ts';
 // Opening balances (docs/specs/opening-balances.md, ADR-0030): shared by the sales/purchase/inventory imports.
@@ -237,12 +309,10 @@ export {
   type OpeningSummary,
 } from './services/opening.ts';
 export {
-  ACCOUNTING_SETTING_DEFS,
   OPENING_BALANCES_DEFAULT,
   OPENING_BALANCES_KEY,
   openingBalancesSchema,
   openingBalancesSetting,
-  registerAccountingSettings,
   type OpeningBalancesSetting,
 } from './settings.ts';
 export { assertJpySettlement } from './money-contract.ts';

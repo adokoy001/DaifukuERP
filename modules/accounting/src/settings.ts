@@ -1,5 +1,6 @@
-// Company settings owned by accounting (ADR-0013 L1). `accounting.opening_balances` names the opening balance clearing
-// account by code (docs/specs/opening-balances.md AC-28): data, not a constant (l10n/jp seeds 3900 期首残高仮勘定).
+// Company settings owned by accounting (ADR-0013 L1; ADR-0027 presentation). `accounting.opening_balances` names the
+// opening balance clearing account by code (docs/specs/opening-balances.md AC-28): data, not a constant (l10n/jp seeds
+// 3900 期首残高仮勘定). `accounting.recurring_auto_submit` is docs/specs/recurring-journals.md AC-14.
 import { getSetting, label, registry, type Context, type SettingDef } from '@daifuku/kernel';
 import { z } from 'zod';
 
@@ -9,7 +10,23 @@ export const openingBalancesSchema = z.object({ clearingAccount: z.string().min(
 export type OpeningBalancesSetting = z.output<typeof openingBalancesSchema>;
 export const OPENING_BALANCES_DEFAULT: OpeningBalancesSetting = { clearingAccount: '3900' };
 
+export const RECURRING_AUTO_SUBMIT_KEY = 'accounting.recurring_auto_submit';
+export const recurringAutoSubmitSchema = z.boolean();
+export const RECURRING_AUTO_SUBMIT_DEFAULT = false;
+
 export const ACCOUNTING_SETTING_DEFS: readonly SettingDef[] = [
+  {
+    key: RECURRING_AUTO_SUBMIT_KEY,
+    label: label('定期仕訳を生成と同時に確定', 'Submit recurring journals when generated'),
+    description: label(
+      'オンにすると、定期仕訳の生成（accounting.generate_recurring）で作った仕訳をその場で確定します。オフ（既定）なら下書きのまま残し、人が確認して確定します',
+      'When on, accounting.generate_recurring submits the journal entries it creates. When off (the default) they stay drafts for a person to review and submit',
+    ),
+    schema: recurringAutoSubmitSchema,
+    default: RECURRING_AUTO_SUBMIT_DEFAULT,
+    category: 'accounting',
+    order: 30,
+  },
   {
     key: OPENING_BALANCES_KEY,
     label: label('期首残高の取込', 'Opening balance import'),
@@ -40,4 +57,8 @@ export function registerAccountingSettings(): void {
 
 export function openingBalancesSetting(ctx: Context): Promise<OpeningBalancesSetting> {
   return getSetting(ctx, OPENING_BALANCES_KEY, openingBalancesSchema, OPENING_BALANCES_DEFAULT);
+}
+
+export function loadRecurringAutoSubmit(ctx: Context): Promise<boolean> {
+  return getSetting(ctx, RECURRING_AUTO_SUBMIT_KEY, recurringAutoSubmitSchema, RECURRING_AUTO_SUBMIT_DEFAULT);
 }
