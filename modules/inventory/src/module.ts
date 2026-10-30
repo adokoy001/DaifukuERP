@@ -27,6 +27,7 @@ import { registerEntryHooks } from './hooks/entry.ts';
 import { registerGuardHooks } from './hooks/guard.ts';
 import { registerInvoiceHooks } from './hooks/invoices.ts';
 import { registerLineHooks } from './hooks/lines.ts';
+import { registerOpeningYearHooks } from './hooks/opening-year.ts';
 import { registerSubmitHook } from './hooks/submit.ts';
 import { registerWarehouseHooks } from './hooks/warehouse.ts';
 import { seedWarehouses } from './seeds/warehouses.ts';
@@ -57,6 +58,7 @@ export const InventoryModule = defineModule({
     registerCancelHook();
     registerInvoiceHooks();
     registerCountHooks();
+    registerOpeningYearHooks();
     registerInventorySettings();
     registry.registerHealthCheck(stockSettingsHealthCheck);
   },

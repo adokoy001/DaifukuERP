@@ -1,6 +1,6 @@
 // Opening balances: the fiscal-year rules (docs/specs/opening-balances.md AC-1..AC-3, ADR-0030). Kept apart from
 // opening.ts so the journal_entry submit hook can use them without importing the posting actions (no import cycle).
-import { NotFound, repo, StateError, type Context, type Infer, type LocalDate } from '@daifuku/kernel';
+import { NotFound, repo, StateError, withLock, type Context, type Infer, type LocalDate } from '@daifuku/kernel';
 import { FiscalPeriod } from './entities/fiscal-period.ts';
 import { FiscalYear } from './entities/fiscal-year.ts';
 import { openingDateOf } from './services/opening.ts';
@@ -9,6 +9,9 @@ type FiscalYearRow = Infer<typeof FiscalYear>;
 type FiscalPeriodRow = Infer<typeof FiscalPeriod>;
 
 export const OPENING_REOPEN_HINT = 'Reopen the period with accounting.reopen_period, then import again.';
+
+/** The company-wide lock that fiscal_year creation, the period close and every posting-date check take. */
+export const ACCOUNTING_PERIODS_LOCK = 'accounting-periods';
 
 export interface OpeningYear {
   fiscalYear: FiscalYearRow;
@@ -67,6 +70,17 @@ export async function assertOpeningYear(ctx: Context, fiscalYearId: string): Pro
   const problem = await openingYearProblem(ctx, fiscalYear);
   if (problem.reason !== null) throw openingYearError(fiscalYear, problem.reason);
   return { fiscalYear, openingDate: openingDateOf(fiscalYear.startDate), firstPeriod: problem.firstPeriod };
+}
+
+/**
+ * AC-4 / D-14: AC-2 checked again under ACCOUNTING_PERIODS_LOCK (held to the end of the transaction). An import that
+ * posts no journal line (opening stock) calls it after its writes: an earlier year opened concurrently has either
+ * committed first (this refuses with not_earliest) or waits for this transaction and its fiscal_year before_create
+ * hooks then see the committed opening documents.
+ */
+export async function assertOpeningYearLocked(ctx: Context, fiscalYearId: string): Promise<OpeningYear> {
+  await withLock(ctx, ACCOUNTING_PERIODS_LOCK, async () => undefined);
+  return assertOpeningYear(ctx, fiscalYearId);
 }
 
 /**

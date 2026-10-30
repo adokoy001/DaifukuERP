@@ -1,6 +1,6 @@
 // Calls of the opening balances screen (docs/specs/opening-balances.md AC-31..AC-37): the status, the four imports, the
 // reversal of the opening journal, and the counts of opening documents through the generic list API (`total`).
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { request } from './client.ts';
 import { financeIdentity } from './finance.ts';
 import type { ListResponse } from './types.ts';
@@ -17,8 +17,13 @@ export function openingStatusKey(fiscalYearId: string | undefined) {
   return ['finance', financeIdentity(), 'opening-status', fiscalYearId ?? null] as const;
 }
 
+/**
+ * AC-32: the status of the chosen year. While another year loads, the previous result stays as placeholder data so the
+ * year picker stays mounted (keyboard focus is kept); the screen shows only the picker until the new year arrives.
+ */
 export function useOpeningStatus(fiscalYearId: string | undefined) {
   return useQuery({
+    placeholderData: keepPreviousData,
     queryKey: openingStatusKey(fiscalYearId),
     queryFn: ({ signal }) =>
       request<OpeningBalanceStatus>(`/actions/${OPENING_STATUS_ACTION}`, {

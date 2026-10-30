@@ -295,21 +295,48 @@ const ROLE_HINT: Record<OpeningSection, Label> = {
     en: 'A role that creates purchase invoices (purchasing) or admin is required.',
   },
   stock: {
-    ja: '入庫できる役割（在庫・購買）か管理者が必要です。営業の役割では入庫できません。',
-    en: 'A role that receives stock (inventory or purchasing) or admin is required. The sales role cannot receive stock.',
+    ja: '入庫できる役割（在庫・購買）か管理者と、品目を読める役割（閲覧・営業・購買など）が必要です。営業の役割では入庫できません。',
+    en: 'A role that receives stock (inventory or purchasing) or admin is required, plus a role that reads products (viewer, sales or purchasing, for example). The sales role cannot receive stock.',
   },
 };
+
+const opsOf = (meta: AppMeta, entity: string): readonly string[] =>
+  meta.entities.find((e) => e.name === entity)?.ops ?? [];
 
 /** AC-38: why a section is disabled for this user, or undefined when it can be used. */
 export function sectionBlocked(section: OpeningSection, meta: AppMeta): Label | undefined {
   if (!meta.actions.some((a) => a.name === SECTION_ACTION[section])) return ROLE_HINT[section];
   if (section === 'journal') return undefined;
-  const ops = meta.entities.find((e) => e.name === SECTION_ENTITY[section])?.ops ?? [];
+  const ops = opsOf(meta, SECTION_ENTITY[section]);
   if (!ops.includes('create') || !ops.includes('submit')) return ROLE_HINT[section];
+  if (section !== 'stock') return undefined;
   // server rule roleAllowsEntry(roles, 'receipt', false): sales holds stock_entry ops but may not receive
-  if (section === 'stock' && !meta.roles.some((r) => r === 'admin' || r === 'inventory' || r === 'purchasing'))
-    return ROLE_HINT.stock;
+  if (!meta.roles.some((r) => r === 'admin' || r === 'inventory' || r === 'purchasing')) return ROLE_HINT.stock;
+  // AC-6: the server also resolves product and warehouse codes with the caller's own read permission
+  if (!opsOf(meta, 'product').includes('read') || !opsOf(meta, 'warehouse').includes('read')) return ROLE_HINT.stock;
   return undefined;
+}
+
+/** AC-28: the sections that post against the opening balance clearing account (stock posts no journal). */
+export function usesClearingAccount(section: OpeningSection): boolean {
+  return section !== 'stock';
+}
+
+/** AC-28 / AC-37: why the clearing account cannot be used and how to fix it (the server message stays as detail). */
+export function clearingReasonText(reason: string | null, code: string): Label {
+  const where = {
+    ja: '「設定」の「会計」タブの「期首残高の取込」',
+    en: 'Settings → Accounting → Opening balance import',
+  };
+  if (reason === 'clearing_account_missing')
+    return {
+      ja: `期首残高仮勘定の科目 ${code} がありません。科目を作る（l10n/jp の科目表では 3900 期首残高仮勘定、純資産）か、${where.ja}で使う科目コードを変えてください。`,
+      en: `The clearing account ${code} does not exist. Create it (3900 期首残高仮勘定, equity, in the l10n/jp chart of accounts) or change the account code in ${where.en}.`,
+    };
+  return {
+    ja: `科目 ${code} は期首残高仮勘定に使えません（無効・損益の科目・取引先必須・税の役割のいずれかに当たります）。科目を直すか、${where.ja}で別の科目コードにしてください。`,
+    en: `Account ${code} cannot be the clearing account (it is inactive, a profit-and-loss account, requires a partner or has a tax role). Fix the account or choose another account code in ${where.en}.`,
+  };
 }
 
 export const YEAR_REASON_TEXT: Readonly<Record<string, Label>> = {
@@ -327,6 +354,29 @@ export const YEAR_REASON_TEXT: Readonly<Record<string, Label>> = {
     en: 'No fiscal period starts on the first day of the year.',
   },
 };
+
+/**
+ * AC-19 / AC-20: an opening invoice (`openingBalance`) is an internal record: it is never printed as a qualified invoice
+ * and a draft amended from it can never be submitted, so the record page offers neither.
+ */
+export function isOpeningDocument(record: Readonly<Record<string, unknown>>): boolean {
+  return record.openingBalance === true;
+}
+
+/**
+ * AC-39: the suffix that names the section in a repeated control (" (Opening journal)" / "（開始仕訳）"), so the four
+ * "Preview" / "Import" / "Download template" buttons have distinct accessible names.
+ */
+export function nameSuffix(name: string, locale: Locale): string {
+  return locale === 'ja' ? `（${name}）` : ` (${name})`;
+}
+
+/** AC-32 / AC-39: a fiscal year option with the separators of the UI language. */
+export function yearOptionLabel(year: { code: string; startDate: string; endDate: string }, locale: Locale): string {
+  return locale === 'ja'
+    ? `${year.code}（${year.startDate}〜${year.endDate}）`
+    : `${year.code} (${year.startDate} – ${year.endDate})`;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

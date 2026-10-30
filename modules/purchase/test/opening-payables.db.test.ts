@@ -3,14 +3,17 @@
 // modules/sales/test/opening-receivables.db.test.ts; this file proves the purchase specifics. Test DB: TEST_DATABASE_URL*.
 import {
   companies,
+  defineWriteCapability,
   newId,
   PermissionDenied,
   registerCrudActions,
   repo,
   runAction,
   setSetting,
+  submitDocument,
   systemParams,
   withContext,
+  withWriteCapability,
   type Context,
   type ContextParams,
 } from '@daifuku/kernel';
@@ -23,7 +26,7 @@ import {
   type OpeningImportResult,
 } from '@daifuku/mod-accounting';
 import { Partner } from '@daifuku/mod-partner';
-import { seedUoms } from '@daifuku/mod-product';
+import { Product, seedUoms } from '@daifuku/mod-product';
 import { seedTaxRates } from '@daifuku/mod-tax';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PURCHASE_ACCOUNTS_KEY, PurchaseInvoice, PurchaseInvoiceLine, purchaseAccountsSchema } from '../src/index.ts';
@@ -214,6 +217,11 @@ describe('opening payables', () => {
     expect((await importAp([{ partnerCode: 'S002', amount: '25000' }])).committed).toBe(true);
     const fresh = (await bills(partner.S002)).items.find((b) => b.docstatus === 1) as { id: string };
     await run({}, (ctx) => runAction(ctx, 'purchase_invoice.cancel', { id: fresh.id, correctionDate: '2026-04-30' }));
+    const inYear = await run({}, async (ctx) => {
+      const bill = await repo(ctx, PurchaseInvoice).get(fresh.id);
+      return repo(ctx, JournalEntry).list({ where: { reversalOf: bill.journalEntryId as string } });
+    });
+    expect(inYear.items.map((e) => [e.date, e.docstatus])).toEqual([['2026-04-30', 1]]);
     expect(codesOf(await importAp([{ partnerCode: 'S002', amount: '25000' }], 'dry-run'))).toEqual([
       'cancelled_in_year',
     ]);
@@ -222,6 +230,59 @@ describe('opening payables', () => {
     };
     const err = await caught(run({}, (ctx) => runAction(ctx, 'purchase_invoice.submit', { id: amended.id })));
     expect(JSON.stringify((err as { details?: unknown }).details)).toContain('opening_amend');
+  });
+
+  it('AC-17: the submit check refuses malformed opening bills (account, 2 lines, taxable, product, wrong date)', async () => {
+    // A test-only capability stands in for the module's private one to build malformed drafts.
+    const forge = defineWriteCapability({
+      name: 'test.opening',
+      entity: 'purchase_invoice',
+      fields: ['openingBalance'],
+      operations: ['create'],
+    });
+    const productId = (
+      await run({}, (ctx) =>
+        repo(ctx, Product).create({ code: 'OB-P', name: '期首の品目', taxCategory: 'out_of_scope' }),
+      )
+    ).id;
+    const clearing = acc['3900'] as string;
+    const draft = (date: string, lines: Record<string, unknown>[]) =>
+      run({}, async (ctx) => {
+        const bill = await withWriteCapability(ctx, forge, (w) =>
+          repo(w, PurchaseInvoice).create({ partnerId: partner.S001 as string, date, openingBalance: true }),
+        );
+        for (const [i, l] of lines.entries())
+          await repo(ctx, PurchaseInvoiceLine).create({
+            invoiceId: bill.id,
+            seq: i + 1,
+            description: 'x',
+            quantity: '1',
+            unitPrice: '1',
+            ...l,
+          });
+        return bill.id;
+      });
+    // each draft breaks exactly one rule, so each rule is pinned by its own issue path
+    const bad: [string, string][] = [
+      [await draft('2026-03-31', [{ accountId: acc['5000'], taxCategory: 'out_of_scope' }]), 'lines.accountId'],
+      [
+        await draft('2026-03-31', [
+          { accountId: clearing, taxCategory: 'out_of_scope' },
+          { accountId: clearing, taxCategory: 'out_of_scope' },
+        ]),
+        'lines',
+      ],
+      [await draft('2026-03-31', [{ accountId: clearing, taxCategory: 'standard' }]), 'lines.taxCategory'],
+      [await draft('2026-03-31', [{ accountId: clearing, productId, taxCategory: 'out_of_scope' }]), 'lines.productId'],
+      [await draft('2026-04-05', [{ accountId: clearing, taxCategory: 'out_of_scope' }]), 'date'],
+    ];
+    for (const [id, path] of bad) {
+      const err = await caught(run({}, (ctx) => submitDocument(ctx, PurchaseInvoice, id)));
+      expect(err).toMatchObject({ code: 'VALIDATION' });
+      expect((err as Error).message).toContain('is not a valid opening invoice');
+      const issues = (err as { details?: { issues?: { path: string }[] } }).details?.issues ?? [];
+      expect(issues.map((i) => i.path)).toEqual([path]);
+    }
   });
 
   it('AC-21: the generic create cannot set openingBalance', async () => {

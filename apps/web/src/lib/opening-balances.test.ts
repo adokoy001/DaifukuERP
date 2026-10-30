@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { AppMeta } from '../api/types.ts';
 import { csvTable, parseCsv } from './csv-parse.ts';
 import {
+  clearingReasonText,
   errorCsv,
   fileLine,
   matchHeaders,
   messageLine,
+  nameSuffix,
+  isOpeningDocument,
   OPENING_SECTIONS,
   REASON_TEXT,
   reasonText,
@@ -14,6 +17,8 @@ import {
   sectionBlocked,
   SECTION_COLUMNS,
   templateCsv,
+  usesClearingAccount,
+  yearOptionLabel,
   type OpeningImportResult,
 } from './opening-balances.ts';
 
@@ -151,7 +156,51 @@ describe('AC-38 sectionBlocked', () => {
     );
     expect(sectionBlocked('receivables', m)).toBeUndefined();
     expect(sectionBlocked('stock', m)?.en).toContain('sales role cannot receive');
-    const purchasing = meta(['accounting', 'purchasing'], { stock_entry: ['read', 'create', 'submit'] }, all);
+    const purchasing = meta(
+      ['accounting', 'purchasing'],
+      { stock_entry: ['read', 'create', 'submit'], product: ['read', 'create'], warehouse: ['read'] },
+      all,
+    );
     expect(sectionBlocked('stock', purchasing)).toBeUndefined();
+  });
+  it('AC-6 AC-38: accounting + inventory without a product read role keeps the stock section disabled', () => {
+    const stock = { stock_entry: ['read', 'create', 'submit'], warehouse: ['read', 'create'] };
+    const noProduct = meta(['accounting', 'inventory'], stock, all);
+    expect(sectionBlocked('stock', noProduct)?.ja).toContain('品目を読める役割');
+    expect(sectionBlocked('stock', noProduct)?.en).toContain('reads products');
+    const withViewer = meta(['accounting', 'inventory', 'viewer'], { ...stock, product: ['read'] }, all);
+    expect(sectionBlocked('stock', withViewer)).toBeUndefined();
+    const noWarehouse = meta(['admin'], { stock_entry: ['read', 'create', 'submit'], product: ['read'] }, all);
+    expect(sectionBlocked('stock', noWarehouse)).toBeDefined();
+  });
+});
+
+describe('AC-28 AC-37 clearing account and year texts', () => {
+  it('AC-28: each clearing reason explains the fix in ja and en with the account code', () => {
+    const missing = clearingReasonText('clearing_account_missing', '3999');
+    expect(missing.ja).toContain('3999 がありません');
+    expect(missing.ja).toContain('3900 期首残高仮勘定');
+    expect(missing.en).toContain('Settings → Accounting → Opening balance import');
+    const invalid = clearingReasonText('clearing_account_invalid', '4000');
+    expect(invalid.ja).toContain('科目 4000 は期首残高仮勘定に使えません');
+    expect(invalid.en).toContain('Account 4000 cannot be the clearing account');
+    expect(usesClearingAccount('journal')).toBe(true);
+    expect(usesClearingAccount('receivables')).toBe(true);
+    expect(usesClearingAccount('payables')).toBe(true);
+    expect(usesClearingAccount('stock')).toBe(false);
+  });
+  it('AC-39: repeated controls get a section suffix in the separators of the UI language', () => {
+    expect(`事前確認${nameSuffix('開始仕訳', 'ja')}`).toBe('事前確認（開始仕訳）');
+    expect(`Preview${nameSuffix('Opening journal', 'en')}`).toBe('Preview (Opening journal)');
+  });
+  it('AC-19 AC-20: only a record with openingBalance true is an opening document (no print, no amend)', () => {
+    expect(isOpeningDocument({ openingBalance: true })).toBe(true);
+    expect(isOpeningDocument({ openingBalance: false })).toBe(false);
+    expect(isOpeningDocument({})).toBe(false);
+  });
+  it('AC-39: the year option uses the separators of the UI language', () => {
+    const year = { code: 'FY2026', startDate: '2026-04-01', endDate: '2027-03-31' };
+    expect(yearOptionLabel(year, 'ja')).toBe('FY2026（2026-04-01〜2027-03-31）');
+    expect(yearOptionLabel(year, 'en')).toBe('FY2026 (2026-04-01 – 2027-03-31)');
   });
 });

@@ -200,7 +200,9 @@ export {
   type OpeningInvoicesInput,
 } from './opening-invoices.ts';
 export {
+  ACCOUNTING_PERIODS_LOCK,
   assertOpeningYear,
+  assertOpeningYearLocked,
   earliestFiscalYear,
   openingDateAllowed,
   openingYearError,

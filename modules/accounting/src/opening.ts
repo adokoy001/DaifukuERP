@@ -12,6 +12,7 @@ import {
   safeErrorDiagnostics,
   StateError,
   ValidationError,
+  withLock,
   withSavepoint,
   IMPORT_MAX_BYTES,
   type Context,
@@ -28,7 +29,7 @@ import type { EntryWithLines } from './actions/helpers.ts';
 import { withOpening } from './domain-write.ts';
 import { Account } from './entities/account.ts';
 import { JournalLine } from './entities/journal-line.ts';
-import { earliestFiscalYear, type OpeningYear } from './opening-year.ts';
+import { ACCOUNTING_PERIODS_LOCK, earliestFiscalYear, type OpeningYear } from './opening-year.ts';
 import { openingDateOf, type OpeningMessage, type OpeningRowResult } from './services/opening.ts';
 import { OPENING_BALANCES_KEY, openingBalancesSetting } from './settings.ts';
 
@@ -138,8 +139,14 @@ export function clearingUsedNotice(count: number): OpeningMessage {
 
 // ---- the opening posting path (AC-3, AC-17, AC-19) ---------------------------------------------------
 
-/** postFromSource on the opening path: the date must be the opening date of the company's first fiscal year. */
+/**
+ * postFromSource on the opening path: the date must be the opening date of the company's first fiscal year.
+ * AC-4 / D-14: the earliest year is read under the company-wide period lock that fiscal_year creation and the period
+ * close take (and that the posting holds to the end of the transaction), so an earlier year opened concurrently is
+ * either committed before this check (the date no longer matches) or waits and then sees these posted lines.
+ */
 export async function postOpeningFromSource(ctx: Context, input: PostFromSourceInput): Promise<EntryWithLines> {
+  await withLock(ctx, ACCOUNTING_PERIODS_LOCK, async () => undefined);
   const first = await earliestFiscalYear(ctx);
   if (!first || openingDateOf(first.startDate) !== input.date)
     throw new ValidationError(

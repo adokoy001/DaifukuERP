@@ -1,6 +1,7 @@
 // web-polish: 「請求書を表示」 on a submitted document whose module exposes `<module>.render_invoice_html` in /meta
 // (lib/print.ts). The tab is opened synchronously inside the click (pop-up blockers), the action runs, and the returned
-// HTML — plus a print/close bar hidden on paper — is shown there.
+// HTML — plus a print/close bar hidden on paper — is shown there. Opening invoices (docs/specs/opening-balances.md
+// AC-20) are never issued, so they get no button.
 import { useMutation } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { request } from '../api/client.ts';
@@ -8,6 +9,7 @@ import { useMeta } from '../api/queries.ts';
 import { DOCSTATUS, type EntityMeta, type RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { showHtmlIn } from '../lib/download.ts';
+import { isOpeningDocument } from '../lib/opening-balances.ts';
 import { htmlOf, printActionFor, withPrintBar } from '../lib/print.ts';
 import { S } from '../strings.ts';
 import { useToast } from './toast.tsx';
@@ -26,7 +28,8 @@ export function PrintButton({ entity, record }: { entity: EntityMeta; record: Re
     mutationFn: (input: RenderInput) =>
       request<unknown>(`/actions/${input.action}`, { method: 'POST', body: { id: input.id } }),
   });
-  if (!action || entity.kind !== 'document' || record.docstatus !== DOCSTATUS.submitted) return null;
+  if (!action || entity.kind !== 'document' || record.docstatus !== DOCSTATUS.submitted || isOpeningDocument(record))
+    return null;
 
   const open = () => {
     const win = globalThis.open('', '_blank');

@@ -9,6 +9,7 @@ import {
   assertOpeningInputSize,
   assertOpeningOps,
   assertOpeningYear,
+  assertOpeningYearLocked,
   attemptOpeningUnit,
   isOpeningMessage,
   lookupByCode,
@@ -255,7 +256,13 @@ export async function importOpeningStock(ctx: Context, input: ImportOpeningStock
           );
       }
     }
-    return { failed: errors || issues.length > 0, issues, documents };
+    const failed = errors || issues.length > 0;
+    // AC-4 / D-14: these receipts post no journal line, so the year is checked again under the period lock that
+    // fiscal_year creation takes (held to commit): a concurrently opened earlier year refuses here, or waits and its
+    // before_create hook (hooks/opening-year.ts) then sees the committed receipts.
+    if (input.mode === 'execute' && !failed && documents.length > 0)
+      await assertOpeningYearLocked(scope, year.fiscalYear.id);
+    return { failed, issues, documents };
   });
   const quantity = Decimal.sum(accepted.map((r) => r.quantity));
   const total = Decimal.sum(accepted.map((r) => round6(r.quantity.times(r.unitCost))));

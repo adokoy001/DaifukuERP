@@ -6,6 +6,7 @@ import {
   newId,
   PermissionDenied,
   repo,
+  runAction,
   setSetting,
   submitDocument,
   withWriteCapability,
@@ -99,7 +100,7 @@ describe('opening stock: rows and permissions', () => {
     expect((await openingEntries()).total).toBe(0);
   });
 
-  it('AC-6: accounting alone and accounting + sales get 403; inventory and purchasing with accounting pass', async () => {
+  it('AC-6: accounting alone and accounting + sales get 403; accounting + inventory + viewer and accounting + purchasing pass', async () => {
     const rows = [{ productCode: 'A', quantity: '1', unitCost: '1' }];
     for (const roles of [['accounting'], ['accounting', 'sales'], ['inventory', 'viewer']])
       expect(await caught(importStock(rows, 'dry-run', asRole(roles)))).toBeInstanceOf(PermissionDenied);
@@ -197,6 +198,43 @@ describe('opening stock: receipts and valuation', () => {
     expect(codesOf(result)).toEqual(['stock_exists', 'ok']);
   });
 
+  it('AC-23: a pair with zero balance but a ledger row after the opening date is stock_exists', async () => {
+    const late = (
+      await f.run({}, (ctx) =>
+        repo(ctx, Product).create({ code: 'LATE', name: '期中に動いた品目', taxCategory: 'standard' }),
+      )
+    ).id;
+    // received and fully issued in the year: the balance is 0 / 0, but later movements exist
+    await f.run({}, async (ctx) => {
+      for (const [type, quantity] of [
+        ['receipt', '2'],
+        ['issue', '2'],
+      ] as const) {
+        const e = await repo(ctx, StockEntry).create({ type, date: '2026-02-01', warehouseId: f.wh.main });
+        await repo(ctx, StockEntryLine).create({
+          entryId: e.id,
+          seq: 1,
+          productId: late,
+          quantity,
+          ...(type === 'receipt' ? { unitCost: '10' } : {}),
+        });
+        await submitDocument(ctx, StockEntry, e.id);
+      }
+    });
+    const balance = await f.run({}, (ctx) =>
+      repo(ctx, StockBalance).list({ where: { productId: late, warehouseId: f.wh.main } }),
+    );
+    expect(balance.items.map((b) => [b.qty.toString(), b.value.toString()])).toEqual([['0', '0']]);
+    const result = await importStock(
+      [
+        { warehouseCode: 'MAIN', productCode: 'LATE', quantity: '1', unitCost: '1' },
+        { warehouseCode: 'SUB', productCode: 'LATE', quantity: '1', unitCost: '1' },
+      ],
+      'dry-run',
+    );
+    expect(codesOf(result)).toEqual(['stock_exists', 'ok']);
+  });
+
   it('AC-24: cancelling an opening receipt on the opening date allows the pair to be imported again', async () => {
     const sub = (await openingEntries()).items.find((e) => e.warehouseId === f.wh.sub) as { id: string };
     await f.act({}, 'stock_entry.cancel', { id: sub.id });
@@ -246,6 +284,85 @@ describe('opening stock: receipts and valuation', () => {
     );
     expect(err).toMatchObject({ code: 'INVALID_STATE' });
     expect((err as Error).message).toContain('fiscal_year source');
+  });
+});
+
+/** A new company of the test tenant with product OP, warehouse W1 and a first fiscal year starting 2027-01-01. */
+async function stockCompany(): Promise<{ params: Partial<ContextParams>; fiscalYearId: string }> {
+  const companyId = newId();
+  await f.db.owner.drizzle
+    .insert(companies)
+    .values({ id: companyId, tenantId: f.db.tenantId, code: `I${companyId.slice(-8)}`, name: '在庫の会社' });
+  const params = { companyId };
+  await f.run(params, async (ctx) => {
+    await seedUoms(ctx);
+    await repo(ctx, Product).create({ code: 'OP', name: '期首品', taxCategory: 'standard' });
+    await repo(ctx, Warehouse).create({ code: 'W1', name: '倉庫1' });
+  });
+  const year = await f.act<{ fiscalYear: { id: string } }>(params, 'accounting.open_fiscal_year', {
+    startDate: '2027-01-01',
+  });
+  return { params, fiscalYearId: year.fiscalYear.id };
+}
+
+describe('opening stock: an earlier fiscal year (AC-4, D-19)', () => {
+  it('AC-4: an earlier year cannot be opened over live opening stock receipts; after cancelling them it can', async () => {
+    const { params, fiscalYearId } = await stockCompany();
+    const imported = openingImportResult.parse(
+      await f.act(params, 'inventory.import_opening_stock', {
+        fiscalYearId,
+        mode: 'execute',
+        rows: [{ warehouseCode: 'W1', productCode: 'OP', quantity: '3', unitCost: '50' }],
+      }),
+    );
+    expect(imported.committed).toBe(true);
+    const receipt = imported.documents[0] as { id: string; number: string | null };
+    for (const open of [
+      () => f.act(params, 'accounting.open_fiscal_year', { startDate: '2026-01-01' }),
+      () => f.act(params, 'fiscal_year.create', { code: 'FY2026G', startDate: '2026-01-01', endDate: '2026-12-31' }),
+    ])
+      expect(await caught(open())).toMatchObject({
+        code: 'CONFLICT',
+        details: { reason: 'opening_stock_exists', receipts: [receipt.number] },
+      });
+    // D-19: cancel the opening receipt first (it is reversed on its own date, the opening date); then the year opens
+    await f.act(params, 'stock_entry.cancel', { id: receipt.id });
+    const earlier = await f.act<{ fiscalYear: { code: string } }>(params, 'accounting.open_fiscal_year', {
+      startDate: '2026-01-01',
+    });
+    expect(earlier.fiscalYear.code).toBe('FY2026');
+  });
+
+  it('D-14 AC-4: an earlier year opened while opening stock is imported leaves no receipt behind', async () => {
+    const { params, fiscalYearId } = await stockCompany();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let markOpened!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      markOpened = resolve;
+    });
+    // connection B opens FY2026 (it contains the opening date 2026-12-31) and stays uncommitted
+    const earlier = f.run(params, async (ctx) => {
+      await runAction(ctx, 'accounting.open_fiscal_year', { startDate: '2026-01-01' });
+      markOpened();
+      await held;
+    });
+    await opened;
+    // connection A imports opening stock of FY2027 meanwhile; B commits 1.5 s later
+    const importing = f.act(params, 'inventory.import_opening_stock', {
+      fiscalYearId,
+      mode: 'execute',
+      rows: [{ warehouseCode: 'W1', productCode: 'OP', quantity: '3', unitCost: '50' }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    release();
+    await earlier;
+    // A checks the year again under the period lock after its receipts, sees FY2026 and refuses the whole request
+    expect(await caught(importing)).toMatchObject({ code: 'INVALID_STATE', details: { reason: 'not_earliest' } });
+    const receipts = await f.run(params, (ctx) => repo(ctx, StockEntry).count({ sourceEntity: 'fiscal_year' }));
+    expect(receipts).toBe(0);
   });
 });
 

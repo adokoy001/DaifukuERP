@@ -1,8 +1,9 @@
 // Opening balance import in the browser (docs/specs/opening-balances.md AC-31..AC-39): opened from the screen search,
 // an unbalanced journal file keeps "Import" disabled, the four files import through the kit dialog, the clearing
 // account ends at 0, the trial balance opening column matches, the journal is reversed and imported again, English, 390px
-// and axe. Data: a fresh synthetic company (commerceFixture); the clearing account, partners, product and warehouse are
-// created through the API.
+// and axe; the confirm dialogs focus Cancel first, the year picker keeps keyboard focus while another year loads, and an
+// opening invoice offers no print button. Data: a fresh synthetic company (commerceFixture); the clearing account,
+// partners, product, warehouse and a later fiscal year are created through the API.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { WCAG_TAGS } from './a11y-policy.ts';
@@ -15,20 +16,25 @@ test.setTimeout(240_000);
 
 const csv = (name: string, text: string) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(text, 'utf8') });
 const section = (page: Page, name: string) => page.getByTestId(`opening-section-${name}`);
+/** AC-39: repeated controls carry the section name in their accessible name. */
+const NAME: Record<string, string> = { journal: '開始仕訳', receivables: '売掛金', payables: '買掛金', stock: '在庫' };
+const named = (text: string, name: string) => `${text}（${NAME[name] ?? name}）`;
 
 async function importFile(page: Page, name: string, file: ReturnType<typeof csv>) {
   const s = section(page, name);
   await s.getByTestId(`opening-file-${name}`).setInputFiles(file);
-  await s.getByRole('button', { name: '事前確認', exact: true }).click();
+  await s.getByRole('button', { name: named('事前確認', name), exact: true }).click();
   await expect(page.getByTestId(`opening-preview-${name}`)).toBeVisible();
-  await expect(s.getByTestId(`opening-execute-${name}`)).toBeEnabled();
+  await expect(s.getByRole('button', { name: named('取り込む', name), exact: true })).toBeEnabled();
   await s.getByTestId(`opening-execute-${name}`).click();
   const dialog = page.getByRole('dialog', { name: '取り込みますか？' });
+  // the safe action has the first focus, never the one that commits
+  await expect(dialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
   await dialog.getByTestId(`opening-confirm-${name}`).click();
   await expect(dialog).toHaveCount(0);
   const result = page.getByTestId(`opening-result-${name}`);
   await expect(result).toBeVisible();
-  await expect(result.getByRole('heading', { name: '取込の結果' })).toBeFocused();
+  await expect(result.getByRole('heading', { name: named('取込の結果', name), exact: true })).toBeFocused();
   await expect(page.getByTestId(`opening-not-committed-${name}`)).toHaveCount(0);
 }
 
@@ -49,7 +55,15 @@ test('AC-31..AC-39 opening balances: preview, refuse an unbalanced file, import 
     await api<{ items: (Row & { startDate: string })[] }>(request, h, '/api/fiscal_year?orderBy=startDate:asc&limit=10')
   ).items;
   const first = years[0];
-  if (!first) throw new Error('fixture fiscal year missing');
+  const last = years.at(-1);
+  if (!first || !last) throw new Error('fixture fiscal year missing');
+  // a later year, so the picker has a second option to move to with the keyboard
+  const nextStart = new Date(`${String(last.endDate)}T00:00:00Z`);
+  nextStart.setUTCDate(nextStart.getUTCDate() + 1);
+  const later = await api<{ fiscalYear: Row }>(request, h, '/actions/accounting.open_fiscal_year', {
+    startDate: nextStart.toISOString().slice(0, 10),
+  });
+  const second = years[1] ?? later.fiscalYear;
   const start = new Date(`${first.startDate}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - 1);
   const openingDate = start.toISOString().slice(0, 10);
@@ -80,12 +94,24 @@ test('AC-31..AC-39 opening balances: preview, refuse an unbalanced file, import 
   await expect(page.getByTestId('opening-date')).toHaveText(openingDate);
   await expect.poll(() => new URL(page.url()).pathname).toBe('/finance/opening');
 
+  // AC-32: ArrowDown on the year picker changes the year at once; the picker stays mounted and keeps the focus.
+  const picker = page.getByTestId('opening-year');
+  await picker.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => new URL(page.url()).searchParams.get('fiscalYearId')).toBe(String(second.id));
+  await expect(page.getByTestId('opening-year-reason')).toBeVisible();
+  await expect(picker).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(() => new URL(page.url()).searchParams.get('fiscalYearId')).toBe(String(first.id));
+  await expect(page.getByTestId('opening-date')).toHaveText(openingDate);
+  await expect(picker).toBeFocused();
+
   // AC-35 / AC-36: a file whose totals differ previews with the difference and keeps "Import" disabled.
   const s1 = section(page, 'journal');
   await s1
     .getByTestId('opening-file-journal')
     .setInputFiles(csv('journal-bad.csv', journal.replace('1230000', '1229999')));
-  await s1.getByRole('button', { name: '事前確認', exact: true }).click();
+  await s1.getByRole('button', { name: named('事前確認', 'journal'), exact: true }).click();
   const preview = page.getByTestId('opening-preview-journal');
   await expect(page.getByTestId('opening-issues-journal')).toContainText('借方合計と貸方合計が一致しません');
   await expect(preview.getByTestId('opening-total-journal-Difference')).toHaveText('1');
@@ -95,7 +121,7 @@ test('AC-31..AC-39 opening balances: preview, refuse an unbalanced file, import 
   // The correct file: two rows go to the clearing account, and the preview shows it.
   await s1.getByTestId('opening-file-journal').setInputFiles(csv('journal.csv', journal));
   await expect(preview).toHaveCount(0);
-  await s1.getByRole('button', { name: '事前確認', exact: true }).click();
+  await s1.getByRole('button', { name: named('事前確認', 'journal'), exact: true }).click();
   await expect(preview.locator('[data-testid="opening-row"][data-status="clearing"]')).toHaveCount(2);
   await expect(preview.getByTestId('opening-clearing-change-journal')).toHaveText('0 → 180,000');
   await importFile(page, 'journal', csv('journal.csv', journal));
@@ -132,11 +158,12 @@ test('AC-31..AC-39 opening balances: preview, refuse an unbalanced file, import 
 
   // AC-37: reverse the opening journal through the dialog, then import it again.
   await page.getByRole('button', { name: '開始仕訳を取り消す', exact: true }).click();
-  await page
-    .getByRole('dialog', { name: '開始仕訳を取り消しますか？' })
-    .getByRole('button', { name: '開始仕訳を取り消す' })
-    .click();
+  const reverseDialog = page.getByRole('dialog', { name: '開始仕訳を取り消しますか？' });
+  await expect(reverseDialog.getByRole('button', { name: 'キャンセル', exact: true })).toBeFocused();
+  await reverseDialog.getByRole('button', { name: '開始仕訳を取り消す' }).click();
   await expect(page.getByTestId('opening-journal-status')).toContainText('未取込');
+  // the stale import result (with its link to the reversed entry) is gone
+  await expect(page.getByTestId('opening-result-journal')).toHaveCount(0);
   await expect(page.getByTestId('opening-status').getByRole('heading', { level: 2 })).toBeFocused();
   await importFile(page, 'journal', csv('journal.csv', journal));
   await expect(page.getByTestId('opening-clearing-balance')).toHaveText('0');
@@ -157,5 +184,18 @@ test('AC-31..AC-39 opening balances: preview, refuse an unbalanced file, import 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: '言語: en', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Opening balances', exact: true })).toBeVisible();
-  await expect(section(page, 'stock').getByRole('button', { name: 'Download template', exact: true })).toBeVisible();
+  await expect(
+    section(page, 'stock').getByRole('button', { name: 'Download template (Stock)', exact: true }),
+  ).toBeVisible();
+
+  // AC-20: an opening invoice is never issued, so its record page has no print button.
+  const invoices = await api<{ items: Row[] }>(
+    request,
+    h,
+    `/api/sales_invoice?where=${encodeURIComponent(JSON.stringify({ openingBalance: true }))}&limit=5`,
+  );
+  expect(invoices.items).toHaveLength(1);
+  await page.goto(`/e/sales_invoice/${String(invoices.items[0]?.id)}`);
+  await expect(page.getByTestId('record-form')).toBeVisible();
+  await expect(page.getByTestId('print-button')).toHaveCount(0);
 });

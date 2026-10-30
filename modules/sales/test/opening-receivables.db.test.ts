@@ -26,7 +26,7 @@ import {
   type OpeningImportResult,
 } from '@daifuku/mod-accounting';
 import { Partner } from '@daifuku/mod-partner';
-import { seedUoms } from '@daifuku/mod-product';
+import { Product, seedUoms } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SALES_ACCOUNTS_KEY, salesAccountsSchema, SalesInvoice, SalesInvoiceLine } from '../src/index.ts';
@@ -307,6 +307,12 @@ describe('opening receivables: invoices, posting, aging', () => {
     expect(again.committed).toBe(true);
     const fresh = (await openingInvoices(partner.C003)).items.find((i) => i.docstatus === 1);
     await run({}, (ctx) => runAction(ctx, 'sales_invoice.cancel', { id: fresh?.id, correctionDate: '2026-04-15' }));
+    // the in-year cancel is reversed on the correction date by the ordinary rule
+    const inYear = await run({}, async (ctx) => {
+      const inv = await repo(ctx, SalesInvoice).get(fresh?.id as string);
+      return repo(ctx, JournalEntry).list({ where: { reversalOf: inv.journalEntryId as string } });
+    });
+    expect(inYear.items.map((e) => [e.date, e.docstatus])).toEqual([['2026-04-15', 1]]);
     const blocked = await importAr([{ partnerCode: 'C003', amount: '9000' }], 'dry-run');
     expect(codesOf(blocked)).toEqual(['cancelled_in_year']);
   });
@@ -357,18 +363,30 @@ describe('opening receivables: invoices, posting, aging', () => {
           });
         return inv.id;
       });
-    const bad = [
-      await draft('2026-03-31', [
-        { unitPrice: '1', taxCategory: 'out_of_scope' },
-        { unitPrice: '1', taxCategory: 'out_of_scope' },
-      ]),
-      await draft('2026-03-31', [{ unitPrice: '1', taxCategory: 'standard' }]),
-      await draft('2026-04-05', [{ unitPrice: '1', taxCategory: 'out_of_scope' }]),
+    const productId = (
+      await run({}, (ctx) =>
+        repo(ctx, Product).create({ code: 'OB-P', name: '期首の品目', taxCategory: 'out_of_scope' }),
+      )
+    ).id;
+    // each draft breaks exactly one rule, so each rule is pinned by its own issue path
+    const bad: [string, string][] = [
+      [
+        await draft('2026-03-31', [
+          { unitPrice: '1', taxCategory: 'out_of_scope' },
+          { unitPrice: '1', taxCategory: 'out_of_scope' },
+        ]),
+        'lines',
+      ],
+      [await draft('2026-03-31', [{ unitPrice: '1', taxCategory: 'standard' }]), 'lines.taxCategory'],
+      [await draft('2026-03-31', [{ unitPrice: '1', taxCategory: 'out_of_scope', productId }]), 'lines.productId'],
+      [await draft('2026-04-05', [{ unitPrice: '1', taxCategory: 'out_of_scope' }]), 'date'],
     ];
-    for (const id of bad) {
+    for (const [id, path] of bad) {
       const err = await caught(run({}, (ctx) => submitDocument(ctx, SalesInvoice, id)));
       expect(err).toMatchObject({ code: 'VALIDATION' });
       expect((err as Error).message).toContain('is not a valid opening invoice');
+      const issues = (err as { details?: { issues?: { path: string }[] } }).details?.issues ?? [];
+      expect(issues.map((i) => i.path)).toEqual([path]);
     }
   });
 });

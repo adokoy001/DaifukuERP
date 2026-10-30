@@ -15,7 +15,7 @@ import {
   useOpeningStatus,
 } from '../api/opening-balances.ts';
 import { useMeta } from '../api/queries.ts';
-import type { AppMeta, Label } from '../api/types.ts';
+import type { AppMeta, Label, Locale } from '../api/types.ts';
 import { useToast } from '../components/toast.tsx';
 import { useLocale } from '../i18n.tsx';
 import {
@@ -29,10 +29,12 @@ import {
 import { saveBlob } from '../lib/download.ts';
 import { formatDecimal } from '../lib/format.ts';
 import {
+  clearingReasonText,
   errorCsv,
   fileLine,
   matchHeaders,
   messageLine,
+  nameSuffix,
   OPEN_FISCAL_YEAR_ACTION,
   OPENING_MAX_BYTES,
   OPENING_MAX_ROWS,
@@ -40,11 +42,14 @@ import {
   OPENING_STATUS_ACTION,
   requestBytes,
   requestRows,
+  SECTION_ENTITY,
   sectionBlocked,
   templateCsv,
   templateFilename,
   totalsList,
+  usesClearingAccount,
   YEAR_REASON_TEXT,
+  yearOptionLabel,
   type OpeningBalanceStatus,
   type OpeningImportResult,
   type OpeningSection,
@@ -111,6 +116,12 @@ const T = {
     'The balance is not 0: the accounts moved to the clearing account and the imported receivables/payables differ.',
   ),
   clearingMoved: L('仮勘定へ回した明細', 'Lines moved to the clearing account'),
+  clearingFix: L('設定を開く', 'Open settings'),
+  clearingDetail: L('サーバーの説明', 'Server message'),
+  clearingBlocked: L(
+    '期首残高仮勘定が使えないため、この段は取り込めません（上の「取込の状況」を参照）。',
+    'This step cannot import while the clearing account cannot be used (see Import status above).',
+  ),
   clearingUsed: L(
     '期首残高日以外の日付の明細があります（期首残高以外にも使われています）',
     'It has lines dated other than the opening date (used for something else too)',
@@ -136,6 +147,7 @@ const T = {
   ),
   receivables: L('売掛金', 'Receivables'),
   payables: L('買掛金', 'Payables'),
+  stock: L('在庫', 'Stock'),
   step3: L('3. 在庫', '3. Stock'),
   step3Help: L(
     '品目 × 倉庫ごとの期首数量と単価。単価が移動平均の最初の単価になります。仕訳は作りません（在庫科目は 1 で入れます）。',
@@ -200,6 +212,8 @@ const T = {
   firstRows: L(`先頭 ${PREVIEW_ROWS} 行だけ表示しています。`, `Only the first ${PREVIEW_ROWS} rows are shown.`),
   errorCsv: L('エラーの行を CSV でダウンロード', 'Download error rows as CSV'),
   created: L('作成した伝票', 'Created documents'),
+  createdFirst: L('先頭 20 件だけ表示しています。', 'Only the first 20 are listed.'),
+  createdList: L('すべて一覧で開く', 'Open them all in the list'),
   previewDone: L('事前確認が終わりました', 'The preview is done'),
   importDone: L('取り込みました', 'Imported'),
 };
@@ -209,12 +223,13 @@ const STATUS: Record<'ok' | 'clearing' | 'skipped' | 'error', { label: Label; to
   skipped: { label: L('スキップ', 'Skipped'), tone: 'neutral' },
   error: { label: L('エラー', 'Error'), tone: 'danger' },
 };
-const DOC_ROUTE: Record<string, string> = {
-  journal_entry: 'journal_entry',
-  sales_invoice: 'sales_invoice',
-  purchase_invoice: 'purchase_invoice',
-  stock_entry: 'stock_entry',
+const SECTION_NAME: Record<OpeningSection, Label> = {
+  journal: T.journal,
+  receivables: T.receivables,
+  payables: T.payables,
+  stock: T.stock,
 };
+const CREATED_SHOWN = 20;
 
 export function OpeningBalancesPage() {
   const { t } = useLocale();
@@ -245,6 +260,8 @@ function OpeningBalances({ meta }: { meta: AppMeta }) {
   const search = useSearch({ from: '/app/finance/opening' });
   const status = useOpeningStatus(search.fiscalYearId);
   const statusHeading = useRef<HTMLHeadingElement>(null);
+  // AC-37: a reversal clears the journal step's last result (its link points at the entry just reversed)
+  const [reversals, setReversals] = useState(0);
   const reason = status.isError && isApiError(status.error) ? status.error.details?.reason : undefined;
   if (reason === 'no_fiscal_year')
     return (
@@ -266,17 +283,30 @@ function OpeningBalances({ meta }: { meta: AppMeta }) {
     );
   if (status.isError) return <MetaError error={status.error} retry={() => void status.refetch()} />;
   const data = status.data;
+  // AC-32: while another year loads, `data` is the previous year (placeholder); only the picker stays, so keyboard
+  // focus on it survives the change and nothing can be imported into the year being left.
+  const ready = data !== undefined && !status.isPlaceholderData;
   return (
     <div className="flex min-w-0 flex-col gap-3 p-3" data-testid="opening-page">
       <PageHeader title={t(T.title)} subtitle={t(T.subtitle)} titleTestId="opening-title" />
-      {data ? (
+      {data ? <YearPicker data={data} selectedId={search.fiscalYearId ?? data.selected.id} /> : null}
+      {ready ? (
         <>
-          <YearPicker data={data} />
-          <StatusCard data={data} meta={meta} headingRef={statusHeading} />
+          <StatusCard
+            data={data}
+            meta={meta}
+            headingRef={statusHeading}
+            onReversed={() => setReversals((n) => n + 1)}
+          />
           <p className="text-sm text-text-secondary">{t(T.order)}</p>
           <Card>
             <FormSection landmark title={t(T.step1)} description={t(T.step1Help)}>
-              <SectionImport key={`${data.selected.id}:journal`} section="journal" data={data} meta={meta} />
+              <SectionImport
+                key={`${data.selected.id}:journal:${reversals}`}
+                section="journal"
+                data={data}
+                meta={meta}
+              />
             </FormSection>
           </Card>
           <Card>
@@ -306,15 +336,22 @@ function OpeningBalances({ meta }: { meta: AppMeta }) {
           </Card>
         </>
       ) : (
-        <SkeletonCard />
+        <>
+          <p className="sr-only" aria-live="polite">
+            {t(S.loading)}
+          </p>
+          <div aria-busy="true" data-testid="opening-loading">
+            <SkeletonCard />
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 /** AC-32: the year choice, kept in `?fiscalYearId=` (replace). */
-function YearPicker({ data }: { data: OpeningBalanceStatus }) {
-  const { t } = useLocale();
+function YearPicker({ data, selectedId }: { data: OpeningBalanceStatus; selectedId: string }) {
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const id = useId();
   return (
@@ -328,14 +365,14 @@ function YearPicker({ data }: { data: OpeningBalanceStatus }) {
             id={id}
             className="input w-full sm:max-w-md"
             data-testid="opening-year"
-            value={data.selected.id}
+            value={selectedId}
             onChange={(e) =>
               void navigate({ to: '/finance/opening', search: { fiscalYearId: e.target.value }, replace: true })
             }
           >
             {data.years.map((y) => (
               <option key={y.id} value={y.id}>
-                {`${y.code}（${y.startDate}〜${y.endDate}）`}
+                {yearOptionLabel(y, locale)}
               </option>
             ))}
           </select>
@@ -358,7 +395,7 @@ function CountLink({
   date: string;
   readable: boolean;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const count = useOpeningCount(entity, where, readable);
   if (!readable) return null;
   return (
@@ -372,7 +409,7 @@ function CountLink({
         params={{ entity }}
         search={{ status: 'submitted', from: date, to: date }}
         className="ui-link"
-        aria-label={`${t(T.openList)}（${t(label)}）`}
+        aria-label={`${t(T.openList)}${nameSuffix(t(label), locale)}`}
       >
         {t(T.openList)}
       </Link>
@@ -385,10 +422,12 @@ function StatusCard({
   data,
   meta,
   headingRef,
+  onReversed,
 }: {
   data: OpeningBalanceStatus;
   meta: AppMeta;
   headingRef: RefObject<HTMLHeadingElement | null>;
+  onReversed: () => void;
 }) {
   const { t } = useLocale();
   const toast = useToast();
@@ -406,6 +445,7 @@ function StatusCard({
       await reverseOpeningJournal(year.id);
       toast.success(t(T.reversedDone));
       setConfirm(false);
+      onReversed();
       await qc.invalidateQueries({ queryKey: ['finance', financeIdentity()] });
       headingRef.current?.focus();
     } catch (e) {
@@ -473,8 +513,18 @@ function StatusCard({
             ) : null}
           </p>
           {!data.clearing.ok ? (
-            <div className="ui-notice ui-notice-danger">
-              <p>{data.clearing.message}</p>
+            <div className="ui-notice ui-notice-danger" data-testid="opening-clearing-problem">
+              <p>{t(clearingReasonText(data.clearing.reason, data.clearing.code))}</p>
+              <p className="text-sm">
+                <Link to="/settings" search={{ tab: 'accounting' }} className="ui-link">
+                  {t(T.clearingFix)}
+                </Link>
+              </p>
+              {data.clearing.message ? (
+                <p className="text-xs break-words text-text-secondary">
+                  {t(T.clearingDetail)}: {data.clearing.message}
+                </p>
+              ) : null}
             </div>
           ) : balance !== null && balance !== '0' ? (
             <div className="ui-notice ui-notice-warning" data-testid="opening-clearing-warning">
@@ -534,8 +584,10 @@ function StatusCard({
           onClose={() => setConfirm(false)}
           actions={
             <>
-              <Button onClick={() => setConfirm(false)}>{t(S.cancel)}</Button>
-              <Button variant="danger" onClick={() => void reverse()} disabled={busy} data-autofocus>
+              <Button onClick={() => setConfirm(false)} disabled={busy} data-autofocus>
+                {t(S.cancel)}
+              </Button>
+              <Button variant="danger" onClick={() => void reverse()} disabled={busy}>
                 {t(T.reverse)}
               </Button>
             </>
@@ -579,6 +631,10 @@ function SectionImport({
   const generation = useRef(0);
   const blocked = sectionBlocked(section, meta);
   const yearBlocked = data.selected.reason !== null;
+  // AC-28: the journal, receivables and payables post against the clearing account; the status card says why it fails
+  const clearingBlocked = usesClearingAccount(section) && !data.clearing.ok;
+  const name = t(SECTION_NAME[section]);
+  const suffix = nameSuffix(name, locale);
   const reset = () => {
     generation.current++;
     setPreview(undefined);
@@ -601,7 +657,7 @@ function SectionImport({
       const table = csvTable(parseCsv(decoded.text));
       if (!table.headers.length || !table.rows.length) return setFileError(t(T.emptyFile));
       if (table.rows.length > OPENING_MAX_ROWS[section])
-        return setFileError(`${t(T.tooMany)}${OPENING_MAX_ROWS[section].toLocaleString()}`);
+        return setFileError(`${t(T.tooMany)}${OPENING_MAX_ROWS[section].toLocaleString(numberLocale(locale))}`);
       if (table.wide.length) return setFileError(`${t(T.wide)}${table.wide.slice(0, 10).join(', ')}`);
       const match = matchHeaders(table.headers, section);
       if (!match.ok) {
@@ -636,7 +692,7 @@ function SectionImport({
         setConfirm(false);
         setPreview(undefined);
         setDone(result);
-        setAnnounce(t(T.importDone));
+        setAnnounce(t(result.committed ? T.importDone : T.nothingKept));
         await qc.invalidateQueries({ queryKey: openingStatusKey(data.selected.id) });
         await qc.invalidateQueries({ queryKey: ['finance', financeIdentity()] });
       }
@@ -648,7 +704,7 @@ function SectionImport({
     }
   };
 
-  const disabled = blocked !== undefined || yearBlocked;
+  const disabled = blocked !== undefined || yearBlocked || clearingBlocked;
   const executeReason = !preview
     ? t(T.needPreview)
     : preview.summary.errors > 0 || preview.issues.length > 0
@@ -660,6 +716,7 @@ function SectionImport({
         {title ? <h3 className="text-base font-semibold text-text-heading">{title}</h3> : <span />}
         <Button
           size="sm"
+          aria-label={`${t(T.template)}${suffix}`}
           onClick={() =>
             saveBlob(
               new Blob([templateCsv(section, locale)], { type: 'text/csv;charset=utf-8' }),
@@ -674,15 +731,21 @@ function SectionImport({
         <p className="ui-notice ui-notice-info text-sm" data-testid={`opening-blocked-${section}`}>
           {t(blocked)}
         </p>
+      ) : clearingBlocked ? (
+        <p className="ui-notice ui-notice-info text-sm" data-testid={`opening-blocked-${section}`}>
+          {t(T.clearingBlocked)}
+        </p>
       ) : null}
       <p className="sr-only" aria-live="polite">
         {announce}
       </p>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-file`} className="text-sm font-medium">
-          {title ? `${title} — ${t(T.file)}` : t(T.file)}
+          {`${name} — ${t(T.file)}`}
         </label>
-        <span className="text-xs text-text-secondary">{t(T.fileHelp)}</span>
+        <span id={`${id}-file-help`} className="text-xs text-text-secondary">
+          {t(T.fileHelp)}
+        </span>
         <input
           id={`${id}-file`}
           data-testid={`opening-file-${section}`}
@@ -690,7 +753,7 @@ function SectionImport({
           accept=".csv,text/csv"
           className="max-w-full text-sm"
           disabled={disabled}
-          aria-describedby={fileError ? `${id}-file-error` : undefined}
+          aria-describedby={fileError ? `${id}-file-help ${id}-file-error` : `${id}-file-help`}
           onClick={(e) => {
             e.currentTarget.value = '';
           }}
@@ -714,7 +777,11 @@ function SectionImport({
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => void send('dry-run')} disabled={!file || disabled || pending !== undefined}>
+        <Button
+          onClick={() => void send('dry-run')}
+          disabled={!file || disabled || pending !== undefined}
+          aria-label={`${t(pending === 'dry-run' ? T.previewing : T.preview)}${suffix}`}
+        >
           {t(pending === 'dry-run' ? T.previewing : T.preview)}
         </Button>
         <Button
@@ -723,6 +790,7 @@ function SectionImport({
           disabled={disabled || !file || executeReason !== '' || pending !== undefined}
           aria-describedby={executeReason ? `${id}-execute-reason` : undefined}
           data-testid={`opening-execute-${section}`}
+          aria-label={`${t(pending === 'execute' ? T.executing : T.execute)}${suffix}`}
         >
           {t(pending === 'execute' ? T.executing : T.execute)}
         </Button>
@@ -732,8 +800,12 @@ function SectionImport({
           </span>
         ) : null}
       </div>
-      {preview && file ? <ResultView section={section} result={preview} file={file} /> : null}
-      {done && file ? <ResultView section={section} result={done} file={file} executed /> : null}
+      {preview && file ? (
+        <ResultView section={section} name={name} nested={title !== undefined} result={preview} file={file} />
+      ) : null}
+      {done && file ? (
+        <ResultView section={section} name={name} nested={title !== undefined} result={done} file={file} executed />
+      ) : null}
       {confirm ? (
         <Dialog
           title={t(T.confirmTitle)}
@@ -742,12 +814,13 @@ function SectionImport({
           onClose={() => setConfirm(false)}
           actions={
             <>
-              <Button onClick={() => setConfirm(false)}>{t(S.cancel)}</Button>
+              <Button onClick={() => setConfirm(false)} disabled={pending !== undefined} data-autofocus>
+                {t(S.cancel)}
+              </Button>
               <Button
                 variant="primary"
                 onClick={() => void send('execute')}
                 disabled={pending !== undefined}
-                data-autofocus
                 data-testid={`opening-confirm-${section}`}
               >
                 {t(pending === 'execute' ? T.executing : T.execute)}
@@ -763,17 +836,25 @@ function SectionImport({
 /** AC-35 / AC-36: counts, totals, clearing balance, issues, notices, rows and the error CSV (preview or result). */
 function ResultView({
   section,
+  name,
+  nested,
   result,
   file,
   executed = false,
 }: {
   section: OpeningSection;
+  /** The section's name, for the distinct names of the repeated controls (AC-39). */
+  name: string;
+  /** Under an h3 sub-heading (step 2): the result heading is an h4, else an h3 under the step's h2. */
+  nested: boolean;
   result: OpeningImportResult;
   file: LoadedFile;
   executed?: boolean;
 }) {
   const { t, locale } = useLocale();
   const heading = useRef<HTMLHeadingElement>(null);
+  const Heading = nested ? 'h4' : 'h3';
+  const suffix = nameSuffix(name, locale);
   const tableId = useId();
   const [errorsOnly, setErrorsOnly] = useState(executed && result.summary.errors > 0);
   // A layout effect: it runs right after the confirm dialog's cleanup, so focus lands here and not back on the
@@ -795,14 +876,18 @@ function ResultView({
     [T.errors, result.summary.errors],
   ];
   return (
-    <section
+    <div
       className="flex min-w-0 flex-col gap-2 rounded-md border border-border-subtle p-3"
       data-testid={executed ? `opening-result-${section}` : `opening-preview-${section}`}
-      aria-labelledby={`${tableId}-heading`}
     >
-      <h4 id={`${tableId}-heading`} ref={heading} tabIndex={-1} className="text-base font-semibold text-text-heading">
+      <Heading
+        ref={heading}
+        tabIndex={-1}
+        className="text-base font-semibold text-text-heading"
+        aria-label={`${t(executed ? T.resultTitle : T.previewTitle)}${suffix}`}
+      >
         {t(executed ? T.resultTitle : T.previewTitle)}
-      </h4>
+      </Heading>
       {executed && !result.committed ? (
         <p className="text-sm text-danger-text" data-testid={`opening-not-committed-${section}`}>
           {t(T.nothingKept)}
@@ -868,34 +953,49 @@ function ResultView({
         </div>
       ) : null}
       {executed && result.documents.length ? (
-        <div className="text-sm">
-          <span className="text-text-secondary">{t(T.created)}: </span>
-          <ul className="inline-flex flex-wrap gap-x-3">
-            {result.documents.slice(0, 20).map((d) => (
+        <div className="flex flex-col gap-1 text-sm" data-testid={`opening-created-${section}`}>
+          <p>
+            <span className="text-text-secondary">{t(T.created)}: </span>
+            <span className="font-mono tabular-nums">
+              {result.documents.length.toLocaleString(numberLocale(locale))}
+            </span>
+          </p>
+          <ul className="flex flex-wrap gap-x-3">
+            {result.documents.slice(0, CREATED_SHOWN).map((d) => (
               <li key={d.id}>
-                <Link
-                  to="/e/$entity/$id"
-                  params={{ entity: DOC_ROUTE[d.entity] ?? d.entity, id: d.id }}
-                  className="ui-link"
-                >
+                <Link to="/e/$entity/$id" params={{ entity: d.entity, id: d.id }} className="ui-link">
                   {d.number ?? d.id}
                 </Link>
               </li>
             ))}
           </ul>
+          {result.documents.length > CREATED_SHOWN ? (
+            <p className="text-xs text-text-secondary">
+              {t(T.createdFirst)}{' '}
+              <Link
+                to="/e/$entity"
+                params={{ entity: SECTION_ENTITY[section] }}
+                search={{ status: 'submitted', from: result.openingDate, to: result.openingDate }}
+                className="ui-link"
+              >
+                {t(T.createdList)}
+              </Link>
+            </p>
+          ) : null}
         </div>
       ) : null}
-      <label className="flex w-max items-center gap-2 text-sm" htmlFor={`${tableId}-errors`}>
+      <label className="flex w-max max-w-full items-center gap-2 text-sm" htmlFor={`${tableId}-errors`}>
         <input
           id={`${tableId}-errors`}
           type="checkbox"
           checked={errorsOnly}
           onChange={(e) => setErrorsOnly(e.target.checked)}
+          aria-label={`${t(T.errorsOnly)}${suffix}`}
         />
         {t(T.errorsOnly)}
       </label>
       <DataTableShell
-        label={t(executed ? T.resultTitle : T.previewTitle)}
+        label={`${t(executed ? T.resultTitle : T.previewTitle)}${suffix}`}
         columnCount={3}
         testId={`opening-rows-${section}`}
         isEmpty={shown.length === 0}
@@ -927,11 +1027,21 @@ function ResultView({
       {rows.length > PREVIEW_ROWS ? <p className="text-xs text-text-secondary">{t(T.firstRows)}</p> : null}
       {result.summary.errors > 0 ? (
         <div>
-          <Button size="sm" onClick={downloadErrors} data-testid={`opening-error-csv-${section}`}>
+          <Button
+            size="sm"
+            onClick={downloadErrors}
+            data-testid={`opening-error-csv-${section}`}
+            aria-label={`${t(T.errorCsv)}${suffix}`}
+          >
             {t(T.errorCsv)}
           </Button>
         </div>
       ) : null}
-    </section>
+    </div>
   );
+}
+
+/** Digit grouping of the UI language (counts and limits). */
+function numberLocale(locale: Locale): string {
+  return locale === 'ja' ? 'ja-JP' : 'en-US';
 }

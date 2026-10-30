@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import { useDelete, useDocAction, type DocOp } from '../api/queries.ts';
 import type { EntityMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
+import { isOpeningDocument } from '../lib/opening-balances.ts';
 import { S } from '../strings.ts';
 import { ActionConfirm } from './action-confirm.tsx';
 import { useToast } from './toast.tsx';
@@ -32,6 +33,8 @@ export function DocActions({ entity, record, onAfter, submitBlocked, blocked, on
   const inFlight = useRef(false);
   const ds = record.docstatus ?? 0;
   const isDoc = entity.kind === 'document';
+  // docs/specs/opening-balances.md AC-19: a draft amended from an opening invoice can never be submitted
+  const openingAmend = isDoc && ds === 2 && entity.ops.includes('amend') && isOpeningDocument(record);
   const pending = act.isPending || del.isPending;
   const busy = pending || blocked !== undefined;
   useEffect(() => {
@@ -89,7 +92,7 @@ export function DocActions({ entity, record, onAfter, submitBlocked, blocked, on
     },
     {
       op: 'amend' as const,
-      visible: isDoc && ds === 2 && entity.ops.includes('amend'),
+      visible: isDoc && ds === 2 && entity.ops.includes('amend') && !openingAmend,
       title: t(S.amend),
       message: t(S.amend),
       done: t(S.amended),
@@ -114,6 +117,12 @@ export function DocActions({ entity, record, onAfter, submitBlocked, blocked, on
     }),
     [actions, busy, submitBlocked],
   );
+  if (openingAmend && !actions.length)
+    return (
+      <p className="text-xs text-text-secondary" data-testid="opening-no-amend">
+        {t(S.openingNoAmend)}
+      </p>
+    );
   if (!actions.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">

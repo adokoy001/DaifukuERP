@@ -330,6 +330,12 @@ describe('opening journal: year conditions, permissions, isolation', () => {
       details: { reason: 'clearing_account_invalid' },
     });
     expect((await status()).clearing).toMatchObject({ ok: false, reason: 'clearing_account_invalid', code: '4000' });
+    // an account with a consumption-tax role cannot be the clearing account either
+    await createAccount('2200', '仮受消費税', 'liability', { taxRole: 'output_tax' });
+    await setClearing('2200');
+    const taxed = await caught(importJournal(BALANCED, 'dry-run'));
+    expect(taxed).toMatchObject({ details: { reason: 'clearing_account_invalid', code: '2200' } });
+    expect((taxed as Error).message).toContain('tax role output_tax');
     await run({}, (ctx) => repo(ctx, Account).update(acc['3900'] as string, { isActive: false }));
     await setClearing('3900');
     expect(await caught(importJournal(BALANCED, 'dry-run'))).toMatchObject({
@@ -397,6 +403,13 @@ describe('opening journal: fiscal-year rules', () => {
       run({}, (ctx) => runAction(ctx, 'accounting.open_fiscal_year', { startDate: '2025-04-01' })),
     );
     expect(err).toMatchObject({ code: 'CONFLICT', details: { reason: 'opening_entries_exist' } });
+    // the generic create path is covered by the same hook
+    const generic = await caught(
+      run({}, (ctx) =>
+        runAction(ctx, 'fiscal_year.create', { code: 'FY2025G', startDate: '2025-04-01', endDate: '2026-03-31' }),
+      ),
+    );
+    expect(generic).toMatchObject({ code: 'CONFLICT', details: { reason: 'opening_entries_exist' } });
     await reverse();
     const opened = (await run({}, (ctx) =>
       runAction(ctx, 'accounting.open_fiscal_year', { startDate: '2025-04-01' }),
@@ -409,6 +422,33 @@ describe('opening journal: fiscal-year rules', () => {
       ['FY2026', false, 'not_earliest'],
     ]);
     expect(opened.fiscalYear.id).toBe(s.years[0]?.id);
+  });
+});
+
+describe('opening journal: a year without periods', () => {
+  it('AC-2 (d): a year created through fiscal_year.create without periods is no_first_period', async () => {
+    const companyId = newId();
+    await db.owner.drizzle
+      .insert(companies)
+      .values({ id: companyId, tenantId: db.tenantId, code: `N${companyId.slice(-8)}`, name: '期間なしの会社' });
+    const params = { companyId };
+    const year = (await run(params, (ctx) =>
+      runAction(ctx, 'fiscal_year.create', { code: 'FY2030', startDate: '2030-01-01', endDate: '2030-12-31' }),
+    )) as { id: string };
+    const err = await caught(
+      run(params, (ctx) =>
+        runAction(ctx, 'accounting.import_opening_balances', {
+          fiscalYearId: year.id,
+          mode: 'dry-run',
+          rows: BALANCED,
+        }),
+      ),
+    );
+    expect(err).toMatchObject({ code: 'INVALID_STATE', details: { reason: 'no_first_period', fiscalYearId: year.id } });
+    const s = openingBalanceStatusOutput.parse(
+      await run(params, (ctx) => runAction(ctx, 'accounting.opening_balance_status', {})),
+    );
+    expect(s.selected).toMatchObject({ id: year.id, importable: false, reason: 'no_first_period' });
   });
 });
 
@@ -432,6 +472,53 @@ describe('opening journal: concurrency and submit failures', () => {
         repo(ctx, JournalEntry).count({ sourceEntity: 'fiscal_year', sourceId: fiscalYearId }),
       ),
     ).toBe(1);
+  });
+
+  it('D-14 AC-4: an earlier year opened while the opening journal is imported leaves nothing posted', async () => {
+    const { params, fiscalYearId } = await freshCompany();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let markOpened!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      markOpened = resolve;
+    });
+    // connection B opens FY2026 (its 2026-12 period contains the opening date 2026-12-31) and stays uncommitted
+    const earlier = run(params, async (ctx) => {
+      await runAction(ctx, 'accounting.open_fiscal_year', { startDate: '2026-01-01' });
+      markOpened();
+      await held;
+    });
+    await opened;
+    // connection A imports the FY2027 opening journal meanwhile; B commits 1.5 s later
+    const importing = run(params, async (ctx) =>
+      openingImportResult.parse(
+        await runAction(ctx, 'accounting.import_opening_balances', {
+          fiscalYearId,
+          mode: 'execute',
+          rows: [
+            { accountCode: '1000', debit: '10' },
+            { accountCode: '3000', credit: '10' },
+          ],
+        }),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    release();
+    await earlier;
+    const [settled] = await Promise.allSettled([importing]);
+    // A waited for the period lock and then saw FY2026 (committed false), or started after B committed (not_earliest)
+    if (settled?.status === 'fulfilled') {
+      expect(settled.value.committed).toBe(false);
+      expect(settled.value.issues[0]?.code).toBe('submit_failed');
+    } else expect(settled?.reason).toMatchObject({ code: 'INVALID_STATE', details: { reason: 'not_earliest' } });
+    expect(
+      await run(params, (ctx) =>
+        repo(ctx, JournalEntry).count({ sourceEntity: 'fiscal_year', sourceId: fiscalYearId }),
+      ),
+    ).toBe(0);
+    expect(await run(params, (ctx) => repo(ctx, FiscalYear).count({}))).toBe(2);
   });
 
   it('D-15: a posting the database rejects is an issue submit_failed with committed false', async () => {

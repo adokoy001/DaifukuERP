@@ -72,6 +72,10 @@ export const S = {
   docstatus: L('状態', 'Status'),
   number: L('番号', 'Number'),
   amendedFrom: L('訂正元', 'Amended from'),
+  openingNoAmend: L(
+    '期首請求書は訂正できません。期首残高の取込（会計・資金 → 期首残高の取込）で取り込み直してください。',
+    'Opening invoices cannot be amended. Import the balance again (Accounting and finance → Opening balances).',
+  ),
   audit: L('監査ログ', 'Audit'),
   auditEmpty: L('監査ログはありません', 'No audit entries'),
   auditOp: L('操作', 'Op'),
