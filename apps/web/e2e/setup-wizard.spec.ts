@@ -73,6 +73,34 @@ async function member(request: APIRequestContext, companyId: string, roles: stri
 }
 
 const panel = (page: Page) => page.getByTestId('setup-step-panel');
+const DISCARD = '未保存の変更があります。破棄して移動しますか？';
+
+/** Runs `action` and returns the messages of the dialogs it raised (each accepted, or dismissed when `accept` is false). */
+async function dialogsDuring(page: Page, action: () => Promise<void>, accept = true): Promise<string[]> {
+  const messages: string[] = [];
+  const onDialog = (dialog: { message(): string; accept(): Promise<void>; dismiss(): Promise<void> }) => {
+    messages.push(dialog.message());
+    void (accept ? dialog.accept() : dialog.dismiss());
+  };
+  page.on('dialog', onDialog);
+  try {
+    await action();
+  } finally {
+    page.off('dialog', onDialog);
+  }
+  return messages;
+}
+
+/** Opens home and waits until GET /meta/setup-status has answered (so "no card" cannot pass before the card could show). */
+async function openHomeAfterStatus(page: Page, expected: number) {
+  const read = page.waitForResponse((r) => r.url().endsWith('/meta/setup-status'));
+  await page.goto('/');
+  const response = await read;
+  expect(response.status()).toBe(expected);
+  await response.finished();
+  await expect(page.getByRole('heading', { name: '今日の仕事を、ここから。', level: 1 })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+}
 async function expectStep(page: Page, id: (typeof STEPS)[number]) {
   await expect(panel(page)).toHaveAttribute('data-step', id);
 }
@@ -173,22 +201,40 @@ test('setup-wizard AC-1..AC-7/AC-17..AC-23/AC-27: a second company walks the nin
   await confirmAndNext(page, 'invoice_issuer');
 
   // Step 5 (AC-20, AC-9): the profile already prints a complete issuer. "Copy" fills the issuer card (unsaved), so
-  // leaving asks first; declining stays on the step.
+  // leaving asks first; declining stays on the step. The copy is a one-time seed: after editing it (another name, bank
+  // details the profile does not have) and saving, the inputs show what was saved and nothing is left unsaved.
   await expect(panel(page).getByTestId('setup-check-sales.issuer')).toHaveAttribute('data-status', 'ok');
   await panel(page).getByTestId('setup-issuer-copy').click();
   const issuer = panel(page).getByTestId('setting-sales.issuer');
-  await expect(issuer.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(`株式会社段階 ${suffix}`);
+  const issuerName = issuer.getByRole('textbox', { name: '名称', exact: true });
+  const issuerBank = issuer.getByRole('textbox', { name: '振込先', exact: true });
+  await expect(issuerName).toHaveValue(`株式会社段階 ${suffix}`);
   await expect(issuer.getByRole('textbox', { name: '登録番号', exact: true })).toHaveValue('T1111111111111');
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('未保存の変更があります。破棄して移動しますか？');
-    void dialog.dismiss();
+  const declined = await dialogsDuring(
+    page,
+    async () => {
+      await page.getByTestId('setup-next').click();
+      await expectStep(page, 'invoice_issuer');
+    },
+    false,
+  );
+  expect(declined).toEqual([DISCARD]);
+  await expect(issuerName).toHaveValue(`株式会社段階 ${suffix}`);
+  await issuerName.fill(`段階請求名義 ${suffix}`);
+  await issuerBank.fill('段階銀行 本店 普通 1234567');
+  const issuerSaved = page.waitForResponse(
+    (r) => r.url().endsWith('/meta/settings/sales.issuer') && r.request().method() === 'PUT',
+  );
+  await issuer.getByRole('button', { name: '保存', exact: true }).click();
+  expect((await issuerSaved).status()).toBe(200);
+  await expect(issuer.getByTestId('setting-status')).toHaveText('会社の値');
+  await expect(issuerName).toHaveValue(`段階請求名義 ${suffix}`);
+  await expect(issuerBank).toHaveValue('段階銀行 本店 普通 1234567');
+  const afterSave = await dialogsDuring(page, async () => {
+    await page.getByTestId('setup-next').click();
+    await expectStep(page, 'inventory');
   });
-  await page.getByTestId('setup-next').click();
-  await expectStep(page, 'invoice_issuer');
-  await expect(issuer.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(`株式会社段階 ${suffix}`);
-  page.once('dialog', (dialog) => void dialog.accept());
-  await page.getByTestId('setup-next').click();
-  await expectStep(page, 'inventory');
+  expect(afterSave).toEqual([]);
 
   // Step 6 (AC-4): "do not use stock" saves both automatic settings as false.
   await panel(page).getByTestId('setup-inventory-none').click();
@@ -204,13 +250,30 @@ test('setup-wizard AC-1..AC-7/AC-17..AC-23/AC-27: a second company walks the nin
   // Step 7 (AC-21, AC-6, AC-26): the template cards are offered; skipping needs a reason.
   await expect(panel(page).getByTestId('setup-templates')).toBeVisible();
   await expect(panel(page).getByTestId('template-example')).toHaveCount(0);
+  // AC-10 (WCAG 2.4.3): controls that remove themselves hand the focus on — "Skip…" to the reason field, "Cancel" back
+  // to "Skip…", a recorded skip and "Undo skip" to the step's heading.
+  await page.getByTestId('setup-skip').click();
+  await expect(page.getByTestId('setup-skip-reason')).toBeFocused();
+  await page.getByTestId('setup-skip-form').getByRole('button', { name: 'やめる', exact: true }).click();
+  await expect(page.getByTestId('setup-skip-form')).toHaveCount(0);
+  await expect(page.getByTestId('setup-skip')).toBeFocused();
   await page.getByTestId('setup-skip').click();
   await page.getByTestId('setup-skip-submit').click();
   await expect(page.getByTestId('setup-skip-error')).toHaveText('スキップする理由を入力してください。');
   await expect(page.getByTestId('setup-skip-reason')).toBeFocused();
+  await page.getByTestId('setup-skip-reason').fill('いったん記録する理由');
+  await page.getByTestId('setup-skip-submit').click();
+  await expect(page.getByTestId('setup-step-status')).toHaveText('スキップ');
+  await expect(page.getByTestId('setup-step-heading')).toBeFocused();
+  await page.getByTestId('setup-undo-skip').click();
+  await expect(page.getByTestId('setup-step-status')).toHaveText('未完了');
+  await expect(page.getByTestId('setup-undo-skip')).toHaveCount(0);
+  await expect(page.getByTestId('setup-step-heading')).toBeFocused();
+  await page.getByTestId('setup-skip').click();
   await page.getByTestId('setup-skip-reason').fill('業界テンプレートは使わない');
   await page.getByTestId('setup-skip-submit').click();
   await expect(page.getByTestId('setup-step-status')).toHaveText('スキップ');
+  await expect(page.getByTestId('setup-step-heading')).toBeFocused();
   await expect(page.getByTestId('setup-step-reason')).toContainText('業界テンプレートは使わない');
   await expect(page.getByTestId('setup-step-industry_template')).toContainText('スキップ');
   await page.getByTestId('setup-next').click();
@@ -246,9 +309,8 @@ test('setup-wizard AC-1..AC-7/AC-17..AC-23/AC-27: a second company walks the nin
     await expect(page.getByTestId(`setup-step-${id}`)).toHaveAttribute('data-status', 'done');
   await page.screenshot({ path: test.info().outputPath('setup-done-desktop.png'), fullPage: true });
 
-  // AC-7: nothing remains, so the home card is gone.
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: '今日の仕事を、ここから。', level: 1 })).toBeVisible();
+  // AC-7: nothing remains, so the home card is gone (checked once the status has been read).
+  await openHomeAfterStatus(page, 200);
   await expect(page.getByTestId('setup-card')).toHaveCount(0);
 
   // The company can bill goods: SAMPLE-GOODS has no stock, and stock is off, so the invoice submits.
@@ -305,6 +367,21 @@ test('setup-wizard AC-10: stepper keys, aria-current and heading focus; 390px fo
   await expect(first).not.toHaveAttribute('aria-current', 'step');
   await expect(page.getByTestId('setup-step-heading')).toBeFocused();
   await expect(page.getByTestId('setup-step-heading')).toHaveText('3. 勘定科目の確認');
+  // The open step is a region named by its one heading (no heading inside a heading, no badges in the name).
+  await expect(page.getByRole('region', { name: '3. 勘定科目の確認', exact: true })).toBeVisible();
+  await expect(panel(page).locator('h2 h2')).toHaveCount(0);
+
+  // AC-9: after discarding changes on one step, moving on from a step without inputs does not ask again.
+  await page.getByTestId('setup-step-company_profile').click();
+  await expectStep(page, 'company_profile');
+  await panel(page).getByTestId('setting-company.profile').getByLabel('正式名称', { exact: true }).fill('破棄する入力');
+  const discarded = await dialogsDuring(page, async () => {
+    await page.getByTestId('setup-step-fiscal_year').click();
+    await expectStep(page, 'fiscal_year');
+    await page.getByTestId('setup-step-chart_of_accounts').click();
+    await expectStep(page, 'chart_of_accounts');
+  });
+  expect(discarded).toEqual([DISCARD]);
 
   // 390px: every step can be opened and used without horizontal scroll.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -383,8 +460,7 @@ test('setup-wizard AC-24/AC-25/AC-7: failed reads and saves keep inputs, do not 
 
   // AC-7: the home card is hidden when the status cannot be read; the rest of home renders.
   await page.route('**/meta/setup-status', (route) => route.fulfill(failedRead(500)));
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: '今日の仕事を、ここから。', level: 1 })).toBeVisible();
+  await openHomeAfterStatus(page, 500);
   await expect(page.getByTestId('setup-card')).toHaveCount(0);
   await page.unroute('**/meta/setup-status');
 
@@ -416,11 +492,23 @@ test('setup-wizard AC-24/AC-25/AC-7: failed reads and saves keep inputs, do not 
   await expect(page.getByTestId('setup-step-status')).toHaveText('未完了');
   await page.unroute('**/meta/settings/company.profile');
 
+  // AC-2: a reset (DELETE) re-reads the status like a save: the saved profile is todo again without "Check again".
+  await profile.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByTestId('setup-step-status')).toHaveText('完了');
+  const readsBeforeReset = statusReads.length;
+  await profile.getByRole('button', { name: '既定に戻す', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '既定に戻す', exact: true }).click();
+  await expect.poll(() => statusReads.length).toBeGreaterThan(readsBeforeReset);
+  await expect(page.getByTestId('setup-step-status')).toHaveText('未完了');
+
   // AC-24 / decision 13: the second of the two inventory saves fails — the error is shown, the step stays, the status
-  // is re-read and the mixed state that was really stored is shown.
-  page.once('dialog', (dialog) => void dialog.accept());
-  await page.getByTestId('setup-step-inventory').click();
-  await expectStep(page, 'inventory');
+  // is re-read and the mixed state that was really stored is shown. Nothing is unsaved after the reset.
+  expect(
+    await dialogsDuring(page, async () => {
+      await page.getByTestId('setup-step-inventory').click();
+      await expectStep(page, 'inventory');
+    }),
+  ).toEqual([]);
   await page.route('**/meta/settings/inventory.auto_receipt_on_purchase', (route) =>
     route.request().method() === 'PUT' ? route.fulfill(failedRead(500)) : route.continue(),
   );

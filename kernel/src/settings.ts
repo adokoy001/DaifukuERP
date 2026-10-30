@@ -5,6 +5,7 @@ import { writeAudit } from './audit.ts';
 import { isAdmin, type Context } from './context.ts';
 import { auditLog, companies, users } from './db/system-tables.ts';
 import { NotFound, PermissionDenied, ValidationError } from './errors.ts';
+import { registry } from './registry.ts';
 
 export interface CompanyInfo {
   id: string;
@@ -72,6 +73,16 @@ function assertSettingsAccess(ctx: Context, op: 'update' | 'delete' | 'audit'): 
 }
 
 /**
+ * A declared setting with `writeRoles` (ADR-0027 §8, e.g. `setup.progress`: admin only) is changed only by a context
+ * holding one of them. Applies to every adapter (REST, MCP, actions) because the check lives in the port.
+ */
+function assertWriteRoles(ctx: Context, key: string, op: 'update' | 'delete'): void {
+  const roles = registry.hasSetting(key) ? registry.setting(key).writeRoles : undefined;
+  if (roles && !roles.some((role) => ctx.roles.includes(role)))
+    throw new PermissionDenied(`company_settings.${key}`, op, ctx.roles);
+}
+
+/**
  * The context's company row locked FOR UPDATE until the transaction ends. setSetting and deleteSetting read the value
  * they audit as "before" through it, so a write that overlaps another write of the same company waits for it and the
  * audited history forms an unbroken chain (each before is the previous after).
@@ -90,11 +101,12 @@ async function lockedCompanySettings(ctx: Context): Promise<{ id: string; settin
 }
 
 /**
- * Writes one setting (admin or role `settings`). Validated by the schema; audited as entity `company_settings` with the
- * value read under the row lock (lockedCompanySettings).
+ * Writes one setting (admin or role `settings`, and one of its `writeRoles` when declared). Validated by the schema;
+ * audited as entity `company_settings` with the value read under the row lock (lockedCompanySettings).
  */
 export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType<T>, value: unknown): Promise<T> {
   assertSettingsAccess(ctx, 'update');
+  assertWriteRoles(ctx, key, 'update');
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ValidationError(
@@ -121,6 +133,7 @@ export async function setSetting<T>(ctx: Context, key: string, schema: z.ZodType
  */
 export async function deleteSetting(ctx: Context, key: string): Promise<boolean> {
   assertSettingsAccess(ctx, 'delete');
+  assertWriteRoles(ctx, key, 'delete');
   const company = await lockedCompanySettings(ctx);
   const stored = company.settings;
   if (!Object.hasOwn(stored, key)) return false;

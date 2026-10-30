@@ -90,7 +90,7 @@ describe('setup-wizard AC-11: reading and registering setup.progress', () => {
     expect(registry.setting(SETUP_PROGRESS_KEY)).toBe(SETUP_PROGRESS_SETTING);
   });
 
-  it('AC-11: presentation — system tab, ja/en labels for the setting and all ten properties, no default, managedBy', () => {
+  it('AC-11: presentation — system tab, ja/en labels for the setting and all ten properties, no default, managedBy, admin-only writes', () => {
     const def = SETUP_PROGRESS_SETTING;
     expect(settingCategory(def)).toBe('system');
     expect(def.default).toBeUndefined();
@@ -98,5 +98,7 @@ describe('setup-wizard AC-11: reading and registering setup.progress', () => {
     expect(Object.keys(def.fields ?? {}).sort()).toEqual([...SETUP_STEP_IDS, 'updatedAt'].sort());
     for (const field of Object.values(def.fields ?? {})) expect(field.label.ja && field.label.en).toBeTruthy();
     expect(def.managedBy).toEqual({ href: '/setup', label: { ja: 'セットアップ', en: 'Setup' } });
+    // Decision 5: only company admins (who can open the wizard) change the record; the settings role reads it.
+    expect(def.writeRoles).toEqual(['admin']);
   });
 });

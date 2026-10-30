@@ -29,9 +29,13 @@ function rowsOf(list: ListResponse): FiscalYearRow[] {
 }
 
 function YearText({ year }: { year: FiscalYearRow }) {
+  const { t } = useLocale();
   return (
     <span className="font-mono">
-      {year.code}（{year.startDate} – {year.endDate}）
+      {year.code}
+      {t({ ja: '（', en: ' (' })}
+      {year.startDate} – {year.endDate}
+      {t({ ja: '）', en: ')' })}
     </span>
   );
 }
@@ -121,10 +125,12 @@ export function FiscalYearStep(props: SetupStepProps) {
         props.announce(
           t({ ja: `会計年度（${startDate}〜）を作成しました。`, en: `Created the fiscal year from ${startDate}.` }),
         ),
-      onSettled: async () => {
+      onSettled: async (_data, error) => {
         props.onBusy(false);
         await qc.invalidateQueries({ queryKey: fiscalYearsKey });
         await props.refresh();
+        // The proposal and its button are gone once the year exists: keep keyboard focus in the step (AC-10).
+        if (!error) props.focusHeading();
       },
     });
   };
@@ -144,7 +150,7 @@ export function FiscalYearStep(props: SetupStepProps) {
         </Link>
       </p>
       {years.isError ? (
-        <SetupSaveError view={describeError(years.error)} testId="setup-fiscal-load-error" />
+        <SetupSaveError view={describeError(years.error)} testId="setup-fiscal-load-error" kind="load" />
       ) : !years.data ? (
         <div aria-busy="true">
           <SkeletonCard lines={2} />
@@ -215,8 +221,8 @@ function FiscalPlanView({
       {plan.mismatch ? (
         <p className="text-xs text-text-secondary" data-testid="setup-fiscal-mismatch">
           {t({
-            ja: 'この年度の開始月は決算月の翌月と違います。既存の年度は変更・削除しません（新しい会社には暦年の年度が初めから作られます）。次の年度から決算月に揃えるには、年度の作成時に開始日を選びます。',
-            en: 'This year does not start the month after the year-end month. Existing years are not changed or deleted (a new company starts with a calendar-year fiscal year). To align later years, choose the start date when you create them.',
+            ja: 'この年度の開始月は決算月の翌月と違います。既存の年度は変更・削除しません（新しい会社には暦年の年度が初めから作られます）。この画面で作る年度は既存の年度の翌日から 12 か月です。決算月に揃える 1 年未満の年度は作れません。',
+            en: 'This year does not start the month after the year-end month. Existing years are not changed or deleted (a new company starts with a calendar-year fiscal year). Years created here continue the existing ones for 12 months; a shorter year to align with the year-end month cannot be created.',
           })}
         </p>
       ) : null}

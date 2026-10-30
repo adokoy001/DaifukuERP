@@ -1,6 +1,6 @@
 // Shared parts of the setup wizard's steps (docs/specs/setup-wizard.md): what every step receives, the list of checks a
-// step is judged by (status word + colour, detail, link), a save failure (AC-24) and how several inputs of one step
-// report a single "unsaved changes" flag (AC-9).
+// step is judged by (status word + colour, detail, link), a save or load failure (AC-24) and how several inputs of one
+// step report a single "unsaved changes" or "saving" flag (AC-9).
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppMeta, SettingMeta } from '../api/types.ts';
@@ -24,6 +24,8 @@ export interface SetupStepProps {
   refresh: () => Promise<unknown>;
   /** Polite live-region message (AC-10). */
   announce: (text: string) => void;
+  /** Moves focus to the step's heading, e.g. when the control that had it is gone after a save (AC-10). */
+  focusHeading: () => void;
 }
 
 export function settingOf(settings: readonly SettingMeta[], key: string): SettingMeta | undefined {
@@ -36,12 +38,13 @@ export function effectiveValue(setting: SettingMeta | undefined): unknown {
   return setting.isDefault ? setting.defaultValue : setting.value;
 }
 
-export function SetupChecks({ checks }: { checks: readonly SetupCheck[] }) {
+/** `links: false` drops the fix links (e.g. a screen the viewer cannot use). */
+export function SetupChecks({ checks, links = true }: { checks: readonly SetupCheck[]; links?: boolean }) {
   const { t } = useLocale();
   return (
     <ul className="flex flex-col" data-testid="setup-checks">
       {checks.map((check) => {
-        const target = healthLink(check.href);
+        const target = links ? healthLink(check.href) : undefined;
         return (
           <li
             key={check.id}
@@ -76,12 +79,27 @@ export function SetupChecks({ checks }: { checks: readonly SetupCheck[] }) {
   );
 }
 
-/** AC-24: a failed save inside the step — what happened, the server's message, technical details folded. */
-export function SetupSaveError({ view, testId = 'setup-save-error' }: { view: ErrorView; testId?: string }) {
+/**
+ * AC-24: a failed save inside the step — what happened, the server's message, technical details folded. `kind: 'load'`
+ * says that a read of the step's data failed instead.
+ */
+export function SetupSaveError({
+  view,
+  testId = 'setup-save-error',
+  kind = 'save',
+}: {
+  view: ErrorView;
+  testId?: string;
+  kind?: 'save' | 'load';
+}) {
   const { t } = useLocale();
   return (
     <div role="alert" className="ui-notice ui-notice-danger flex flex-col gap-1 text-sm" data-testid={testId}>
-      <p className="font-semibold">{t({ ja: '保存できませんでした。', en: 'Could not save.' })}</p>
+      <p className="font-semibold">
+        {kind === 'load'
+          ? t({ ja: '読み込めませんでした。', en: 'Could not load.' })
+          : t({ ja: '保存できませんでした。', en: 'Could not save.' })}
+      </p>
       {view.explanation ? <p>{t(view.explanation)}</p> : null}
       <p>{view.message}</p>
       <ErrorDetails view={view} />
@@ -90,21 +108,25 @@ export function SetupSaveError({ view, testId = 'setup-save-error' }: { view: Er
 }
 
 /**
- * Several inputs of one step (setting cards, editors) each report dirty/clean under their own key; the step reports
- * one flag. Each key's callback is stable, so a card's effect does not re-run on every render.
+ * Several parts of one step (setting cards, editors, the step's own save) each report a flag (unsaved changes, a write
+ * in flight) under their own key; the step reports one flag: set while any key is set. Each key's callback is stable,
+ * so a card's effect does not re-run on every render. When the step unmounts (another step opens), the flag is cleared:
+ * the parts' own clean-up reports reach the unmounted step only, so without this the page would keep asking to discard
+ * changes that no longer exist.
  */
-export function useDirtyKeys(onDirty: (dirty: boolean) => void): (key: string) => (dirty: boolean) => void {
-  const [dirtyKeys, setDirtyKeys] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => onDirty(dirtyKeys.size > 0), [dirtyKeys, onDirty]);
-  const cache = useRef(new Map<string, (dirty: boolean) => void>());
+export function useFlagKeys(onFlag: (on: boolean) => void): (key: string) => (on: boolean) => void {
+  const [keys, setKeys] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => onFlag(keys.size > 0), [keys, onFlag]);
+  useEffect(() => () => onFlag(false), [onFlag]);
+  const cache = useRef(new Map<string, (on: boolean) => void>());
   const reporter = useCallback((key: string) => {
     const known = cache.current.get(key);
     if (known) return known;
-    const report = (dirty: boolean) =>
-      setDirtyKeys((prev) => {
-        if (prev.has(key) === dirty) return prev;
+    const report = (on: boolean) =>
+      setKeys((prev) => {
+        if (prev.has(key) === on) return prev;
         const next = new Set(prev);
-        if (dirty) next.add(key);
+        if (on) next.add(key);
         else next.delete(key);
         return next;
       });
@@ -113,3 +135,8 @@ export function useDirtyKeys(onDirty: (dirty: boolean) => void): (key: string) =
   }, []);
   return useMemo(() => reporter, [reporter]);
 }
+
+/** The step's unsaved-changes flag from several inputs (AC-9). */
+export const useDirtyKeys = useFlagKeys;
+/** The step's "a write is in flight" flag from several parts (AC-9: nothing moves while saving). */
+export const useBusyKeys = useFlagKeys;

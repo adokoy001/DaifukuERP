@@ -64,6 +64,8 @@ export interface SettingPresentation {
   widget?: SettingWidget;
   valueLabels?: Readonly<Record<string, Label>>;
   managedBy?: SettingManagedBy;
+  /** Not presentation (registry.ts SettingDef.writeRoles); checked here with the rest of the definition. */
+  writeRoles?: readonly string[];
 }
 
 /** Key prefixes whose category differs from "industry" when the definition does not name one (spec AC-3). */
@@ -220,5 +222,13 @@ export function checkSettingDef(def: SettingPresentation): void {
       throw new Error(`setting "${key}": managedBy.href must be an in-app path such as /setup`);
     if (!isLabel(def.managedBy.label))
       throw new Error(`setting "${key}": managedBy.label must have non-empty ja and en text`);
+  }
+  if (def.writeRoles !== undefined) {
+    if (
+      !Array.isArray(def.writeRoles) ||
+      def.writeRoles.length === 0 ||
+      !def.writeRoles.every((role) => typeof role === 'string' && /^[a-z][a-z0-9_]*$/.test(role))
+    )
+      throw new Error(`setting "${key}": writeRoles must be a non-empty list of role names such as ["admin"]`);
   }
 }

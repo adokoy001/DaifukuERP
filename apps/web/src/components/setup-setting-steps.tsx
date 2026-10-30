@@ -18,22 +18,28 @@ import {
   settingOf,
   SetupChecks,
   SetupSaveError,
+  useBusyKeys,
   useDirtyKeys,
   type SetupStepProps,
 } from './setup-shared.tsx';
 
 const MANUAL_BASE = manualBaseUrl(import.meta.env.VITE_MANUAL_URL);
 
-/** One SettingCard wired to the wizard (dirty flag, status refresh); nothing when the setting is not declared. */
+/**
+ * One SettingCard wired to the wizard (dirty and busy flags, status refresh after a save or reset); nothing when the
+ * setting is not declared.
+ */
 function WizardSettingCard({
   props,
   settingKey,
   report,
+  busy,
   draftValue,
 }: {
   props: SetupStepProps;
   settingKey: string;
   report: (dirty: boolean) => void;
+  busy: (busy: boolean) => void;
   draftValue?: Record<string, unknown>;
 }) {
   const setting = settingOf(props.settings, settingKey);
@@ -44,6 +50,7 @@ function WizardSettingCard({
       meta={props.meta}
       templatesApplied={templatesApplied(props.settings)}
       onDirtyChange={report}
+      onBusyChange={busy}
       onSettled={() => void props.refresh()}
       {...(draftValue ? { draftValue } : {})}
     />
@@ -53,6 +60,7 @@ function WizardSettingCard({
 export function CompanyProfileStep(props: SetupStepProps) {
   const { t } = useLocale();
   const dirty = useDirtyKeys(props.onDirty);
+  const busy = useBusyKeys(props.onBusy);
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-text-secondary">
@@ -62,7 +70,12 @@ export function CompanyProfileStep(props: SetupStepProps) {
         })}
       </p>
       <SetupChecks checks={props.step.checks} />
-      <WizardSettingCard props={props} settingKey="company.profile" report={dirty('company.profile')} />
+      <WizardSettingCard
+        props={props}
+        settingKey="company.profile"
+        report={dirty('company.profile')}
+        busy={busy('company.profile')}
+      />
     </div>
   );
 }
@@ -90,6 +103,7 @@ export function ChartOfAccountsStep(props: SetupStepProps) {
 export function TaxStep(props: SetupStepProps) {
   const { t } = useLocale();
   const dirty = useDirtyKeys(props.onDirty);
+  const busy = useBusyKeys(props.onBusy);
   return (
     <div className="flex flex-col gap-3">
       <SetupChecks checks={props.step.checks} />
@@ -113,8 +127,18 @@ export function TaxStep(props: SetupStepProps) {
           {t({ ja: '税率の一覧を開く', en: 'Open the tax rates' })}
         </Link>
       </p>
-      <WizardSettingCard props={props} settingKey="tax.rounding" report={dirty('tax.rounding')} />
-      <WizardSettingCard props={props} settingKey="tax.price_includes_tax" report={dirty('tax.price_includes_tax')} />
+      <WizardSettingCard
+        props={props}
+        settingKey="tax.rounding"
+        report={dirty('tax.rounding')}
+        busy={busy('tax.rounding')}
+      />
+      <WizardSettingCard
+        props={props}
+        settingKey="tax.price_includes_tax"
+        report={dirty('tax.price_includes_tax')}
+        busy={busy('tax.price_includes_tax')}
+      />
     </div>
   );
 }
@@ -122,6 +146,7 @@ export function TaxStep(props: SetupStepProps) {
 export function InvoiceIssuerStep(props: SetupStepProps) {
   const { t } = useLocale();
   const dirty = useDirtyKeys(props.onDirty);
+  const busy = useBusyKeys(props.onBusy);
   const companies = useCompanies();
   const [draft, setDraft] = useState<Record<string, unknown>>();
   const companyName = companies.data?.items.find((c) => c.id === companies.data.companyId)?.name ?? '';
@@ -166,6 +191,7 @@ export function InvoiceIssuerStep(props: SetupStepProps) {
         props={props}
         settingKey="sales.issuer"
         report={dirty('sales.issuer')}
+        busy={busy('sales.issuer')}
         {...(draft ? { draftValue: draft } : {})}
       />
     </div>
@@ -179,6 +205,8 @@ export function InventoryStep(props: SetupStepProps) {
   const { t } = useLocale();
   const id = useId();
   const dirty = useDirtyKeys(props.onDirty);
+  const busyKeys = useBusyKeys(props.onBusy);
+  const reportSaving = busyKeys('choice');
   const save = useSaveSetting();
   const issue = effectiveValue(settingOf(props.settings, AUTO_ISSUE)) === true;
   const receipt = effectiveValue(settingOf(props.settings, AUTO_RECEIPT)) === true;
@@ -195,7 +223,7 @@ export function InventoryStep(props: SetupStepProps) {
   const submit = async () => {
     if (!choice || busy) return;
     setBusy(true);
-    props.onBusy(true);
+    reportSaving(true);
     setError(undefined);
     const value = choice === 'use';
     try {
@@ -209,7 +237,7 @@ export function InventoryStep(props: SetupStepProps) {
       setError(describeError(err));
     } finally {
       setBusy(false);
-      props.onBusy(false);
+      reportSaving(false);
       await props.refresh();
     }
   };
@@ -293,6 +321,7 @@ export function InventoryStep(props: SetupStepProps) {
             props={props}
             settingKey="inventory.default_warehouse"
             report={dirty('inventory.default_warehouse')}
+            busy={busyKeys('inventory.default_warehouse')}
           />
         </div>
       ) : null}

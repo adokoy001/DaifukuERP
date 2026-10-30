@@ -8,6 +8,7 @@ import {
   COMPANY_PROFILE_KEY,
   companyProfileSchema,
   createCompany,
+  deleteSetting,
   NotFound,
   PACKS_APPLIED_KEY,
   PermissionDenied,
@@ -403,6 +404,51 @@ describe('setup-wizard AC-6/AC-11/AC-15/AC-26: skips through PUT /meta/settings/
       category: 'system',
       managedBy: { href: '/setup', label: { ja: 'セットアップ', en: 'Setup' } },
     });
+  });
+
+  it('AC-2/AC-8 (decision 5): only admins write setup.progress; the settings role gets 403 and changes nothing', async () => {
+    const record = { users: { state: 'skipped', at: AT, reason: '一人で使う' }, updatedAt: AT };
+    expect((await save(record)).statusCode).toBe(200);
+    await member('setup-progress-settings@example.com', ['settings']);
+    const headers = await bearer('setup-progress-settings@example.com', 'setup-member-pass');
+    const skip = await app.inject({
+      method: 'PUT',
+      url: `/meta/settings/${SETUP_PROGRESS_KEY}`,
+      headers,
+      payload: JSON.stringify({ value: { company_profile: { state: 'skipped', at: AT, reason: '設定係が省略' } } }),
+    });
+    expect(skip.statusCode, skip.body).toBe(403);
+    expect(skip.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+    const remove = await app.inject({
+      method: 'DELETE',
+      url: `/meta/settings/${SETUP_PROGRESS_KEY}`,
+      headers: { authorization: headers.authorization },
+    });
+    expect(remove.statusCode, remove.body).toBe(403);
+    expect((await status()).progress).toEqual(record);
+    // The rule lives in the kernel port, so every adapter (MCP, actions) gets it, not only this route.
+    const schema = registry.setting(SETUP_PROGRESS_KEY).schema;
+    await expect(put(SETUP_PROGRESS_KEY, schema, {}, { roles: ['settings'] })).rejects.toBeInstanceOf(PermissionDenied);
+    await expect(run((ctx) => deleteSetting(ctx, SETUP_PROGRESS_KEY), { roles: ['settings'] })).rejects.toBeInstanceOf(
+      PermissionDenied,
+    );
+    expect((await status()).progress).toEqual(record);
+    // The same member still changes ordinary settings (admin or settings, ADR-0027): it saves the value in effect.
+    const listed = await app.inject({ method: 'GET', url: '/meta/settings', headers });
+    const pricing = listed
+      .json<{ key: string; value: unknown; defaultValue?: unknown; isDefault: boolean }[]>()
+      .find((x) => x.key === 'tax.price_includes_tax');
+    expect(pricing).toBeDefined();
+    const ordinary = await app.inject({
+      method: 'PUT',
+      url: '/meta/settings/tax.price_includes_tax',
+      headers,
+      payload: JSON.stringify({ value: pricing?.isDefault ? pricing.defaultValue : pricing?.value }),
+    });
+    expect(ordinary.statusCode, ordinary.body).toBe(200);
+    // An admin may still remove the record (undo everything).
+    expect(await run((ctx) => deleteSetting(ctx, SETUP_PROGRESS_KEY))).toBe(true);
+    expect((await status()).progress).toEqual({});
   });
 });
 

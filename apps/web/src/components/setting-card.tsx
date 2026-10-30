@@ -1,8 +1,9 @@
 // settings-console AC-9..AC-12: one company setting as a kit Card form — labelled fields (code pickers, checkboxes,
 // textareas), whether the module default applies and what it is, "reset to default" behind a kit Dialog, and the
 // change history. Saving is PUT /meta/settings/:key; resetting is DELETE (the API checks the role either way).
-// setup-wizard AC-9/AC-12/AC-20: the wizard embeds the same card — it reports unsaved changes (`onDirtyChange`), can
-// start from a draft (`draftValue`, e.g. the issuer copied from the profile) and hears when a save ends (`onSettled`).
+// setup-wizard AC-9/AC-12/AC-20: the wizard embeds the same card — it reports unsaved changes (`onDirtyChange`) and
+// writes in flight (`onBusyChange`), can start from a draft (`draftValue`, e.g. the issuer copied from the profile; a
+// one-time seed that a successful save consumes) and hears when a save or reset ends (`onSettled`).
 // A setting kept by a dedicated screen (`managedBy`) is shown read-only with a link there.
 import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
@@ -249,9 +250,14 @@ export interface SettingCardProps {
   templatesApplied?: boolean;
   /** setup-wizard AC-9: called with true while the inputs differ from the saved value, false otherwise. */
   onDirtyChange?: (dirty: boolean) => void;
-  /** setup-wizard AC-20: values to put into the inputs (unsaved); a new object applies again. */
+  /** setup-wizard AC-9: called with true while a save or reset of this card is in flight, false otherwise. */
+  onBusyChange?: (busy: boolean) => void;
+  /**
+   * setup-wizard AC-20: values to put into the inputs (unsaved). A one-time seed: a successful save or reset consumes it,
+   * so the inputs then show the stored value; a new object seeds the inputs again.
+   */
   draftValue?: Record<string, unknown>;
-  /** setup-wizard AC-2/AC-24: called after every save attempt, successful or not (the wizard re-reads its status). */
+  /** setup-wizard AC-2/AC-24: called after every save or reset attempt, successful or not (the wizard re-reads its status). */
   onSettled?: () => void;
 }
 
@@ -260,6 +266,7 @@ function EditableSettingCard({
   meta,
   templatesApplied = false,
   onDirtyChange,
+  onBusyChange,
   draftValue,
   onSettled,
 }: SettingCardProps) {
@@ -269,8 +276,15 @@ function EditableSettingCard({
   const { mode, fields } = useMemo(() => settingForm(setting, refOf), [setting, refOf]);
   const current = useMemo(() => settingFormValue(setting, mode), [setting, mode]);
   // A draft (object settings) seeds the inputs instead of the saved value; dirtiness is still measured against `current`,
-  // so the copied values count as unsaved until they are saved. A new draft object resets the inputs to it.
-  const form = useSchemaForm(fields, { current: draftValue ?? current, jsonOnly: mode === 'json' });
+  // so the copied values count as unsaved until they are saved. A new draft object seeds the inputs again; a successful
+  // write consumes the seed, so the inputs follow the stored value from then on (the caller may keep its draft object).
+  const [seed, setSeed] = useState(draftValue);
+  const [seedSource, setSeedSource] = useState(draftValue);
+  if (draftValue !== seedSource) {
+    setSeedSource(draftValue);
+    setSeed(draftValue);
+  }
+  const form = useSchemaForm(fields, { current: seed ?? current, jsonOnly: mode === 'json' });
   const save = useSaveSetting();
   const reset = useResetSetting();
   const [confirming, setConfirming] = useState(false);
@@ -291,6 +305,10 @@ function EditableSettingCard({
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -302,7 +320,10 @@ function EditableSettingCard({
     save.mutate(
       { key: setting.key, value: form.state.jsonMode ? built.payload : settingPayload(mode, built.payload) },
       {
-        onSuccess: () => toast.success(t(S.settingSaved)),
+        onSuccess: () => {
+          setSeed(undefined);
+          toast.success(t(S.settingSaved));
+        },
         onSettled: () => onSettled?.(),
         onError: (err) => {
           if (isApiError(err) && err.code === 'VALIDATION') {
@@ -331,6 +352,7 @@ function EditableSettingCard({
   const confirmReset = () =>
     reset.mutate(setting.key, {
       onSuccess: () => {
+        setSeed(undefined);
         setConfirming(false);
         toast.success(t(SC.resetDone));
         // The reset button is gone now (the value is the default), so focus goes to the card's save button.
@@ -340,6 +362,7 @@ function EditableSettingCard({
         setConfirming(false);
         toast.error(err);
       },
+      onSettled: () => onSettled?.(),
     });
 
   const status = setting.isDefault ? (

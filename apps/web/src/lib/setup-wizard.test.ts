@@ -142,15 +142,14 @@ describe('setup-wizard AC-3: fiscal year proposal', () => {
     const plan = proposeFiscalYear({ today: '2026-02-10', endMonth: 12, years: [later], check: 'fail' });
     expect(plan).toMatchObject({ kind: 'propose', proposal: { startDate: '2026-01-01', overlap: later } });
   });
-  it.each([['a closed period for today'], ['a year without periods']])(
-    'AC-3 (c): a year contains today but the check fails (%s) -> propose nothing',
-    () => {
-      expect(proposeFiscalYear({ today: '2026-10-15', endMonth: 12, years: [FY2026], check: 'fail' })).toEqual({
-        kind: 'blocked',
-        current: FY2026,
-      });
-    },
-  );
+  // The two causes (today's period closed, a year without periods) both reach this function as `check: 'fail'`; telling
+  // them apart is the accounting.fiscal_period check's job (apps/api/test/setup-health.db.test.ts, setup-health AC-2).
+  it('AC-3 (c): a year contains today but the check fails -> propose nothing', () => {
+    expect(proposeFiscalYear({ today: '2026-10-15', endMonth: 12, years: [FY2026], check: 'fail' })).toEqual({
+      kind: 'blocked',
+      current: FY2026,
+    });
+  });
   it('AC-3: dates — 12-month ends and the Tokyo business date of checkedAt', () => {
     expect(yearEnd('2026-04-01')).toBe('2027-03-31');
     expect(yearEnd('2024-03-01')).toBe('2025-02-28');

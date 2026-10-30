@@ -17,7 +17,7 @@ import { AccessCreateUser } from './access-create-user.tsx';
 import { AccessInviteUser } from './access-invite-user.tsx';
 import { AccessMemberships } from './access-memberships.tsx';
 import { ActionConfirm } from './action-confirm.tsx';
-import { SetupChecks, SetupSaveError, useDirtyKeys, type SetupStepProps } from './setup-shared.tsx';
+import { SetupChecks, SetupSaveError, useBusyKeys, useDirtyKeys, type SetupStepProps } from './setup-shared.tsx';
 import { WorkforceInitialize } from './workforce-initialize.tsx';
 
 /** `example` demonstrates the extension API; it is not an industry and does not complete the step. */
@@ -65,8 +65,11 @@ export function IndustryTemplateStep(props: SetupStepProps) {
         </Link>
       </p>
       {apply.isError ? <SetupSaveError view={describeError(apply.error)} /> : null}
+      {companies.isError && !companies.data ? (
+        <SetupSaveError view={describeError(companies.error)} testId="setup-companies-load-error" kind="load" />
+      ) : null}
       {packs.isError ? (
-        <SetupSaveError view={describeError(packs.error)} testId="setup-templates-load-error" />
+        <SetupSaveError view={describeError(packs.error)} testId="setup-templates-load-error" kind="load" />
       ) : !packs.data ? (
         <div aria-busy="true">
           <SkeletonCard lines={3} />
@@ -87,7 +90,10 @@ export function IndustryTemplateStep(props: SetupStepProps) {
       {pending ? (
         <ActionConfirm
           title={t({ ja: 'テンプレートを適用', en: 'Apply template' })}
-          message={`${company?.name ?? ''}：${t(pending.pack.label)}。${t(pending.sample ? { ja: 'サンプルデータも追加します。', en: 'Sample data will also be added.' } : { ja: '初期設定と必要なマスタを追加します。', en: 'Initial settings and master records will be added.' })}`}
+          message={t({
+            ja: `${company?.name ?? ''}：${pending.pack.label.ja}。${pending.sample ? 'サンプルデータも追加します。' : '初期設定と必要なマスタを追加します。'}`,
+            en: `${company?.name ?? ''}: ${pending.pack.label.en}. ${pending.sample ? 'Sample data will also be added.' : 'Initial settings and master records will be added.'}`,
+          })}
           cancelDocument={false}
           destructive={false}
           onConfirm={confirm}
@@ -104,20 +110,22 @@ export function UsersStep(props: SetupStepProps) {
   const tenantAdmin = me.data?.user.tenantAdmin === true;
   const catalog = useAccessCatalog(tenantAdmin);
   const dirty = useDirtyKeys(props.onDirty);
+  const busy = useBusyKeys(props.onBusy);
   const [creating, setCreating] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [createdId, setCreatedId] = useState<string>();
   const [invited, setInvited] = useState(false);
-  const { onBusy, refresh } = props;
+  const { refresh } = props;
   const editorStatus = useCallback(
     (key: string) => {
-      const report = dirty(key);
+      const reportDirty = dirty(key);
+      const reportBusy = busy(key);
       return (status: AccessEditorStatus) => {
-        report(status.dirty);
-        onBusy(status.busy);
+        reportDirty(status.dirty);
+        reportBusy(status.busy);
       };
     },
-    [dirty, onBusy],
+    [dirty, busy],
   );
   const createStatus = useMemo(() => editorStatus('create'), [editorStatus]);
   const inviteStatus = useMemo(() => editorStatus('invite'), [editorStatus]);
@@ -143,7 +151,19 @@ export function UsersStep(props: SetupStepProps) {
   const created = createdId ? catalog.data?.users.find((user) => user.id === createdId) : undefined;
   return (
     <div className="flex flex-col gap-3">
-      <SetupChecks checks={props.step.checks} />
+      {/* The fix link opens /admin/users, which only tenant administrators can use. */}
+      <SetupChecks checks={props.step.checks} links={tenantAdmin} />
+      {me.isPending ? (
+        <div aria-busy="true">
+          <SkeletonCard lines={2} />
+        </div>
+      ) : null}
+      {me.isError && !me.data ? (
+        <SetupSaveError view={describeError(me.error)} testId="setup-users-load-error" kind="load" />
+      ) : null}
+      {tenantAdmin && catalog.isError && !catalog.data ? (
+        <SetupSaveError view={describeError(catalog.error)} testId="setup-users-catalog-error" kind="load" />
+      ) : null}
       {me.data && !tenantAdmin ? (
         <p className="ui-notice text-sm" data-testid="setup-users-not-tenant-admin">
           {t({

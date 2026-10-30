@@ -1,9 +1,9 @@
 // company-admin (docs/specs/company-admin.md AC-2, AC-3, AC-7..AC-9, AC-11): a tenant administrator creates a second
 // company on /admin/companies, switches to it, fills the company profile (step 1 of the setup wizard, the same card as
-// the company tab; setup-wizard AC-27 replaced the planned destinations with /setup), and the
-// printed invoice carries it; the keyboard flow keeps focus, a duplicate code is explained on its field, and the company
-// picker re-fetches after create and rename; a user who is not a tenant administrator gets no entry and a refusal; 390px
-// and axe on the new screen. AC-10 (seed rollback) is covered by kernel/test/company-admin.db.test.ts. Each run creates
+// the company tab; setup-wizard AC-27 replaced the planned destinations with /setup), finds it first on the company tab
+// of the settings console, and the printed invoice carries it; the keyboard flow keeps focus, a duplicate code is
+// explained on its field, and the company picker re-fetches after create and rename; a user who is not a tenant
+// administrator gets no entry and a refusal; 390px and axe on the new screen. AC-10 (seed rollback) is covered by kernel/test/company-admin.db.test.ts. Each run creates
 // companies with fresh codes (companies cannot be deleted) in the isolated E2E database.
 import { existsSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
@@ -76,6 +76,16 @@ test('company-admin AC-9/AC-8/AC-7: create a second company, switch to it, fill 
   await profile.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('設定を保存しました')).toBeVisible();
   await expect(profile).toContainText('会社の値');
+
+  // AC-8: the settings console opens on the company tab (its first tab) with the profile as its first card, saved.
+  await page.goto('/settings');
+  const tabs = page.getByRole('tablist', { name: '設定の分類' }).getByRole('tab');
+  await expect(tabs.first()).toHaveText('会社');
+  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+  const companyTab = page.getByRole('tabpanel', { name: '会社' });
+  const cards = companyTab.locator('form[data-testid^="setting-"]');
+  await expect(cards.first()).toHaveAttribute('data-testid', 'setting-company.profile');
+  await expect(cards.first()).toContainText('会社の値');
 
   // AC-7: sales.issuer is unset in the new company, so the printed invoice carries the profile.
   const inNew = { ...headers, 'x-company-id': company.id };

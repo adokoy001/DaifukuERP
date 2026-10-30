@@ -1,8 +1,9 @@
 // The kernel-owned company setting `setup.progress` (docs/specs/setup-wizard.md AC-6, AC-11, AC-15; ADR-0027 §8): the
 // setup wizard's record of steps an administrator confirmed (`completed`) or skipped with a reason. It is an auxiliary
 // record only: whether a step is done is decided from real data (GET /meta/setup-status), never from this value. It is
-// written through the ordinary PUT /meta/settings/setup.progress (no new write path); the settings console shows it
-// read-only with a link to /setup (`managedBy`).
+// written through the ordinary PUT /meta/settings/setup.progress (no new write path) by company admins only
+// (`writeRoles: ['admin']`, like GET /meta/setup-status); the settings console shows it read-only with a link to /setup
+// (`managedBy`).
 import { z } from 'zod';
 import { label } from './i18n.ts';
 import { registry, type SettingDef } from './registry.ts';
@@ -70,6 +71,9 @@ export const SETUP_PROGRESS_SETTING: SettingDef<SetupProgress> = {
     updatedAt: { label: label('記録の更新時刻', 'Record updated at') },
   },
   managedBy: { href: '/setup', label: label('セットアップ', 'Setup') },
+  // The wizard is for company admins (GET /meta/setup-status refuses others); the `settings` role may read the record but
+  // not skip steps or remove the admins' skip reasons (setup-wizard decision 5).
+  writeRoles: ['admin'],
 };
 
 /** Declares `setup.progress` once (idempotent; also after registry.reset in tests). apps/runtime calls it. */

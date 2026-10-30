@@ -287,3 +287,25 @@ describe('setup-wizard AC-12: managedBy (a dedicated screen keeps the setting)',
     ).toThrow('managedBy.label');
   });
 });
+
+describe('setup-wizard decision 5: writeRoles (who may change a setting)', () => {
+  const schema = z.object({ step: z.string().optional() });
+  const fields = { step: { label: label('段階', 'Step') } };
+
+  it('ADR-0027 §8: a list of role names registers and is kept on the definition', () => {
+    const k = key('wizard');
+    registry.registerSetting({ key: k, label: label('進捗', 'Progress'), schema, fields, writeRoles: ['admin'] });
+    expect(registry.setting(k).writeRoles).toEqual(['admin']);
+  });
+
+  it.each([[[]], [['']], [['Admin']], [['admin', 'bad role']]])(
+    'ADR-0027 §8: writeRoles %j is refused at registration',
+    (writeRoles) => {
+      const k = key('wizard');
+      expect(() =>
+        registry.registerSetting({ key: k, label: label('進捗', 'Progress'), schema, fields, writeRoles }),
+      ).toThrow('writeRoles');
+      expect(registry.hasSetting(k)).toBe(false);
+    },
+  );
+});

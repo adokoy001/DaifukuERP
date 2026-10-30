@@ -3,7 +3,17 @@
 // endpoint (settings PUT, actions, /admin/users...), so their permission checks apply; the wizard's own record is the
 // ordinary PUT /meta/settings/setup.progress (merged into the stored value, AC-15). Company admins only (AC-8).
 import { useBlocker, useNavigate, useSearch } from '@tanstack/react-router';
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { isApiError } from '../api/client.ts';
 import { useMeta } from '../api/queries.ts';
 import { useSaveSetting, useSettings } from '../api/settings.ts';
@@ -45,7 +55,7 @@ import {
   type SetupStepId,
 } from '../lib/setup-wizard.ts';
 import { S } from '../strings.ts';
-import { Badge, Button, Card, EmptyState, FormSection, PageHeader } from '../ui/index.ts';
+import { Badge, Button, Card, EmptyState, PageHeader } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
 const SETUP_PROGRESS_KEY = 'setup.progress';
@@ -99,6 +109,10 @@ function SkipForm({
     onDirty(reason.trim() !== '');
     return () => onDirty(false);
   }, [reason, onDirty]);
+  // The "Skip…" button that opened the form is gone: the reason field takes the focus (AC-10, WCAG 2.4.3).
+  useEffect(() => {
+    document.getElementById(`${id}-reason`)?.focus();
+  }, [id]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const problem = skipReasonError(reason);
@@ -146,12 +160,27 @@ function SkipForm({
   );
 }
 
-function StepHeading({ step, headingRef }: { step: SetupStep; headingRef: RefObject<HTMLHeadingElement | null> }) {
+/**
+ * The open step as a named region: its only heading is the step's number and name (the region's accessible name; it
+ * takes focus when the step opens), the status badges sit next to it, and the skip reason / regressed note / confirmed
+ * time follow as paragraphs. Laid out like the kit's FormSection, whose title is always wrapped in its own heading.
+ */
+function StepSection({
+  step,
+  headingRef,
+  children,
+}: {
+  step: SetupStep;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  children: ReactNode;
+}) {
   const { t, locale } = useLocale();
+  const headingId = useId();
   return (
-    <div className="flex flex-col gap-1">
+    <section className="ui-form-section" aria-labelledby={headingId}>
       <div className="flex flex-wrap items-center gap-2">
         <h2
+          id={headingId}
           ref={headingRef}
           tabIndex={-1}
           className="text-lg font-semibold text-text outline-none"
@@ -185,7 +214,8 @@ function StepHeading({ step, headingRef }: { step: SetupStep; headingRef: RefObj
           {formatTimestamp(step.completedAt, locale)}
         </p>
       ) : null}
-    </div>
+      {children}
+    </section>
   );
 }
 
@@ -219,12 +249,20 @@ function SetupView({ meta }: { meta: AppMeta }) {
     globalThis.setTimeout(() => setAnnouncement(text), 30);
   }, []);
   const data = status.data;
+  const loaded = data !== undefined;
   const current = initialStep(data, search.step);
-  // AC-10: opening another step moves focus to its heading (not on the first render, which keeps the page's focus).
+  const skipButtonId = useId();
+  const focusHeading = useCallback(() => headingRef.current?.focus(), []);
+  // AC-10: opening another step moves focus to its heading. The step is tracked only once the status has loaded: the
+  // first step it decides (which may differ from the placeholder shown while loading) is not a move, so the page keeps
+  // the focus the app shell gave it.
   const previous = useRef<SetupStepId | undefined>(undefined);
   useEffect(() => {
+    if (!loaded) return;
     if (previous.current !== undefined && previous.current !== current) headingRef.current?.focus();
     previous.current = current;
+  }, [current, loaded]);
+  useEffect(() => {
     setSkipping(false);
     setRecordError(undefined);
   }, [current]);
@@ -260,6 +298,16 @@ function SetupView({ meta }: { meta: AppMeta }) {
     try {
       const latest = await status.refetch();
       if (!latest.data || latest.isError) throw latest.error ?? new Error('setup status unavailable');
+      // AC-15: `completed` only while the step is done — judged on the status just read, not the one on screen.
+      if (change.record === 'completed' && latest.data.steps.find((s) => s.id === change.step)?.status !== 'done') {
+        announce(
+          t({
+            ja: 'この段階は条件を満たさなくなったため、確認を記録しませんでした。',
+            en: 'Not recorded: this step no longer meets its conditions.',
+          }),
+        );
+        return false;
+      }
       await saveSetting.mutateAsync({
         key: SETUP_PROGRESS_KEY,
         value: buildProgress(latest.data.progress, change, new Date()),
@@ -281,16 +329,33 @@ function SetupView({ meta }: { meta: AppMeta }) {
       t({ ja: '確認を記録しました。', en: 'Confirmation recorded.' }),
     );
     if (ok && next) open(next);
+    // Not recorded (the step stopped being done) or failed: the button may be gone, so keep the focus in the step.
+    else if (!ok) focusHeading();
   };
   const skip = async (reason: string) => {
     const ok = await record(
       { step: step.id, record: 'skipped', reason },
       t({ ja: `${t(step.label)}をスキップしました。`, en: `Skipped ${t(step.label)}.` }),
     );
-    if (ok) setSkipping(false);
+    if (ok) {
+      setSkipping(false);
+      // The form (and the focused button) is gone and "Skip…" is not offered on a skipped step (AC-10).
+      focusHeading();
+    }
   };
-  const undoSkip = () =>
-    void record({ step: step.id, record: null }, t({ ja: 'スキップを取り消しました。', en: 'Skip undone.' }));
+  const cancelSkip = () => {
+    setSkipping(false);
+    // Back to the button that opened the form, once it is rendered again.
+    globalThis.setTimeout(() => document.getElementById(skipButtonId)?.focus(), 0);
+  };
+  const undoSkip = async () => {
+    const ok = await record(
+      { step: step.id, record: null },
+      t({ ja: 'スキップを取り消しました。', en: 'Skip undone.' }),
+    );
+    // "Undo skip" is gone once the record is removed (AC-10).
+    if (ok) focusHeading();
+  };
   const recheck = () => {
     if (status.isFetching) return;
     void status.refetch().then((result) => {
@@ -353,7 +418,7 @@ function SetupView({ meta }: { meta: AppMeta }) {
           <SetupStepper steps={data.steps} current={step.id} onOpen={open} />
         </Card>
         <Card className="min-w-0" data-testid="setup-step-panel" data-step={step.id}>
-          <FormSection landmark title={<StepHeading step={step} headingRef={headingRef} />}>
+          <StepSection step={step} headingRef={headingRef}>
             <StepView
               key={step.id}
               step={step}
@@ -364,13 +429,14 @@ function SetupView({ meta }: { meta: AppMeta }) {
               onBusy={setStepBusy}
               refresh={refresh}
               announce={announce}
+              focusHeading={focusHeading}
             />
             {recordError ? <SetupSaveError view={recordError} testId="setup-record-error" /> : null}
             {skipping ? (
               <SkipForm
                 busy={recordBusy}
                 onSubmit={(reason) => void skip(reason)}
-                onCancel={() => setSkipping(false)}
+                onCancel={cancelSkip}
                 onDirty={setSkipDirty}
               />
             ) : null}
@@ -403,17 +469,23 @@ function SetupView({ meta }: { meta: AppMeta }) {
                 </Button>
               ) : null}
               {canSkip(step) && !skipping ? (
-                <Button variant="ghost" onClick={() => setSkipping(true)} disabled={busy} data-testid="setup-skip">
+                <Button
+                  id={skipButtonId}
+                  variant="ghost"
+                  onClick={() => setSkipping(true)}
+                  disabled={busy}
+                  data-testid="setup-skip"
+                >
                   {t({ ja: 'スキップ…', en: 'Skip…' })}
                 </Button>
               ) : null}
               {canUndoSkip(step) ? (
-                <Button variant="ghost" onClick={undoSkip} disabled={busy} data-testid="setup-undo-skip">
+                <Button variant="ghost" onClick={() => void undoSkip()} disabled={busy} data-testid="setup-undo-skip">
                   {t({ ja: 'スキップを取り消す', en: 'Undo skip' })}
                 </Button>
               ) : null}
             </div>
-          </FormSection>
+          </StepSection>
         </Card>
       </div>
       {status.isFetching ? <p className="sr-only">{t(S.loading)}</p> : null}

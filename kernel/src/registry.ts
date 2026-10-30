@@ -89,6 +89,13 @@ export interface SettingDef<T = unknown> {
    * links there instead. Presentation only: PUT / DELETE validation and permissions do not change.
    */
   managedBy?: SettingManagedBy;
+  /**
+   * Who may change this setting (ADR-0027 §8): setSetting / deleteSetting then also require one of these roles, on top
+   * of the usual rule (admin or `settings`, company-wide access). For records that belong to an admin-only screen, e.g.
+   * `setup.progress` (['admin']). Not presentation: unlike the attributes above it does change PUT / DELETE. Unset: the
+   * usual rule only. Reading the setting and its history is unchanged.
+   */
+  writeRoles?: readonly string[];
 }
 
 export type HealthStatus = 'ok' | 'warn' | 'fail';

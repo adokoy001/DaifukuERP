@@ -363,8 +363,8 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     condition: 'admin',
     label: { ja: 'セットアップ', en: 'Setup' },
     description: {
-      ja: '会社情報・会計年度・税・発行者・在庫・テンプレート・利用者を順に整え、完了を実データで確かめます。',
-      en: 'Set up the company profile, fiscal year, tax, invoice issuer, inventory, templates and users step by step, checked against real data.',
+      ja: '会社情報・会計年度・勘定科目・税・発行者・在庫・テンプレート・利用者・勤怠給与を順に整え、完了を実データで確かめます。',
+      en: 'Set up the company profile, fiscal year, chart of accounts, tax, invoice issuer, inventory, templates, users and work and pay step by step, checked against real data.',
     },
   },
   {
