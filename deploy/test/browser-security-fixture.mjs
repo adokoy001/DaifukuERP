@@ -50,7 +50,8 @@ export async function startFixture(origin, peerOrigin, workers) {
   });
   server.get('/auth/me', async () => ({ user, companyId: company.id, company }));
   server.get('/auth/companies', async () => ({ items: [company] }));
-  server.get('/meta', async () => ({ entities: [], actions: [], modules: [], packs: [] }));
+  // Same shape as the real GET /meta: the web reads `roles` (navigation conditions, role-based home).
+  server.get('/meta', async () => ({ entities: [], actions: [], modules: [], packs: [], roles: user.roles }));
   server.get('/identity', async (_request, reply) => reply.type('text/html').send('<h1>Synthetic IdP</h1>'));
   server.get('/external', async (_request, reply) => {
     return reply.type('text/javascript').send('globalThis.externalScriptRan = true;');
