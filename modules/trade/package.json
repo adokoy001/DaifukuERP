@@ -32,6 +32,7 @@
     "@daifuku/mod-purchase": "workspace:*",
     "@daifuku/mod-sales": "workspace:*",
     "@daifuku/mod-tax": "workspace:*",
-    "zod": "^4.6.1"
+    "zod": "^4.6.1",
+    "@daifuku/mod-print-layout": "workspace:*"
   }
 }

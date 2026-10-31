@@ -16,6 +16,7 @@
     "@daifuku/mod-banking": "workspace:*",
     "@daifuku/mod-tax-filing": "workspace:*",
     "@daifuku/mod-workforce": "workspace:*",
+    "@daifuku/mod-expense": "workspace:*",
     "@daifuku/mod-workforce-evidence": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.34",
@@ -28,6 +29,7 @@
     "@daifuku/mod-franchise": "workspace:*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/qrcode": "^1.5.6",

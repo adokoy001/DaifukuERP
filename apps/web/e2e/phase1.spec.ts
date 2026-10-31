@@ -31,6 +31,7 @@ interface Entity {
 interface Action {
   name: string;
   resultKind: 'table' | 'record' | 'other';
+  generic?: boolean;
 }
 interface Meta {
   entities: Entity[];
@@ -72,7 +73,8 @@ function pickSubjects(meta: Meta): { doc: Entity; lines: Entity[]; report: Actio
   );
   if (!doc)
     return 'no document entity with `lines` (creatable + submittable) in /meta — install a module with a line document (e.g. accounting)';
-  const tables = meta.actions.filter((a) => a.resultKind === 'table');
+  // generic table actions (<entity>.export_rows) are the list's CSV source, not reports
+  const tables = meta.actions.filter((a) => a.resultKind === 'table' && a.generic !== true);
   const report = tables.find((a) => a.name.endsWith('trial_balance')) ?? tables[0];
   if (!report) return 'no action with resultKind "table" in /meta — install a module with a report action';
   const lines = (doc.lines ?? []).flatMap((l) => meta.entities.filter((e) => e.name === l.entity));
@@ -157,7 +159,9 @@ async function fillRow(row: Locator, line: Entity, rowIndex: number): Promise<Ro
   return { picked, decimals };
 }
 
-test('AC-6: document with 2 lines -> submit -> grid read-only -> report page shows the rows', async ({ page }) => {
+test('AC-6: document with 2 lines -> submit -> grid read-only -> report page shows the rows @smoke', async ({
+  page,
+}) => {
   await login(page);
   const subjects = pickSubjects(await fetchMeta(page));
   // Missing fixture metadata is a setup regression, not a successful skipped test.

@@ -11,6 +11,11 @@ export { PurchaseInvoiceLine } from './entities/purchase-invoice-line.ts';
 
 export { apAgingAction, AP_AGING_COLUMNS } from './actions/ap-aging.ts';
 export {
+  importOpeningPayables,
+  importOpeningPayablesAction,
+  OPENING_BILL_DESCRIPTION,
+} from './actions/import-opening-payables.ts';
+export {
   applyPayment,
   recordPaymentAction,
   PAYMENT_APPLIED_EVENT,

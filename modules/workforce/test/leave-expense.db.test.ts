@@ -1,6 +1,12 @@
-import { Decimal, newId, repo, type ContextParams } from '@daifuku/kernel';
+import { Decimal, newId, repo, runAction, type ContextParams } from '@daifuku/kernel';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WorkforceExpense, WorkforceLeaveRequest, WorkforceLeaveUsage } from '../src/index.ts';
+import {
+  reopenExpensesForSource,
+  settleExpensesForSource,
+  WorkforceExpense,
+  WorkforceLeaveRequest,
+  WorkforceLeaveUsage,
+} from '../src/index.ts';
 import { leaveBalance } from '../src/leave-balance.ts';
 import { call, fixture, type Command, type Fixture } from './helpers.ts';
 let f: Fixture;
@@ -279,6 +285,112 @@ describe('employee expenses: idempotency, freeze and settlement', () => {
     await expect(
       call(f.db, f.payroll.params, 'settle_expense', { ...input, expectedVersion: final.version }),
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+  });
+  it('expense-settlement AC-1 stores the payment method (default personal), freezes it after submit and returns it in the portals', async () => {
+    const w = await worker();
+    const plain = await expense(w);
+    expect((await expenseRow(plain.row.id)).paymentMethod).toBe('personal');
+    const card = await expense(w, { paymentMethod: 'corporate_card' });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('corporate_card');
+    await expect(expense(w, { paymentMethod: 'cheque' })).rejects.toMatchObject({ code: 'VALIDATION' });
+    const changed = await call(f.db, w.params, 'save_expense', {
+      ...card.input,
+      expenseId: card.row.id,
+      expectedVersion: card.row.version,
+      paymentMethod: 'advance',
+    });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('advance');
+    // omitted on a later save: the stored method stays
+    const kept = await call(f.db, w.params, 'save_expense', {
+      ...card.input,
+      paymentMethod: undefined,
+      expenseId: card.row.id,
+      expectedVersion: changed.version,
+    });
+    expect((await expenseRow(card.row.id)).paymentMethod).toBe('advance');
+    const submitted = await call(f.db, w.params, 'submit_expense', {
+      expenseId: card.row.id,
+      expectedVersion: kept.version,
+    });
+    await expect(
+      call(f.db, w.params, 'save_expense', {
+        ...card.input,
+        expenseId: card.row.id,
+        expectedVersion: submitted.version,
+        paymentMethod: 'personal',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    const mine = (await f.db.run(w.params, (ctx) => runAction(ctx, 'workforce.my_portal', { period: '2026-09' }))) as {
+      expenses: { id: string; paymentMethod: string }[];
+    };
+    expect(Object.fromEntries(mine.expenses.map((e) => [e.id, e.paymentMethod]))).toMatchObject({
+      [plain.row.id]: 'personal',
+      [card.row.id]: 'advance',
+    });
+    const managed = (await f.db.run(f.manager.params, (ctx) =>
+      runAction(ctx, 'workforce.management_portal', { period: '2026-09' }),
+    )) as {
+      expenses: { id: string; paymentMethod: string }[];
+    };
+    expect(managed.expenses.find((e) => e.id === card.row.id)?.paymentMethod).toBe('advance');
+  });
+  it('expense-settlement AC-11 reopening for a settling document touches only expenses that carry its reference', async () => {
+    const w = await worker();
+    const saved = await expense(w);
+    const approved = await approveExpense(w, saved.row);
+    await call(f.db, f.payroll.params, 'settle_expense', {
+      expenseId: approved.id,
+      expectedVersion: approved.version,
+      paidOn: '2026-09-12',
+      reference: 'MANUAL-1',
+    });
+    const reopen = (reference: string) =>
+      f.db.run(f.payroll.params, (ctx) =>
+        reopenExpensesForSource(ctx, { employeeId: w.employeeId, expenseIds: [approved.id], reference }),
+      );
+    await reopen('EXP-2026-999999');
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'settled',
+      paidOn: '2026-09-12',
+      paymentReference: 'MANUAL-1',
+      settledBy: f.payroll.id,
+    });
+    await reopen('MANUAL-1');
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'approved',
+      paidOn: null,
+      paymentReference: null,
+      settledBy: null,
+    });
+  });
+  it('machine-credentials AC-22 an API key neither settles nor reopens expenses for a settling document', async () => {
+    // Round 7 integration: the settling document's own checks are not the only guard; workforce refuses the key itself.
+    const w = await worker();
+    const saved = await expense(w);
+    const approved = await approveExpense(w, saved.row);
+    const key: Partial<ContextParams> = {
+      actor: { type: 'machine', id: newId() },
+      roles: ['admin', 'workforce_payroll'],
+      accessScope: 'all',
+      siteIds: [],
+    };
+    const human = { code: 'PERMISSION_DENIED', details: { op: 'human-actor-required' } };
+    const ids = { employeeId: w.employeeId, expenseIds: [approved.id], reference: 'EXP-2026-KEY001' };
+    const settle = (params: Partial<ContextParams>) =>
+      f.db.run(params, (ctx) => settleExpensesForSource(ctx, { ...ids, paidOn: '2026-09-12' }));
+    const reopen = (params: Partial<ContextParams>) => f.db.run(params, (ctx) => reopenExpensesForSource(ctx, ids));
+    await expect(settle(key)).rejects.toMatchObject(human);
+    expect((await expenseRow(approved.id)).status).toBe('approved');
+    await settle(f.payroll.params);
+    await expect(reopen(key)).rejects.toMatchObject(human);
+    expect(await expenseRow(approved.id)).toMatchObject({
+      status: 'settled',
+      paidOn: '2026-09-12',
+      paymentReference: 'EXP-2026-KEY001',
+      settledBy: f.payroll.id,
+    });
+    await reopen(f.payroll.params);
+    expect((await expenseRow(approved.id)).status).toBe('approved');
   });
   it('requires headquarters and a real settlement date; cancelled submissions cannot be approved', async () => {
     const w = await worker();

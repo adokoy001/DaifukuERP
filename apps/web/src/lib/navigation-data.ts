@@ -62,8 +62,8 @@ export const WORKSPACES: readonly WorkspaceDefinition[] = [
     id: 'other',
     label: { ja: 'その他', en: 'Other workspaces' },
     description: {
-      ja: '追加された業務や、まだ分類していない画面を探します。',
-      en: 'Find additional modules and screens awaiting classification.',
+      ja: 'やること（受信箱）と、追加された業務・まだ分類していない画面を探します。',
+      en: 'Find the to-do inbox, additional modules and screens awaiting classification.',
     },
   },
 ];
@@ -82,12 +82,14 @@ const MODULE_WORKSPACES: Readonly<Record<string, WorkspaceId>> = {
   inventory: 'inventory',
   workforce: 'workforce',
   workforce_evidence: 'workforce',
+  expense: 'finance',
   accounting: 'finance',
   payment: 'finance',
   banking: 'finance',
   tax: 'finance',
   tax_filing: 'finance',
   group_accounting: 'finance',
+  fixed_assets: 'finance',
   franchise: 'finance',
   attachment: 'finance',
   l10n_jp: 'finance',
@@ -121,9 +123,21 @@ export interface DedicatedNavigation {
   kind?: NavigationKind;
   /** The same entry action used by the existing sidebar, not a substitute for server authorization. */
   action?: string;
-  condition?: 'reports' | 'settings' | 'tenant-admin';
+  /** `admin`: the /meta roles include admin (setup-wizard AC-28, access-insight AC-21, event-delivery AC-25); the API
+   * still decides (company-wide access). */
+  condition?: 'reports' | 'settings' | 'tenant-admin' | 'inbox' | 'admin';
 }
 export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
+  {
+    href: '/inbox',
+    workspace: 'other',
+    condition: 'inbox',
+    label: { ja: 'やること（受信箱）', en: 'To-do inbox' },
+    description: {
+      ja: '承認・確認・照合を待つ仕事を業務ごとに集め、担当画面へ移動します。',
+      en: 'Collect work awaiting your approval, review or matching, and open the screen for each item.',
+    },
+  },
   {
     href: '/me',
     workspace: 'workforce',
@@ -196,6 +210,83 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '銀行明細の取込、照合と支払資料を扱います。',
       en: 'Import and match bank statements and prepare payment files.',
+    },
+  },
+  {
+    href: '/finance/cash-forecast',
+    workspace: 'finance',
+    module: 'banking',
+    action: 'banking.cash_forecast',
+    label: { ja: '資金繰り表', en: 'Cash forecast' },
+    description: {
+      ja: '記帳済みの入出金と請求・支払ファイル・契約・給与の予定から、日別の残高の推移と入出金予定を確かめます。',
+      en: 'See the daily balance and the expected receipts and payments from invoices, transfer files, contracts and payroll.',
+    },
+  },
+  {
+    href: '/finance/close',
+    workspace: 'finance',
+    module: 'accounting',
+    action: 'accounting.close_readiness',
+    label: { ja: '月次締め', en: 'Month-end close' },
+    description: {
+      ja: '期間内の下書き・未照合を件数で確かめ、関連レポートを見てから会計期間を締めます。',
+      en: 'Check drafts and unmatched items in a period, review the reports, then close it.',
+    },
+  },
+  {
+    href: '/finance/opening',
+    workspace: 'finance',
+    module: 'accounting',
+    action: 'accounting.import_opening_balances',
+    label: { ja: '期首残高の取込', en: 'Opening balances' },
+    description: {
+      ja: '利用開始時の開始仕訳・売掛金と買掛金・在庫の期首残高を CSV で事前確認して取り込みます。',
+      en: 'Preview and import the opening journal, receivables and payables, and stock from CSV when you start.',
+    },
+  },
+  {
+    href: '/finance/recurring',
+    workspace: 'finance',
+    module: 'accounting',
+    action: 'accounting.generate_recurring',
+    label: { ja: '定期仕訳の生成', en: 'Generate recurring journals' },
+    description: {
+      ja: '家賃の未払計上や前払費用の振替など、定期仕訳の期日が来た回の仕訳を作ります（既定は下書き）。',
+      en: 'Create the due entries of recurring journals (accrued rent, prepaid expense transfers), as drafts by default.',
+    },
+  },
+  {
+    href: '/finance/evidence',
+    workspace: 'finance',
+    module: 'attachment',
+    action: 'attachment.evidence_search',
+    label: { ja: '証憑の検索', en: 'Evidence search' },
+    description: {
+      ja: '取引年月日・取引金額・取引先で証憑を探し、リンク先の伝票と差替の履歴を確かめ、選んだ証憑をまとめてダウンロードします（電子帳簿保存法の検索要件）。',
+      en: 'Find evidence by transaction date, amount and partner, check the linked document and the supersede history, and download selected evidence together.',
+    },
+  },
+  {
+    href: '/finance/expenses',
+    workspace: 'finance',
+    module: 'expense',
+    action: 'expense.settlement_candidates',
+    label: { ja: '経費精算', en: 'Expense settlement' },
+    description: {
+      ja: '承認済みの従業員経費から精算書を作り、仕訳と支払をまとめて記録します。',
+      en: 'Create expense settlements from approved employee expenses; the entry and the payment are recorded together.',
+    },
+  },
+  {
+    href: '/finance/depreciation',
+    workspace: 'finance',
+    module: 'fixed_assets',
+    action: 'fixed_assets.preview_depreciation',
+    label: { ja: '償却の実行', en: 'Depreciation run' },
+    description: {
+      ja: '会計期間の減価償却を試算し、確認してから仕訳を 1 本作ります。',
+      en: 'Preview the depreciation of a fiscal period and book it as one journal entry.',
     },
   },
   {
@@ -302,6 +393,39 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     },
   },
   {
+    href: '/setup',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: 'セットアップ', en: 'Setup' },
+    description: {
+      ja: '会社情報・会計年度・勘定科目・税・発行者・在庫・テンプレート・利用者・勤怠給与を順に整え、完了を実データで確かめます。',
+      en: 'Set up the company profile, fiscal year, chart of accounts, tax, invoice issuer, inventory, templates, users and work and pay step by step, checked against real data.',
+    },
+  },
+  {
+    href: '/admin/health',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'settings',
+    label: { ja: '導入チェック', en: 'Setup check' },
+    description: {
+      ja: '会計期間・税率・発行者・在庫・運用の設定漏れを点検し、直す画面へ移動します。',
+      en: 'Check fiscal periods, tax rates, invoice issuer, inventory and operations, and open the screen that fixes each.',
+    },
+  },
+  {
+    href: '/admin/event-deliveries',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: 'イベント配送', en: 'Event deliveries' },
+    description: {
+      ja: 'Webhook の署名鍵を発行し、配送に失敗したイベントを確認して再送します。',
+      en: 'Issue webhook signing secrets, review failed event deliveries and resend them.',
+    },
+  },
+  {
     href: '/admin/users',
     workspace: 'admin',
     kind: 'setting',
@@ -310,6 +434,50 @@ export const DEDICATED_NAVIGATION: readonly DedicatedNavigation[] = [
     description: {
       ja: '利用者と会社・拠点への所属、権限を管理します。',
       en: 'Manage users, company and site memberships, and access.',
+    },
+  },
+  {
+    href: '/admin/permissions',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: '権限マトリクス', en: 'Permission matrix' },
+    description: {
+      ja: 'ロールごとに、どのデータで何ができるかを一覧します。',
+      en: 'See what each role may do with each kind of data.',
+    },
+  },
+  {
+    href: '/admin/audit',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'admin',
+    label: { ja: '監査ログの検索', en: 'Audit search' },
+    description: {
+      ja: 'だれが・いつ・何を変更・CSV 出力したかを期間・利用者・対象・操作で探します。',
+      en: 'Find who changed or exported what, and when, by period, user, subject and operation.',
+    },
+  },
+  {
+    href: '/admin/companies',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'tenant-admin',
+    label: { ja: '会社の管理', en: 'Companies' },
+    description: {
+      ja: 'テナントに会社を追加し、会社名と国を変更します。',
+      en: 'Add companies to the tenant and change their name and country.',
+    },
+  },
+  {
+    href: '/admin/tokens',
+    workspace: 'admin',
+    kind: 'setting',
+    condition: 'tenant-admin',
+    label: { ja: 'API キー', en: 'API keys' },
+    description: {
+      ja: '外部連携や AI エージェント用の鍵を、期限・会社・ロールを決めて発行・失効します。',
+      en: 'Issue and revoke keys for integrations and AI agents with an expiry, a company and roles.',
     },
   },
   {

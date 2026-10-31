@@ -1,3 +1,5 @@
+// /a/:action — generic business action form (industry templates). ui-kit: PageHeader + kit buttons; the dedicated
+// templates.css classes keep the current look.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
@@ -12,6 +14,7 @@ import { useLocale } from '../i18n.tsx';
 import { issuesToFieldErrors } from '../lib/form.ts';
 import { reportTitle } from '../lib/report.ts';
 import { refResolverFrom, schemaFields } from '../lib/schema.ts';
+import { Button, buttonClass, PageHeader } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
 function ActionView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
@@ -70,31 +73,32 @@ function ActionView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
   };
   return (
     <div className="workspace-page business-action-page">
-      <Link className="text-sky-700" to="/templates">
+      <Link className="ui-link" to="/templates">
         ← {t({ ja: '業界テンプレート', en: 'Industry templates' })}
       </Link>
-      <header className="business-action-heading">
-        <span className="icon-tile">
-          <Icon name="document" />
-        </span>
-        <div>
-          <h1>{t(reportTitle(action))}</h1>
-          <p>{t(action.description)}</p>
-        </div>
-      </header>
+      <PageHeader
+        className="business-action-heading"
+        icon={
+          <span className="icon-tile">
+            <Icon name="document" />
+          </span>
+        }
+        title={t(reportTitle(action))}
+        subtitle={t(action.description)}
+      />
       <form data-testid="business-action-form" className="business-action-form" onSubmit={submit}>
         <SchemaFields fields={fields} form={form} disabled={run.isPending} idPrefix="action" />
         {form.canToggle ? (
           <details>
             <summary>{t({ ja: '詳細入力', en: 'Advanced input' })}</summary>
-            <button type="button" className="btn" onClick={form.toggleJson}>
+            <Button onClick={form.toggleJson}>
               {t(form.state.jsonMode ? { ja: 'フォーム入力へ', en: 'Use form' } : { ja: 'JSON入力へ', en: 'Use JSON' })}
-            </button>
+            </Button>
           </details>
         ) : null}
-        <button type="submit" className="btn btn-primary" disabled={run.isPending}>
+        <Button type="submit" variant="primary" disabled={run.isPending}>
           {t(run.isPending ? { ja: '処理中…', en: 'Working…' } : { ja: '実行', en: 'Run' })}
-        </button>
+        </Button>
       </form>
       {completed ? (
         <section className="business-action-result" role="status" data-testid="business-action-result">
@@ -108,7 +112,7 @@ function ActionView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
               .map((field) => (
                 <Link
                   key={field.name}
-                  className="btn"
+                  className={buttonClass()}
                   to="/e/$entity/$id"
                   params={{ entity: field.ref ?? '', id: String(completed.input[field.name]) }}
                 >
@@ -149,11 +153,13 @@ export function ActionPage() {
   return action ? (
     <ActionView key={action.name} action={action} meta={meta.data} />
   ) : (
-    <p role="alert" className="p-4">
-      {t({
-        ja: 'この操作は現在の会社・権限では利用できません。',
-        en: 'This action is unavailable for the current company or role.',
-      })}
-    </p>
+    <div className="p-4">
+      <p role="alert" className="ui-notice ui-notice-warning">
+        {t({
+          ja: 'この操作は現在の会社・権限では利用できません。',
+          en: 'This action is unavailable for the current company or role.',
+        })}
+      </p>
+    </div>
   );
 }

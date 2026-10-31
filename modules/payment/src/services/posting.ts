@@ -2,6 +2,8 @@
 //   receive: Dr 現金/預金 (amount) / Cr 売掛金 (one line per allocation, Σ = allocated) / Cr 前受金 (unallocated)
 //   pay:     Dr 買掛金 (one line per allocation, Σ = allocated) / Dr 前払金 (unallocated) / Cr 現金/預金 (amount)
 // Zero lines are omitted (accounting rejects debit = credit = 0). Balanced by construction: amount = allocated + unallocated.
+// A clearing payment (counterAccountId set, ADR-0039) has no allocations: its whole amount posts to the counter account
+//   receive: Dr 現金/預金 / Cr 相手科目      pay: Dr 相手科目 / Cr 現金/預金      (both with the partner).
 import { Decimal, type DecimalInput } from '@daifuku/kernel';
 import type { PaymentDirection } from '../entities/payment.ts';
 import type { PostingAccounts } from '../settings.ts';
@@ -30,6 +32,8 @@ export interface PostingInput {
   allocations: readonly PostingAllocation[];
   unallocated: DecimalInput;
   accounts: PostingAccounts;
+  /** ADR-0039: the account a clearing payment settles (未払金, 仮払金, …); null/undefined for an ordinary payment. */
+  counterAccountId?: string | null;
 }
 
 export const MEMO = {
@@ -39,6 +43,7 @@ export const MEMO = {
   advancePaid: '前払金',
   receipt: '入金',
   disbursement: '支払',
+  clearing: '精算',
 } as const;
 
 function line(
@@ -52,6 +57,12 @@ function line(
 
 /** The receivable/payable side, one line per allocation, plus the advance line for what was not allocated. */
 function counterLines(input: PostingInput, side: 'debit' | 'credit'): JournalLineSpec[] {
+  if (input.counterAccountId) {
+    const amount = Decimal.from(input.amount);
+    return amount.isZero()
+      ? []
+      : [line(input.counterAccountId, side, amount, { partnerId: input.partnerId, memo: MEMO.clearing })];
+  }
   const receive = input.direction === 'receive';
   const settled = receive ? input.accounts.receivable : input.accounts.payable;
   const advance = receive ? input.accounts.advanceReceived : input.accounts.advancePaid;

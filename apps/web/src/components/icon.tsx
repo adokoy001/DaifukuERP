@@ -21,7 +21,10 @@ export type IconName =
   | 'logout'
   | 'appliance'
   | 'leaf'
-  | 'dining';
+  | 'dining'
+  | 'star'
+  | 'help'
+  | 'key';
 // Standard shapes: Feather 4.29.2 (MIT), copyright Cole Bemis. See vendor/feather/LICENSE.
 // SVG geometry is preserved; the shared wrapper supplies our stroke width, size and accessibility.
 const SHAPES: Record<IconName, ReactNode> = {
@@ -126,12 +129,25 @@ const SHAPES: Record<IconName, ReactNode> = {
     </>
   ),
   spark: <path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" />,
+  star: (
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
   logout: (
     <>
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
     </>
+  ),
+  key: (
+    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
   ),
 };
 

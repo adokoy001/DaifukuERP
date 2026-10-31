@@ -7,10 +7,13 @@ import { smtpTransport } from './identity/smtp.ts';
 import { parseSquareConnections } from './adapters/square-pos.ts';
 import { createReadiness } from './deployment/readiness.ts';
 import { buildServer } from './server.ts';
+import { readEventWorkerConfig } from './events/config.ts';
+import { startEventWorker, type EventWorker } from './events/worker.ts';
 
 async function main(): Promise<void> {
   const cfg = apiConfig();
   const squarePosConnections = parseSquareConnections(process.env.SQUARE_POS_CONNECTIONS_JSON);
+  const eventWorker = readEventWorkerConfig(process.env);
   const identityConfig = readIdentityConfig(process.env);
   const smtp = readSmtpConfig(process.env);
   const identity = identityConfig
@@ -26,12 +29,17 @@ async function main(): Promise<void> {
     jwtSecret: cfg.jwtSecret,
     trustedProxies: cfg.trustedProxies,
     readiness: createReadiness({ owner, app, storageDirectory }),
+    storageDirectory,
     corsOrigins: cfg.corsOrigins,
     squarePosConnections,
     ...(identity ? { identity } : {}),
+    eventWorker: { enabledHere: eventWorker.enabled },
     logger: true,
   });
+  let worker: EventWorker | null = null;
   const shutdown = async () => {
+    // AC-1: no new tick; the running one gets up to 15 s, then in-flight sends are aborted (leases expire, rows resend).
+    await worker?.stop();
     await server.close();
     await app.close();
     await owner.close();
@@ -41,6 +49,30 @@ async function main(): Promise<void> {
   server.log.info({ packs: packs.map((p) => p.name) }, 'packs loaded (DAIFUKU_PACKS)');
   for (const w of packWarnings) server.log.warn({ kind: w.kind }, w.message);
   await server.listen({ port: cfg.port, host: cfg.host });
+  if (eventWorker.enabled) {
+    if (!identity)
+      server.log.warn('event worker: IDENTITY_ENCRYPTION_KEY is not configured; this process does not send webhooks');
+    worker = startEventWorker({
+      owner,
+      app,
+      config: eventWorker,
+      ...(identity
+        ? {
+            identity: {
+              encryptionKey: identity.encryptionKey,
+              webUrl: identity.webUrl,
+              ...(identity.mailTransport ? { mailTransport: identity.mailTransport } : {}),
+            },
+          }
+        : {}),
+      log: {
+        info: (msg, data) => server.log.info({ ...data }, msg),
+        warn: (msg, data) => server.log.warn({ ...data }, msg),
+        error: (msg, data) => server.log.error({ ...data }, msg),
+      },
+    });
+    server.log.info({ intervalMs: eventWorker.intervalMs }, 'event delivery worker started (EVENT_WORKER_ENABLED)');
+  }
 }
 
 main().catch((err: unknown) => {

@@ -47,7 +47,7 @@
 | notes | text | multiline | 備考 / Notes |
 | isActive | bool | default true, required | 有効 / Active |
 
-views: list = code, name, nameKana, isCustomer, isSupplier, taxStatus; search = name, nameKana, code; form = [[code, name, nameKana], [isCustomer, isSupplier, isActive], [invoiceRegistrationNo, taxStatus], [closingDay, paymentMonthOffset, paymentDay], [postalCode, prefecture, address1, address2, phone, email], [bankName, bankBranch, bankAccountType, bankAccountNo, bankAccountHolderKana], [notes]]
+views: list = code, name, nameKana, isCustomer, isSupplier, taxStatus; search = name, nameKana, code; form = 見出し付きの 7 節（[form-ergonomics](form-ergonomics.md) AC-1）: 基本 / Basics [code, name, nameKana]、取引区分 / Roles [isCustomer, isSupplier, isActive]、インボイス / Invoice registration [invoiceRegistrationNo, taxStatus]、締め・支払条件 / Closing and payment terms [closingDay, paymentMonthOffset, paymentDay]、連絡先 / Contact [postalCode, prefecture, address1, address2, phone, email]、振込口座 / Bank account [bankName, bankBranch, bankAccountType, bankAccountNo, bankAccountHolderKana]、備考 / Notes [notes]
 
 ## 関係するファイル・インターフェース
 - kernel: `defineEntity`, `defineAction`, `defineModule`, `f`, `repo`, `Decimal` は使わない（金額項目なし）。

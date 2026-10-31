@@ -1,10 +1,11 @@
 // UI/agent metadata derived from definitions (ADR-0002): what the generic UI renders and what MCP lists.
 import type { Context } from './context.ts';
+import type { ActionPrintBinding, ActionPrintField } from './dsl/defs.ts';
 import type { EntityDef } from './dsl/entity.ts';
 import { EXT_PREFIX } from './dsl/ext.ts';
 import type { AnyField } from './dsl/fields.ts';
 import type { Label } from './i18n.ts';
-import type { Op } from './dsl/types.ts';
+import type { FormGroup, Op } from './dsl/types.ts';
 import { allowedOps, maskedFields } from './permissions.ts';
 import { registry } from './registry.ts';
 import { currencyScale } from './settings.ts';
@@ -27,6 +28,8 @@ export interface FieldMeta {
   refDisplayField?: string;
   hidden: boolean;
   immutable: boolean;
+  /** The value must differ per record (unique field, one-field composite unique, numbering field); not copied by 複製. */
+  unique?: true;
   multiline?: boolean;
   /** Display scale. Money fields without an explicit scale: the company currency's minor units when known (else 6). */
   scale?: number;
@@ -36,7 +39,15 @@ export interface FieldMeta {
   searchable?: true;
   /** Ext fields: who registered it (registry.registerExt `source`). */
   source?: string;
+  /**
+   * The field is listed in a permission `fieldGroups` entry (masked for roles outside it). form-ergonomics AC-8: the
+   * browser never keeps its value in storage (unsaved-input drafts).
+   */
+  restricted?: true;
 }
+
+/** A `views.form` group as /meta emits it: plain field names, or a labelled group (form-ergonomics AC-1). */
+export type FormGroupMeta = string[] | { label: Label; fields: string[] };
 
 export interface EntityMeta {
   name: string;
@@ -49,11 +60,11 @@ export interface EntityMeta {
   fields: FieldMeta[];
   /** Registered ext fields (ADR-0014), values live at `row.ext[key]`; `name` is `ext.<key>`. Empty when none. */
   extFields: FieldMeta[];
-  views: { list: string[]; form: 'auto' | string[][]; search: string[] };
+  views: { list: string[]; form: 'auto' | FormGroupMeta[]; search: string[] };
   ops: Op[];
   allowOnSubmit?: string[];
   transitions?: string[];
-  /** Line entities (伝票明細) of a document, rendered as editable grids by the generic UI. */
+  /** Line entities (明細) of a document or entity (ADR-0031), rendered as editable grids by the generic UI. */
   lines?: { entity: string; parentField: string }[];
 }
 
@@ -104,10 +115,21 @@ function describeField(name: string, fd: AnyField, opts: MetaOptions): FieldMeta
   return meta;
 }
 
+/** document-links AC-1: the value must differ per record (field `unique`, a one-field composite unique, the numbering field). */
+function isUniqueField(entity: EntityDef, name: string): boolean {
+  if (entity.config.fields[name]?.opts.unique === true) return true;
+  if ((entity.config.unique ?? []).some((group) => group.length === 1 && group[0] === name)) return true;
+  const naming = entity.config.naming;
+  return naming?.type === 'field' && naming.field === name;
+}
+
 export function fieldMeta(entity: EntityDef, name: string, opts: MetaOptions = {}): FieldMeta {
   const fd = entity.config.fields[name];
   if (!fd || fd.opts.outputHidden) throw new Error(`no public field ${name}`);
   const meta = describeField(name, fd, opts);
+  if (isUniqueField(entity, name)) meta.unique = true;
+  if (Object.values(entity.config.permissions.fieldGroups ?? {}).some((group) => group.fields.includes(name)))
+    meta.restricted = true;
   const override = registry.labelOverrides(entity.name, opts.appliedPacks)?.fields?.[name];
   if (override) meta.label = override;
   return meta;
@@ -131,6 +153,19 @@ export function extFieldMetas(entity: EntityDef, opts: MetaOptions = {}): FieldM
     });
 }
 
+/**
+ * One `views.form` group limited to the caller's visible fields. Plain groups stay `string[]` (the original /meta
+ * shape); labelled groups become `{ label, fields }` (form-ergonomics AC-1, ADR-0002 addendum). A labelled group with
+ * no visible field becomes a plain `[]`: its heading would tell a role outside a permission field group that the
+ * hidden section exists and what it is called; the empty group keeps the positions of the others.
+ */
+function formGroupMeta(group: readonly string[] | FormGroup, visible: readonly string[]): FormGroupMeta {
+  if (Array.isArray(group)) return group.filter((f) => visible.includes(f));
+  const labelled = group as FormGroup;
+  const fields = labelled.fields.filter((f) => visible.includes(f));
+  return fields.length > 0 ? { label: labelled.label, fields } : [];
+}
+
 export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = {}): EntityMeta {
   opts = {
     ...opts,
@@ -152,10 +187,7 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
     extFields: extFieldMetas(entity, opts),
     views: {
       list: [...(views?.list ?? nonHidden.slice(0, 6))].filter((f) => visible.includes(f)),
-      form:
-        views?.form && views.form !== 'auto'
-          ? views.form.map((g) => [...g].filter((f) => visible.includes(f)))
-          : 'auto',
+      form: views?.form && views.form !== 'auto' ? views.form.map((g) => formGroupMeta(g, visible)) : 'auto',
       search: [...(views?.search ?? (entity.displayField ? [entity.displayField] : []))].filter((field) =>
         visible.includes(field),
       ),
@@ -175,9 +207,29 @@ export function entityMeta(ctx: Context, entity: EntityDef, opts: MetaOptions = 
         visible.includes(field) || (field.startsWith('ext.') && meta.extFields.some((ext) => ext.name === field)),
     );
     meta.transitions = Object.keys(entity.doc.transitions ?? {});
-    meta.lines = (entity.doc.lines ?? []).map((l) => ({ entity: l.entity, parentField: l.parentField }));
   }
+  const lines = entity.config.lines ?? [];
+  if (lines.length > 0 || entity.doc) meta.lines = lines.map((l) => ({ entity: l.entity, parentField: l.parentField }));
   return meta;
+}
+
+/** An action's print declaration as /meta emits it: `idInput` filled in, `when` / `fields` only when declared. */
+export interface PrintBindingMeta {
+  entity: string;
+  label: Label;
+  idInput: string;
+  when?: Readonly<Record<string, string | number | boolean>>;
+  fields?: Readonly<Record<string, ActionPrintField>>;
+}
+
+export function printBindingMeta(print: ActionPrintBinding): PrintBindingMeta {
+  return {
+    entity: print.entity,
+    label: print.label,
+    idInput: print.idInput ?? 'id',
+    ...(print.when ? { when: print.when } : {}),
+    ...(print.fields ? { fields: print.fields } : {}),
+  };
 }
 
 export interface AppMeta {
@@ -192,6 +244,8 @@ export interface AppMeta {
     generic: boolean;
     mutates: boolean;
     canExport: boolean;
+    /** Document render actions: the record page that offers it (docs/specs/print-templates.md AC-2). */
+    print?: PrintBindingMeta;
   }[];
   roles: string[];
   /** Loaded packs; `applied` for the caller's company comes from MetaOptions.appliedPacks (false when not given). */
@@ -231,6 +285,7 @@ export function appMeta(ctx: Context, opts: MetaOptions = {}): AppMeta {
       generic: a.generic,
       mutates: a.mutates,
       canExport: canExportAction(effective, a),
+      ...(a.print ? { print: printBindingMeta(a.print) } : {}),
     }));
   for (const module of modules)
     module.menus = module.menus.filter(

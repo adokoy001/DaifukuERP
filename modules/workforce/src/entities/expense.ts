@@ -1,5 +1,5 @@
 import { defineEntity, f, label } from '@daifuku/kernel';
-import { expenseStatuses } from '../contract.ts';
+import { EXPENSE_PAYMENT_METHODS, expenseStatuses } from '../contract.ts';
 import { identityFields, owned, personPermissions, reviewFields, requestFields, edit } from './common.ts';
 export const WorkforceExpense = defineEntity({
   name: 'workforce_expense',
@@ -19,6 +19,17 @@ export const WorkforceExpense = defineEntity({
       maxLength: 1000,
       label: label('証憑の保管先・参照', 'Evidence reference'),
     }),
+    paymentMethod: f.enum(EXPENSE_PAYMENT_METHODS, {
+      ...owned,
+      required: true,
+      default: 'personal',
+      label: label('支払方法', 'Payment method'),
+      labels: {
+        personal: label('立替', 'Paid personally'),
+        corporate_card: label('法人カード', 'Corporate card'),
+        advance: label('仮払金から支払', 'Paid from an advance'),
+      },
+    }),
     status: f.enum(expenseStatuses, { ...owned, required: true, default: 'draft' }),
     ...reviewFields(),
     paidOn: f.date({ ...owned, label: label('精算日', 'Settlement date') }),
@@ -27,5 +38,5 @@ export const WorkforceExpense = defineEntity({
   },
   indexes: [['siteId', 'status', 'expenseDate']],
   permissions: personPermissions({ employee: edit, manager: edit, hr: edit, payroll: edit }),
-  views: { list: ['employeeId', 'expenseDate', 'category', 'amount', 'status'] },
+  views: { list: ['employeeId', 'expenseDate', 'category', 'amount', 'paymentMethod', 'status'] },
 });

@@ -1,0 +1,354 @@
+{
+  "_source": "docs/specs/expense-settlement.md AC-8: golden 1 (three kinds and the two advance differences) and (a)-(g). Rates: modules/tax SEED_TAX_RATES (標準10% / 軽減8%). Transitional credit: 0.8 until 2026-09-30, 0.7 from 2026-10-01. Journal rows are [account code, debit, credit, taxCategory, taxRate, memo, partner]; partner 'P' = the settlement partner.",
+  "cases": [
+    {
+      "id": "1-reimbursement",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "3300",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "3300", "invoiceKind": "qualified" }]
+        },
+        {
+          "ref": "B",
+          "expenseDate": "2026-10-06",
+          "amount": "1080",
+          "lines": [{ "account": "6900", "taxCategory": "reduced", "amount": "1080", "invoiceKind": "not_qualified" }]
+        },
+        {
+          "ref": "C",
+          "expenseDate": "2026-10-07",
+          "amount": "550",
+          "lines": [
+            {
+              "account": "6500",
+              "taxCategory": "standard",
+              "amount": "550",
+              "invoiceKind": "books_only",
+              "booksOnlyReason": "public_transport"
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "lineTax": [
+          ["300", "300", "0"],
+          ["80", "56", "24"],
+          ["50", "50", "0"]
+        ],
+        "totals": { "subtotal": "4500", "taxTotal": "430", "deductibleTax": "406", "nonDeductibleTax": "24", "total": "4930" },
+        "amounts": { "advanceAmount": "0", "payAmount": "4930", "refundAmount": "0" },
+        "journal": [
+          ["6500", "3500", "0", "standard", "0.1", null, null],
+          ["6900", "1000", "0", "reduced", "0.08", null, null],
+          ["1500", "350", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["1500", "56", "0", "reduced", "0.08", "仮払消費税 軽減8%", null],
+          ["6900", "24", "0", null, null, "控除対象外消費税", null],
+          ["2150", "0", "4930", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "4930", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "4930", "0"],
+          ["1100", "0", "4930"]
+        ]
+      }
+    },
+    {
+      "id": "1-advance-10000",
+      "kind": "advance",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": "10000",
+      "receipts": "1-reimbursement",
+      "expect": {
+        "totals": { "subtotal": "4500", "taxTotal": "430", "deductibleTax": "406", "nonDeductibleTax": "24", "total": "4930" },
+        "amounts": { "advanceAmount": "10000", "payAmount": "0", "refundAmount": "5070" },
+        "journal": [
+          ["6500", "3500", "0", "standard", "0.1", null, null],
+          ["6900", "1000", "0", "reduced", "0.08", null, null],
+          ["1500", "350", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["1500", "56", "0", "reduced", "0.08", "仮払消費税 軽減8%", null],
+          ["6900", "24", "0", null, null, "控除対象外消費税", null],
+          ["1800", "0", "4930", null, null, null, "P"]
+        ],
+        "payment": { "direction": "receive", "amount": "5070", "counter": "1800" },
+        "paymentJournal": [
+          ["1100", "5070", "0"],
+          ["1800", "0", "5070"]
+        ]
+      }
+    },
+    {
+      "id": "1-advance-3000",
+      "kind": "advance",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": "3000",
+      "receipts": "1-reimbursement",
+      "expect": {
+        "totals": { "subtotal": "4500", "taxTotal": "430", "deductibleTax": "406", "nonDeductibleTax": "24", "total": "4930" },
+        "amounts": { "advanceAmount": "3000", "payAmount": "1930", "refundAmount": "0" },
+        "journal": [
+          ["6500", "3500", "0", "standard", "0.1", null, null],
+          ["6900", "1000", "0", "reduced", "0.08", null, null],
+          ["1500", "350", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["1500", "56", "0", "reduced", "0.08", "仮払消費税 軽減8%", null],
+          ["6900", "24", "0", null, null, "控除対象外消費税", null],
+          ["1800", "0", "3000", null, null, null, "P"],
+          ["2150", "0", "1930", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "1930", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "1930", "0"],
+          ["1100", "0", "1930"]
+        ]
+      }
+    },
+    {
+      "id": "1-corporate-card",
+      "kind": "corporate_card",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": "1-reimbursement",
+      "expect": {
+        "totals": { "subtotal": "4500", "taxTotal": "430", "deductibleTax": "406", "nonDeductibleTax": "24", "total": "4930" },
+        "amounts": { "advanceAmount": "0", "payAmount": "0", "refundAmount": "0" },
+        "journal": [
+          ["6500", "3500", "0", "standard", "0.1", null, null],
+          ["6900", "1000", "0", "reduced", "0.08", null, null],
+          ["1500", "350", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["1500", "56", "0", "reduced", "0.08", "仮払消費税 軽減8%", null],
+          ["6900", "24", "0", null, null, "控除対象外消費税", null],
+          ["2150", "0", "4930", null, null, null, "P"]
+        ],
+        "payment": null,
+        "paymentJournal": null
+      }
+    },
+    {
+      "id": "a-two-receipts",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "1000",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "1000", "invoiceKind": "qualified" }]
+        },
+        {
+          "ref": "B",
+          "expenseDate": "2026-10-05",
+          "amount": "1000",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "1000", "invoiceKind": "qualified" }]
+        }
+      ],
+      "expect": {
+        "lineTax": [
+          ["90", "90", "0"],
+          ["90", "90", "0"]
+        ],
+        "totals": { "subtotal": "1820", "taxTotal": "180", "deductibleTax": "180", "nonDeductibleTax": "0", "total": "2000" },
+        "amounts": { "advanceAmount": "0", "payAmount": "2000", "refundAmount": "0" },
+        "journal": [
+          ["6500", "1820", "0", "standard", "0.1", null, null],
+          ["1500", "180", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["2150", "0", "2000", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "2000", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "2000", "0"],
+          ["1100", "0", "2000"]
+        ]
+      }
+    },
+    {
+      "id": "b-one-receipt-two-lines",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "3300",
+          "lines": [
+            { "account": "6500", "taxCategory": "standard", "amount": "1000", "invoiceKind": "qualified" },
+            { "account": "6900", "taxCategory": "standard", "amount": "2300", "invoiceKind": "qualified" }
+          ]
+        }
+      ],
+      "expect": {
+        "lineTax": [
+          ["90", "90", "0"],
+          ["210", "210", "0"]
+        ],
+        "totals": { "subtotal": "3000", "taxTotal": "300", "deductibleTax": "300", "nonDeductibleTax": "0", "total": "3300" },
+        "amounts": { "advanceAmount": "0", "payAmount": "3300", "refundAmount": "0" },
+        "journal": [
+          ["6500", "910", "0", "standard", "0.1", null, null],
+          ["6900", "2090", "0", "standard", "0.1", null, null],
+          ["1500", "300", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["2150", "0", "3300", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "3300", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "3300", "0"],
+          ["1100", "0", "3300"]
+        ]
+      }
+    },
+    {
+      "id": "c-not-qualified-70",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "1030",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "1030", "invoiceKind": "not_qualified" }]
+        }
+      ],
+      "expect": {
+        "lineTax": [["93", "65", "28"]],
+        "totals": { "subtotal": "937", "taxTotal": "93", "deductibleTax": "65", "nonDeductibleTax": "28", "total": "1030" },
+        "amounts": { "advanceAmount": "0", "payAmount": "1030", "refundAmount": "0" },
+        "journal": [
+          ["6500", "937", "0", "standard", "0.1", null, null],
+          ["1500", "65", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["6500", "28", "0", null, null, "控除対象外消費税", null],
+          ["2150", "0", "1030", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "1030", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "1030", "0"],
+          ["1100", "0", "1030"]
+        ]
+      }
+    },
+    {
+      "id": "d-expense-date-ratio-80",
+      "kind": "reimbursement",
+      "date": "2026-10-01",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-09-30",
+          "amount": "1080",
+          "lines": [{ "account": "6900", "taxCategory": "reduced", "amount": "1080", "invoiceKind": "not_qualified" }]
+        }
+      ],
+      "expect": {
+        "lineTax": [["80", "64", "16"]],
+        "creditRatio": ["0.8"],
+        "totals": { "subtotal": "1000", "taxTotal": "80", "deductibleTax": "64", "nonDeductibleTax": "16", "total": "1080" },
+        "amounts": { "advanceAmount": "0", "payAmount": "1080", "refundAmount": "0" },
+        "journal": [
+          ["6900", "1000", "0", "reduced", "0.08", null, null],
+          ["1500", "64", "0", "reduced", "0.08", "仮払消費税 軽減8%", null],
+          ["6900", "16", "0", null, null, "控除対象外消費税", null],
+          ["2150", "0", "1080", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "1080", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "1080", "0"],
+          ["1100", "0", "1080"]
+        ]
+      }
+    },
+    {
+      "id": "e-rounding-up",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "up",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "1000",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "1000", "invoiceKind": "qualified" }]
+        }
+      ],
+      "expect": {
+        "lineTax": [["91", "91", "0"]],
+        "totals": { "subtotal": "909", "taxTotal": "91", "deductibleTax": "91", "nonDeductibleTax": "0", "total": "1000" },
+        "amounts": { "advanceAmount": "0", "payAmount": "1000", "refundAmount": "0" },
+        "journal": [
+          ["6500", "909", "0", "standard", "0.1", null, null],
+          ["1500", "91", "0", "standard", "0.1", "仮払消費税 標準10%", null],
+          ["2150", "0", "1000", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "1000", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "1000", "0"],
+          ["1100", "0", "1000"]
+        ]
+      }
+    },
+    {
+      "id": "f-no-document",
+      "kind": "reimbursement",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": null,
+      "receipts": [
+        {
+          "ref": "A",
+          "expenseDate": "2026-10-05",
+          "amount": "1100",
+          "lines": [{ "account": "6500", "taxCategory": "standard", "amount": "1100", "invoiceKind": "none" }]
+        }
+      ],
+      "expect": {
+        "lineTax": [["100", "0", "100"]],
+        "creditRatio": ["0"],
+        "totals": { "subtotal": "1000", "taxTotal": "100", "deductibleTax": "0", "nonDeductibleTax": "100", "total": "1100" },
+        "amounts": { "advanceAmount": "0", "payAmount": "1100", "refundAmount": "0" },
+        "journal": [
+          ["6500", "1000", "0", "standard", "0.1", null, null],
+          ["6500", "100", "0", null, null, "控除対象外消費税", null],
+          ["2150", "0", "1100", null, null, null, "P"]
+        ],
+        "payment": { "direction": "pay", "amount": "1100", "counter": "2150" },
+        "paymentJournal": [
+          ["2150", "1100", "0"],
+          ["1100", "0", "1100"]
+        ]
+      }
+    },
+    {
+      "id": "g-unused-advance",
+      "kind": "advance",
+      "date": "2026-10-08",
+      "rounding": "down",
+      "advance": "10000",
+      "receipts": [],
+      "expect": {
+        "lineTax": [],
+        "totals": { "subtotal": "0", "taxTotal": "0", "deductibleTax": "0", "nonDeductibleTax": "0", "total": "0" },
+        "amounts": { "advanceAmount": "10000", "payAmount": "0", "refundAmount": "10000" },
+        "journal": [],
+        "payment": { "direction": "receive", "amount": "10000", "counter": "1800" },
+        "paymentJournal": [
+          ["1100", "10000", "0"],
+          ["1800", "0", "10000"]
+        ]
+      }
+    }
+  ]
+}

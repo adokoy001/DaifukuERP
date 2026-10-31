@@ -124,3 +124,18 @@ export function imbalance(lines: readonly JournalLineSpec[]): Decimal {
     Decimal.sum(lines.map((l) => l.debit ?? Decimal.zero())),
   );
 }
+
+/**
+ * docs/specs/opening-balances.md AC-17: an opening invoice posts Dr 売掛金 (with the partner) / Cr the opening balance
+ * clearing account, both out of scope with no tax. The balance came from earlier periods; it is not revenue.
+ */
+export function openingJournalLines(
+  input: { partnerId: string; total: DecimalInput; clearingAccountId: string },
+  accounts: Pick<PostingAccounts, 'receivable'>,
+): JournalLineSpec[] {
+  const total = Decimal.from(input.total);
+  return [
+    { accountId: accounts.receivable, debit: total, partnerId: input.partnerId, memo: '期首残高 売掛金' },
+    { accountId: input.clearingAccountId, credit: total, taxCategory: 'out_of_scope', memo: '期首残高' },
+  ];
+}

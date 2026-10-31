@@ -6,7 +6,7 @@ if (process.env.E2E_IDENTITY_BASE_URL && process.env.E2E_IDENTITY_BASE_URL !== b
 export default defineConfig({
   ...normal,
   outputDir: 'test-results/identity',
-  testMatch: /enterprise-identity\.spec\.ts$/,
+  testMatch: /(?:enterprise-identity|machine-credentials-identity)\.spec\.ts$/,
   use: { ...normal.use, baseURL },
   projects: [{ name: 'identity', use: { ...devices['Desktop Chrome'] } }],
 });

@@ -10,7 +10,7 @@ import { registry } from '../registry.ts';
 type ObjectSchema = z.ZodObject<Record<string, z.ZodType>>;
 
 export function hasLines(entity: EntityDef): boolean {
-  return (entity.doc?.lines?.length ?? 0) > 0;
+  return (entity.config.lines?.length ?? 0) > 0;
 }
 
 /** `ext` typed with the registered fields (loose), or the entity schema unchanged when none are registered. */
@@ -37,7 +37,7 @@ function linesJsonSchema(entity: EntityDef): z.ZodType {
   return z.object(shape).partial();
 }
 
-/** Output of get/create/update: the JSON row, plus `lines` for documents with line entities. */
+/** Output of get/create/update: the JSON row, plus `lines` for documents and entities with line entities. */
 export function recordJsonSchema(entity: EntityDef): z.ZodType {
   return hasLines(entity)
     ? entity.schemas.json.extend({ lines: linesJsonSchema(entity).optional() })

@@ -16,6 +16,8 @@ export default tseslint.config(
       '**/drizzle/migrations/**',
       '**/*.generated.ts',
       '.runtime/**',
+      // Agent worktrees (Claude Code) are separate checkouts with their own lint runs.
+      '.claude/worktrees/**',
     ],
   },
   js.configs.recommended,

@@ -29,6 +29,14 @@ export {
 } from './actions/stock-on-hand.ts';
 export { ledgerAction, stockLedger, ledgerInput, LEDGER_COLUMNS, type LedgerInput } from './actions/ledger.ts';
 export {
+  importOpeningStock,
+  importOpeningStockAction,
+  importOpeningStockInput,
+  OPENING_STOCK_LINES_PER_ENTRY,
+  OPENING_STOCK_MAX_ROWS,
+  type ImportOpeningStockInput,
+} from './actions/import-opening-stock.ts';
+export {
   valuationAction,
   valuation,
   valuationInput,
@@ -128,3 +136,4 @@ export {
   createAndSubmitEntry as createSourceStockEntry,
   cancelLinkedEntries as cancelSourceStockEntries,
 } from './hooks/invoices.ts';
+export { stockSettingsHealthCheck } from './health.ts';

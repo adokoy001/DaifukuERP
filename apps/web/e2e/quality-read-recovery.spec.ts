@@ -137,10 +137,17 @@ test('read recovery: generic record reconnect preserves dirty values, then 404 h
   await page.getByTestId('read-refresh-notice').getByRole('button').click();
   await expect(page.getByTestId('read-refresh-notice')).toHaveCount(0);
   await expect(input).toHaveValue(changed);
+  const drafts = () =>
+    page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith('daifuku.form-draft.v1.')).length);
+  // form-ergonomics AC-8: the unsaved input is kept in the tab through the temporary failure.
+  await expect.poll(drafts).toBe(1);
   await page.route(path, (route) => route.fulfill(failedRead(404)));
   const missing = page.waitForResponse((r) => r.url().endsWith('/api/partner/' + partner.id));
   await reconnect(page);
   expect((await missing).status()).toBe(404);
   await expect(page.getByTestId('record-form')).toHaveCount(0);
   await expect(page.getByTestId('read-refresh-notice')).toHaveCount(0);
+  // form-ergonomics AC-8: the form's unmount stores the unsaved input, then the 404 removes it (nothing typed for a
+  // record the user can no longer read stays in the tab).
+  await expect.poll(drafts).toBe(0);
 });

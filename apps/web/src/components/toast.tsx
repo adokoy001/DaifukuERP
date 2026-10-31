@@ -1,8 +1,10 @@
-// Toast notifications (AC-8): errors show `code: message` plus the server's `hint`.
+// Toast notifications (AC-8; ui-kit AC-9): errors show the human message first, then the server's `hint`, then the
+// error code as secondary text.
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { isApiError } from '../api/client.ts';
 import { useLocale } from '../i18n.tsx';
+import { toastFromError } from '../lib/error-view.ts';
 import { S } from '../strings.ts';
+import { cx } from '../ui/index.ts';
 
 export type ToastKind = 'error' | 'success' | 'info';
 
@@ -11,12 +13,14 @@ export interface Toast {
   kind: ToastKind;
   title: string;
   message?: string;
+  /** Technical error code, shown small after the human text. */
+  code?: string;
 }
 
 interface ToastApi {
   push: (t: Omit<Toast, 'id'>) => void;
   success: (title: string) => void;
-  /** Formats any thrown value; ApiError shows its code and hint. */
+  /** Formats any thrown value; ApiError shows its message, hint and code. */
   error: (e: unknown, fallbackTitle?: string) => void;
   dismiss: (id: number) => void;
 }
@@ -42,13 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       push,
       dismiss,
       success: (title) => push({ kind: 'success', title }),
-      error: (e, fallbackTitle = 'Error') => {
-        if (isApiError(e)) {
-          push({ kind: 'error', title: `${e.code}: ${e.message}`, message: e.hint });
-          return;
-        }
-        push({ kind: 'error', title: fallbackTitle, message: e instanceof Error ? e.message : String(e) });
-      },
+      error: (e, fallbackTitle = 'Error') => push(toastFromError(e, fallbackTitle)),
     }),
     [push, dismiss],
   );
@@ -67,26 +65,31 @@ export function useToast(): ToastApi {
 }
 
 const KIND_CLASS: Record<ToastKind, string> = {
-  error: 'border-red-300 bg-red-50 text-red-900',
-  success: 'border-emerald-300 bg-emerald-50 text-emerald-900',
-  info: 'border-sky-300 bg-sky-50 text-sky-900',
+  error: 'ui-notice-danger',
+  success: 'ui-notice-success',
+  info: 'ui-notice-info',
 };
 
 function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   const { t } = useLocale();
   if (toasts.length === 0) return null;
   return (
-    <div aria-live="polite" className="fixed right-3 bottom-3 z-50 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
+    // `toast-viewport`: below 768px styles.css lifts it above a record form's bottom bar (form-ergonomics AC-7).
+    <div
+      aria-live="polite"
+      className="toast-viewport fixed right-3 bottom-3 z-50 flex w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}
           role={toast.kind === 'error' ? 'alert' : 'status'}
-          className={`rounded border px-3 py-2 shadow-md ${KIND_CLASS[toast.kind]}`}
+          className={cx('ui-toast', KIND_CLASS[toast.kind])}
         >
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="font-medium break-words">{toast.title}</div>
               {toast.message ? <div className="mt-0.5 text-xs break-words opacity-90">{toast.message}</div> : null}
+              {toast.code ? <div className="ui-toast-code">{toast.code}</div> : null}
             </div>
             <button
               type="button"

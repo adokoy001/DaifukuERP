@@ -10,11 +10,36 @@
 
 仕様・業務説明・ログは日本語、識別子と PR タイトルは英語を基本とします。UI は日本語と英語のラベルを持ちます。既存のテストを通す目的で期待値を弱めたり、テストをスキップしたりしないでください。
 
+画面を追加・置き換えるときは `apps/web/src/ui/` の部品（題名、空状態、骨格表示、表の枠、ボタン、ダイアログなど）と `styles.css` の意味トークンを使い、hex の色や Tailwind の生パレット色を直接書かないでください。新しいダイアログは `Dialog` を使います。詳しくは [UI規約](docs/conventions/ui.md) の「UI キットとトークン」を参照してください。
+
 金額・数量は `Decimal`、データ定義は kernel DSL を使います。データ操作は `Context` と `Repository`、会計・在庫の操作は既存の業務 action を通します。会社や店舗の分離、確定伝票の不変性、入力できない自動計算項目を保ち、必要な回帰テストを追加してください。日本の制度に基づく仕様は一次資料と確認日を `docs/domain/` に記載します。
+
+## 検査の段階（quick / light / full）
+
+編集中は変更に関係する検査だけを素早く回し、「完了」の前に全体を回します。選択は実行するファイルを選ぶだけで、テストを skip したり期待値を緩めたりしません。仕様は [3 段階の回帰テスト](docs/specs/test-tiers.md) です。
+
+| 段階 | コマンド | 内容 | 目安 | 使う場面 |
+| --- | --- | --- | --- | --- |
+| quick | `pnpm gate:quick` | 変更ファイルの Prettier / ESLint、依存境界、typecheck（`apps/api`・`apps/web` の typecheck は、その app か app が依存する package を変えたとき）、関連する unit 試験、文書リンクと台帳 | 1〜2 分（sales の 1 ファイル変更で 71 秒） | 編集ごと、コミット前 |
+| light | `pnpm gate:light` | 全体の format・typecheck（API/Web を含む）・lint・unit 全件・配布補助・文書・台帳、関連する DB suite と kernel の常時実行 suite 4 件。静的検査と DB 工程を同時に実行し、DB suite は 2 つの試験 DB に分ける | 文書だけの変更で約 2〜4 分（実施後は未計測。静的検査の時間で決まる）、module の 1 ファイル変更で約 5〜8 分（banking 5.1〜5.5 分、sales 7.3〜7.7 分）、kernel など DB 全件に広がる変更で約 11〜14 分（成功した回で 639〜815 秒）。いずれも同居負荷 load average 6.5〜11 での実測 | push 前、作業の区切り |
+| full | `pnpm gate:full` | `pnpm gate` の全工程、API/Web の typecheck と build、中継 agent build、通常ブラウザ試験、認証ブラウザ試験 | CI 並列で約 15 分、ローカル直列で 25〜40 分 | 「完了」の主張前、PR を ready にする前、main 取込後 |
+
+- 目安の時間は 4 CPU を他の作業と共有する一時 container での計測です（CI では未計測）。同居する作業の負荷で 2 倍近く変わります。同じ時間帯の実施前（1 工程ずつ・1 DB process）は banking 12.7 分、sales 13.6 分、kernel 21 分でした（[作業記録](docs/log/2026-10-30-light-tier-speed.md)）。sales の 1 ファイル変更は、この負荷ではまだ目標の 6 分に届きません。
+- light は静的検査（format・docs・台帳・型 3 種・lint・unit・配布補助）を 1 列で順に、DB 工程を別の列として同時に実行し、選ばれた DB suite を `TEST_DATABASE_URL*` の DB と `<db>_shard_2` に分けて 2 つの vitest process で同時に実行します（各 process の中は従来どおり 1 suite ずつ。[light の短縮](docs/specs/light-tier-speed.md)）。shard DB は owner role（テンプレートと同じく CREATEDB が必要）が初回に空で作り、shard DB ごとに自分の schema テンプレートを持ちます（初回はテンプレート作成の分だけ遅くなります。上限も shard DB ごとで、数回の実行で試験 DB 本体とほぼ同じ量、この環境では 1 shard あたり約 0.7 GB になります）。各工程の出力は `.runtime/gate/<UTC時刻>-light/<工程>.log`（DB は `db-1.log`・`db-2.log`、試験の選択は `db-select.log`）に書かれ、標準出力には工程ごとの開始行（log の場所）と終了行（秒）、shard ごとの開始行（DB・ファイル数・見積り・log）、vitest の件数、失敗した log の vitest の `FAIL` 行（失敗した suite と試験）と末尾 80 行が出ます。shard DB を作った・使えずに 1 process で実行した（理由つき）ことは、その時点の行と表の `concurrency:` 行（`DB shards 1 of 2` など）に出ます。shard への割り当てに使う suite ごとの所要時間は、各 DB process の後に `.runtime/gate/durations.json` へ残します（複数の vitest process が同じ results cache を書くと最後の 1 つの値しか残らないため）。最初の失敗で、もう一方の列で実行中の工程も止めます（`cancelled`）。`--serial`（または `GATE_PARALLEL=0`）で従来の 1 工程ずつ・1 DB process に、`--db-shards <n>`（または `GATE_DB_SHARDS`、1〜8。既定は CPU 4 以上で 2、未満で 1）で shard 数を変えられます。quick と full の実行順は変わりません。committed migration から schema を作る migration/setup の 10 suite は、schema の宣言（`defineEntity(` など）や `apps/api` を変えていなければ実行せず full に回し、報告の `deferred` と hint に出します（この後回しは利用者の承認待ちの判断です。`GATE_DEFER_SCHEMA_SUITES=0` で常に実行します）。
+- 基準点は `origin/main` との merge-base です。無ければ `origin/HEAD`、ローカルの `main`、upstream との merge-base、最後に `HEAD~1` を使い、そのときは `WARNING: the base fell back ...` と表示します。枝分かれ元が違う場合は `--base <ref>` か `GATE_BASE` で指定してください。未コミット・未追跡のファイルも対象です。
+- `kernel/`、migration、`package.json` / lockfile、tsconfig・lint・CI・ブラウザ試験の設定、削除したソースなどを含む変更は「フル回帰が必要」と表示されます。そのうち DB 試験に影響しうるもの（kernel、migration、依存、tsconfig、DB の setupFile など）では light が DB を全件に広げます。どちらの場合も完了前には `pnpm gate:full` が必要です。
+- DB を使う light / full は、下の DB テストと同じく破棄可能な専用 DB を `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に明示してください。ループバックの同じ DB（名前は `daifuku_test`、`daifuku_ci_test`、`daifuku_test_<suffix>`）と、別の owner / `daifuku_app` role が必要です。未設定や条件外のときは既定の `daifuku_test` を使わずに止まります（別名の破棄可能な DB を使う場合だけ `GATE_ALLOW_DB_URL=1`）。
+- full のブラウザ試験は、下の「ブラウザ試験を新規環境で再現する」の環境変数とサーバー、「認証ブラウザ試験」用の空 DB（`GATE_IDENTITY_DATABASE_URL_OWNER` / `GATE_IDENTITY_DATABASE_URL` に設定すると、gate が認証工程にだけ `TEST_DATABASE_URL_*` として渡します）を使います。準備がなければ何も実行せずに案内を出して止まります。
+- `pnpm gate:full --provision` は、ループバックの PostgreSQL（`TEST_DATABASE_URL_OWNER` の role に CREATEDB が必要）に一意な名前の新しい空 DB を作り、fixture 準備、compiled API と Web の空きポートでの起動、Playwright、停止までを行います。止めるのは自分が起動したプロセスだけで、作った DB は削除しません（報告に名前が出るので、不要になったら自分で `dropdb` してください）。
+- `--without-browser` はブラウザ 2 種を省いた部分実行で、報告に `partial: true` が付きます。`--` の後ろは Playwright に渡します（例: `pnpm gate:full --provision -- --grep @smoke`。これも部分実行の扱いです）。
+- `--dry-run` は変更ファイル・昇格判定・実行予定の工程と選ばれた試験ファイルを表示するだけです。既定は最初の失敗で止まり、`--keep-going` で全工程を実行します。
+- Ctrl-C、SIGTERM（`pnpm gate:*` の外側の pnpm に送った場合を含む）、端末の切断で止めると、実行中の工程を子孫プロセスごと止め、残りを実行せずに `interrupted` として報告します。
+- 結果は標準出力の表と `.runtime/gate/<UTC時刻>-<段階>.json` に残ります。
+- `pnpm e2e:smoke` は試験名に `@smoke` を付けた代表的なブラウザ試験だけを、起動済みのサーバーに対して実行します。Playwright は依存 project を絞らないため、3 業界の `industry` project も先に実行されます。`pnpm gate:light --with-smoke`（`--provision` 併用可）で light の最後にも実行できます。
 
 ## 型・単体・DB・Web の検証
 
-Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用します。依存は `pnpm install --frozen-lockfile` で導入します。[開発用の初期化](README.md) は専用の開発 DB で行ってください。以下の DB テストはテーブルを作り直すため、`TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に必ず破棄可能な専用テスト DB を設定します。
+Node.js 22、`package.json` に固定した pnpm、PostgreSQL 16 を利用します。依存は `pnpm install --frozen-lockfile` で導入します。[開発用の初期化](README.md) は専用の開発 DB で行ってください。以下の DB テストはその DB を作り直すため、`TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` に必ず破棄可能な専用テスト DB を設定します。DB テストは registry から作った schema を `<試験DB名>_tpl_<16桁>` という名前のテンプレート DB（同じサーバー、owner role の所有、接続不可）に保存し、suite ごとに試験 DB を `DROP DATABASE` / `CREATE DATABASE ... TEMPLATE` で作り直します（[DB suite 起動の短縮](docs/specs/db-test-startup.md)）。テンプレートは、試験専用の owner role が CREATEDB を持ち試験 DB を所有するとき（`scripts/db-setup.sql` と CI の構成）に使われます。既存の role に試験のために CREATEDB を足す必要はなく、無ければ従来どおり DB の中で schema を作り直します。ほかの条件は、2 つの URL が query なしで同じ DB を指すこと、試験 DB 名が `test` を `_` 区切りの 1 語として含むこと（`daifuku_test_w3` は可、`daifuku_latest` は不可）、保守用 DB `postgres`（`TEST_DATABASE_MAINTENANCE_DB` で変更）に接続できること、試験 DB が DB 単位の grant・設定・コメントや、public / drizzle 以外の schema・拡張・既定権限（`ALTER DEFAULT PRIVILEGES`）を持たないことです。条件を満たさない場合や `TEST_DATABASE_TEMPLATE=off` のときは従来どおり DB の中で作り直し、理由を suite ごとに標準エラーへ出します（off では出ません）。試験 DB に psql などをつないだままにすると、その間はテンプレートを使いません。テンプレートは試験 DB ごとに最大 80 件（`TEST_DATABASE_TEMPLATE_LIMIT` で変更）を残し、最終利用が古いものから消します。全 DB suite の 1 回の実行で約 59 件・約 0.7 GB、上限まで溜まると最大約 1.7 GB（1 件 8〜21 MB）を使います。`pnpm test:db:templates` で一覧し、`pnpm test:db:templates -- --drop` で設定中の試験 DB の自分のテンプレートだけを消せます（試験 DB 自身や他の DB には触れません）。`pnpm gate:light` が作る shard DB（`<試験DB名>_shard_2`〜`_shard_8`。試験 DB 名が `daifuku_test`・`daifuku_test_<suffix>`・`daifuku_ci_test` のときだけ作られ、owner role が所有します）とそのテンプレートも同じコマンドで一覧され、`-- --drop` ではテンプレートを消した後、テンプレートがすべて消えた shard DB 自体も消えます（使用中のテンプレートが残る shard DB は残します。次の light が空で作り直します）。shard DB は名前と所有者だけで判別します。shard DB 自身も試験 DB として使われ、DB 単位のコメントを持つ試験 DB ではテンプレートを使えないため、印を付けられないからです。shard DB のテンプレートは印から見つけるので、shard DB がすでに無くても一覧・削除されます。
 
 ```sh
 pnpm gate

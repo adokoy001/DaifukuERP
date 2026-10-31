@@ -34,7 +34,8 @@ function Paging({
 }) {
   const { t } = useLocale();
   return (
-    <div className="analytics-paging" aria-label={label}>
+    // e2e-a11y: a generic div may not carry aria-label (ARIA 1.2, axe aria-prohibited-attr); the group role names it.
+    <div className="analytics-paging" role="group" aria-label={label}>
       <span>
         {label} {page + 1} / {pages}
       </span>

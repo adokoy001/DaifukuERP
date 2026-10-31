@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './ui/ui.css';
 @theme {
   --font-sans: 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Meiryo, ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -19,6 +20,126 @@
   --color-sky-600: #7548dd;
   --color-sky-700: #6336c9;
   --color-sky-800: #5129ac;
+  /* Breakpoints: 480 / 768 / 1024 / 1280 px only (docs/conventions/ui.md "UI kit and tokens"). */
+  --breakpoint-sm: 30rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: initial;
+}
+/*
+ * Semantic design tokens. Screens and the UI kit (src/ui) use these names, never raw hex or palette utilities.
+ * Values copy the colours the screens already used; a future dark theme redefines only this block.
+ * Exceptions, chosen for contrast (WCAG AA): --focus-ring is a shade darker than the old #9e7ef1 so the ring reaches
+ * 3:1 on the canvas, and --text-subtle / --text-faint are for icons, separators and decoration only, never for text
+ * that carries information (use --text-muted, 4.5:1 on canvas, surface and surface-muted).
+ * Every colour token is also a Tailwind colour of the same name (bg-surface, text-text-muted, border-danger-border,
+ * ...) through `@theme inline` below; ui/token-usage.test.ts keeps the two lists in step.
+ */
+:root {
+  --canvas: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f7f8fc;
+  --row-stripe: #fafbfe;
+  --row-hover: #f5f1fe;
+  --border: #e3e7f1;
+  --border-subtle: #f0f2f8;
+  --border-strong: #d5dbea;
+  --text: #24324b;
+  --text-strong: #17243b;
+  --text-heading: #2f3c57;
+  --text-secondary: #505d76;
+  --text-muted: #65718a;
+  --text-subtle: #8490a8;
+  --text-faint: #cbd2e2;
+  --text-on-accent: #ffffff;
+  --accent: #7245d7;
+  --accent-strong: #6035c1;
+  --accent-soft: #f2efff;
+  --accent-border: #d4c4ff;
+  --accent-on-soft: #5129ac;
+  --link: #6336c9;
+  --focus-ring: #8f6cee;
+  --neutral-muted: #e3e7f1;
+  --neutral-on-muted: #253149;
+  --danger: #c93754;
+  --danger-strong: #ae2943;
+  --danger-text: oklch(50.5% 0.213 27.518);
+  --danger-soft: oklch(97.1% 0.013 17.38);
+  --danger-muted: oklch(93.6% 0.032 17.717);
+  --danger-border: oklch(88.5% 0.062 18.334);
+  --danger-border-strong: oklch(80.8% 0.114 19.571);
+  --danger-on-soft: oklch(39.6% 0.141 25.723);
+  --danger-on-muted: oklch(44.4% 0.177 26.899);
+  --success: oklch(50.8% 0.118 165.612);
+  --success-soft: oklch(97.9% 0.021 166.113);
+  --success-muted: oklch(95% 0.052 163.051);
+  --success-border: oklch(90.5% 0.093 164.15);
+  --success-border-strong: oklch(84.5% 0.143 164.978);
+  --success-on-soft: oklch(37.8% 0.077 168.94);
+  --success-on-muted: oklch(43.2% 0.095 166.913);
+  --warning: oklch(55.5% 0.163 48.998);
+  --warning-soft: oklch(98.7% 0.022 95.277);
+  --warning-muted: oklch(96.2% 0.059 95.617);
+  --warning-border: oklch(87.9% 0.169 91.605);
+  --warning-on-soft: oklch(41.4% 0.112 45.904);
+  --warning-on-muted: oklch(47.3% 0.137 46.201);
+  --skeleton: #e9ecf4;
+  --skeleton-shine: #f6f7fb;
+  --shadow-raised: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
+  --radius-control: 9px;
+  --radius-card: 13px;
+}
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-row-stripe: var(--row-stripe);
+  --color-row-hover: var(--row-hover);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-strong: var(--text-strong);
+  --color-text-heading: var(--text-heading);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-faint: var(--text-faint);
+  --color-text-on-accent: var(--text-on-accent);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-accent-on-soft: var(--accent-on-soft);
+  --color-link: var(--link);
+  --color-focus-ring: var(--focus-ring);
+  --color-neutral-muted: var(--neutral-muted);
+  --color-neutral-on-muted: var(--neutral-on-muted);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-muted: var(--danger-muted);
+  --color-danger-border: var(--danger-border);
+  --color-danger-border-strong: var(--danger-border-strong);
+  --color-danger-on-soft: var(--danger-on-soft);
+  --color-danger-on-muted: var(--danger-on-muted);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-muted: var(--success-muted);
+  --color-success-border: var(--success-border);
+  --color-success-border-strong: var(--success-border-strong);
+  --color-success-on-soft: var(--success-on-soft);
+  --color-success-on-muted: var(--success-on-muted);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-muted: var(--warning-muted);
+  --color-warning-border: var(--warning-border);
+  --color-warning-on-soft: var(--warning-on-soft);
+  --color-warning-on-muted: var(--warning-on-muted);
+  --color-skeleton: var(--skeleton);
+  --color-skeleton-shine: var(--skeleton-shine);
 }
 @layer base {
   html {
@@ -27,8 +148,8 @@
   }
   body {
     margin: 0;
-    background: #f6f7fb;
-    color: #24324b;
+    background: var(--canvas);
+    color: var(--text);
     -webkit-font-smoothing: antialiased;
   }
   input,
@@ -50,7 +171,7 @@
     cursor: pointer;
   }
   :focus-visible {
-    outline: 3px solid #9e7ef1;
+    outline: 3px solid var(--focus-ring);
     outline-offset: 3px;
   }
   ::selection {
@@ -67,12 +188,12 @@
   .input {
     width: 100%;
     min-height: 40px;
-    border: 1px solid #d5dbea;
-    border-radius: 9px;
-    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--surface);
     padding: 9px 11px;
     line-height: 1.45;
-    color: #24324b;
+    color: var(--text);
     outline: none;
     transition:
       border-color 0.15s,
@@ -122,23 +243,39 @@
     box-shadow: 0 3px 9px #43216b09;
   }
   .btn-primary {
-    background: #7245d7;
-    border-color: #7245d7;
-    color: #fff;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-accent);
     box-shadow: 0 4px 10px #7245d722;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #6035c1;
-    border-color: #6035c1;
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
   .btn-danger {
-    background: #c93754;
-    border-color: #c93754;
-    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--text-on-accent);
   }
   .btn-danger:hover:not(:disabled) {
-    background: #ae2943;
-    border-color: #ae2943;
+    background: var(--danger-strong);
+    border-color: var(--danger-strong);
+  }
+  /* UI kit Button variant="ghost": text-only action that keeps the .btn box for alignment. */
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--link);
+    box-shadow: none;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: transparent;
+    box-shadow: none;
+  }
+  /* UI kit Button size="sm": compact horizontal padding (pager, inline actions). */
+  .btn-sm {
+    padding: 2px 8px;
   }
   .btn:disabled {
     opacity: 0.5;
@@ -411,7 +548,7 @@
   align-items: center;
   gap: 12px;
   font-size: 11px;
-  color: #6e7891;
+  color: var(--text-muted);
 }
 .mobile-toggle,
 .mobile-close {
@@ -434,7 +571,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: #8b69c8;
+  color: var(--accent);
 }
 .welcome-header h1 {
   font-size: clamp(23px, 2.4vw, 31px);
@@ -444,7 +581,7 @@
 }
 .welcome-header p {
   font-size: 12px;
-  color: #738099;
+  color: var(--text-muted);
 }
 .date-chip {
   display: flex;
@@ -841,23 +978,39 @@
   border-collapse: separate;
   border-spacing: 0;
 }
+/* Generic table header: token colours (text-muted on surface-muted = 4.6:1; the old #6e7990 was 4.1:1). */
 .page-content th {
   padding: 13px 12px;
-  background: #f7f8fc;
-  color: #6e7990;
+  background: var(--surface-muted);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
-  border-bottom: 1px solid #e2e7f0;
+  border-bottom: 1px solid var(--border);
 }
 .page-content td {
   padding: 11px 12px;
   font-size: 12px;
 }
+/* Row headers of a kit table (th scope="row": the permission matrix's entity and action names) read like body cells:
+ * not sticky, no header band. Group rows (scope="rowgroup") keep their row's band but scroll with the rows. */
+.page-content .ui-table tbody th[scope='row'],
+.page-content .ui-table tbody th[scope='rowgroup'] {
+  position: static;
+  padding: 11px 12px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+.page-content .ui-table tbody th[scope='row'] {
+  background: transparent;
+  font-weight: 400;
+  border-bottom: 0;
+}
 .page-content tbody tr:nth-child(even) {
-  background: #fafbfe;
+  background: var(--row-stripe);
 }
 .page-content tbody tr:hover {
-  background: #f5f1fe;
+  background: var(--row-hover);
 }
 .page-content [data-testid^='lines-'] td {
   padding: 7px;
@@ -898,6 +1051,58 @@
   border: 1px solid #e2e6f1;
   background: #fffffff2;
   box-shadow: 0 -4px 18px #2a335508;
+}
+/* form-ergonomics AC-2: a labelled section's legend sits inside its box, above the field grid. */
+.record-form .record-section > legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.record-form .record-section > legend + * {
+  clear: both;
+}
+/* form-ergonomics AC-7: Submit lives in the form bar only below 768px; above it the header button is the one shown. */
+.form-bar-submit,
+.dirty-label-short {
+  display: none;
+}
+@media (max-width: 767px) {
+  .form-bar-submit {
+    display: inline-flex;
+  }
+  .record-view .doc-action-submit {
+    display: none;
+  }
+  .form-toolbar {
+    padding-bottom: calc(11px + env(safe-area-inset-bottom));
+  }
+  .form-toolbar .btn {
+    min-height: 40px;
+  }
+  /* The short unsaved-changes text keeps Save, Submit, Cancel and ? on one row of the bar at 390px. */
+  .form-toolbar .dirty-label-long {
+    display: none;
+  }
+  .form-toolbar .dirty-label-short {
+    display: inline;
+  }
+  /* Keyboard hints mean nothing on a touch screen and crowd the grid header. */
+  .form-shortcut-hint,
+  .line-grid-hint {
+    display: none;
+  }
+  /* A focused input is scrolled clear of the sticky bar: its measured height (record-form useBarHeightVar), also when
+     it wraps to a second row, plus a gap. */
+  .page-content:has(.form-toolbar) {
+    scroll-padding-bottom: calc(var(--form-bar-h, 80px) + 16px);
+  }
+  /* Toasts sit above the bar so they never cover Save / Submit. */
+  html:has(.form-toolbar) .toast-viewport {
+    bottom: calc(var(--form-bar-h, 80px) + 12px);
+  }
 }
 .dirty-label {
   display: inline-flex;
@@ -950,7 +1155,9 @@
 }
 .action-dialog p {
   font-size: 12px;
-  color: #6d7890;
+  /* --text-muted reaches 4.5:1 on the dialog surface; the old #6d7890 was about 4.43:1 at 12px (found by the
+     evidence-search review and by axe in machine-credentials, 2026-10-30). */
+  color: var(--text-muted);
   line-height: 1.9;
 }
 .correction-field {

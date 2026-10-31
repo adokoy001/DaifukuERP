@@ -1,0 +1,271 @@
+/* /finance/cash-forecast (docs/specs/cash-forecast.md AC-20..AC-27). Colours come from the semantic tokens only
+   (docs/conventions/ui.md); breakpoints are the kit's 480 / 768 px. */
+.cash-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+}
+.cash-conditions {
+  gap: calc(var(--spacing) * 3);
+}
+.cash-quick,
+.cash-fields,
+.cash-table-tools,
+.cash-legend,
+.cash-badges,
+.cash-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+}
+.cash-fields {
+  align-items: flex-end;
+}
+.cash-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.cash-field .input {
+  min-width: 10rem;
+}
+.cash-field-error {
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+}
+.cash-check {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.cash-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.cash-results {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+}
+.cash-loading {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+}
+.cash-result-title {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-heading);
+}
+.cash-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+}
+.cash-summary > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: calc(var(--spacing) * 2.5);
+}
+.cash-summary dt {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.cash-summary dd {
+  margin: calc(var(--spacing) * 1) 0 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+.cash-min-date {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.cash-amount.is-negative {
+  color: var(--danger-text);
+}
+.cash-notices {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cash-notices li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+  font-size: var(--text-sm);
+}
+.cash-chart {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: calc(var(--spacing) * 2);
+}
+.cash-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.cash-chart-grid {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+.cash-chart-zero {
+  stroke: var(--text-subtle);
+  stroke-width: 1.5;
+}
+.cash-chart-label {
+  fill: var(--text-muted);
+  font-size: 12px;
+}
+.cash-chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.cash-chart-line.is-negative {
+  stroke: var(--danger);
+}
+.cash-chart-drafts {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+.cash-chart-dot {
+  fill: var(--accent);
+}
+.cash-chart-dot.is-negative {
+  fill: var(--danger);
+}
+.cash-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 3);
+  margin-top: calc(var(--spacing) * 1.5);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.cash-chart-legend span::before {
+  display: inline-block;
+  width: 18px;
+  margin-right: calc(var(--spacing) * 1);
+  vertical-align: middle;
+  border-top: 3px solid var(--accent);
+  content: '';
+}
+.cash-chart-legend .cash-legend-negative::before {
+  border-top-color: var(--danger);
+}
+.cash-chart-legend .cash-legend-drafts::before {
+  border-top: 2px dashed var(--text-secondary);
+}
+.cash-table-tools {
+  justify-content: space-between;
+  margin-bottom: calc(var(--spacing) * 2);
+}
+.cash-quiet-note {
+  flex: 1 1 16rem;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.cash-legend {
+  margin: 0 0 calc(var(--spacing) * 2);
+  font-size: var(--text-xs);
+}
+.cash-legend-chip {
+  border-radius: var(--radius-sm);
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+  color: var(--text);
+}
+/* column groups of the daily table (headers, cells and totals) */
+.cash-col-posted {
+  background: var(--surface-muted);
+}
+.cash-col-scheduled {
+  background: var(--accent-soft);
+}
+.cash-col-draft {
+  background: var(--warning-soft);
+  color: var(--warning-on-soft);
+}
+.cash-col-total {
+  background: var(--canvas);
+  font-weight: 600;
+}
+.cash-date {
+  display: block;
+  white-space: nowrap;
+}
+.cash-due {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.cash-pager {
+  justify-content: flex-end;
+  margin-top: calc(var(--spacing) * 2);
+  font-size: var(--text-sm);
+}
+.cash-accounts summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.cash-accounts ul {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  margin: calc(var(--spacing) * 2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.cash-accounts li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+}
+.cash-account-balance {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+@media (max-width: 767px) {
+  .cash-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 479px) {
+  .cash-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cash-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cash-field .input {
+    min-width: 0;
+    width: 100%;
+  }
+}

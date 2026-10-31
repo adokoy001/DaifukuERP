@@ -208,7 +208,7 @@
   font-variant-numeric: tabular-nums;
 }
 .workforce-metric small {
-  color: #717c94;
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.6;
 }

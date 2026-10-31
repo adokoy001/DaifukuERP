@@ -7,7 +7,14 @@ import { registry } from '../registry.ts';
 import type { FieldMap } from './fields.ts';
 import type { EntityDef } from './defs.ts';
 export type { EntityDef, Infer, InsertInput, UpdateInput } from './defs.ts';
-import { DOCSTATUS, DOCUMENT_FIELDS, SYSTEM_FIELDS, type DocumentConfig, type EntityConfig } from './types.ts';
+import {
+  DOCSTATUS,
+  DOCUMENT_FIELDS,
+  SYSTEM_FIELDS,
+  type DocumentConfig,
+  type EntityConfig,
+  type FormGroup,
+} from './types.ts';
 
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -20,6 +27,33 @@ function resolveRef(entityName: string, column = 'id'): AnyPgColumn | undefined 
   return id as AnyPgColumn;
 }
 
+/**
+ * form-ergonomics AC-1 (ADR-0002 addendum): `views.form` groups name known fields, each field at most once; a labelled
+ * group has a ja and an en heading and at least one field. Plain `string[]` groups keep their original meaning.
+ */
+function validateFormGroups(cfg: EntityConfig, known: (name: string, where: string) => void): void {
+  const form = cfg.views?.form;
+  if (!form || form === 'auto') return;
+  const seen = new Set<string>();
+  form.forEach((group, index) => {
+    const names = isFormGroupList(group) ? group : group.fields;
+    if (!isFormGroupList(group)) {
+      if (!group.label.ja?.trim() || !group.label.en?.trim())
+        throw new Error(`entity ${cfg.name}: views.form group ${index + 1} needs a label with ja and en text`);
+      if (names.length === 0) throw new Error(`entity ${cfg.name}: views.form group ${index + 1} lists no fields`);
+    }
+    for (const name of names) {
+      known(name, 'views.form');
+      if (seen.has(name)) throw new Error(`entity ${cfg.name}: views.form lists field "${name}" more than once`);
+      seen.add(name);
+    }
+  });
+}
+
+function isFormGroupList(group: readonly string[] | FormGroup): group is readonly string[] {
+  return Array.isArray(group);
+}
+
 function validateConfig(cfg: EntityConfig): void {
   if (!NAME_RE.test(cfg.name)) throw new Error(`entity name "${cfg.name}" must be snake_case (${NAME_RE})`);
   const known = (name: string, where: string) => {
@@ -30,6 +64,7 @@ function validateConfig(cfg: EntityConfig): void {
   for (const ix of cfg.indexes ?? []) for (const n of ix) known(n, 'indexes');
   for (const n of (cfg as DocumentConfig).allowOnSubmit ?? []) if (!n.startsWith('ext.')) known(n, 'allowOnSubmit');
   for (const v of [...(cfg.views?.list ?? []), ...(cfg.views?.search ?? [])]) known(v, 'views');
+  validateFormGroups(cfg, known);
   const reserved = new Set<string>([...SYSTEM_FIELDS, ...DOCUMENT_FIELDS]);
   for (const [key, fd] of Object.entries(cfg.fields)) {
     if (reserved.has(key)) throw new Error(`entity ${cfg.name}: "${key}" is a reserved system field name`);

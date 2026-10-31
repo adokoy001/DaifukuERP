@@ -7,10 +7,12 @@ export interface RequestLogLine {
   url: string;
   status: number;
   ms: number;
-  actor: { type: 'user' | 'agent' | 'anonymous'; id: string | null; onBehalfOf?: string };
+  actor: { type: 'user' | 'agent' | 'machine' | 'anonymous'; id: string | null; onBehalfOf?: string };
 }
 
 function actorOf(req: FastifyRequest): RequestLogLine['actor'] {
+  // machine-credentials AC-16: the credential id, never the Authorization value.
+  if (req.machine) return { type: 'machine', id: req.machine.credentialId };
   const p = req.principal;
   if (!p) return { type: 'anonymous', id: null };
   const agent = req.headers['x-agent-id'];

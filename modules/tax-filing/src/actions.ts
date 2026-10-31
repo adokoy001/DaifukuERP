@@ -1,4 +1,4 @@
-import { defineAction, label, repo, StateError, withLock, type Context } from '@daifuku/kernel';
+import { defineAction, label, repo, StateError, todoInput, todoResult, withLock, type Context } from '@daifuku/kernel';
 import type { z } from 'zod';
 import { Account } from '@daifuku/mod-accounting';
 import { WorkforceEmployee } from '@daifuku/mod-workforce';
@@ -8,6 +8,7 @@ import { filingProfile } from './profile.ts';
 import { filingWrite } from './internal.ts';
 import { assertCurrent, changeState, createPreparation, sourceLocks } from './workflow.ts';
 import { filingBoard, filingDetail } from './read-model.ts';
+import { filingTodo } from './todo.ts';
 const roles = ['accounting', 'workforce_payroll'];
 function action<I extends z.ZodType, O extends z.ZodType>(
   name: string,
@@ -147,3 +148,16 @@ export const exportAction = action(
     }),
   false,
 );
+export const todoAction = defineAction({
+  name: 'tax_filing.todo',
+  description: label(
+    '受信箱: 別の担当者が作成した確認待ちの申告準備資料の件数',
+    'Inbox: filing preparations by another person awaiting review',
+  ),
+  input: todoInput,
+  output: todoResult,
+  permission: { roles },
+  tx: 'none',
+  mutates: false,
+  handler: filingTodo,
+});

@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { clearSession } from '../api/client.ts';
+import { clearSession, getToken } from '../api/client.ts';
+import { forgetRecentNames } from '../api/navigation-assist.ts';
 import { identityPost } from '../api/identity.ts';
 import { AuthFrame } from '../components/auth-frame.tsx';
 import { completeSso, readMailToken, readSsoReturn, rememberMfa, takeRecoveryCodes } from '../lib/identity-flow.ts';
@@ -95,6 +96,8 @@ export function MailPasswordPage({ invitation = false }: { invitation?: boolean 
       setToken('');
       setPassword('');
       setConfirm('');
+      // The server ended every session: a sign-in of this tab ends explicitly (stored names and form drafts go).
+      if (getToken()) forgetRecentNames();
       clearSession();
       qc.clear();
     },
@@ -227,6 +230,9 @@ export function SsoCallbackPage() {
     void completeSso(input)
       .then(async (result) => {
         if ('linked' in result) {
+          // Linking ends every session (an explicit sign-out after an authentication change): like the other paths of
+          // identity-security, the tab's stored names and form drafts go (navigation-assist AC-3, form-ergonomics AC-8).
+          forgetRecentNames();
           clearSession();
           qc.clear();
           setState('linked');

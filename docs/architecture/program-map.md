@@ -7,7 +7,7 @@
 | 場所 | 責任 | 変更の入口 |
 | --- | --- | --- |
 | `kernel/` | DSL、権限、行境界、Repository、伝票、監査、採番、イベント、storage | [公開API](../../kernel/src/index.ts) |
-| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、商流、銀行、申告準備、添付、従業員/労務、業種共通の案件処理 | 各packageの `src/index.ts` と `src/module.ts` |
+| `modules/` | 会計、取引先、商品、税、売上、購買、支払、在庫、契約、商流、銀行、申告準備、添付、従業員/労務、業種共通の案件処理、帳票の共通レイアウト（`print-layout`、module を登録しない純粋関数のライブラリ） | 各packageの `src/index.ts` と `src/module.ts`（`print-layout` は `src/index.ts` だけ） |
 | `l10n/jp/` | 日本向けの帳票・制度・設定 | [日本module](../../l10n/jp/src/index.ts) |
 | `packs/` | 業種固有のdocument、workflow、設定、sample、UIメニュー | 各packageの公開indexとpack定義 |
 | `apps/runtime/` | 全adapterが使うmodule/pack catalogとenv読込 | [catalog](../../apps/runtime/src/catalog.ts)、[pack選択](../../apps/runtime/src/packs.ts) |
@@ -33,7 +33,9 @@
 | 給与/申請が会社切替後も残る | query keyのcompany/user、abort/invalidate、権限エラー時の前データ表示 |
 | 給与制度の適用年・料率・計算方式を変える | [給与構造](payroll-automation.md)、workforceの公開 `payroll-rules/port.ts` と `resolver.ts`、l10n/jpの `payroll/`。制度データと方式版を一致させ、保存済み結果を上書きしない |
 | 出荷後の請求で在庫がもう一度動く | `modules/trade/src/posting.ts` とinventoryの `source-documents.ts`。既存の請求単独処理も回帰する |
+| 償却が二重に計上される・締め済み期間に入る | fixed-assetsの `actions/depreciation.ts` / `hooks/run.ts`、会社単位のロックと「資産 × 期間に確定済みの明細が無い」再検査、accountingの `assertOpenPeriod` |
 | 銀行の再取込・消込・出力で重複する | bankingの `imports.ts` / `reconcile.ts` / `transfers.ts`、同一キーと内容、原明細の不変性 |
+| 資金繰り表の残高・予定が合わない | bankingの `cash-sources.ts`（資金科目・読取・種類ごとの権限）と `cash-plan.ts`（配置規則・残高）、contractの `cash-plan.ts`、workforceの `payroll-cash.ts`。`meta` の注意情報（給与の二重計上、未消込、資金科目外）を先に確認する |
 | 申告資料の根拠が古い・形式が違う | tax-filingの `workflow.ts` / `profile.ts`、l10n/jpの `filing/`。保存根拠と現行根拠を区別する |
 | ピボットの総計・小計・平均が合わない | `apps/web/src/lib/pivot.ts`、対象の1行の粒度・状態・日付、`apps/api/src/analytics/catalog.ts`。帳票の残高と期間増減を区別する |
 | 分析設定や取得行が会社・権限変更後も残る | `analyticsScopeKey`、カタログquery keyと再確認、Worker取消、`analytics-storage.ts` の利用者・tenant・会社キー |
@@ -51,7 +53,9 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 ## 新しい共通業務の入口
 
 - [従業員module](../../modules/workforce/src/index.ts): 公開entity・wire contract・制度seed。勤怠/休暇/経費/給与は各actionから開始する。
+- [帳票の共通レイアウト](../../modules/print-layout/src/index.ts): 発行者・宛先・明細表・税率別内訳・合計・状態の帯・`printDocument` と設定 `print_layout.date_style`。各 module の `render_<document>_html` action（売上請求書・合計請求書・見積書・注文書・納品書・領収書・支払通知書・給与明細）が使う（[spec](../specs/print-templates.md)）。
 - [領収書module](../../modules/workforce-evidence/src/index.ts): 経費に従属する添付サービスと型。
+- [経費精算module](../../modules/expense/src/index.ts): 承認済み経費の精算書と仮払。確定で accounting の仕訳と payment の相手科目付き入出金（`createClearingPayment`）を同じトランザクションで作る（[ADR-0039](../adr/0039-expense-settlement-posting.md)）。画面は `/finance/expenses` と汎用画面。
 - [業種共通処理](../../modules/industry-operations/src/index.ts): 業種固有の案件documentを組み立て、開始/完了/請求/集計を共通化する。
 - [10業界の定義](../../packs/industry-catalog/src/index.ts): 選択したpackだけを読み、業種固有項目・検収条件・サンプルを載せる。
 
@@ -65,7 +69,7 @@ DB migrationは、生成結果を確認したうえで追加し、すでに適�
 
 ## 商流・銀行・申告準備
 
-[統合構造](commerce-finance.md) に依存図と変更先をまとめています。`modules/trade` が既存inventory/invoiceを原資料に結び、`modules/banking` が既存payment/accountingと照合します。`modules/tax-filing` は資料採取と確認workflow、`l10n/jp/src/filing` は日本の出力profileを担当します。Webの `/commerce/trade`、`/finance/banking`、`/finance/filing` は公開contractを読み、専用actionを共通の [finance client](../../apps/web/src/api/finance.ts) から呼びます。
+[統合構造](commerce-finance.md) に依存図と変更先をまとめています。`modules/trade` が既存inventory/invoiceを原資料に結び、`modules/banking` が既存payment/accountingと照合します。`modules/tax-filing` は資料採取と確認workflow、`l10n/jp/src/filing` は日本の出力profileを担当します。Webの `/commerce/trade`、`/finance/banking`、`/finance/filing` は公開contractを読み、専用actionを共通の [finance client](../../apps/web/src/api/finance.ts) から呼びます。月次締めガイドの `/finance/close`（[close-guide](../specs/close-guide.md)）も同じ client で既存の `accounting.close_period` / `reopen_period` を呼び、点検は読取専用の `accounting.close_readiness` です。期首残高の取込の `/finance/opening`（[opening-balances](../specs/opening-balances.md)、[ADR-0030](../adr/0030-opening-balances.md)）は、accounting の `accounting.import_opening_balances` / `reverse_opening_balances` / `opening_balance_status`、sales の `sales.import_opening_receivables`、purchase の `purchase.import_opening_payables`、inventory の `inventory.import_opening_stock` を順に呼びます。共通の年度の検査・期首残高仮勘定・全件か無かの実行・結果の型は `modules/accounting/src/opening*.ts` にあります。定期仕訳の生成 `/finance/recurring`（[recurring-journals](../specs/recurring-journals.md)）も同じ client で `accounting.generate_recurring` を呼び、予定は読取専用の `accounting.recurring_schedule` です。定期仕訳そのもの（`recurring_journal`、entity の明細 [ADR-0031](../adr/0031-entity-lines.md)）は汎用の一覧・フォームで編集します。証憑の検索 `/finance/evidence`（[evidence-search](../specs/evidence-search.md)）は `modules/attachments` の読取専用 `attachment.evidence_search` / `attachment.history` を呼び（query key は同じ `financeIdentity()` を含むが、自動の再取得はしない）、一括ダウンロードは既存の `GET /api/attachments/:id/download` を 1 件ずつ呼んでブラウザ内で zip にします（`apps/web/src/lib/zip.ts`）。資金繰り表の `/finance/cash-forecast`（[cash-forecast](../specs/cash-forecast.md)）は読取専用の `banking.cash_forecast` / `banking.cash_schedule` を呼び、結果の `meta` を `@daifuku/mod-banking/contract` の schema で検査します。固定資産（[fixed-assets](../specs/fixed-assets.md)）は `modules/fixed-assets` が台帳・償却の実行・除却と売却を持ち、仕訳は accounting の `postFromSource` / `reverseSourceEntry` だけで作ります。償却の計算は純粋関数（`services/schedule.ts`）で、率表・備忘価額・償却方法の制限・償却資産申告のデータは override 点 `fixed_assets.depreciation_rules` に `l10n/jp/src/fixed-assets/rules.ts` が期間付きで登録します。Web の `/finance/depreciation` は同じ finance client で `fixed_assets.preview_depreciation` / `run_depreciation` を呼びます。
 
 ## レポートとブラウザ・ピボット
 

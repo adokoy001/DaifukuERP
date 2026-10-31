@@ -1,9 +1,8 @@
-// sales.render_invoice_html (spec AC-5): builds InvoiceRenderData (issuer from `sales.issuer`, recipient from the
-// partner, money as Decimal strings) and hands it to registry.override('sales.invoice_html', defaultInvoiceHtml).
+// sales.render_invoice_html (spec AC-5): builds InvoiceRenderData (issuer from `sales.issuer`, else `company.profile`;
+// recipient from the partner; money as Decimal strings) and hands it to registry.override('sales.invoice_html', ...).
 import {
   defineAction,
   getCompany,
-  getSetting,
   label,
   registry,
   repo,
@@ -13,6 +12,7 @@ import {
   type Infer,
 } from '@daifuku/kernel';
 import { Partner } from '@daifuku/mod-partner';
+import { issuerFromCompanyProfile, statusBanner, withStatusBanner } from '@daifuku/mod-print-layout';
 import { z } from 'zod';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
 import { loadInvoiceLines } from '../recalculate.ts';
@@ -28,14 +28,58 @@ function defined<T>(o: object): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null)) as T;
 }
 
-/** The issuer block: `sales.issuer`, or just the company name when the setting is not set. */
+/**
+ * The issuer block (docs/specs/company-admin.md AC-7): `sales.issuer` when the company set it (the whole block wins);
+ * otherwise built from `company.profile` — the legal name (else the company name), registration number, postal code,
+ * address, phone and email. A stored `sales.issuer` that fails its schema is ignored like getSetting does.
+ */
+export function resolveIssuer(company: { name: string; settings: Readonly<Record<string, unknown>> }): {
+  issuer: SalesIssuer;
+  source: 'sales.issuer' | 'company.profile';
+  invalidIssuer: boolean;
+} {
+  const raw = company.settings[SALES_ISSUER_KEY];
+  const stored = raw === undefined ? undefined : salesIssuerSchema.safeParse(raw);
+  if (stored?.success) return { issuer: stored.data, source: 'sales.issuer', invalidIssuer: false };
+  // print-templates AC-9: the one company.profile -> issuer mapping lives in mod-print-layout.
+  const issuer: SalesIssuer = issuerFromCompanyProfile(company);
+  return { issuer, source: 'company.profile', invalidIssuer: stored !== undefined };
+}
+
+/** The addressee of a printed document from the partner master: name, postal code, prefecture + address lines. */
+export function partnerAddressee(partner: {
+  name: string;
+  postalCode?: string | null;
+  prefecture?: string | null;
+  address1?: string | null;
+  address2?: string | null;
+}): InvoiceRenderData['recipient'] {
+  const address = [partner.prefecture, partner.address1, partner.address2]
+    .filter((s): s is string => typeof s === 'string' && s.length > 0)
+    .join(' ');
+  return defined<InvoiceRenderData['recipient']>({
+    name: partner.name,
+    postalCode: partner.postalCode,
+    address: address || null,
+  });
+}
+
 export async function loadIssuer(ctx: Context): Promise<SalesIssuer> {
-  const company = await getCompany(ctx);
-  return getSetting(ctx, SALES_ISSUER_KEY, salesIssuerSchema, { name: company.name });
+  const resolved = resolveIssuer(await getCompany(ctx));
+  if (resolved.invalidIssuer) ctx.log.warn('invalid company setting, using company.profile', { key: SALES_ISSUER_KEY });
+  return resolved.issuer;
 }
 
 export async function buildInvoiceRenderData(ctx: Context, id: string): Promise<InvoiceRenderData> {
   const inv = await repo(ctx, SalesInvoice).get(id);
+  // docs/specs/opening-balances.md AC-20: an opening invoice is an internal record dated the opening date, not the
+  // original transaction date (記載事項②), so it is never rendered as a qualified invoice.
+  if (inv.openingBalance)
+    throw new StateError(
+      `sales_invoice ${inv.number ?? inv.id} is an opening balance record and is not issued`,
+      'Print or reissue the original invoice from the previous system; the opening invoice only tracks the open balance.',
+      { reason: 'opening_balance', id: inv.id, number: inv.number },
+    );
   if (inv.docstatus !== DOCSTATUS.draft) {
     if (!inv.issuedSnapshot)
       throw new StateError(
@@ -60,9 +104,6 @@ export async function buildLiveInvoiceRenderData(
   const partner = await repo(ctx, Partner).get(inv.partnerId);
   const issuer = await loadIssuer(ctx);
   const taxSummary = inv.taxSummary ?? [];
-  const address = [partner.prefecture, partner.address1, partner.address2]
-    .filter((s): s is string => typeof s === 'string' && s.length > 0)
-    .join(' ');
   return {
     issuer: defined<InvoiceRenderData['issuer']>(issuer),
     invoice: {
@@ -72,11 +113,7 @@ export async function buildLiveInvoiceRenderData(
       note: inv.note,
       priceIncludesTax: inv.priceIncludesTax,
     },
-    recipient: defined<InvoiceRenderData['recipient']>({
-      name: partner.name,
-      postalCode: partner.postalCode,
-      address: address || null,
-    }),
+    recipient: partnerAddressee(partner),
     lines: lines.map((l) => ({
       seq: l.seq,
       ...(l.uomCode ? { uomCode: l.uomCode } : {}),
@@ -110,20 +147,15 @@ export const renderInvoiceHtmlAction = defineAction({
   permission: { entity: SalesInvoice.name, op: 'read' },
   tx: 'none',
   mutates: false,
+  // print-templates AC-3: the record page of a submitted sales invoice offers this as 「請求書を表示」 — except on an
+  // opening invoice (docs/specs/opening-balances.md AC-20: never issued; the handler refuses it as well).
+  print: { entity: SalesInvoice.name, label: label('請求書を表示', 'View invoice'), when: { openingBalance: false } },
   handler: async (ctx, { id }) => {
     const data = await buildInvoiceRenderData(ctx, id);
     const render = registry.override<InvoiceHtmlRenderer>(INVOICE_HTML_OVERRIDE, defaultInvoiceHtml);
     const html = render(data);
-    const banner =
-      data.invoice.docstatus === DOCSTATUS.cancelled
-        ? '<p role="status" style="border:2px solid #b91c1c;padding:12px;color:#b91c1c;font-weight:bold">取消済み / CANCELLED</p>'
-        : '';
     return {
-      html: banner
-        ? /<body[^>]*>/i.test(html)
-          ? html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
-          : banner + html
-        : html,
+      html: withStatusBanner(html, data.invoice.docstatus === DOCSTATUS.cancelled ? statusBanner('cancelled') : ''),
     };
   },
 });

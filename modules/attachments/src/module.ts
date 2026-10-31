@@ -1,6 +1,8 @@
 // Module manifest (docs/conventions/layers.md). Depends on partner for the 取引先 search key.
 import { defineModule, label } from '@daifuku/kernel';
+import { evidenceSearchAction } from './actions/evidence-search.ts';
 import { forRecordAction } from './actions/for-record.ts';
+import { historyAction } from './actions/history.ts';
 import { linkAction } from './actions/link.ts';
 import { searchAction } from './actions/search.ts';
 import { supersedeAction } from './actions/supersede.ts';
@@ -12,7 +14,7 @@ export const AttachmentsModule = defineModule({
   label: label('証憑・添付', 'Attachments'),
   depends: ['partner'],
   entities: [Attachment],
-  actions: [searchAction, supersedeAction, linkAction, forRecordAction],
+  actions: [searchAction, supersedeAction, linkAction, forRecordAction, evidenceSearchAction, historyAction],
   hooks: () => {
     registerIntegrityHooks();
   },

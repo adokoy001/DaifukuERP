@@ -1,0 +1,4 @@
+{
+  "about": "e2e-a11y (docs/specs/e2e-a11y.md): serious/critical axe findings that cannot be fixed yet. Each entry needs rule, screen, target (the axe node target, matched exactly), reason and followUp (an existing docs/....md tracking document, optional #anchor, or a real YYYY-MM-DD deadline; a passed deadline is only warned about); entries for one rule/screen/target may not share a locale x width condition; locales / widths narrow it. An entry that applies to a run but matches nothing fails that run.",
+  "exceptions": []
+}

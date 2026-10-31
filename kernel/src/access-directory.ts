@@ -4,6 +4,7 @@ import { publicMembership } from './access-memberships.ts';
 import type { Context } from './context.ts';
 import { auditLog, companies, companyMemberships, users } from './db/system-tables.ts';
 import { managedUser } from './access-admin-common.ts';
+import { activeMachineCredentialCounts } from './machine-credentials.ts';
 
 export async function accessDirectory(ctx: Context) {
   await assertAccessAdmin(ctx);
@@ -24,6 +25,8 @@ export async function accessDirectory(ctx: Context) {
     roles: availableRoles(),
     stores: await directoryStores(ctx),
     sites: await directoryStores(ctx, undefined, 'sites'),
+    /** machine-credentials AC-33: live API keys per issuer (user id -> count). */
+    activeApiKeys: await activeMachineCredentialCounts(ctx),
   };
 }
 

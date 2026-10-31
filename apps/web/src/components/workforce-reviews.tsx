@@ -3,7 +3,8 @@ import { formText, type ManagementPortal } from '../api/workforce.ts';
 import { useWorkforceTask } from '../api/workforce-query.ts';
 import { useLocale } from '../i18n.tsx';
 import { businessToday } from '../lib/operations.ts';
-import { leavePortions, minutesLabel, timeLabel } from '../lib/workforce.ts';
+import { Link } from '@tanstack/react-router';
+import { expensePaymentMethodLabel, leavePortions, minutesLabel, timeLabel } from '../lib/workforce.ts';
 import { WorkforceDialog } from './workforce-dialog.tsx';
 import { WorkforceReceipts } from './workforce-receipts.tsx';
 import { WorkforceEmpty, WorkforceMoney, WorkforcePanel, WorkforceStatus } from './workforce-shared.tsx';
@@ -35,6 +36,8 @@ export function WorkforceReviews({
   const [review, setReview] = useState<Review>();
   const [receiptId, setReceiptId] = useState<string>();
   const allowed = (action: string) => actions.includes('workforce.' + action);
+  /** The caller can settle through an expense settlement (entry and payment), not only record a manual settlement. */
+  const settlesByDocument = actions.includes('expense.settlement_candidates');
   const open = (value: Review) => setReview(value);
   const attendance = data.attendances.filter((row) => row.status === 'submitted');
   const corrections = data.corrections.filter((row) => row.status === 'pending');
@@ -255,6 +258,7 @@ export function WorkforceReviews({
                   <div className="workforce-record-meta">
                     <span>{row.expenseDate}</span>
                     <WorkforceMoney value={row.amount} />
+                    <span>{t(expensePaymentMethodLabel(row.paymentMethod))}</span>
                   </div>
                   <p>{row.description}</p>
                   <p>
@@ -295,15 +299,28 @@ export function WorkforceReviews({
                           </button>
                         ))
                       : null}
+                    {row.status === 'approved' && settlesByDocument ? (
+                      // expense-settlement AC-22: the settlement document (entry + payment) is the main path here
+                      <Link to="/finance/expenses" className="btn btn-primary" data-testid="expense-to-settlement">
+                        {t({ ja: '経費精算へ', en: 'Go to expense settlement' })}
+                      </Link>
+                    ) : null}
                     {row.status === 'approved' && allowed('settle_expense') ? (
                       <button
                         type="button"
-                        className="btn btn-primary"
+                        className={settlesByDocument ? 'btn' : 'btn btn-primary'}
                         disabled={row.employeeId === selfEmployeeId}
                         onClick={() =>
                           open({
                             title: t({ ja: '精算を記録', en: 'Record reimbursement' }),
-                            description: `${row.employeeName} · ${row.description}`,
+                            description: `${row.employeeName} · ${row.description} — ${t(
+                              settlesByDocument
+                                ? {
+                                    ja: '仕訳・支払は作られません。会計を使う場合は「経費精算へ」から精算書を作ります。',
+                                    en: 'No entry or payment is created; use expense settlement when accounting is used.',
+                                  }
+                                : { ja: '仕訳・支払は作られません。', en: 'No entry or payment is created.' },
+                            )}`,
                             action: 'workforce.settle_expense',
                             id: row.id,
                             version: row.version,

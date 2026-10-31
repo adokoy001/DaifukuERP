@@ -1,16 +1,18 @@
 // AC-4..7: /e/:entity/new and /e/:entity/:id — header (docstatus, number, actions, print view), form, attachments
-// (phase1 AC-4), audit panel.
+// (phase1 AC-4), audit panel. ui-kit: the header is a PageHeader. form-ergonomics: previous / next within the list the
+// record was opened from (AC-9), and the header's Submit reachable from the form bar and Ctrl/⌘+Enter (AC-5/AC-7).
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEntityMeta, useRecord } from '../api/queries.ts';
 import type { EntityMeta, RecordJson } from '../api/types.ts';
 import { useSubmitBlock } from '../components/allocation-picker.tsx';
 import { AttachmentsPanel } from '../components/attachments-panel.tsx';
 import { AuditPanel } from '../components/audit-panel.tsx';
-import { DocActions } from '../components/doc-actions.tsx';
+import { DocActions, type DocActionsHandle } from '../components/doc-actions.tsx';
 import { DocstatusBadge } from '../components/docstatus-badge.tsx';
-import { PrintButton } from '../components/print-button.tsx';
-import { RecordForm } from '../components/record-form.tsx';
+import { PrintButtons } from '../components/print-button.tsx';
+import { RecordForm, type SubmitControl } from '../components/record-form.tsx';
+import { RecordNavControls, useRecordNav } from '../components/record-nav.tsx';
 import { WorkforceWorkflowLink } from '../components/workforce-workflow-link.tsx';
 import { isWorkforceManaged } from '../lib/workforce-entity.ts';
 import { useToast } from '../components/toast.tsx';
@@ -20,6 +22,15 @@ import { S } from '../strings.ts';
 import { EntityMissing, LoadingView, MetaError } from './status-views.tsx';
 import { canRetainData } from '../lib/read-recovery.ts';
 import { ReadRecoveryProvider, ReadRefreshNotice } from '../components/read-refresh-notice.tsx';
+import { PageHeader } from '../ui/index.ts';
+// document-links (C2): 複製 / quick actions, the seeded new-record notice, the 関連 panel.
+import { RecordLinkActions, SeedNotice, useDraftSeed } from '../components/record-links.tsx';
+import { RelatedPanel } from '../components/related-panel.tsx';
+import type { DraftSeed } from '../lib/duplicate.ts';
+import { useRecordVisit } from '../api/navigation-assist.ts';
+import { draftStorage, draftTarget, forgetEntityDrafts, removeDraft } from '../lib/form-draft.ts';
+import { isApiError } from '../api/client.ts';
+import { sessionDraftKey, sessionDraftScope } from '../components/form-draft.tsx';
 
 function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: string): string {
   if (!record) return fallback;
@@ -31,14 +42,15 @@ function titleOf(entity: EntityMeta, record: RecordJson | undefined, fallback: s
 
 function SystemInfo({ record }: { record: RecordJson }) {
   const { t, locale } = useLocale();
+  // Label in text-muted, value one step darker: both keep 4.5:1 on the canvas (text-subtle is decoration only).
   const item = (label: string, value: string) => (
     <span>
-      <span className="text-neutral-400">{label} </span>
-      <span className="font-mono">{value}</span>
+      <span>{label} </span>
+      <span className="font-mono text-text-secondary">{value}</span>
     </span>
   );
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-neutral-500">
+    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-text-muted">
       {item(t(S.id), record.id)}
       {item(t(S.version), String(record.version))}
       {item(t(S.createdAt), formatTimestamp(record.createdAt, locale))}
@@ -48,20 +60,51 @@ function SystemInfo({ record }: { record: RecordJson }) {
   );
 }
 
-function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson | undefined }) {
+function RecordView({
+  entity,
+  record,
+  seed,
+}: {
+  entity: EntityMeta;
+  record: RecordJson | undefined;
+  seed?: DraftSeed | undefined;
+}) {
   const { t } = useLocale();
   const toast = useToast();
   const navigate = useNavigate();
   const submitBlocked = useSubmitBlock(entity, record);
+  useRecordVisit(entity, record); // navigation-assist AC-3: recent records
   const [formStatus, setFormStatus] = useState({ dirty: false, saving: false });
   const [actionBusy, setActionBusy] = useState(false);
+  const docActions = useRef<DocActionsHandle>(null);
+  const nav = useRecordNav(entity.name);
   const blocked = formStatus.saving
     ? t(S.saving)
     : formStatus.dirty
       ? t({ ja: '変更を保存してから操作してください', en: 'Save your changes before continuing' })
       : undefined;
-  const toList = () => void navigate({ to: '/e/$entity', params: { entity: entity.name } });
-  const toRecord = (id: string) => void navigate({ to: '/e/$entity/$id', params: { entity: entity.name, id } });
+  // AC-9: back to the list the record was opened from, with its search, filters, sort and page.
+  const toList = () => void navigate({ to: '/e/$entity', params: { entity: entity.name }, search: nav?.search ?? {} });
+  // form-ergonomics AC-5/AC-7: the same Submit as the header button (DocActions), for the form bar and Ctrl/⌘+Enter.
+  const canSubmit =
+    record !== undefined &&
+    entity.kind === 'document' &&
+    (record.docstatus ?? 0) === 0 &&
+    entity.ops.includes('submit');
+  const submit: SubmitControl | undefined = canSubmit
+    ? {
+        label: t(S.submit),
+        blocked: actionBusy ? t(S.saving) : (blocked ?? submitBlocked),
+        onRequest: () => void docActions.current?.request('submit'),
+      }
+    : undefined;
+  // A record created from a seed replaces the seeded /new entry, so Back does not reopen the prefilled form.
+  const toRecord = (id: string) =>
+    void navigate({
+      to: '/e/$entity/$id',
+      params: { entity: entity.name, id },
+      replace: !record && seed !== undefined,
+    });
   const onSaved = (rec: RecordJson, mode: 'create' | 'update') => {
     if (mode === 'create') {
       toast.success(t(S.created));
@@ -71,53 +114,76 @@ function RecordView({ entity, record }: { entity: EntityMeta; record: RecordJson
     if (rec !== record) toast.success(t(S.saved));
   };
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="record-view flex flex-col gap-3 p-3">
       <ReadRefreshNotice />
-      <header className="flex flex-wrap items-center gap-2">
-        <Link to="/e/$entity" params={{ entity: entity.name }} className="text-sky-700 hover:underline">
-          ← {t(entity.label)}
-        </Link>
-        <h1 className="text-base font-semibold" data-testid="record-title">
-          {titleOf(entity, record, t(S.new))}
-        </h1>
-        {entity.kind === 'document' && record ? (
-          <>
-            {record.number ? <span className="code text-neutral-600">{record.number}</span> : null}
-            <DocstatusBadge docstatus={record.docstatus} />
-          </>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          {record ? <PrintButton entity={entity} record={record} /> : null}
-          {record ? (
-            <DocActions
-              entity={entity}
-              record={record}
-              submitBlocked={submitBlocked}
-              blocked={blocked}
-              onBusy={setActionBusy}
-              onAfter={(op, rec) => {
-                if (op === 'delete') toList();
-                else if (rec && rec.id !== record.id) toRecord(rec.id);
-              }}
-            />
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        back={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Link to="/e/$entity" params={{ entity: entity.name }} search={nav?.search ?? {}} className="ui-link w-max">
+              ← {t(entity.label)}
+            </Link>
+            {record && nav ? <RecordNavControls entity={entity} id={record.id} nav={nav} /> : null}
+          </div>
+        }
+        title={titleOf(entity, record, t(S.new))}
+        titleTestId="record-title"
+        meta={
+          entity.kind === 'document' && record ? (
+            <>
+              {record.number ? <span className="code text-text-secondary">{record.number}</span> : null}
+              <DocstatusBadge docstatus={record.docstatus} />
+            </>
+          ) : null
+        }
+        actions={
+          record ? (
+            <>
+              <PrintButtons entity={entity} record={record} />
+              <RecordLinkActions entity={entity} record={record} blocked={blocked} />
+              <DocActions
+                ref={docActions}
+                entity={entity}
+                record={record}
+                submitBlocked={submitBlocked}
+                blocked={blocked}
+                onBusy={setActionBusy}
+                onAfter={(op, rec) => {
+                  if (op === 'delete') toList();
+                  else if (rec && rec.id !== record.id) toRecord(rec.id);
+                }}
+              />
+            </>
+          ) : null
+        }
+      />
       {record ? <SystemInfo record={record} /> : null}
       <WorkforceWorkflowLink entity={entity.name} />
+      {!record && seed ? <SeedNotice seed={seed} /> : null}
       <RecordForm
-        key={record?.id ?? 'new'}
+        key={record?.id ?? `new:${seed?.key ?? ''}`}
         entity={entity}
         record={record}
+        initial={seed}
         onSaved={onSaved}
         onCancel={toList}
         onStatus={setFormStatus}
         actionBusy={actionBusy}
+        submit={submit}
       />
+      {record ? <RelatedPanel entity={entity} id={record.id} version={record.version} /> : null}
       {record && !isWorkforceManaged(entity.name) ? <AttachmentsPanel entity={entity} id={record.id} /> : null}
       {record ? <AuditPanel entity={entity} id={record.id} /> : null}
     </div>
   );
+}
+
+/**
+ * form-ergonomics AC-8: a record that is gone or no longer readable (404 / 403) keeps no unsaved input in this tab
+ * (quality-foundation AC-5: nothing sensitive survives a denied read). Temporary failures keep it.
+ */
+function forgetDraftOnDenied(entity: string, id: string | undefined, error: unknown) {
+  if (!id || !isApiError(error) || (error.status !== 403 && error.status !== 404)) return;
+  removeDraft(draftStorage(), sessionDraftKey(entity, draftTarget(id, undefined)));
 }
 
 export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
@@ -126,6 +192,17 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   const id = mode === 'edit' ? params.id : undefined;
   const { meta, entity } = useEntityMeta(name);
   const record = useRecord(name, entity ? id : undefined);
+  const seed = useDraftSeed(name);
+  const denied = record.isError && !canRetainData(record) ? record.error : undefined;
+  useEffect(() => {
+    if (denied) forgetDraftOnDenied(name, id, denied);
+  }, [denied, name, id]);
+  // AC-8: an entity the user can no longer see (absent from the loaded meta) keeps none of its drafts in this tab:
+  // the record read never runs then, so the 403/404 clean-up above cannot catch it.
+  const entityGone = meta.data !== undefined && entity === undefined && name !== '';
+  useEffect(() => {
+    if (entityGone) forgetEntityDrafts(draftStorage(), sessionDraftScope(), name);
+  }, [entityGone, name]);
   if (meta.isError && !canRetainData(meta)) return <MetaError error={meta.error} retry={() => void meta.refetch()} />;
   if (meta.isPending) return <LoadingView />;
   if (!entity) return <EntityMissing name={name} />;
@@ -147,7 +224,7 @@ export function EntityFormPage({ mode }: { mode: 'new' | 'edit' }) {
   }
   return (
     <ReadRecoveryProvider sources={[meta]}>
-      <RecordView entity={entity} record={undefined} />
+      <RecordView entity={entity} record={undefined} seed={seed} />
     </ReadRecoveryProvider>
   );
 }

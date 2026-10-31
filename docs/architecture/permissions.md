@@ -42,21 +42,25 @@ JWTは利用者を識別する情報です。所属や権限を長期間固定�
 
 テナント管理者は利用者と所属を管理する強い権限を持ちます。通常の店舗運営担当に付けません。自分の権限変更や最後の有効な管理者を失う操作は管理APIが拒否します。
 
+機械用資格情報（API キー、[spec](../specs/machine-credentials.md)、[ADR-0023 の追補](../adr/0023-outbound-relay-principal-and-fencing.md)）は `actor.type = machine`、`actor.id` = 資格情報の id の Context に解決されます。会社・ロールは資格情報の行からだけ決まり、`tenantAdmin` を持たず常に会社全体の範囲で、人と同じ Repository / action の検査を通ります。資格情報と発行者（有効なテナント管理者か）は要求ごとに照合します。`/auth/*`・`/admin/*`・中継機の pairing は人のセッションだけに開き、kernel の人の本人性を要する port（`lockIdentity`・`assertAccessAdmin`・会社横断の `withAuthorizedCompany`・会社の作成と編集など）も機械の actor を明示的に拒否します。行規則の `$ctx.userId` / `$ctx.actorId` は資格情報の id になるので、利用者に結び付いた行（従業員本人の行など）は見えません。
+
 本人のパスワード変更と全端末ログアウトは、会社ではなく認証済み本人を対象にします。現在パスワードの検証、sessionVersion更新、監査記録を同じトランザクションで処理し、並行操作でも失効済みの認証を通しません。[操作とAPI契約](../operations/account-security.md) を参照してください。
 
 ## 各入口の確認項目
 
-| 入口 | 境界を守る場所 | 回帰で確かめること |
-| --- | --- | --- |
-| list/get/search | Repository scope + row filter | IDを知っていても他社/他拠点/他人へ届かない |
-| create/update | 参照先の所属・serverOwned・版 | 別user/siteへ移す入力、承認状態の偽造を拒否 |
-| action | runAction + business guard | 自己承認、二重処理、状態/期限の変化を再確認 |
-| CSV/集計 | export権限 + 元行の条件 | 非表示行の件数・合計・給与を推定できない |
-| audit/添付 | 元行の可視性 + field制約 | 過去値や証憑で通常の非表示項目が漏れない |
-| UI | meta + roleに応じた導線 | サーバー側の拒否を見える形で扱い、旧会社のデータを残さない |
+| 入口            | 境界を守る場所                | 回帰で確かめること                                         |
+| --------------- | ----------------------------- | ---------------------------------------------------------- |
+| list/get/search | Repository scope + row filter | IDを知っていても他社/他拠点/他人へ届かない                 |
+| create/update   | 参照先の所属・serverOwned・版 | 別user/siteへ移す入力、承認状態の偽造を拒否                |
+| action          | runAction + business guard    | 自己承認、二重処理、状態/期限の変化を再確認                |
+| CSV/集計        | export権限 + 元行の条件       | 非表示行の件数・合計・給与を推定できない                   |
+| audit/添付      | 元行の可視性 + field制約      | 過去値や証憑で通常の非表示項目が漏れない                   |
+| UI              | meta + roleに応じた導線       | サーバー側の拒否を見える形で扱い、旧会社のデータを残さない |
+
+**既知の差（未達、2026-10-30 記録）**: 「audit/添付: 元行の可視性」は、監査ログ（`auditTrail`）と記録画面の添付欄（`attachment.for_record`）、リンクの書込（`assertLinkTarget`）には当たりますが、証憑（`attachment`）の行そのものには当たっていません。証憑の list / get（`GET /api/attachment`）、`attachment.search`、`attachment.evidence_search`、`attachment.history`、`GET /api/attachments/:id/download`、証憑の検索画面 `/finance/evidence` は、attachment の role 表（経理・営業・購買・閲覧・管理者の read）と tenant・会社の境界だけで行の可視性が決まり、リンク先の記録の読取規則を継承しません。たとえば sales は purchase_invoice を読めませんが、purchase_invoice にリンクされた証憑のファイル名・金額・取引先は読めます（リンク先の番号や名前は、リンク先の権限で `readable: false` として隠します）。entity の read はあっても行の規則で隠れる記録も同じで、payment の行の規則（sales は入金、purchasing は支払だけ）で隠れる入出金に結び付いた証憑の行・`attachment.history`・ダウンロードは、その役割に 200 で返ります（2026-10-30、`apps/api/test/evidence-search.db.test.ts` で実測）。この差を閉じるかは利用者の確認待ちです（[evidence-search の未決事項 1](../specs/evidence-search.md)）。閉じるには、多相リンクを行の規則として評価する kernel の拡張と ADR が要り、権限マトリクスの横断表示（[完成度向上の計画](../completion-plan.md) F3）と合わせて検討します。改善候補一覧への登録は統合時に行います。
 
 ## 失敗時の設計
 
 未宣言の境界は拒否します。所属0件や担当リスト空を全社アクセスへ読み替えません。権限を通すために `systemContext()`、roleの書換え、owner接続による業務readを加えません。systemContextはmigration/seed用です。
 
-承認では申請者と処理者を実ユーザーIDで比較します。MCP代理操作ではactor.onBehalfOfも扱い、AI名へすり替えて自己承認を通しません。給与は下書きと本人公開済み明細を区別し、拠点管理者というだけで金額への閲覧を許可しません。
+承認では申請者と処理者を実ユーザーIDで比較します。MCP代理操作ではactor.onBehalfOfも扱い、AI名へすり替えて自己承認を通しません。比較に使う利用者 ID は kernel の `requireHumanUserId(ctx)` から得ます。API キー（`machine`）は利用者 ID を持たないので 403 `human-actor-required` で拒否し、鍵の id で自己承認・作成者以外の確認の判定をすり抜けることはできません（本人の申請・承認・精算・休暇の付与・給与制度の承認・証憑の添付・申告準備の作成と確認・受信箱の `workforce.todo` / `tax_filing.todo`）。給与は下書きと本人公開済み明細を区別し、拠点管理者というだけで金額への閲覧を許可しません。

@@ -20,6 +20,7 @@ import {
   type Infer,
   type LocalDate,
 } from '@daifuku/kernel';
+import { FiscalYear, OPENING_SOURCE, openingDateOf } from '@daifuku/mod-accounting';
 import { Product } from '@daifuku/mod-product';
 import { assertInventoryDate } from '../period-close.ts';
 import { StockEntry, type StockEntryType } from '../entities/stock-entry.ts';
@@ -70,11 +71,29 @@ export async function productKinds(ctx: Context, ids: readonly string[]): Promis
   return out;
 }
 
+/**
+ * docs/specs/opening-balances.md AC-24: an opening stock receipt is linked to its fiscal year (not a document). It is
+ * accepted only as a receipt dated that year's opening date; any other fiscal_year link is refused like a bad source.
+ */
+async function openingLinkValid(ctx: Context, row: Record<string, unknown>): Promise<boolean> {
+  if (row.type !== 'receipt' || typeof row.sourceId !== 'string') return false;
+  const year = await repo(ctx, FiscalYear).find(row.sourceId);
+  return year !== null && row.date === openingDateOf(year.startDate);
+}
+
 /** A linked entry must belong to a submitted source document (the auto path creates it in the source's after_submit). */
 async function assertSourceLink(ctx: Context, row: Record<string, unknown>): Promise<void> {
   const entity = row.sourceEntity;
   const id = row.sourceId;
   if ((entity === null || entity === undefined) && (id === null || id === undefined)) return;
+  if (entity === OPENING_SOURCE) {
+    if (await openingLinkValid(ctx, row)) return;
+    throw new StateError(
+      `stock_entry ${String(row.id)}: a fiscal_year source is only an opening stock receipt dated the opening date`,
+      SOURCE_HINT,
+      { sourceEntity: entity, sourceId: id },
+    );
+  }
   const known =
     typeof entity === 'string' &&
     ((SOURCE_ENTITIES as readonly string[]).includes(entity) || registeredStockSource(entity)) &&

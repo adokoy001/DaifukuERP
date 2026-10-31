@@ -1,0 +1,2309 @@
+#!/usr/bin/env node
+// Tiered regression runner (docs/specs/test-tiers.md): quick = checks limited to the change set, light = whole-repo
+// static checks + every unit test + related DB suites, full = every `pnpm gate` step + API/Web builds + browser suites.
+// Selection only chooses which existing checks run; it never skips, filters or weakens a test, and `pnpm gate` is
+// unchanged. light runs its static steps and its DB step side by side and splits the selected DB suites over shard
+// databases (docs/specs/light-tier-speed.md); --serial restores one step at a time. Pure planning functions are
+// exported for scripts/test/gate.test.ts; process work stays in the runner below.
+import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
+import { availableParallelism } from 'node:os';
+import { basename, dirname, extname, join, posix, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
+
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const TIERS = Object.freeze(['quick', 'light', 'full']);
+// Mirrors the `format` / `format:check` globs in package.json.
+export const FORMAT_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.css']);
+export const LINT_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs']);
+// Files that vitest can follow through its module graph.
+export const MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
+// Above this many files a file-limited command is replaced by its whole-repository form.
+export const FILE_ARGUMENT_LIMIT = 300;
+export const MAX_REPORTED_FILES = 200;
+// Kernel sentinels that light runs regardless of the change set.
+export const ALWAYS_DB_SUITES = Object.freeze([
+  'kernel/test/foundation.db.test.ts',
+  'kernel/test/document.db.test.ts',
+  'kernel/test/access-boundary.db.test.ts',
+  'kernel/test/noninterference.db.test.ts',
+]);
+// Changes that quick/light cannot cover by selection. Every match gets the "full regression" notice and the
+// `pnpm gate:full` hint. Only rules with `widenDb` can change DB-suite behaviour outside the module graph, so only
+// those make light run every DB suite; the others (formatting, lint, CI, browser-only configuration) are covered by
+// light's whole-repository static checks or only by full. `exclude` keeps documentation out of a rule.
+export const ESCALATION_RULES = Object.freeze([
+  { pattern: 'kernel/**', widenDb: true, why: 'the kernel is imported by every module and DB suite' },
+  { pattern: 'apps/api/drizzle/**', widenDb: true, why: 'migrations' },
+  { pattern: 'apps/api/src/db/**', widenDb: true, why: 'schema, seed and fixture tooling' },
+  { pattern: 'apps/api/src/modules.ts', widenDb: true, why: 'module registration' },
+  { pattern: 'apps/api/test/payroll-provider-setup.ts', widenDb: true, why: 'DB project setup file' },
+  { pattern: 'vitest.config.mts', widenDb: true, why: 'test project definitions' },
+  { pattern: '**/package.json', widenDb: true, why: 'dependencies and scripts' },
+  { pattern: 'pnpm-lock.yaml', widenDb: true, why: 'dependency versions' },
+  { pattern: 'pnpm-workspace.yaml', widenDb: true, why: 'workspace layout' },
+  { pattern: '.npmrc', widenDb: true, why: 'dependency installation settings' },
+  { pattern: '**/tsconfig*.json', widenDb: true, why: 'compiler settings' },
+  { pattern: 'eslint.config.js', widenDb: false, why: 'lint rules' },
+  { pattern: '.dependency-cruiser.cjs', widenDb: false, why: 'dependency boundaries' },
+  { pattern: '.prettierrc.json', widenDb: false, why: 'formatting rules' },
+  { pattern: '.prettierignore', widenDb: false, why: 'formatting scope' },
+  { pattern: 'turbo.json', widenDb: false, why: 'task graph' },
+  { pattern: '.github/**', exclude: ['**/*.md'], widenDb: false, why: 'CI definitions' },
+  { pattern: 'apps/web/playwright.config.ts', widenDb: false, why: 'browser test configuration' },
+  { pattern: 'apps/web/vite.config.ts', widenDb: false, why: 'Web build and dev server' },
+  { pattern: 'apps/web/index.html', widenDb: false, why: 'Web entry document' },
+  { pattern: 'scripts/test-identity-e2e.mjs', widenDb: false, why: 'identity browser runner' },
+  { pattern: 'scripts/gate.mjs', widenDb: false, why: 'this tier runner' },
+  { pattern: 'scripts/gate-select.mjs', widenDb: false, why: 'test selection' },
+]);
+// quick replaces a file-limited step by its whole-repository form when its own configuration changed.
+export const WIDEN_RULES = Object.freeze({
+  format: ['.prettierrc.json', '.prettierignore', 'package.json', 'pnpm-lock.yaml'],
+  eslint: ['eslint.config.js', 'package.json', 'pnpm-lock.yaml'],
+  unit: ['vitest.config.mts', '**/package.json', 'pnpm-lock.yaml', '.npmrc', '**/tsconfig*.json'],
+});
+// Changes that can alter every TypeScript program: the root and app typechecks all run.
+export const TYPECHECK_ALL = Object.freeze([
+  '**/tsconfig*.json',
+  '**/package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  '.npmrc',
+]);
+// Release tooling exercised only by `pnpm test:deploy` (node --test, outside vitest).
+export const DEPLOY_PATTERNS = Object.freeze([
+  'deploy/**',
+  'scripts/build-api.mjs',
+  'scripts/build-release.mjs',
+  'scripts/verify-release.mjs',
+  'scripts/deploy-plan.mjs',
+]);
+// Basenames too generic for the text-reference rule; their changes are covered by escalation and widening.
+const REFERENCE_IGNORED = new Set(['package.json', 'tsconfig.json', 'README.md', 'index.html', 'LICENSE']);
+const APP_PACKAGES = Object.freeze({ api: '@daifuku/api', web: '@daifuku/web' });
+// Mirror the database-name rules of apps/api/src/db/e2e-fixture.ts and apps/api/test/identity-e2e-database.ts.
+export const E2E_DATABASE_NAME = /^(daifuku_ci_e2e|daifuku_e2e_test(?:_[a-z0-9]+)?)$/;
+export const IDENTITY_DATABASE_NAME = /^daifuku_(?:ci_enterprise_e2e|e2e_test_enterprise(?:_[a-z0-9]+)?)$/;
+// DB suites drop and recreate the database of TEST_DATABASE_URL* (or its schema when schema templates are not used)
+// and keep <db>_tpl_* template databases next to it: only a disposable test database is accepted
+// (daifuku_test, daifuku_ci_test, daifuku_test_<suffix>) unless GATE_ALLOW_DB_URL=1.
+export const TEST_DATABASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?$/;
+// Changed paths printed under the stdout header; a dry-run prints up to MAX_REPORTED_FILES.
+export const CHANGED_FILES_IN_TABLE = 20;
+// After an interruption (or when a step exits and leaves members of its process group running) the group gets
+// SIGTERM, then SIGKILL after this grace period.
+export const STOP_GRACE_MS = 10_000;
+// light: the DB step runs its selected suites in this many vitest processes, each on its own test database
+// (docs/specs/light-tier-speed.md). Shard 1 is the database of TEST_DATABASE_URL*; shard k >= 2 is <db>_shard_<k>.
+export const MAX_DB_SHARDS = 8;
+export const SHARD_INFIX = '_shard_';
+// A shard database must leave room for the schema templates of kernel/src/test-database.ts (<name>_tpl_<16 hex>,
+// 63 characters at most).
+export const SHARD_NAME_LIMIT = 63 - '_tpl_'.length - 16;
+// Seconds assumed for a DB suite that vitest's results cache has not timed yet.
+export const DEFAULT_SUITE_SECONDS = 6;
+// Lines of a failed step's log printed when its output went to a file (parallel light).
+export const FAILURE_TAIL_LINES = 80;
+// vitest "FAIL" lines (failed suites and tests) printed and reported per failed log, at most this many.
+export const MAX_FAILED_TESTS = 20;
+// Seconds per DB suite measured by light's own vitest processes. Several processes (the DB shards and the unit step)
+// write vitest's results cache at their end, each from the copy it read when it started, so the cache keeps only the
+// last writer's updates; light keeps what each of its DB processes measured here and reads it before the cache.
+export const DURATIONS_FILE = '.runtime/gate/durations.json';
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const SYNTHETIC_JWT_SECRET = 'synthetic-local-gate-only-not-for-deployment';
+const PLAYWRIGHT = ['--filter', '@daifuku/web', 'exec', 'playwright', 'test'];
+
+export const GUIDANCE = Object.freeze({
+  testDb:
+    'DB suites drop and recreate the test database they use (or rebuild its schema in place with TEST_DATABASE_TEMPLATE=off) ' +
+    'and keep up to 80 <db>_tpl_* schema template databases on the same server (pnpm test:db:templates lists or drops ' +
+    'them). Export TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
+    'for a dedicated disposable test database (CONTRIBUTING.md, section "型・単体・DB・Web の検証"). With two or more DB ' +
+    'shards (the default of pnpm gate:light on 4+ CPUs) light also creates <db>_shard_2.. with the owner role (CREATEDB) ' +
+    'and recreates them with their own templates; --serial or GATE_DB_SHARDS=1 keeps it on the test database alone, and ' +
+    'pnpm test:db:templates -- --drop removes them. The tier runner never ' +
+    'falls back to the default daifuku_test database. Both URLs must be loopback postgres URLs for the same database ' +
+    'named daifuku_test, daifuku_ci_test or daifuku_test_<suffix>, with separate owner and daifuku_app roles; set ' +
+    'GATE_ALLOW_DB_URL=1 only for another disposable database.',
+  browser:
+    'Browser suites need a prepared empty fixture database and running API/Web (CONTRIBUTING.md, section "ブラウザ試験を新規環境で再現する"): ' +
+    'set DATABASE_URL_OWNER, DATABASE_URL, E2E_PREPARE=1, E2E_INVOICE_DATE, E2E_API_URL and E2E_BASE_URL and start both servers; ' +
+    'or rerun with --provision (loopback PostgreSQL, owner role with CREATEDB); or with --without-browser for a partial run.',
+  identity:
+    'The identity suite needs its own NEW empty database daifuku_e2e_test_enterprise[_suffix]: set GATE_IDENTITY_DATABASE_URL_OWNER ' +
+    'and GATE_IDENTITY_DATABASE_URL (passed to pnpm test:identity:e2e as TEST_DATABASE_URL_* for that step only; CONTRIBUTING.md, ' +
+    'section "認証ブラウザ試験"); or rerun with --provision; or with --without-browser for a partial run.',
+  provision:
+    '--provision creates NEW databases on the server of TEST_DATABASE_URL_OWNER: both TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL ' +
+    'must be loopback postgres URLs on the same server, the owner role needs CREATEDB, and the app role must be daifuku_app.',
+  smoke:
+    '--with-smoke needs E2E_API_URL and E2E_BASE_URL pointing to running servers on a prepared fixture (CONTRIBUTING.md, ' +
+    'section "ブラウザ試験を新規環境で再現する"), or --provision.',
+});
+
+export class GateUsageError extends Error {}
+
+// A step failure that carries fields for the step result (the log of a failed test selection).
+export class StepError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.details = details;
+  }
+}
+
+// ---- small pure helpers ----------------------------------------------------------------------------------------
+
+export function globToRegExp(pattern) {
+  let source = '';
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index];
+    if (char === '*' && pattern[index + 1] === '*') {
+      if (pattern[index + 2] === '/') {
+        source += '(?:.*/)?';
+        index += 2;
+      } else {
+        source += '.*';
+        index += 1;
+      }
+    } else if (char === '*') source += '[^/]*';
+    else source += /[\\^$.|?+()[\]{}]/.test(char) ? `\\${char}` : char;
+  }
+  return new RegExp(`^${source}$`);
+}
+
+export function matchesAny(path, patterns) {
+  return patterns.some((pattern) => globToRegExp(pattern).test(path));
+}
+
+export function matchesRule(path, rule) {
+  return globToRegExp(rule.pattern).test(path) && !matchesAny(path, rule.exclude ?? []);
+}
+
+export function isTestFile(path) {
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
+}
+
+function isUnderPackageRoot(path) {
+  return /^(kernel|modules|l10n|packs|apps)\//.test(path);
+}
+
+// Deleted files that other code may still import: module sources and data, but not tests or documentation.
+export function isDeletedSource(change) {
+  if (!change.deleted || isTestFile(change.path) || change.path.startsWith('docs/')) return false;
+  return MODULE_EXTENSIONS.has(extname(change.path)) || ['.json', '.sql'].includes(extname(change.path));
+}
+
+export function quoteArg(arg) {
+  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`;
+}
+
+export function commandText(command) {
+  if (!command) return '';
+  return [command.program, ...command.args].map(quoteArg).join(' ');
+}
+
+// Table form: file arguments collapse to a count; the JSON report keeps the full command.
+export function commandSummary(command) {
+  if (!command) return '';
+  const files = command.args.filter((arg) => arg.startsWith('./') || arg.startsWith('/'));
+  if (files.length <= 1) return commandText(command);
+  const rest = command.args.filter((arg) => !files.includes(arg));
+  return `${commandText({ program: command.program, args: rest })} <${files.length} files>`;
+}
+
+// ---- base and change set ------------------------------------------------------------------------------------
+
+// Fallback bases tried in order when origin/main is unavailable, each through merge-base with HEAD (a merge-base equal
+// to HEAD is skipped). Then HEAD~1, then HEAD.
+export const BASE_FALLBACK_REFS = Object.freeze(['origin/HEAD', 'main', '@{upstream}']);
+
+export function resolveBase({ explicit, env = {}, git }) {
+  const requested = explicit ?? env.GATE_BASE;
+  const verify = (ref) => {
+    const result = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return result.ok && result.stdout.trim() ? result.stdout.trim() : null;
+  };
+  const mergeBase = (ref) => {
+    const result = git(['merge-base', 'HEAD', ref]);
+    return result.ok && result.stdout.trim() ? result.stdout.trim() : null;
+  };
+  const notes = [];
+  if (requested !== undefined && requested !== '') {
+    const origin = explicit === undefined ? 'GATE_BASE' : '--base';
+    if (requested.startsWith('-')) throw new GateUsageError(`${origin} must name a git commit, not an option.`);
+    const commit = verify(requested);
+    if (!commit) throw new GateUsageError(`${origin} ${requested} is not a commit in this repository.`);
+    return { ref: requested, commit, source: explicit === undefined ? 'env' : 'option', fallback: false, notes };
+  }
+  const head = verify('HEAD');
+  if (!head) {
+    notes.push('HEAD has no commit yet; only staged and untracked files are considered.');
+    return { ref: null, commit: null, source: 'none', fallback: true, notes };
+  }
+  if (verify('origin/main')) {
+    const commit = mergeBase('origin/main');
+    if (commit) return { ref: 'origin/main', commit, source: 'merge-base', fallback: false, notes };
+    notes.push('merge-base(HEAD, origin/main) is unavailable (shallow or unrelated history).');
+  } else notes.push('origin/main is not available.');
+  for (const ref of BASE_FALLBACK_REFS) {
+    if (!verify(ref)) continue;
+    const commit = mergeBase(ref);
+    // A fallback whose merge-base is HEAD itself (e.g. local main while on main) cannot show any commit.
+    if (commit && commit !== head) {
+      notes.push(`Using merge-base(HEAD, ${ref}) instead; pass --base <ref> if the branch started elsewhere.`);
+      return { ref, commit, source: 'merge-base', fallback: true, notes };
+    }
+  }
+  const parent = verify('HEAD~1');
+  if (parent) {
+    notes.push(`No ${BASE_FALLBACK_REFS.join(', ')} merge-base either; falling back to HEAD~1 (only the last commit).`);
+    return { ref: 'HEAD~1', commit: parent, source: 'parent', fallback: true, notes };
+  }
+  notes.push('HEAD has no parent in this clone; only uncommitted changes are considered.');
+  return { ref: 'HEAD', commit: head, source: 'head', fallback: true, notes };
+}
+
+// Union of committed (base..HEAD), staged, unstaged and untracked paths. NUL-separated output keeps spaces and
+// non-ASCII names intact; --no-renames reports a rename as a deletion plus an addition. A path counts as deleted
+// when it no longer exists in the working tree, whichever source reported it.
+export function collectChangeSet({ base, git, exists }) {
+  const read = (args) => {
+    const result = git(args);
+    if (!result.ok) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim() || 'unknown error'}`);
+    return result.stdout.split('\0').filter(Boolean);
+  };
+  const lists = [];
+  if (base.commit && base.source !== 'head')
+    lists.push(read(['diff', '--name-only', '--no-renames', '-z', base.commit, 'HEAD', '--']));
+  if (base.commit) lists.push(read(['diff', '--name-only', '--no-renames', '-z', '--cached', '--']));
+  else lists.push(read(['ls-files', '--cached', '-z']));
+  lists.push(read(['diff', '--name-only', '--no-renames', '-z', '--']));
+  lists.push(read(['ls-files', '--others', '--exclude-standard', '-z']));
+  return [...new Set(lists.flat())].sort().map((path) => ({ path, deleted: !exists(path) }));
+}
+
+// ---- workspace packages ----------------------------------------------------------------------------------------
+
+export function parseWorkspacePatterns(yaml) {
+  return yaml
+    .split('\n')
+    .map((line) => /^\s*-\s*['"]?([^'"#\s]+)['"]?\s*(?:#.*)?$/.exec(line)?.[1])
+    .filter(Boolean);
+}
+
+export function loadWorkspacePackages(root = ROOT) {
+  const packages = [];
+  for (const pattern of parseWorkspacePatterns(readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8'))) {
+    const dirs = pattern.endsWith('/*')
+      ? readdirSync(join(root, pattern.slice(0, -2)), { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => `${pattern.slice(0, -2)}/${entry.name}`)
+      : [pattern];
+    for (const dir of dirs) {
+      const manifest = join(root, dir, 'package.json');
+      if (!existsSync(manifest)) continue;
+      const json = JSON.parse(readFileSync(manifest, 'utf8'));
+      const dependencies = Object.keys({ ...json.dependencies, ...json.devDependencies, ...json.peerDependencies });
+      packages.push({ dir, name: json.name, dependencies });
+    }
+  }
+  const names = new Set(packages.map((pkg) => pkg.name));
+  return packages.map((pkg) => ({ ...pkg, dependencies: pkg.dependencies.filter((name) => names.has(name)) }));
+}
+
+// Directories of a workspace package and every workspace package it depends on, transitively.
+export function workspaceClosure(name, packages) {
+  const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
+  const seen = new Set();
+  const queue = [name];
+  while (queue.length) {
+    const current = queue.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const dependency of byName.get(current)?.dependencies ?? []) queue.push(dependency);
+  }
+  return packages.filter((pkg) => seen.has(pkg.name)).map((pkg) => pkg.dir);
+}
+
+export function packageOf(path, packages) {
+  let best = null;
+  for (const pkg of packages)
+    if (path.startsWith(`${pkg.dir}/`) && (!best || pkg.dir.length > best.dir.length)) best = pkg;
+  return best;
+}
+
+// ---- classification and escalation -------------------------------------------------------------------------------
+
+export function classifyChanges(changes, packages = []) {
+  const all = changes.map((change) => change.path);
+  const present = changes.filter((change) => !change.deleted).map((change) => change.path);
+  const deletedSources = changes.filter(isDeletedSource).map((change) => change.path);
+  const typeRelevant = (path) => MODULE_EXTENSIONS.has(extname(path)) || extname(path) === '.json';
+  const everyProgram = all.some((path) => matchesAny(path, TYPECHECK_ALL));
+  // apps/api and apps/web typecheck their own test/ and e2e/ directories against the workspace packages they import,
+  // which the root typecheck does not include: a change in any of those packages can break them.
+  const inApp = (app) => {
+    const name = APP_PACKAGES[app];
+    const dirs = packages.some((pkg) => pkg.name === name) ? workspaceClosure(name, packages) : [`apps/${app}`];
+    return everyProgram || all.some((path) => typeRelevant(path) && dirs.some((dir) => path.startsWith(`${dir}/`)));
+  };
+  const widen = (rule) => all.filter((path) => matchesAny(path, WIDEN_RULES[rule]));
+  return {
+    all,
+    present,
+    deleted: changes.filter((change) => change.deleted).map((change) => change.path),
+    deletedSources,
+    formattable: present.filter((path) => FORMAT_EXTENSIONS.has(extname(path))),
+    lintable: present.filter((path) => LINT_EXTENSIONS.has(extname(path))),
+    markdown: all.filter((path) => extname(path) === '.md'),
+    typecheck: everyProgram || all.some(typeRelevant),
+    boundaries: all.some(
+      (path) =>
+        (isUnderPackageRoot(path) && MODULE_EXTENSIONS.has(extname(path))) ||
+        path === '.dependency-cruiser.cjs' ||
+        path.endsWith('package.json'),
+    ),
+    apps: { api: inApp('api'), web: inApp('web') },
+    browserSpecs: all.filter((path) => path.startsWith('apps/web/e2e/')),
+    deploy: all.filter((path) => matchesAny(path, DEPLOY_PATTERNS)),
+    widen: { format: widen('format'), eslint: widen('eslint'), unit: [...widen('unit'), ...deletedSources] },
+    packages: [...new Set(all.map((path) => packageOf(path, packages)?.name).filter(Boolean))].sort(),
+  };
+}
+
+export function detectEscalation(changes, rules = ESCALATION_RULES) {
+  const reasons = [];
+  for (const change of changes) {
+    const rule = rules.find((candidate) => matchesRule(change.path, candidate));
+    if (rule) reasons.push({ path: change.path, rule: rule.pattern, why: rule.why, widenDb: Boolean(rule.widenDb) });
+    else if (isDeletedSource(change))
+      reasons.push({
+        path: change.path,
+        rule: 'deleted-source',
+        why: 'a deleted source cannot be followed by module-graph selection',
+        widenDb: true,
+      });
+  }
+  return { required: reasons.length > 0, widenDb: reasons.some((reason) => reason.widenDb), reasons };
+}
+
+// ---- selection rules applied on top of the vitest module graph (used by scripts/gate-select.mjs) ----------------
+
+// Changed files outside the module graph (data, docs, subprocess scripts) that tests may read or execute by name.
+export function referenceTriggers(paths) {
+  return paths.filter(
+    (path) =>
+      (!MODULE_EXTENSIONS.has(extname(path)) || /^(scripts|deploy|verification)\//.test(path)) &&
+      !REFERENCE_IGNORED.has(basename(path)),
+  );
+}
+
+export function selectByReference(triggers, specFiles, readText) {
+  const names = [...new Set(triggers.map((path) => basename(path)))];
+  if (!names.length) return [];
+  return specFiles.filter((file) => {
+    const text = readText(file);
+    return names.some((name) => text.includes(name));
+  });
+}
+
+// A changed non-module file inside a test directory (golden data, fixtures) selects every spec in that directory.
+export function selectByTestDirectory(paths, specFiles) {
+  const directories = paths
+    .filter((path) => !MODULE_EXTENSIONS.has(extname(path)))
+    .map((path) => /^(.*?\/)?(test|e2e)\//.exec(path)?.[0])
+    .filter(Boolean);
+  return specFiles.filter((file) => directories.some((directory) => file.startsWith(directory)));
+}
+
+// A test that starts a child process runs code its own module graph does not show (an entry file executed with tsx or
+// node, a script that bundles sources with esbuild).
+export function spawnsProcesses(text) {
+  return /\bfrom\s+['"](?:node:)?child_process['"]/.test(text);
+}
+
+// Scope of a path for the subprocess rule: its workspace package, else its top-level directory (scripts/, deploy/).
+export function scopeOf(path, packages) {
+  const pkg = packageOf(path, packages);
+  if (pkg) return pkg.dir;
+  const slash = path.indexOf('/');
+  return slash > 0 ? path.slice(0, slash) : null;
+}
+
+// Rule 1 for spawning tests: any change inside the test's own scope selects it, because a subprocess may reach that
+// file by a path built at run time or through a bundler entry string (apps/edge/scripts/build.mjs -> src/main.ts).
+export function selectBySubprocessScope(paths, spawningSpecs, packages) {
+  return spawningSpecs.filter((spec) => {
+    const scope = scopeOf(spec, packages);
+    return scope !== null && paths.some((path) => path.startsWith(`${scope}/`));
+  });
+}
+
+// Rule 2 for spawning tests: module files named by a literal in the test and inside its scope are subprocess entry
+// points (fixtures/stdio-entry.ts, ./fixtures/catalog.ts, scripts/build.mjs). gate-select follows each entry's import
+// graph so a change in another package that the entry imports (apps/mcp/src/main.ts -> modules) selects the test.
+// A literal is resolved against the test's directory, the scope root and the repository root.
+export function subprocessEntries(spec, text, scope, exists) {
+  if (!scope) return [];
+  const entries = new Set();
+  for (const match of text.matchAll(/['"`]((?:\.{1,2}\/)*[\w@-][\w./@-]*\.[cm]?[jt]sx?)['"`]/g)) {
+    const literal = match[1];
+    for (const candidate of [
+      posix.join(posix.dirname(spec), literal),
+      posix.join(scope, literal),
+      posix.normalize(literal),
+    ]) {
+      if (candidate === spec || !candidate.startsWith(`${scope}/`)) continue;
+      if (/(^|\/)(node_modules|dist|\.runtime)\//.test(candidate) || !MODULE_EXTENSIONS.has(extname(candidate)))
+        continue;
+      if (exists(candidate)) entries.add(candidate);
+    }
+  }
+  return [...entries].sort();
+}
+
+// ---- light: migration/setup suites (docs/specs/db-test-startup.md AC-8..AC-10) ------------------------------------
+// DB suites that build their schema by running the committed migrations (the apps/api migration, upgrade and
+// industry-template suites) check the migration files, the registry-to-migration sync, the legacy fixtures and the
+// setup/seed code next to them. Every module change selects them through the module graph (they import every module),
+// so light runs them only when the change set can alter what they check and otherwise defers them to full, saying so.
+// Escalated changes (kernel, apps/api/drizzle, apps/api/src/db, ...) still run every DB suite. full and `pnpm gate`
+// always run them. A suite is one of them when it, or a helper next to it that it imports (`./legacy-fixture.ts`),
+// calls runMigrations(.
+export function buildsSchemaFromMigrations(text, readSibling = () => '') {
+  const migrates = (source) => /\brunMigrations\s*\(/.test(source);
+  if (migrates(text)) return true;
+  for (const match of text.matchAll(/\bfrom\s+['"](\.\/[\w.-]+\.[cm]?[jt]sx?)['"]/g))
+    if (migrates(readSibling(match[1]))) return true;
+  return false;
+}
+
+// Source text that changes the registry DDL: entity and document declarations, packs and direct ext registrations
+// (ext fields, equality indexes) and kernel system tables.
+export function declaresSchema(text) {
+  return /\b(?:defineEntity|defineDocument|definePack|registerExt|registerSystemTable)\s*\(/.test(text);
+}
+
+// Splits graph-selected migration/setup suites into kept and deferred ones. A suite is kept when a changed path
+// declares schema (`declaring`), is imported by a schema declaration of its own package (`reached`: enum values and
+// field lists kept in services files), or lies inside the suite's own workspace package (its fixtures, setup code and
+// the suite itself). Suites selected by another rule as well (reference, directory, setup, subprocess, always; listed in
+// `reasons` when a file has more than one) are kept.
+export function deferSchemaSuites(selected, { changed, declaring = [], reached = [], schemaSuites, packages = [] }) {
+  const kept = [];
+  const deferred = [];
+  const reasons = [];
+  for (const entry of selected) {
+    const onlyGraph = (entry.reasons ?? [entry.via]).every((reason) => reason === 'graph');
+    if (!onlyGraph || !schemaSuites.has(entry.file)) {
+      kept.push(entry);
+      continue;
+    }
+    const scope = scopeOf(entry.file, packages);
+    const declared = changed.find((path) => declaring.includes(path));
+    const imported = changed.find((path) => reached.includes(path));
+    const local = scope ? changed.find((path) => path.startsWith(`${scope}/`)) : undefined;
+    const reason = declared
+      ? { path: declared, why: 'declares entities, pack ext fields or system tables' }
+      : imported
+        ? { path: imported, why: 'imported by a schema declaration of its package' }
+        : local
+          ? { path: local, why: `inside ${scope}, the package of the migration/setup suites` }
+          : null;
+    if (reason) {
+      kept.push(entry);
+      if (!reasons.some((known) => known.path === reason.path)) reasons.push(reason);
+    } else deferred.push({ file: entry.file, reason: 'no schema-relevant change; run by full and pnpm test:db' });
+  }
+  return { selected: kept, deferred, reasons };
+}
+
+// A vitest setupFile runs before the suites of its project but is not part of any suite's module graph. When a
+// changed source is in the setup file's import graph, the suites it names are selected (every suite of the project when
+// it names none). apps/api/test/payroll-provider-setup.ts imports @daifuku/l10n-jp for the two fiscal suites.
+export function setupFileTargets(text, specFiles) {
+  const named = [...text.matchAll(/['"`]\/?([\w./@-]+\.(?:test|spec)\.[cm]?[jt]sx?)['"`]/g)].map((match) => match[1]);
+  const targets = specFiles.filter((file) => named.some((name) => file === name || file.endsWith(`/${name}`)));
+  return named.length && targets.length ? targets : [...specFiles];
+}
+
+// ---- planning ----------------------------------------------------------------------------------------------------
+
+export function parseGateScript(script) {
+  const parts = script.split('&&').map((part) => part.trim());
+  const names = parts.map((part) => /^pnpm (?:run )?([\w:-]+)$/.exec(part)?.[1]);
+  return names.every(Boolean) ? names : null;
+}
+
+const GATE_STEP_IDS = Object.freeze({
+  'format:check': 'format',
+  typecheck: 'typecheck',
+  lint: 'lint',
+  test: 'unit',
+  'test:db': 'db',
+  'test:deploy': 'deploy',
+  'docs:check': 'docs',
+  'verify:assurance': 'assurance',
+});
+
+function step(id, command, extra = {}) {
+  return { id, command, env: {}, selection: null, skip: null, blocked: null, special: null, note: null, ...extra };
+}
+const pnpm = (...args) => ({ program: 'pnpm', args });
+const skipped = (id, reason, result = 'skipped') => step(id, null, { skip: { result, reason } });
+
+function fileStep(id, files, fileArgs, wholeCommand) {
+  if (!files.length) return skipped(id, 'no matching changed file', 'no-target');
+  if (files.length > FILE_ARGUMENT_LIMIT)
+    return step(id, wholeCommand, { note: `${files.length} files exceed ${FILE_ARGUMENT_LIMIT}; whole repository` });
+  return step(id, pnpm(...fileArgs(files.map((file) => `./${file}`))), { selected: { files: files.length } });
+}
+
+function assuranceStep(base) {
+  return base.commit
+    ? step('assurance', { program: 'node', args: ['scripts/check-assurance.mjs', '--changed', base.commit] })
+    : step('assurance', pnpm('verify:assurance'));
+}
+
+function appTypechecks(cls, always = false) {
+  return Object.entries(APP_PACKAGES).map(([app, name]) =>
+    always || cls.apps[app]
+      ? step(`typecheck:${app}`, pnpm('--filter', name, 'typecheck'))
+      : skipped(`typecheck:${app}`, `apps/${app} and the workspace packages it imports unchanged`),
+  );
+}
+
+function planQuick({ cls, base }) {
+  if (!cls.all.length) return [];
+  const steps = [];
+  if (cls.widen.format.length)
+    steps.push(step('format', pnpm('format:check'), { note: `widened by ${cls.widen.format.join(', ')}` }));
+  else
+    steps.push(
+      fileStep('format', cls.formattable, (files) => ['exec', 'prettier', '--check', ...files], pnpm('format:check')),
+    );
+  steps.push(step('docs', pnpm('docs:check')), assuranceStep(base));
+  if (cls.widen.eslint.length)
+    steps.push(step('eslint', pnpm('exec', 'eslint', '.'), { note: `widened by ${cls.widen.eslint.join(', ')}` }));
+  else
+    steps.push(
+      fileStep(
+        'eslint',
+        cls.lintable,
+        (files) => ['exec', 'eslint', '--no-warn-ignored', ...files],
+        pnpm('exec', 'eslint', '.'),
+      ),
+    );
+  steps.push(
+    cls.boundaries
+      ? step('boundaries', pnpm('lint:boundaries'))
+      : skipped('boundaries', 'no change under kernel/modules/l10n/packs/apps'),
+    cls.typecheck ? step('typecheck', pnpm('typecheck')) : skipped('typecheck', 'no TypeScript-relevant change'),
+    ...appTypechecks(cls),
+  );
+  steps.push(
+    cls.widen.unit.length
+      ? step('unit', pnpm('test'), { note: `widened to every unit test by ${cls.widen.unit.join(', ')}` })
+      : step('unit', null, { selection: { project: 'unit', sources: cls.present, triggers: cls.all, extra: [] } }),
+  );
+  steps.push(
+    cls.deploy.length
+      ? step('deploy', pnpm('test:deploy'), { note: `release tooling changed: ${cls.deploy.join(', ')}` })
+      : skipped('deploy', 'no deploy/ or release script change'),
+  );
+  return steps;
+}
+
+// `deferSchemaSuites` is off with GATE_DEFER_SCHEMA_SUITES=0 (docs/specs/db-test-startup.md, open question on the
+// deferral). With more than one shard the escalated step lists every DB suite of the project (what `pnpm test:db`
+// runs) so that they can be split; with one shard it stays `pnpm test:db`.
+function dbStep(cls, escalation, deferSchemaSuites = true, shards = 1) {
+  const sharded = shards > 1 ? { shards } : {};
+  if (escalation.widenDb && shards <= 1)
+    return step('db', pnpm('test:db'), { note: 'escalated: every DB suite (see escalation reasons)' });
+  if (escalation.widenDb)
+    return step('db', null, {
+      ...sharded,
+      selection: { project: 'db', all: true, sources: [], triggers: [], extra: [...ALWAYS_DB_SUITES] },
+      note: 'escalated: every DB suite (see escalation reasons)',
+    });
+  return step('db', null, {
+    ...sharded,
+    selection: {
+      project: 'db',
+      sources: cls.present,
+      triggers: cls.all,
+      extra: [...ALWAYS_DB_SUITES],
+      ...(deferSchemaSuites ? { deferSchemaSuites: true } : {}),
+    },
+  });
+}
+
+function smokeSteps(options) {
+  const steps = [];
+  if (options.provision)
+    steps.push(step('build:api', pnpm('build:api')), step('browser:prepare', null, { special: 'browser:prepare' }));
+  steps.push(
+    step('smoke', pnpm(...PLAYWRIGHT, '--grep', '@smoke', ...options.playwrightArgs), {
+      special: 'smoke',
+      note: 'Playwright also runs the industry dependency project',
+    }),
+  );
+  return steps;
+}
+
+// With `options.parallel` the static steps form one lane that runs in plan order and the DB step forms another; the two
+// lanes run side by side and the smoke steps wait for both (docs/specs/light-tier-speed.md). Without it (--serial, or
+// a caller that does not ask) every step runs alone in plan order, as before. `options.dbShards` (default 1) splits the
+// DB step over that many test databases.
+function planLight({ cls, base, escalation, options }) {
+  const shards = Math.max(1, options.dbShards ?? 1);
+  const steps = [
+    step('format', pnpm('format:check')),
+    step('docs', pnpm('docs:check')),
+    assuranceStep(base),
+    step('typecheck', pnpm('typecheck')),
+    ...appTypechecks(cls, true),
+    step('lint', pnpm('lint')),
+    step('unit', pnpm('test')),
+    dbStep(cls, escalation, options.deferSchemaSuites !== false, shards),
+    step('deploy', pnpm('test:deploy')),
+  ];
+  const laned = options.parallel ? steps.map((item) => ({ ...item, lane: item.id === 'db' ? 'db' : 'static' })) : steps;
+  if (options.withSmoke) laned.push(...smokeSteps(options));
+  return laned;
+}
+
+function planFull({ options, gateScripts }) {
+  const gate = gateScripts
+    ? gateScripts.map((name) => step(GATE_STEP_IDS[name] ?? name, pnpm(name)))
+    : [step('gate', pnpm('gate'), { note: 'package.json gate script is not a plain pnpm chain; run as a whole' })];
+  const steps = [
+    ...gate,
+    step('typecheck:api', pnpm('--filter', APP_PACKAGES.api, 'typecheck')),
+    step('build:api', pnpm('build:api')),
+    step('build:edge', pnpm('--filter', '@daifuku/edge', 'build')),
+    step('typecheck:web', pnpm('--filter', APP_PACKAGES.web, 'typecheck')),
+    step('build:web', pnpm('--filter', APP_PACKAGES.web, 'build')),
+  ];
+  if (options.withoutBrowser)
+    steps.push(
+      skipped('browser', '--without-browser (partial run)'),
+      skipped('identity', '--without-browser (partial run)'),
+    );
+  else {
+    if (options.provision) steps.push(step('browser:prepare', null, { special: 'browser:prepare' }));
+    steps.push(
+      step('browser', pnpm(...PLAYWRIGHT, '--reporter=list', ...options.playwrightArgs), { special: 'browser' }),
+      step('identity', pnpm('test:identity:e2e'), { special: 'identity' }),
+    );
+  }
+  return steps;
+}
+
+export function planSteps({ tier, cls, base, escalation, options, gateScripts = null }) {
+  if (tier === 'quick') return planQuick({ cls, base });
+  if (tier === 'light') return planLight({ cls, base, escalation, options });
+  return planFull({ options, gateScripts });
+}
+
+// ---- light concurrency (docs/specs/light-tier-speed.md) ---------------------------------------------------------
+
+// DB shards when nothing is asked for: two on a machine with four or more CPUs (the static lane and two DB processes
+// share it), else one.
+export function defaultDbShards(cpus) {
+  return cpus >= 4 ? 2 : 1;
+}
+
+// Concurrency of one run: --serial / GATE_PARALLEL=0 run every step alone (the A1/A3 behaviour, one DB process);
+// --db-shards / GATE_DB_SHARDS choose the DB processes (1..MAX_DB_SHARDS). Only light runs concurrently; quick and full
+// keep their order and one DB process.
+export function resolveConcurrency({ tier, serial = false, dbShards }, env = {}, cpus = 1) {
+  const notes = [];
+  if (tier !== 'light') return { parallel: false, dbShards: 1, notes };
+  const parse = (value, origin) => {
+    if (!/^[1-9]\d*$/.test(String(value)) || Number(value) > MAX_DB_SHARDS)
+      throw new GateUsageError(`${origin} must be a whole number from 1 to ${MAX_DB_SHARDS}.`);
+    return Number(value);
+  };
+  if (env.GATE_PARALLEL !== undefined && !['', '0', '1'].includes(env.GATE_PARALLEL))
+    throw new GateUsageError('GATE_PARALLEL must be 0 or 1.');
+  const envSerial = env.GATE_PARALLEL === '0';
+  if (serial || envSerial) {
+    if (dbShards !== undefined) throw new GateUsageError('--db-shards cannot be combined with --serial.');
+    notes.push(serial ? '--serial: one step at a time, one DB process' : 'GATE_PARALLEL=0: one step at a time');
+    return { parallel: false, dbShards: 1, notes };
+  }
+  let shards = defaultDbShards(cpus);
+  if (dbShards !== undefined) shards = parse(dbShards, '--db-shards');
+  else if (env.GATE_DB_SHARDS) shards = parse(env.GATE_DB_SHARDS, 'GATE_DB_SHARDS');
+  else notes.push(`${shards} DB shard${shards === 1 ? '' : 's'} by default on ${cpus} CPUs`);
+  return { parallel: true, dbShards: shards, notes };
+}
+
+// Database of shard `index` (1-based): shard 1 is the configured test database itself.
+export function shardDatabaseName(database, index) {
+  return index === 1 ? database : `${database}${SHARD_INFIX}${index}`;
+}
+
+// The test databases of `count` shards, derived from TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL. A derived name never
+// passes TEST_DATABASE_NAME itself (two suffixes), so no other checkout can use a shard database as its own test
+// database. Without a daifuku_test[_suffix] / daifuku_ci_test base name (GATE_ALLOW_DB_URL=1) or with a name too long
+// for the shard's schema templates, the step keeps one shard and says why.
+export function shardDatabases(env, count) {
+  let owner;
+  let app;
+  try {
+    owner = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+    app = new URL(env.TEST_DATABASE_URL ?? '');
+  } catch {
+    return { shards: [], reason: 'TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL are not URLs' };
+  }
+  const database = decodeURIComponent(owner.pathname.slice(1));
+  const shards = [];
+  for (let index = 1; index <= count; index++) {
+    const name = shardDatabaseName(database, index);
+    shards.push({ index, database: name, ownerUrl: databaseUrl(owner, name), appUrl: databaseUrl(app, name) });
+  }
+  if (count <= 1) return { shards, reason: null };
+  if (!TEST_DATABASE_NAME.test(database))
+    return {
+      shards: shards.slice(0, 1),
+      reason: `shard databases are derived only from daifuku_test[_suffix] or daifuku_ci_test, not ${database}`,
+    };
+  const long = shards.find((shard) => shard.database.length > SHARD_NAME_LIMIT);
+  if (long)
+    return {
+      shards: shards.slice(0, 1),
+      reason: `${long.database} leaves no room for schema template names (${SHARD_NAME_LIMIT} characters at most)`,
+    };
+  return { shards, reason: null };
+}
+
+// Seconds per DB suite from vitest's own results cache (node_modules/.vite/vitest/*/results.json, keys
+// "<project>:<path>"), which every vitest run updates. Unreadable caches are ignored: balancing then assumes
+// DEFAULT_SUITE_SECONDS.
+export function parseSuiteDurations(texts, project = 'db') {
+  const durations = new Map();
+  for (const text of texts) {
+    let results;
+    try {
+      results = JSON.parse(text).results;
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(results)) continue;
+    for (const entry of results) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
+      const separator = entry[0].indexOf(':');
+      const duration = Number(entry[1]?.duration);
+      if (entry[0].slice(0, separator) !== project || !Number.isFinite(duration) || duration < 0) continue;
+      durations.set(entry[0].slice(separator + 1), duration / 1000);
+    }
+  }
+  return durations;
+}
+
+function readCacheDurations(root, project) {
+  const directory = join(root, 'node_modules/.vite/vitest');
+  const texts = [];
+  try {
+    for (const entry of readdirSync(directory, { withFileTypes: true }))
+      if (entry.isDirectory() && existsSync(join(directory, entry.name, 'results.json')))
+        texts.push(readFileSync(join(directory, entry.name, 'results.json'), 'utf8'));
+  } catch {
+    /* no cache yet */
+  }
+  return parseSuiteDurations(texts, project);
+}
+
+// Light's own durations (DURATIONS_FILE): { schema: 1, <project>: { <path>: seconds } }. Unreadable files are ignored.
+export function parseGateDurations(text, project = 'db') {
+  const durations = new Map();
+  let entries;
+  try {
+    entries = JSON.parse(text)?.[project];
+  } catch {
+    return durations;
+  }
+  if (!entries || typeof entries !== 'object') return durations;
+  for (const [path, seconds] of Object.entries(entries))
+    if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0) durations.set(path, seconds);
+  return durations;
+}
+
+function readTextOrEmpty(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// Seconds per suite for balancing: vitest's results cache, overlaid by what light's own DB processes measured.
+export function readSuiteDurations(root = ROOT, project = 'db') {
+  const durations = readCacheDurations(root, project);
+  for (const [path, seconds] of parseGateDurations(readTextOrEmpty(join(root, DURATIONS_FILE)), project))
+    durations.set(path, seconds);
+  return durations;
+}
+
+// The durations of `files` in vitest's results cache right after a process that ran them exited (what it wrote).
+export function captureSuiteDurations(files, root = ROOT, project = 'db') {
+  const cache = readCacheDurations(root, project);
+  return new Map(files.filter((file) => cache.has(file)).map((file) => [file, cache.get(file)]));
+}
+
+// Merges measured durations into DURATIONS_FILE. A failure to write only leaves the estimates older.
+export function recordSuiteDurations(measured, root = ROOT, project = 'db') {
+  if (!measured.size) return;
+  const file = join(root, DURATIONS_FILE);
+  let store = {};
+  try {
+    const parsed = JSON.parse(readTextOrEmpty(file) || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) store = parsed;
+  } catch {
+    /* rewritten below */
+  }
+  const entries = Object.fromEntries(parseGateDurations(JSON.stringify(store), project));
+  for (const [path, seconds] of measured) entries[path] = Math.round(seconds * 1000) / 1000;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `${JSON.stringify({ ...store, schema: 1, [project]: entries }, null, 2)}\n`);
+  } catch {
+    /* estimates stay as they were */
+  }
+}
+
+// Splits the selected files over `count` shards, longest suite first onto the least loaded shard (ties: lower index,
+// then file name), so that every file runs exactly once. Unknown suites count as the median known duration (or
+// DEFAULT_SUITE_SECONDS). Empty shards are dropped.
+export function partitionShards(files, durations, count) {
+  const known = files.map((file) => durations.get(file)).filter((value) => value !== undefined);
+  const sorted = [...known].sort((a, b) => a - b);
+  const fallback = sorted.length ? sorted[Math.floor(sorted.length / 2)] : DEFAULT_SUITE_SECONDS;
+  const estimate = (file) => durations.get(file) ?? fallback;
+  const shards = Array.from({ length: Math.max(1, Math.min(count, files.length)) }, () => ({ files: [], seconds: 0 }));
+  const order = [...files].sort((a, b) => estimate(b) - estimate(a) || a.localeCompare(b));
+  for (const file of order) {
+    let target = shards[0];
+    for (const shard of shards) if (shard.seconds < target.seconds) target = shard;
+    target.files.push(file);
+    target.seconds += estimate(file);
+  }
+  return shards
+    .filter((shard) => shard.files.length)
+    .map((shard) => ({ files: shard.files.sort(), estimate: Math.round(shard.seconds * 10) / 10 }));
+}
+
+// The shard plan of a resolved DB step: which files run on which database. `available` is the list of shard databases
+// that can be used (shardDatabases, after creating the missing ones); fewer files than shards use fewer shards.
+export function planShards(item, durations, available) {
+  const files = item.selectedFiles ?? [];
+  const parts = partitionShards(files, durations, Math.min(item.shards ?? 1, available.length));
+  return parts.map((part, position) => ({ ...available[position], files: part.files, estimate: part.estimate }));
+}
+
+// Lanes of a plan: consecutive steps that carry a lane run side by side (one lane = one sequence in plan order); a
+// step without a lane runs alone after everything before it.
+export function planPhases(steps) {
+  const phases = [];
+  steps.forEach((item, index) => {
+    const last = phases.at(-1);
+    if (item.lane && last?.laned) last.entries.push({ index, item });
+    else phases.push({ laned: Boolean(item.lane), entries: [{ index, item }] });
+  });
+  return phases.map((phase) => {
+    const lanes = new Map();
+    for (const entry of phase.entries) {
+      const key = entry.item.lane ?? `#${entry.index}`;
+      if (!lanes.has(key)) lanes.set(key, []);
+      lanes.get(key).push(entry);
+    }
+    return [...lanes.values()];
+  });
+}
+
+// ---- preflight (prerequisites that would otherwise fail late) ------------------------------------------------------
+
+export function provisionTargets(env) {
+  let owner;
+  let app;
+  try {
+    owner = new URL(env.TEST_DATABASE_URL_OWNER ?? 'invalid:');
+    app = new URL(env.TEST_DATABASE_URL ?? 'invalid:');
+  } catch {
+    return null;
+  }
+  const valid = [owner, app].every(
+    (url) =>
+      ['postgres:', 'postgresql:'].includes(url.protocol) &&
+      LOOPBACK_HOSTS.has(url.hostname) &&
+      !url.search &&
+      !url.hash &&
+      url.username,
+  );
+  if (!valid || owner.host !== app.host || owner.username === app.username || app.username !== 'daifuku_app')
+    return null;
+  return { owner, app };
+}
+
+// Problems with TEST_DATABASE_URL_OWNER / TEST_DATABASE_URL for the DB suites, which recreate that database.
+export function testDatabaseProblems(env) {
+  if (!env.TEST_DATABASE_URL_OWNER || !env.TEST_DATABASE_URL)
+    return ['TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL must both be set'];
+  if (env.GATE_ALLOW_DB_URL === '1') return [];
+  let owner;
+  let app;
+  try {
+    owner = new URL(env.TEST_DATABASE_URL_OWNER);
+    app = new URL(env.TEST_DATABASE_URL);
+  } catch {
+    return ['TEST_DATABASE_URL_OWNER and TEST_DATABASE_URL must be postgres URLs'];
+  }
+  const problems = [];
+  if (![owner, app].every((url) => ['postgres:', 'postgresql:'].includes(url.protocol)))
+    problems.push('both URLs must use postgres://');
+  if (![owner, app].every((url) => LOOPBACK_HOSTS.has(url.hostname) && !url.search))
+    problems.push('both URLs must point to a loopback host without query overrides');
+  if (owner.host !== app.host) problems.push('both URLs must use the same server');
+  if (owner.pathname !== app.pathname) problems.push('both URLs must name the same database');
+  if (!TEST_DATABASE_NAME.test(decodeURIComponent(owner.pathname.slice(1))))
+    problems.push(
+      `the database ${owner.pathname.slice(1) || '(none)'} is not named daifuku_test[_suffix] or daifuku_ci_test`,
+    );
+  if (!owner.username || owner.username === app.username) problems.push('owner and app must be different roles');
+  if (app.username !== 'daifuku_app') problems.push('the app role must be daifuku_app');
+  return problems;
+}
+
+// The test database, and with `shards` > 1 every shard database light may use, on its server.
+export function testDatabaseLabel(env, shards = 1) {
+  try {
+    const url = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+    const derived = shards > 1 ? shardDatabases(env, shards) : { shards: [], reason: 'one shard' };
+    const names = derived.reason ? [url.pathname.slice(1)] : derived.shards.map((shard) => shard.database);
+    return `${names.join(', ')} on ${url.host}`;
+  } catch {
+    return 'an unparsable TEST_DATABASE_URL_OWNER';
+  }
+}
+
+export function browserPrerequisites(env, reach = {}) {
+  const missing = ['DATABASE_URL_OWNER', 'DATABASE_URL', 'E2E_API_URL', 'E2E_BASE_URL'].filter((name) => !env[name]);
+  if (env.E2E_PREPARE !== '1') missing.push('E2E_PREPARE=1');
+  if (env.E2E_API_URL && !reach.api) missing.push(`reachable ${env.E2E_API_URL}/health`);
+  if (env.E2E_BASE_URL && !reach.web) missing.push(`reachable ${env.E2E_BASE_URL}`);
+  return missing;
+}
+
+// The smoke tests only talk to running servers; the fixture variables are needed by the full browser step only.
+export function smokePrerequisites(env, reach = {}) {
+  const missing = ['E2E_API_URL', 'E2E_BASE_URL'].filter((name) => !env[name]);
+  if (env.E2E_API_URL && !reach.api) missing.push(`reachable ${env.E2E_API_URL}/health`);
+  if (env.E2E_BASE_URL && !reach.web) missing.push(`reachable ${env.E2E_BASE_URL}`);
+  return missing;
+}
+
+export function applyPreflight(steps, { env, options, reach = {} }) {
+  const block = (target, guidance, missing = [], label = 'Missing') => ({
+    ...target,
+    blocked: missing.length ? `${guidance} ${label}: ${missing.join('; ')}.` : guidance,
+  });
+  const provision = options.provision ? provisionTargets(env) : null;
+  return steps.map((item) => {
+    if (item.skip) return item;
+    if (item.id === 'db') {
+      const problems = testDatabaseProblems(env);
+      if (problems.length) return block(item, GUIDANCE.testDb, problems, 'Problems');
+      const recreates = `recreates ${testDatabaseLabel(env, item.shards ?? 1)}`;
+      return { ...item, note: item.note ? `${item.note}; ${recreates}` : recreates };
+    }
+    if (item.special === 'browser:prepare' && !provision) return block(item, GUIDANCE.provision);
+    if (item.special === 'browser' && !options.provision) {
+      const missing = browserPrerequisites(env, reach);
+      return missing.length ? block(item, GUIDANCE.browser, missing) : item;
+    }
+    if (item.special === 'smoke' && !options.provision) {
+      const missing = smokePrerequisites(env, reach);
+      return missing.length ? block(item, GUIDANCE.smoke, missing) : item;
+    }
+    if (item.special === 'identity') {
+      if (options.provision) return provision ? item : block(item, GUIDANCE.provision);
+      if (!env.GATE_IDENTITY_DATABASE_URL_OWNER || !env.GATE_IDENTITY_DATABASE_URL)
+        return block(item, GUIDANCE.identity);
+    }
+    return item;
+  });
+}
+
+// ---- selection results -> commands -------------------------------------------------------------------------------
+
+export function applySelection(item, selection, root = ROOT) {
+  const files = selection.selected.map((entry) => entry.file);
+  const via = {};
+  for (const entry of selection.selected) via[entry.via] = (via[entry.via] ?? 0) + 1;
+  const deferred = selection.deferred ?? [];
+  const selected = { files: files.length, total: selection.total, via };
+  if (deferred.length) selected.deferred = deferred.length;
+  const notes = item.note ? [item.note] : [];
+  if (deferred.length)
+    notes.push(
+      `deferred ${deferred.length} migration/setup suite${deferred.length === 1 ? '' : 's'} to full ` +
+        '(no schema-relevant change; docs/specs/db-test-startup.md)',
+    );
+  const kept = selection.schemaReasons ?? [];
+  if (kept.length)
+    notes.push(
+      `ran the migration/setup suites because ${kept.map((reason) => `${reason.path} ${reason.why}`).join('; ')}`,
+    );
+  const deferral = {
+    ...(deferred.length ? { deferredFiles: deferred.map((entry) => entry.file) } : {}),
+    ...(notes.length > (item.note ? 1 : 0) ? { note: notes.join('; ') } : {}),
+  };
+  if (!files.length)
+    return { ...item, ...deferral, selected, skip: { result: 'no-target', reason: 'no related test file' } };
+  return {
+    ...item,
+    ...deferral,
+    selected,
+    selectedFiles: files,
+    command: pnpm('exec', 'vitest', 'run', '--project', selection.project, ...files.map((file) => join(root, file))),
+  };
+}
+
+// ---- execution ---------------------------------------------------------------------------------------------------
+
+// Runs planned steps in plan order, lane by lane (planPhases): steps of one lane run one after another, lanes of one
+// phase run side by side, and results are reported in plan order. Fail-fast by default: a missing prerequisite fails
+// before anything runs, and after the first failure no further step starts ("not-run") and the steps still running in
+// other lanes are stopped through `cancel(failedId, runningIds)` ("cancelled", unless they pass anyway). --keep-going runs every
+// runnable step and still fails. An interruption (isInterrupted) stops the run under either mode: the steps in
+// progress fail, even when their own error came from selection or fixture preparation, and the rest are "not-run".
+export async function runSteps(
+  steps,
+  {
+    keepGoing = false,
+    execute,
+    prepare = async (item) => item,
+    now = () => 0,
+    isInterrupted = () => false,
+    cancel = () => undefined,
+  },
+) {
+  const firstBlocked = keepGoing ? null : steps.find((item) => item.blocked && !item.skip);
+  if (firstBlocked)
+    return {
+      ok: false,
+      interrupted: false,
+      steps: steps.map((item) => {
+        if (item.skip) return { ...item, result: item.skip.result, seconds: 0, reason: item.skip.reason };
+        if (item.blocked) return { ...item, result: 'failed', seconds: 0, reason: item.blocked };
+        return { ...item, result: 'not-run', seconds: 0, reason: `missing prerequisite for ${firstBlocked.id}` };
+      }),
+    };
+  const results = new Array(steps.length);
+  const t0 = now();
+  const laned = steps.some((item) => item.lane);
+  let failed = false;
+  let stopped = false;
+  // Fail-fast: the first failed step, and the steps that were running elsewhere when it failed.
+  let failure = null;
+  const running = new Set();
+  const cancelled = new Set();
+  const offset = (time) => Math.round((time - t0) * 10) / 10;
+  const runOne = async (index, planned) => {
+    if (planned.skip) {
+      results[index] = { ...planned, result: planned.skip.result, seconds: 0, reason: planned.skip.reason };
+      return;
+    }
+    if (isInterrupted()) stopped = true;
+    if (stopped || (failed && !keepGoing)) {
+      results[index] = {
+        ...planned,
+        result: 'not-run',
+        seconds: 0,
+        reason: stopped ? 'interrupted' : 'an earlier step failed',
+      };
+      return;
+    }
+    if (planned.blocked) {
+      failed = true;
+      results[index] = { ...planned, result: 'failed', seconds: 0, reason: planned.blocked };
+      return;
+    }
+    const started = now();
+    running.add(planned.id);
+    let item = planned;
+    let outcome;
+    try {
+      item = await prepare(planned);
+      outcome = item.skip ? { ok: true, result: item.skip.result, reason: item.skip.reason } : await execute(item);
+    } catch (error) {
+      // A StepError carries what the failed preparation left behind (the selection log).
+      outcome = {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+        ...(error instanceof StepError ? { details: error.details } : {}),
+      };
+    }
+    running.delete(planned.id);
+    if (outcome.interrupted || isInterrupted()) {
+      const reason =
+        outcome.reason && outcome.reason !== 'interrupted' ? `interrupted (${outcome.reason})` : 'interrupted';
+      outcome = { ...outcome, ok: false, interrupted: true, reason, result: undefined };
+    } else if (!outcome.ok && cancelled.has(planned.id))
+      outcome = { ...outcome, result: 'cancelled', reason: `stopped after ${failure} failed` };
+    const seconds = Math.round((now() - started) * 10) / 10;
+    const result = outcome.result ?? (outcome.ok ? 'passed' : 'failed');
+    results[index] = {
+      ...item,
+      ...(outcome.details ?? {}),
+      result,
+      seconds,
+      ...(laned ? { offset: offset(started) } : {}),
+      reason: outcome.reason ?? item.skip?.reason ?? null,
+    };
+    if (!outcome.ok) failed = true;
+    if (outcome.interrupted) stopped = true;
+    if (!outcome.ok && !outcome.interrupted && !keepGoing && failure === null && result !== 'cancelled') {
+      failure = planned.id;
+      for (const id of running) cancelled.add(id);
+      // Every step still running is cancelled, also one between two commands (selection done, shards not started).
+      if (running.size) cancel(planned.id, [...running]);
+    }
+  };
+  for (const lanes of planPhases(steps))
+    await Promise.all(
+      lanes.map(async (entries) => {
+        for (const { index, item } of entries) await runOne(index, item);
+      }),
+    );
+  return { steps: results, ok: !failed && !stopped, interrupted: stopped };
+}
+
+// ---- report ------------------------------------------------------------------------------------------------------
+
+export function buildReport({
+  tier,
+  options,
+  base,
+  head = null,
+  changes,
+  cls,
+  escalation,
+  steps,
+  startedAt,
+  finishedAt,
+  result,
+  provisioned = null,
+  concurrency = null,
+}) {
+  const partialReasons = [];
+  if (options.withoutBrowser) partialReasons.push('--without-browser: browser and identity suites not run');
+  if (options.playwrightArgs?.length)
+    partialReasons.push(`custom Playwright arguments: ${options.playwrightArgs.join(' ')}`);
+  const hints = [];
+  if (cls.browserSpecs.length && tier !== 'full')
+    hints.push('apps/web/e2e changed: run the changed specs with the browser procedure, or pnpm gate:full.');
+  if (escalation.required && tier !== 'full')
+    hints.push('Full regression required before claiming done: run pnpm gate:full.');
+  const deferred = steps.reduce((sum, item) => sum + (item.selected?.deferred ?? 0), 0);
+  if (deferred)
+    hints.push(
+      `light deferred ${deferred} migration/setup DB suite${deferred === 1 ? '' : 's'} (no schema-relevant change); ` +
+        'pnpm gate:full and pnpm test:db run them.',
+    );
+  return {
+    schema: 1,
+    tier,
+    result,
+    dryRun: Boolean(options.dryRun),
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    seconds: Math.round((finishedAt.getTime() - startedAt.getTime()) / 100) / 10,
+    head,
+    base,
+    baseFallback: Boolean(base.fallback),
+    changed: {
+      count: changes.length,
+      deleted: changes.filter((change) => change.deleted).length,
+      files: changes
+        .slice(0, MAX_REPORTED_FILES)
+        .map((change) => (change.deleted ? `${change.path} (deleted)` : change.path)),
+      truncated: changes.length > MAX_REPORTED_FILES,
+    },
+    packages: cls.packages,
+    escalation: {
+      required: escalation.required,
+      widenDb: Boolean(escalation.widenDb),
+      message: escalation.required ? 'includes changes that need full regression' : null,
+      reasons: escalation.reasons,
+    },
+    partial: partialReasons.length > 0,
+    partialReasons,
+    skipped: steps
+      .filter((item) => ['skipped', 'not-run', 'no-target', 'cancelled'].includes(item.result))
+      .map((item) => ({ id: item.id, result: item.result, reason: item.reason ?? item.skip?.reason ?? null })),
+    concurrency: concurrency ?? { parallel: false, dbShards: 1, notes: [] },
+    steps: steps.map((item) => ({
+      id: item.id,
+      result: item.result,
+      seconds: item.seconds ?? 0,
+      lane: item.lane ?? null,
+      offset: item.offset ?? null,
+      selected: item.selected ?? null,
+      deferred: item.deferredFiles ?? [],
+      shards: item.shardResults ?? null,
+      command: commandText(item.command),
+      summary: commandSummary(item.command),
+      log: item.log ?? null,
+      failed: item.failed ?? [],
+      note: item.note ?? null,
+      reason: item.reason ?? item.skip?.reason ?? item.blocked ?? null,
+    })),
+    options: {
+      keepGoing: Boolean(options.keepGoing),
+      withSmoke: Boolean(options.withSmoke),
+      withoutBrowser: Boolean(options.withoutBrowser),
+      provision: Boolean(options.provision),
+      playwrightArgs: options.playwrightArgs ?? [],
+    },
+    provisioned,
+    hints,
+  };
+}
+
+function selectionText(selected) {
+  if (!selected) return '';
+  const unit = selected.files === 1 && selected.total === undefined ? 'file' : 'files';
+  const text = selected.total === undefined ? `${selected.files} ${unit}` : `${selected.files}/${selected.total} files`;
+  return selected.deferred ? `${text} (+${selected.deferred} deferred)` : text;
+}
+
+// Table cells stay one line; the full text (guidance, commands) is printed below the table and kept in the JSON.
+const TABLE_DETAIL_LIMIT = 110;
+function truncate(text) {
+  return text.length > TABLE_DETAIL_LIMIT ? `${text.slice(0, TABLE_DETAIL_LIMIT - 3)}...` : text;
+}
+
+export function formatTable(report) {
+  const base = report.base.commit
+    ? `${report.base.ref}@${report.base.commit.slice(0, 7)} (${report.base.source})`
+    : `${report.base.ref ?? 'none'} (${report.base.source})`;
+  const lines = [
+    `gate:${report.tier}  result=${report.result}  base=${base}  changed=${report.changed.count} (deleted ${report.changed.deleted})  ${report.seconds}s`,
+  ];
+  if (report.baseFallback) lines.push(baseWarning(report.base));
+  for (const note of report.base.notes) lines.push(`  note: ${note}`);
+  const shown = report.changed.files.slice(0, report.dryRun ? MAX_REPORTED_FILES : CHANGED_FILES_IN_TABLE);
+  if (shown.length) {
+    lines.push(`changed files (${report.changed.count}):`, ...shown.map((file) => `  ${file}`));
+    if (report.changed.count > shown.length)
+      lines.push(
+        `  ... ${report.changed.count - shown.length} more (full list in the JSON report, up to ${MAX_REPORTED_FILES})`,
+      );
+  }
+  const timed = (result) => ['passed', 'failed', 'cancelled'].includes(result);
+  const rows = [];
+  for (const item of report.steps) {
+    rows.push([
+      item.id,
+      item.result,
+      timed(item.result) ? item.seconds.toFixed(1) : '-',
+      selectionText(item.selected),
+      truncate(item.reason && item.result !== 'passed' ? item.reason : item.note || item.summary),
+    ]);
+    // One row per DB shard: its database, files and time (the step's time is the slowest shard's).
+    for (const shard of item.shards ?? [])
+      rows.push([
+        `  ${item.id}[${shard.index}/${item.shards.length}]`,
+        shard.result,
+        timed(shard.result) ? shard.seconds.toFixed(1) : '-',
+        `${shard.files} files`,
+        truncate(`${shard.database}${shard.estimate !== undefined ? `, estimated ${shard.estimate}s` : ''}`),
+      ]);
+  }
+  const header = ['step', 'result', 'seconds', 'selected', 'detail'];
+  const widths = header.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column].length)));
+  const render = (row) =>
+    row
+      .map((cell, column) => (column === row.length - 1 ? cell : cell.padEnd(widths[column])))
+      .join('  ')
+      .trimEnd();
+  lines.push(render(header), ...rows.map(render));
+  const concurrency = report.concurrency;
+  if (concurrency?.parallel) {
+    const lanes = new Map();
+    for (const item of report.steps)
+      if (item.lane && timed(item.result)) lanes.set(item.lane, (lanes.get(item.lane) ?? 0) + item.seconds);
+    const spent = [...lanes].map(([lane, seconds]) => `${lane} ${seconds.toFixed(1)}s`).join(', ');
+    // The shards the DB step used (fewer than asked for with few files or when shard databases were unavailable; the
+    // notes say why), or the number asked for when it did not run.
+    const db = report.steps.find((item) => item.id === 'db' && item.lane);
+    const used = db?.shards?.length || (db && timed(db.result) ? 1 : 0);
+    const shards = used ? `DB shards ${used} of ${concurrency.dbShards}` : `DB shards up to ${concurrency.dbShards}`;
+    lines.push(
+      `concurrency: lanes side by side${spent ? ` (${spent})` : ''}; ${shards}` +
+        (concurrency.notes.length ? `; ${concurrency.notes.join('; ')}` : ''),
+    );
+  } else if (concurrency?.notes.length) lines.push(`concurrency: one step at a time; ${concurrency.notes.join('; ')}`);
+  if (report.escalation.required) {
+    lines.push(`escalation: ${report.escalation.message}`);
+    for (const reason of report.escalation.reasons) lines.push(`  - ${reason.path} [${reason.rule}] ${reason.why}`);
+  }
+  lines.push(`partial: ${report.partial}${report.partial ? ` (${report.partialReasons.join('; ')})` : ''}`);
+  for (const hint of report.hints) lines.push(`hint: ${hint}`);
+  if (report.provisioned?.databases?.length)
+    lines.push(
+      `provisioned databases (left in place; drop them yourself when done): ${report.provisioned.databases.join(', ')}`,
+    );
+  return lines.join('\n');
+}
+
+export function baseWarning(base) {
+  return (
+    `WARNING: the base fell back to ${base.ref ?? 'nothing'} (${base.source}); commits before it are not in the change ` +
+    'set. Pass --base <ref> (or GATE_BASE) to compare with the commit the branch started from.'
+  );
+}
+
+export function reportFileName(tier, startedAt) {
+  return `${startedAt
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z')}-${tier}.json`;
+}
+
+// ---- CLI ---------------------------------------------------------------------------------------------------------
+
+export const USAGE = `Usage: node scripts/gate.mjs --tier quick|light|full [options] [-- <playwright args>]
+  --base <ref>        compare with this commit (default: merge-base with origin/main, else HEAD~1; env GATE_BASE)
+  --keep-going        run every step even after a failure (default: stop at the first failure)
+  --dry-run           show the change set, escalation and planned steps/suites without running checks
+  --with-smoke        light only: also run the @smoke browser tests (needs servers, or --provision)
+  --without-browser   full only: skip browser and identity suites; the report says partial: true
+  --provision         full, or light --with-smoke: create NEW uniquely named empty loopback databases, prepare the
+                      fixtures, start compiled API + Web on free ports, run Playwright, stop only what it started
+  --serial            light only: one step at a time and one DB process, as before light-tier-speed (env
+                      GATE_PARALLEL=0)
+  --db-shards <n>     light only: split the selected DB suites over n test databases, <db> and <db>_shard_2.. (1-8;
+                      default 2 on 4+ CPUs, else 1; env GATE_DB_SHARDS)
+Reports: stdout table and .runtime/gate/<UTC>-<tier>.json; in parallel light each step's output goes to
+.runtime/gate/<UTC>-light/<step>.log. See docs/specs/test-tiers.md and docs/specs/light-tier-speed.md.`;
+
+export function parseCli(argv) {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      strict: true,
+      options: {
+        tier: { type: 'string' },
+        base: { type: 'string' },
+        'keep-going': { type: 'boolean', default: false },
+        'dry-run': { type: 'boolean', default: false },
+        'with-smoke': { type: 'boolean', default: false },
+        'without-browser': { type: 'boolean', default: false },
+        provision: { type: 'boolean', default: false },
+        serial: { type: 'boolean', default: false },
+        'db-shards': { type: 'string' },
+        help: { type: 'boolean', short: 'h', default: false },
+      },
+    });
+  } catch (error) {
+    throw new GateUsageError(error instanceof Error ? error.message : String(error));
+  }
+  const { values, positionals } = parsed;
+  if (values.help) return { help: true };
+  const tier = values.tier;
+  if (!TIERS.includes(tier)) throw new GateUsageError(`--tier must be one of: ${TIERS.join(', ')}`);
+  if (values['with-smoke'] && tier !== 'light')
+    throw new GateUsageError('--with-smoke applies to the light tier only.');
+  if (values['without-browser'] && tier !== 'full')
+    throw new GateUsageError('--without-browser applies to the full tier only.');
+  if (values.provision && values['without-browser'])
+    throw new GateUsageError('--provision and --without-browser cannot be combined.');
+  const browserTier = (tier === 'full' && !values['without-browser']) || (tier === 'light' && values['with-smoke']);
+  if (values.provision && !browserTier)
+    throw new GateUsageError('--provision applies to full, or to light with --with-smoke.');
+  if (positionals.length && !browserTier)
+    throw new GateUsageError('Extra arguments are passed to Playwright and need full or light --with-smoke.');
+  if ((values.serial || values['db-shards'] !== undefined) && tier !== 'light')
+    throw new GateUsageError('--serial and --db-shards apply to the light tier only.');
+  if (values.serial && values['db-shards'] !== undefined)
+    throw new GateUsageError('--db-shards cannot be combined with --serial.');
+  if (values['db-shards'] !== undefined) resolveConcurrency({ tier, dbShards: values['db-shards'] });
+  return {
+    help: false,
+    tier,
+    base: values.base,
+    keepGoing: values['keep-going'],
+    dryRun: values['dry-run'],
+    withSmoke: values['with-smoke'],
+    withoutBrowser: values['without-browser'],
+    provision: values.provision,
+    playwrightArgs: positionals,
+    serial: values.serial,
+    ...(values['db-shards'] !== undefined ? { dbShardsOption: values['db-shards'] } : {}),
+  };
+}
+
+// ---- runner (process work) -----------------------------------------------------------------------------------------
+
+export function gitRunner(cwd = ROOT) {
+  return (args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return { ok: result.status === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  };
+}
+
+function pathExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function spawnTarget(command) {
+  if (command.program === 'node') return [process.execPath, command.args];
+  const cli = process.env.npm_execpath;
+  if (cli && /pnpm/i.test(basename(cli)))
+    return /\.[cm]?js$/.test(cli) ? [process.execPath, [cli, ...command.args]] : [cli, command.args];
+  return ['pnpm', command.args];
+}
+
+// Environment for child steps: the identity fixture reads TEST_DATABASE_URL_* for its own database, so the gate
+// passes per-step values and keeps the DB-test variables away from browser fixtures.
+export function scrubbedEnv(env, keep = []) {
+  const out = { ...env };
+  for (const name of Object.keys(out))
+    if (
+      !keep.includes(name) &&
+      (/^(TEST_)?DATABASE_URL(_OWNER)?$/.test(name) || /^GATE_IDENTITY_/.test(name) || /^E2E_/.test(name))
+    )
+      delete out[name];
+  return out;
+}
+
+// The identity step receives GATE_IDENTITY_* (or the databases --provision created) as TEST_DATABASE_URL_*.
+export function identityStepEnv(env, provisioned = null) {
+  return {
+    ...scrubbedEnv(env),
+    TEST_DATABASE_URL_OWNER: provisioned?.owner ?? env.GATE_IDENTITY_DATABASE_URL_OWNER,
+    TEST_DATABASE_URL: provisioned?.app ?? env.GATE_IDENTITY_DATABASE_URL,
+    E2E_IDENTITY_PREPARE: '1',
+  };
+}
+
+// Environment of the --provision fixture CLI and servers: only the new fixture database, never the DB-test database.
+export function browserFixtureEnv(env, { owner, app, date }) {
+  return {
+    ...scrubbedEnv(env),
+    DATABASE_URL_OWNER: owner,
+    DATABASE_URL: app,
+    E2E_PREPARE: '1',
+    E2E_INVOICE_DATE: date,
+    TZ: 'Asia/Tokyo',
+    DAIFUKU_PACKS: 'all',
+  };
+}
+
+// --provision guards: Playwright must not fall back to the caller's environment when this run prepared no fixture,
+// and the fixture must not start a compiled API left by an earlier build when this run's build:api did not pass.
+export function provisionGuard(item, { provision, browserEnv, passed, planned }) {
+  if (!provision) return null;
+  if (item.special === 'browser:prepare' && planned.includes('build:api') && !passed.includes('build:api'))
+    return 'build:api did not pass in this run; refusing to start an older compiled API';
+  if ((item.special === 'browser' || item.special === 'smoke') && !browserEnv)
+    return 'the browser fixture was not prepared in this run (browser:prepare did not pass)';
+  return null;
+}
+
+function tokyoDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
+}
+
+export function provisionDatabaseName(kind, now = new Date(), random = randomBytes(3).toString('hex')) {
+  const suffix = `g${now.toISOString().replace(/\D/g, '').slice(0, 14)}${random}`;
+  return kind === 'identity' ? `daifuku_e2e_test_enterprise_${suffix}` : `daifuku_e2e_test_${suffix}`;
+}
+
+export function databaseUrl(url, name) {
+  const copy = new URL(url.href);
+  copy.pathname = `/${name}`;
+  return copy.href;
+}
+
+async function createDatabase(ownerUrl, name, pattern) {
+  if (!pattern.test(name) || !/^[a-z0-9_]{1,63}$/.test(name)) throw new Error(`refusing unsafe database name ${name}`);
+  const postgres = createRequire(new URL('../apps/api/package.json', import.meta.url))('postgres');
+  const sql = postgres(ownerUrl.href, { max: 1, onnotice: () => undefined });
+  try {
+    // A NEW database only; an existing name fails and nothing is dropped or reset.
+    await sql.unsafe(`CREATE DATABASE "${name}"`);
+  } finally {
+    await sql.end();
+  }
+}
+
+async function freePort() {
+  return await new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close(() => resolvePort(typeof address === 'object' && address ? address.port : 0));
+    });
+  });
+}
+
+async function reachable(url) {
+  try {
+    const response = await globalThis.fetch(url, { signal: globalThis.AbortSignal.timeout(2000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function groupAlive(child) {
+  if (!child?.pid) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function signalGroup(child, name) {
+  try {
+    if (child?.pid) process.kill(-child.pid, name);
+  } catch {
+    /* group already exited */
+  }
+}
+
+const sleep = (ms) => new Promise((done) => globalThis.setTimeout(done, ms));
+
+// Signals a process group, waits up to `graceMs` for it to exit, then sends SIGKILL.
+async function stopGroup(child, name = 'SIGTERM', graceMs = STOP_GRACE_MS) {
+  if (!groupAlive(child)) return;
+  signalGroup(child, name);
+  const deadline = Date.now() + graceMs;
+  while (groupAlive(child) && Date.now() < deadline) await sleep(50);
+  if (groupAlive(child)) signalGroup(child, 'SIGKILL');
+}
+
+// Runner state for one invocation: started process groups, provisioned databases and the browser environment.
+// Every child runs in its own process group (spawn detached), so stopping a group reaches the whole tree: pnpm does
+// not forward SIGTERM to the command it runs, and a vitest DB worker left running would keep resetting the database.
+// `running` maps each running step command (several at once in parallel light: a static step and the DB shards) to
+// the id of the step that started it.
+export function createSession(runDir) {
+  const children = [];
+  const running = new Map();
+  const cancelled = new Set();
+  // SIGKILL follows only while the command is still tracked: runCommand stops the rest of its group and forgets it on
+  // exit, after which its process group id may belong to another process.
+  const stopLater = (child, name) => {
+    signalGroup(child, name);
+    globalThis
+      .setTimeout(() => {
+        if (running.has(child)) signalGroup(child, 'SIGKILL');
+      }, STOP_GRACE_MS)
+      .unref();
+  };
+  return {
+    runDir,
+    children,
+    running,
+    cancelled,
+    // Notes of this run for the report's concurrency (shard databases created, one DB process and why).
+    notes: [],
+    databases: [],
+    ports: {},
+    browserEnv: null,
+    interrupted: null,
+    passed: [],
+    planned: [],
+    startDetached(target, args, options, logName) {
+      mkdirSync(runDir, { recursive: true });
+      const log = openSync(join(runDir, logName), 'a');
+      const child = spawn(target, args, { ...options, stdio: ['ignore', log, log], detached: true });
+      closeSync(log);
+      children.push(child);
+      return child;
+    },
+    // Forwards an interruption to every running step's process group; SIGKILL follows after the grace period.
+    interruptCurrent(name) {
+      for (const child of running.keys()) stopLater(child, name);
+    },
+    // Fail-fast in parallel light: marks every other running step cancelled (`ids`, also a step that has no command
+    // running at this moment, so that it starts none) and stops the commands of every step other than the failed one.
+    cancelOthers(failedId, ids = []) {
+      for (const id of ids) if (id !== failedId) cancelled.add(id);
+      for (const [child, owner] of running)
+        if (owner !== null && owner !== failedId) {
+          cancelled.add(owner);
+          stopLater(child, 'SIGTERM');
+        }
+    },
+    // Stops only the process groups this run started.
+    async stop() {
+      await Promise.all([...running.keys()].map((child) => stopGroup(child)));
+      for (const child of [...children].reverse()) await stopGroup(child, 'SIGTERM', 5000);
+    },
+  };
+}
+
+function runCommand(command, env, session, { log, owner = null } = {}) {
+  if (session.interrupted)
+    return Promise.resolve({ ok: false, interrupted: true, reason: 'interrupted before the step started' });
+  if (owner !== null && session.cancelled.has(owner))
+    return Promise.resolve({ ok: false, cancelled: true, reason: 'cancelled before the command started' });
+  return new Promise((done) => {
+    const [target, args] = spawnTarget(command);
+    let stdio = ['ignore', 'inherit', 'inherit'];
+    let fd = null;
+    if (log) {
+      mkdirSync(dirname(log), { recursive: true });
+      fd = openSync(log, 'a');
+      stdio = ['ignore', fd, fd];
+    }
+    const child = spawn(target, args, { cwd: ROOT, env, stdio, detached: true });
+    if (fd !== null) closeSync(fd);
+    session.running.set(child, owner);
+    child.once('error', (error) => {
+      session.running.delete(child);
+      done({ ok: false, reason: error.message });
+    });
+    child.once('exit', (code, signal) => {
+      // Members of the step's group that outlive its main process (a worker pnpm did not wait for) are stopped too.
+      stopGroup(child).finally(() => {
+        session.running.delete(child);
+        // A command that exits 0 passed even when a cancellation raced with its exit.
+        const cancelled = code !== 0 && owner !== null && session.cancelled.has(owner);
+        done({
+          ok: code === 0 && !session.interrupted,
+          interrupted: Boolean(session.interrupted),
+          ...(cancelled ? { cancelled: true } : {}),
+          reason: code === 0 ? null : `exit ${code ?? signal}`,
+        });
+      });
+    });
+  });
+}
+
+async function waitReady(urls, children, session, seconds = 120) {
+  for (let attempt = 0; attempt < seconds * 2; attempt++) {
+    if (session.interrupted) throw new Error('interrupted while waiting for fixture servers');
+    if (children.some((child) => child.exitCode !== null || child.signalCode !== null))
+      throw new Error('a fixture server exited before readiness; see its log in the run directory');
+    if ((await Promise.all(urls.map(reachable))).every(Boolean)) return;
+    await sleep(500);
+  }
+  throw new Error('fixture servers did not become ready within 120 seconds');
+}
+
+// --provision: NEW empty fixture database, fixture preparation, compiled API + Web on free loopback ports.
+export async function prepareBrowserFixture(session) {
+  const targets = provisionTargets(process.env);
+  if (!targets) throw new Error(GUIDANCE.provision);
+  const name = provisionDatabaseName('e2e');
+  await createDatabase(targets.owner, name, E2E_DATABASE_NAME);
+  session.databases.push(name);
+  const fixtureEnv = browserFixtureEnv(process.env, {
+    owner: databaseUrl(targets.owner, name),
+    app: databaseUrl(targets.app, name),
+    date: tokyoDate(),
+  });
+  const fixture = await runCommand(
+    pnpm('--filter', APP_PACKAGES.api, 'exec', 'tsx', 'src/db/e2e-fixture.ts'),
+    fixtureEnv,
+    session,
+    { log: join(session.runDir, 'fixture.log') },
+  );
+  if (!fixture.ok) throw new Error(`fixture preparation failed (${join(session.runDir, 'fixture.log')})`);
+  const main = join(ROOT, '.runtime/api/apps/api/dist/main.js');
+  if (!existsSync(main)) throw new Error('compiled API is missing; run pnpm build:api first');
+  const api = await freePort();
+  const web = await freePort();
+  session.ports = { api, web };
+  const apiChild = session.startDetached(
+    process.execPath,
+    [main],
+    {
+      cwd: join(ROOT, 'apps/api'),
+      env: {
+        ...fixtureEnv,
+        JWT_SECRET: SYNTHETIC_JWT_SECRET,
+        HOST: '127.0.0.1',
+        PORT: String(api),
+        CORS_ORIGINS: `http://localhost:${web}`,
+        DAIFUKU_STORAGE_DIR: join(session.runDir, 'evidence'),
+      },
+    },
+    'api.log',
+  );
+  const [webTarget, webArgs] = spawnTarget(
+    pnpm('--filter', APP_PACKAGES.web, 'exec', 'vite', '--host', '127.0.0.1', '--port', String(web), '--strictPort'),
+  );
+  const webChild = session.startDetached(
+    webTarget,
+    webArgs,
+    { cwd: ROOT, env: { ...scrubbedEnv(process.env), VITE_API_URL: `http://localhost:${api}` } },
+    'web.log',
+  );
+  await waitReady([`http://127.0.0.1:${api}/health`, `http://127.0.0.1:${web}/`], [apiChild, webChild], session);
+  session.browserEnv = {
+    ...fixtureEnv,
+    VITE_API_URL: `http://localhost:${api}`,
+    E2E_API_URL: `http://localhost:${api}`,
+    E2E_BASE_URL: `http://localhost:${web}`,
+    DAIFUKU_STORAGE_DIR: join(session.runDir, 'evidence'),
+  };
+  return { ok: true };
+}
+
+async function identityEnv(session) {
+  if (!session.provision) return identityStepEnv(process.env);
+  const targets = provisionTargets(process.env);
+  if (!targets) throw new Error(GUIDANCE.provision);
+  const name = provisionDatabaseName('identity');
+  await createDatabase(targets.owner, name, IDENTITY_DATABASE_NAME);
+  session.databases.push(name);
+  return identityStepEnv(process.env, { owner: databaseUrl(targets.owner, name), app: databaseUrl(targets.app, name) });
+}
+
+// A step of a lane (parallel light) writes its output to <run directory>/<step>.log instead of the terminal, so that
+// the lanes' output does not interleave; the runner prints a line per step and the end of a failed step's log.
+function stepLog(session, item, suffix = '') {
+  return item.lane ? join(session.runDir, `${item.id.replace(/[^\w.-]+/g, '-')}${suffix}.log`) : undefined;
+}
+
+const relativeLog = (path, root = ROOT) => relative(root, path).split('\\').join('/');
+
+// vitest's "FAIL" lines of a log ("<file> > <suite> > <test>", or "<file> [ <file> ]" for a suite that failed as a
+// whole), without the project label and colour codes, in order and without repeats.
+const COLOUR_CODE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+export function failedTests(text) {
+  const found = [];
+  for (const line of text.split('\n')) {
+    const match = /^\s*FAIL\s+(?:\|[^|\s]+\|\s+)?(\S.*?)\s*$/.exec(line.replace(COLOUR_CODE, ''));
+    if (match?.[1] && !found.includes(match[1])) found.push(match[1]);
+  }
+  return found;
+}
+
+// The test files named by failedTests() lines.
+export function failedFiles(tests) {
+  return [...new Set(tests.map((test) => test.split(/ > | \[ /)[0]?.trim()).filter(Boolean))];
+}
+
+const failedIn = (log) => failedTests(readTextOrEmpty(log)).slice(0, MAX_FAILED_TESTS);
+const withFiles = (reason, failed) => (failed.length ? `${reason}: ${failedFiles(failed).join(', ')}` : reason);
+
+// One command of a step. With a lane its output goes to the step log, and a failed log's FAIL lines are kept in the
+// result and their files named in the reason.
+async function runLogged(item, session, { env = process.env, run = runCommand, root = ROOT } = {}) {
+  const log = stepLog(session, item);
+  const result = await run(item.command, env, session, { log, owner: item.id });
+  if (!log) return result;
+  const failed = result.ok || result.cancelled || result.interrupted ? [] : failedIn(log);
+  return {
+    ...result,
+    ...(failed.length ? { reason: withFiles(result.reason ?? 'failed', failed) } : {}),
+    details: { log: relativeLog(log, root), ...(failed.length ? { failed } : {}) },
+  };
+}
+
+async function executeStep(item, session) {
+  const guard = provisionGuard(item, session);
+  if (guard) return { ok: false, reason: guard };
+  if (item.special === 'browser:prepare') return await prepareBrowserFixture(session);
+  if (item.special === 'identity') return await runCommand(item.command, await identityEnv(session), session);
+  if (item.special === 'browser' || item.special === 'smoke')
+    return await runCommand(item.command, session.browserEnv ?? process.env, session);
+  // A laned DB step with selected files (parallel light) runs over its shards, one shard included.
+  if (item.lane && item.id === 'db' && item.selectedFiles?.length) return await runShardedDb(item, session);
+  return await runLogged(item, session);
+}
+
+// Shard databases that do not exist yet are created empty (from template1, owned by the TEST_DATABASE_URL_OWNER role,
+// which needs CREATEDB as for the schema templates); the DB suites' freshDb() then builds or clones their schema. An
+// existing shard database owned by another role is refused. Only names derived by shardDatabases() are accepted.
+export const SHARD_DATABASE_NAME = /^daifuku_(?:ci_)?test(?:_[a-z0-9]+)?_shard_[2-8]$/;
+
+async function ensureShardDatabases(shards, env) {
+  const owner = new URL(env.TEST_DATABASE_URL_OWNER ?? '');
+  const maintenance = databaseUrl(owner, env.TEST_DATABASE_MAINTENANCE_DB || 'postgres');
+  const postgres = createRequire(new URL('../apps/api/package.json', import.meta.url))('postgres');
+  const sql = postgres(maintenance, { max: 1, onnotice: () => undefined });
+  const created = [];
+  try {
+    for (const shard of shards) {
+      if (!SHARD_DATABASE_NAME.test(shard.database)) throw new Error(`refusing shard database name ${shard.database}`);
+      const [row] = await sql`select d.datdba = r.oid as owned from pg_database d, pg_roles r
+        where d.datname = ${shard.database} and r.rolname = current_user`;
+      if (!row) {
+        await sql.unsafe(`CREATE DATABASE "${shard.database}"`);
+        created.push(shard.database);
+      } else if (!row.owned) throw new Error(`${shard.database} exists but belongs to another role`);
+    }
+  } finally {
+    await sql.end();
+  }
+  return created;
+}
+
+// The available shard databases for a DB step: shardDatabases() and, for shards >= 2, `ensure` (ensureShardDatabases;
+// not in a dry-run). When a shard database cannot be prepared the step runs on the configured test database alone and
+// a note says why.
+export async function availableShards(item, session, { env = process.env, ensure = ensureShardDatabases } = {}) {
+  const notes = [];
+  const derived = shardDatabases(env, item.shards ?? 1);
+  if (derived.reason) notes.push(`one DB process (${derived.reason})`);
+  let available = derived.shards;
+  const wanted = Math.min(available.length, item.selectedFiles?.length ?? 0);
+  if (wanted > 1 && !session.dryRun)
+    try {
+      const created = await ensure(available.slice(1, wanted), env);
+      if (created.length)
+        notes.push(`created empty shard database${created.length === 1 ? '' : 's'} ${created.join(', ')}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notes.push(`one DB process (could not prepare the shard databases: ${message})`);
+      available = available.slice(0, 1);
+    }
+  return { available, notes };
+}
+
+// Runs a laned DB step over its shards side by side, one vitest process per shard database, each with
+// fileParallelism false as configured. Every shard runs to the end even when another fails (as one vitest process runs
+// every file); the step passes only when every shard passed, is "cancelled" when every unpassed shard was cancelled, and
+// its time is the slowest shard's. Each shard prints a start line; the suite durations each process wrote into vitest's
+// results cache are kept in DURATIONS_FILE. `deps` replace the process work in tests.
+export async function runShardedDb(item, session, deps = {}) {
+  const { env = process.env, run = runCommand, ensure = ensureShardDatabases, root = ROOT, print = console.log } = deps;
+  if (session.cancelled.has(item.id))
+    return { ok: false, cancelled: true, reason: 'cancelled before the DB shards started' };
+  const { available, notes } = await availableShards(item, session, { env, ensure });
+  for (const text of notes) print(`    ${item.id}: ${text}`);
+  session.notes?.push(...notes);
+  const plan = planShards(item, readSuiteDurations(root), available);
+  // Shard notes first: the table cuts the detail column, and they explain a slower run.
+  const note = [...notes, item.note].filter(Boolean).join('; ') || null;
+  const measured = new Map();
+  const measure = (files, outcome) => {
+    if (outcome.cancelled || outcome.interrupted) return;
+    for (const [file, seconds] of captureSuiteDurations(files, root)) measured.set(file, seconds);
+  };
+  if (plan.length <= 1) {
+    const result = await runLogged(item, session, { env, run, root });
+    measure(item.selectedFiles ?? [], result);
+    recordSuiteDurations(measured, root);
+    return { ...result, details: { ...result.details, note } };
+  }
+  let interrupted = false;
+  const shardResults = await Promise.all(
+    plan.map(async (shard) => {
+      const started = globalThis.performance.now();
+      const log = join(session.runDir, `${item.id}-${shard.index}.log`);
+      const shardEnv = { ...env, TEST_DATABASE_URL_OWNER: shard.ownerUrl, TEST_DATABASE_URL: shard.appUrl };
+      const command = pnpm('exec', 'vitest', 'run', '--project', 'db', ...shard.files.map((file) => join(root, file)));
+      print(
+        `    ${item.id}[${shard.index}/${plan.length}] ${shard.database}: ${shard.files.length} files, ` +
+          `estimated ${shard.estimate}s, log ${relativeLog(log, root)}`,
+      );
+      const outcome = await run(command, shardEnv, session, { log, owner: item.id });
+      if (outcome.interrupted) interrupted = true;
+      measure(shard.files, outcome);
+      const result = outcome.ok ? 'passed' : outcome.cancelled ? 'cancelled' : 'failed';
+      return {
+        index: shard.index,
+        database: shard.database,
+        files: shard.files.length,
+        paths: shard.files,
+        estimate: shard.estimate,
+        seconds: Math.round((globalThis.performance.now() - started) / 100) / 10,
+        result,
+        reason: outcome.ok ? null : (outcome.reason ?? null),
+        failed: result === 'failed' && !outcome.interrupted ? failedIn(log) : [],
+        log: relativeLog(log, root),
+      };
+    }),
+  );
+  recordSuiteDurations(measured, root);
+  const failed = shardResults.filter((shard) => shard.result !== 'passed');
+  return {
+    ok: !failed.length,
+    interrupted,
+    cancelled: failed.length > 0 && failed.every((shard) => shard.result === 'cancelled'),
+    reason: failed.length
+      ? failed
+          .map((shard) =>
+            withFiles(`shard ${shard.index} (${shard.database}) ${shard.reason ?? shard.result}`, shard.failed),
+          )
+          .join('; ')
+      : null,
+    details: { note, shardResults },
+  };
+}
+
+// Selection runs as an interruptible child step (own process group) and reads its input from a file. A failed
+// selection of a laned step carries its log (StepError) so that the runner prints its end and the report names it.
+async function selectTests(selection, session, item = null) {
+  const output = join(session.runDir, `select-${selection.project}.json`);
+  const input = join(session.runDir, `select-${selection.project}.input.json`);
+  const log = item ? stepLog(session, item, '-select') : undefined;
+  mkdirSync(session.runDir, { recursive: true });
+  writeFileSync(input, JSON.stringify({ ...selection, output }));
+  const result = await runCommand({ program: 'node', args: ['scripts/gate-select.mjs', input] }, process.env, session, {
+    owner: item?.id ?? null,
+    log,
+  });
+  if (result.interrupted) throw new Error('interrupted during test selection');
+  if (result.cancelled) throw new Error('test selection cancelled');
+  if (!result.ok) {
+    const message = `test selection for ${selection.project} failed (${result.reason})`;
+    throw log ? new StepError(message, { log: relativeLog(log) }) : new Error(message);
+  }
+  return JSON.parse(readFileSync(output, 'utf8'));
+}
+
+async function resolveSelection(item, session) {
+  return item.selection ? applySelection(item, await selectTests(item.selection, session, item)) : item;
+}
+
+// The last `count` lines of a step log (failure output in parallel light).
+function logTail(path, count = FAILURE_TAIL_LINES, root = ROOT) {
+  try {
+    const lines = readFileSync(join(root, path), 'utf8').trimEnd().split('\n');
+    return lines.slice(-count).join('\n');
+  } catch {
+    return '(log not readable)';
+  }
+}
+
+// vitest's closing "Test Files" and "Tests" lines of a step log, joined (empty for other tools). Colour codes, if a
+// tool forced them into the file, are removed.
+export function testSummary(text) {
+  return text
+    .split('\n')
+    .slice(-40)
+    .map((line) => line.replace(COLOUR_CODE, '').trim())
+    .filter((line) => /^(Test Files|Tests)\s/.test(line))
+    .join(' | ');
+}
+
+function summaryOf(path, root = ROOT) {
+  return testSummary(readTextOrEmpty(join(root, path)));
+}
+
+// Parallel light: one line per finished step (with its seconds) and shard, and for each failed log its FAIL lines and
+// its last lines.
+function reportFinished(item, result, seconds = null) {
+  const details = result.details ?? {};
+  const status = result.ok ? 'passed' : result.cancelled ? 'cancelled' : 'failed';
+  const logs =
+    details.shardResults ?? (details.log ? [{ log: details.log, result: status, failed: details.failed }] : []);
+  console.log(
+    `<== gate:light ${item.id}: ${status}${seconds === null ? '' : ` ${seconds}s`}` +
+      (result.reason ? ` (${result.reason})` : ''),
+  );
+  for (const entry of logs) {
+    const label = entry.index ? `${item.id}[${entry.index}/${logs.length}] ${entry.database}` : item.id;
+    const summary = summaryOf(entry.log);
+    console.log(
+      `    ${label}: ${entry.result}${entry.seconds !== undefined ? ` ${entry.seconds}s` : ''}, ${entry.log}`,
+    );
+    if (summary) console.log(`    ${summary}`);
+    if (entry.result !== 'failed') continue;
+    for (const test of entry.failed ?? []) console.log(`    FAIL ${test}`);
+    console.log(`---- last lines of ${entry.log} ----\n${logTail(entry.log)}\n---- end of ${entry.log} ----`);
+  }
+}
+
+async function main(argv) {
+  let options;
+  try {
+    options = parseCli(argv);
+  } catch (error) {
+    if (!(error instanceof GateUsageError)) throw error;
+    console.error(`${error.message}\n\n${USAGE}`);
+    return 2;
+  }
+  if (options.help) {
+    console.log(USAGE);
+    return 0;
+  }
+  let concurrency;
+  try {
+    concurrency = resolveConcurrency(
+      { tier: options.tier, serial: options.serial, dbShards: options.dbShardsOption },
+      process.env,
+      availableParallelism(),
+    );
+  } catch (error) {
+    if (!(error instanceof GateUsageError)) throw error;
+    console.error(`${error.message}\n\n${USAGE}`);
+    return 2;
+  }
+  const startedAt = new Date();
+  const git = gitRunner(ROOT);
+  let base;
+  try {
+    base = resolveBase({ explicit: options.base, env: process.env, git });
+  } catch (error) {
+    if (!(error instanceof GateUsageError)) throw error;
+    console.error(error.message);
+    return 2;
+  }
+  const head = git(['rev-parse', '--verify', '--quiet', 'HEAD']).stdout.trim() || null;
+  const changes = collectChangeSet({ base, git, exists: (path) => pathExists(join(ROOT, path)) });
+  const cls = classifyChanges(changes, loadWorkspacePackages(ROOT));
+  const escalation = detectEscalation(changes);
+  const gateScripts = parseGateScript(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.gate);
+  const runDir = join(ROOT, '.runtime/gate', reportFileName(options.tier, startedAt).replace(/\.json$/, ''));
+  const session = { ...createSession(runDir), provision: options.provision, dryRun: options.dryRun };
+  let steps = planSteps({
+    tier: options.tier,
+    cls,
+    base,
+    escalation,
+    options: {
+      ...options,
+      deferSchemaSuites: process.env.GATE_DEFER_SCHEMA_SUITES !== '0',
+      parallel: concurrency.parallel,
+      dbShards: concurrency.dbShards,
+    },
+    gateScripts,
+  });
+  const needsReach = steps.some((item) => ['browser', 'smoke'].includes(item.special)) && !options.provision;
+  const reach = needsReach
+    ? {
+        api: Boolean(process.env.E2E_API_URL) && (await reachable(`${process.env.E2E_API_URL}/health`)),
+        web: Boolean(process.env.E2E_BASE_URL) && (await reachable(process.env.E2E_BASE_URL)),
+      }
+    : {};
+  steps = applyPreflight(steps, { env: process.env, options, reach });
+  const finish = (results, result) => {
+    const report = buildReport({
+      tier: options.tier,
+      options,
+      base,
+      head,
+      changes,
+      cls,
+      escalation,
+      steps: results,
+      startedAt,
+      finishedAt: new Date(),
+      result,
+      provisioned: session.databases.length ? { databases: session.databases, ports: session.ports } : null,
+      concurrency: { ...concurrency, notes: [...concurrency.notes, ...session.notes] },
+    });
+    const directory = join(ROOT, '.runtime/gate');
+    mkdirSync(directory, { recursive: true });
+    const file = join(directory, reportFileName(options.tier, startedAt));
+    writeFileSync(file, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`\n${formatTable(report)}\nreport: ${posix.join('.runtime/gate', basename(file))}`);
+    for (const item of results.filter((entry) => entry.blocked && ['failed', 'blocked'].includes(entry.result)))
+      console.error(`\n[${item.id}] ${item.blocked}`);
+    return report;
+  };
+  if (base.fallback) console.warn(`${baseWarning(base)}\n${base.notes.map((note) => `  note: ${note}`).join('\n')}`);
+  if (options.tier === 'quick' && !changes.length) {
+    // Without a usable base an empty change set proves nothing: the branch's commits may simply be invisible here.
+    if (base.source === 'head' || base.source === 'none') {
+      console.error('gate:quick: no base commit to compare with and no uncommitted change; pass --base <ref>.');
+      finish([], 'base-unknown');
+      return 1;
+    }
+    console.log('gate:quick: no changes since the base; nothing to check.');
+    finish([], 'no-changes');
+    return 0;
+  }
+  // Interruption: SIGINT/SIGTERM/SIGHUP, or the parent going away (`pnpm gate:*` does not pass SIGTERM on to this
+  // process, so a dead parent is treated as SIGTERM). The running child's whole process group is stopped.
+  const interrupt = (forward, code) => {
+    if (session.interrupted) {
+      session.interruptCurrent('SIGKILL');
+      return;
+    }
+    session.interrupted = code;
+    console.error(`\ngate:${options.tier}: interrupted; stopping the running step and its processes.`);
+    session.interruptCurrent(forward);
+  };
+  const handlers = [
+    ['SIGINT', () => interrupt('SIGINT', 130)],
+    ['SIGTERM', () => interrupt('SIGTERM', 143)],
+    ['SIGHUP', () => interrupt('SIGTERM', 129)],
+  ];
+  for (const [name, handler] of handlers) process.on(name, handler);
+  const parent = process.ppid;
+  const watchParent = globalThis.setInterval(() => {
+    if (process.ppid !== parent && !session.interrupted) interrupt('SIGTERM', 143);
+  }, 1000);
+  try {
+    if (options.dryRun) {
+      const planned = await planDryRun(steps, session);
+      for (const item of planned.filter((entry) => entry.selectedFiles?.length))
+        console.log(`\n${item.id} would run ${item.selectedFiles.length} files:\n  ${item.selectedFiles.join('\n  ')}`);
+      for (const item of planned.filter((entry) => entry.deferredFiles?.length))
+        console.log(
+          `\n${item.id} defers ${item.deferredFiles.length} files to full:\n  ${item.deferredFiles.join('\n  ')}`,
+        );
+      for (const item of planned.filter((entry) => entry.shardResults?.length))
+        for (const shard of item.shardResults)
+          console.log(
+            `\n${item.id} shard ${shard.index}/${item.shardResults.length} on ${shard.database} would run ` +
+              `${shard.files} files (estimated ${shard.estimate}s):\n  ${shard.paths.join('\n  ')}`,
+          );
+      finish(planned, session.interrupted ? 'interrupted' : 'dry-run');
+      return session.interrupted ?? 0;
+    }
+    session.planned = steps.map((item) => item.id);
+    const lane = (item) => (item.lane ? ` [${item.lane} lane]` : '');
+    // A laned step's log; a sharded DB step prints one line per shard with its log instead.
+    const logText = (item) => {
+      const log = (item.shards ?? 1) > 1 ? undefined : stepLog(session, item);
+      return log ? ` (log ${relativeLog(log)})` : '';
+    };
+    const stepStarted = new Map();
+    const elapsed = (item) =>
+      Math.round((globalThis.performance.now() - (stepStarted.get(item.id) ?? globalThis.performance.now())) / 100) /
+      10;
+    const outcome = await runSteps(steps, {
+      keepGoing: options.keepGoing,
+      now: () => globalThis.performance.now() / 1000,
+      isInterrupted: () => Boolean(session.interrupted),
+      cancel: (failedId, ids) => session.cancelOthers(failedId, ids),
+      prepare: async (item) => {
+        stepStarted.set(item.id, globalThis.performance.now());
+        console.log(
+          `\n==> gate:${options.tier} ${item.id}${lane(item)}${item.command ? `: ${commandText(item.command)}` : ''}` +
+            logText(item),
+        );
+        let resolved;
+        try {
+          resolved = await resolveSelection(item, session);
+        } catch (error) {
+          // A failed selection of a laned step: its end line and the end of its log, as for a failed command.
+          if (item.lane && !session.interrupted)
+            reportFinished(
+              item,
+              {
+                ok: false,
+                cancelled: session.cancelled.has(item.id),
+                reason: error instanceof Error ? error.message : String(error),
+                details: error instanceof StepError ? error.details : {},
+              },
+              elapsed(item),
+            );
+          throw error;
+        }
+        if (resolved !== item && resolved.command)
+          console.log(
+            `    ${item.id} selected ${selectionText(resolved.selected)}: ${commandSummary(resolved.command)}` +
+              ((resolved.shards ?? 1) > 1 ? ` (up to ${resolved.shards} shards)` : ''),
+          );
+        if (resolved.deferredFiles?.length)
+          console.log(`    ${item.id} deferred to full: ${resolved.deferredFiles.join(', ')}`);
+        return resolved;
+      },
+      execute: async (item) => {
+        const result = await executeStep(item, session);
+        if (result.ok && !session.interrupted) session.passed.push(item.id);
+        if (item.lane) reportFinished(item, result, elapsed(item));
+        return session.interrupted ? { ...result, ok: false, interrupted: true } : result;
+      },
+    });
+    finish(outcome.steps, outcome.interrupted ? 'interrupted' : outcome.ok ? 'passed' : 'failed');
+    if (session.interrupted) return session.interrupted;
+    return outcome.ok ? 0 : 1;
+  } finally {
+    globalThis.clearInterval(watchParent);
+    await session.stop();
+    for (const [name, handler] of handlers) process.off(name, handler);
+  }
+}
+
+// --dry-run: resolves the test selections (read-only listing) and marks every step planned, skipped or blocked.
+async function planDryRun(steps, session) {
+  const planned = [];
+  for (const item of steps) {
+    if (session.interrupted) {
+      planned.push({ ...item, result: 'not-run', reason: 'interrupted' });
+      continue;
+    }
+    let resolved;
+    try {
+      resolved = item.blocked || item.skip ? item : await resolveSelection(item, session);
+      // The shard plan of the DB step, without creating any shard database.
+      if ((resolved.shards ?? 1) > 1 && resolved.selectedFiles?.length) {
+        const { available, notes } = await availableShards(resolved, session);
+        session.notes.push(...notes);
+        const plan = planShards(resolved, readSuiteDurations(ROOT), available);
+        const note = [...notes, resolved.note].filter(Boolean).join('; ') || null;
+        resolved = {
+          ...resolved,
+          note,
+          shardResults: plan.map((shard) => ({
+            index: shard.index,
+            database: shard.database,
+            files: shard.files.length,
+            paths: shard.files,
+            estimate: shard.estimate,
+            seconds: 0,
+            result: 'planned',
+            reason: null,
+            log: null,
+          })),
+        };
+      }
+    } catch (error) {
+      if (!session.interrupted) throw error;
+      planned.push({ ...item, result: 'not-run', reason: 'interrupted' });
+      continue;
+    }
+    planned.push({
+      ...resolved,
+      result: resolved.skip?.result ?? (resolved.blocked ? 'blocked' : 'planned'),
+      reason: resolved.skip?.reason ?? resolved.blocked ?? null,
+    });
+  }
+  return planned;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main(process.argv.slice(2)).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error) => {
+      console.error(`gate failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    },
+  );
+}

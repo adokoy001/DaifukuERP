@@ -23,6 +23,19 @@ export {
   type OutstandingInput,
 } from './actions/outstanding.ts';
 export {
+  renderReceiptHtmlAction,
+  renderPaymentNoticeHtmlAction,
+  buildPaymentDocumentRenderData,
+  RECEIPT_HTML_OVERRIDE,
+  PAYMENT_NOTICE_HTML_OVERRIDE,
+} from './actions/print.ts';
+export {
+  defaultReceiptHtml,
+  defaultPaymentNoticeHtml,
+  type PaymentDocumentRenderData,
+  type PaymentDocumentHtmlRenderer,
+} from './services/payment-html.ts';
+export {
   loadInvoice,
   loadInvoices,
   listOpenInvoices,
@@ -58,7 +71,14 @@ export {
   type PostingInput,
 } from './services/posting.ts';
 
-export { assertDirectionRole, SYSTEM_OWNED_FIELDS, DIRECTION_HINT } from './hooks/validate.ts';
+export {
+  assertDirectionRole,
+  assertNotClearingAmendment,
+  SYSTEM_OWNED_FIELDS,
+  DIRECTION_HINT,
+  CLEARING_AMEND_HINT,
+} from './hooks/validate.ts';
+export { createClearingPayment, type ClearingPaymentInput } from './clearing.ts';
 export { FROZEN_HINT } from './hooks/lines.ts';
 export { ALLOCATION_HINT, loadAllocationLines } from './hooks/submit.ts';
 

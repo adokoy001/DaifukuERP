@@ -1,0 +1,133 @@
+/* To-do inbox (docs/specs/inbox.md): home card and /inbox. Colours from semantic tokens only (docs/conventions/ui.md). */
+.inbox-card {
+  margin: 0 0 26px;
+}
+.inbox-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.inbox-card-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+.inbox-card-head h2 svg {
+  color: var(--accent);
+}
+.inbox-card-all {
+  margin-left: auto;
+}
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+.inbox-item:hover {
+  background: var(--row-hover);
+}
+.inbox-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.inbox-item-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.inbox-item-label {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.inbox-item-text small {
+  color: var(--text-muted);
+}
+.inbox-item > svg {
+  flex: none;
+  color: var(--text-subtle);
+}
+.inbox-urgent {
+  margin-right: 4px;
+  font-weight: 700;
+}
+.inbox-card-head h2:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.inbox-failure .btn[aria-disabled='true'] {
+  cursor: progress;
+  opacity: 0.7;
+}
+.inbox-none,
+.inbox-dropped,
+.inbox-card-failed,
+.inbox-summary {
+  margin: 0;
+  color: var(--text-muted);
+}
+.inbox-summary strong {
+  color: var(--text-strong);
+}
+.inbox-failure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.inbox-failure-title {
+  margin: 0;
+  font-weight: 600;
+}
+.inbox-page-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-card);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.inbox-page .inbox-summary {
+  margin: 4px 0 14px;
+}
+.inbox-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 767px) {
+  .inbox-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 479px) {
+  .inbox-item {
+    padding: 8px 10px;
+  }
+  .inbox-card-all {
+    margin-left: 0;
+  }
+}

@@ -15,6 +15,7 @@ import type { Context } from './context.ts';
 import { users } from './db/system-tables.ts';
 import { Conflict, PermissionDenied, StateError } from './errors.ts';
 import { newId } from './ids.ts';
+import { revokeIssuedMachineCredentials } from './machine-credentials.ts';
 
 export async function createManagedUser(ctx: Context, raw: unknown) {
   await assertAccessAdmin(ctx, true);
@@ -89,9 +90,14 @@ export async function updateManagedUser(ctx: Context, id: string, raw: unknown) 
     .where(and(eq(users.tenantId, ctx.tenantId), eq(users.id, id), eq(users.version, before.version)))
     .returning();
   if (!after) throw new Conflict('User was changed concurrently', 'Reload before saving.');
+  // machine-credentials AC-18: a key never outlives its issuer's tenant administration (re-enabling does not restore).
+  const revokeReason =
+    before.active && !active ? 'issuer_deactivated' : before.tenantAdmin && !tenantAdmin ? 'issuer_demoted' : null;
+  const revokedMachineCredentials = revokeReason ? await revokeIssuedMachineCredentials(ctx, id, revokeReason) : 0;
   await writeAccessAudit(ctx, null, 'access_user', id, 'update', publicManagedUser(before), {
     ...publicManagedUser(after),
     passwordChanged: input.password !== undefined,
+    revokedMachineCredentials,
   });
-  return publicManagedUser(after);
+  return { ...publicManagedUser(after), revokedMachineCredentials };
 }

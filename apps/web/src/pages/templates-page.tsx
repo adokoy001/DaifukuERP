@@ -12,7 +12,8 @@ import { useLocale } from '../i18n.tsx';
 import { templateOrder, templateStory } from '../lib/templates.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
-function TemplateCard({
+/** Also used by the setup wizard's industry template step (docs/specs/setup-wizard.md AC-21). */
+export function TemplateCard({
   pack,
   meta,
   busy,

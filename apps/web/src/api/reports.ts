@@ -1,10 +1,11 @@
 // Report actions (web-phase1 AC-3): `POST /actions/<name>` with the generated input, result is a TableResult.
 import { useMutation, useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import { request } from './client.ts';
+import { isReportAction } from '../lib/report.ts';
 import type { ActionMeta, AppMeta, TableResult } from './types.ts';
 
 export function reportActions(meta: AppMeta | undefined): ActionMeta[] {
-  return (meta?.actions ?? []).filter((a) => a.resultKind === 'table');
+  return (meta?.actions ?? []).filter(isReportAction);
 }
 
 export function useRunReport(name: string): UseMutationResult<TableResult, Error, Record<string, unknown>> {

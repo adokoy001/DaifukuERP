@@ -28,3 +28,10 @@
 | 拡張フィールド | extension field | ext | JSONB |
 | 業種パック | industry pack | pack | packs/ |
 | 国パック | country pack | l10n | l10n/ |
+| 固定資産 / 固定資産台帳 | fixed asset / fixed asset register | fixed_asset | 減価償却資産の台帳。出典と制度は [japan-fixed-assets](japan-fixed-assets.md) |
+| 減価償却 / 償却の実行 | depreciation / depreciation run | depreciation_run | 実行 1 回 = document 1 件 = 仕訳 1 本（会計期間を指定） |
+| 定額法 / 定率法（200%） | straight-line / 200% declining balance | straight_line / declining_200 | |
+| 償却保証額 / 改定取得価額 / 改定償却率 | guarantee amount / revised base / revised rate | guaranteeRate / revisedBase / revisedRate | 定率法の切替え |
+| 備忘価額 | memorandum value | memorandumValue | 有形 1 円、無形 0 円 |
+| 除却 / 売却 | retirement / sale (disposal) | fixed_asset_disposal | kind = retirement / sale |
+| 償却資産申告 | depreciable property tax return | property_tax_summary | 1 月 1 日現在、市町村ごと |

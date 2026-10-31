@@ -1,12 +1,16 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { useFavorites, useRecentRecords } from '../api/navigation-assist.ts';
 import { useNavigation } from '../api/navigation.ts';
-import type { Locale } from '../api/types.ts';
+import type { EntityMeta, Locale } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
 import { findNavigationWorkspace } from '../lib/navigation.ts';
+import type { NavigationCatalog } from '../lib/navigation-types.ts';
+import { recentRecordDetail, recentRecordText, SIDEBAR_RECENT_RECORDS } from '../lib/recent-records.ts';
 import { S } from '../strings.ts';
 import { Icon } from './icon.tsx';
 import { WORKSPACE_ICONS } from './workspace-cards.tsx';
+import './navigation-assist.css';
 
 interface SidebarProps {
   userName: string | undefined;
@@ -31,6 +35,70 @@ function LocaleToggle() {
           {l.toUpperCase()}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** navigation-assist AC-4/AC-5: favourite screens; the heading disappears with the last favourite. */
+function FavoriteLinks({ catalog }: { catalog: NavigationCatalog }) {
+  const { t } = useLocale();
+  const id = useId();
+  const favorites = useFavorites(catalog);
+  if (!favorites.available || !favorites.entries.length) return null;
+  return (
+    <div role="group" aria-labelledby={id}>
+      <div className="nav-caption" id={id}>
+        {t({ ja: 'お気に入り', en: 'Favourites' })}
+      </div>
+      {favorites.entries.map((entry) => (
+        <Link key={entry.href} to={entry.href} className="nav-link nav-shortcut" activeProps={{}}>
+          <Icon name="star" size={16} />
+          <span>
+            <span>{t(entry.label)}</span>
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** navigation-assist AC-3/AC-5: the five most recent records of this company; hidden when there are none. */
+function RecentLinks({
+  catalog,
+  entities,
+}: {
+  catalog: NavigationCatalog;
+  entities: readonly EntityMeta[] | undefined;
+}) {
+  const { t, locale } = useLocale();
+  const id = useId();
+  const recent = useRecentRecords(catalog, entities);
+  if (!recent.available || !recent.items.length) return null;
+  return (
+    <div role="group" aria-labelledby={id}>
+      <div className="nav-caption" id={id}>
+        {t({ ja: '最近', en: 'Recent' })}
+      </div>
+      {recent.items.slice(0, SIDEBAR_RECENT_RECORDS).map((item) => {
+        const text = recentRecordText(item, locale);
+        const detail = recentRecordDetail(item);
+        return (
+          <Link
+            key={`${item.entity}/${item.id}`}
+            to="/e/$entity/$id"
+            params={{ entity: item.entity, id: item.id }}
+            className="nav-link nav-shortcut"
+            activeProps={{}}
+            title={text}
+          >
+            <Icon name="clock" size={16} />
+            <span>
+              <span>{text}</span>
+              {detail ? <small>{t(detail)}</small> : null}
+            </span>
+          </Link>
+        );
+      })}
     </div>
   );
 }
@@ -70,6 +138,8 @@ function Navigation() {
           <span>{t(workspace.label)}</span>
         </Link>
       ))}
+      <FavoriteLinks catalog={catalog} />
+      <RecentLinks catalog={catalog} entities={meta.data?.entities} />
       {meta.isPending ? <p className="nav-help">{t(S.loading)}</p> : null}
       <p className="nav-help">
         {t({ ja: '業務を選ぶと、操作画面やマスターを探せます。', en: 'Choose an area to find workflows and records.' })}

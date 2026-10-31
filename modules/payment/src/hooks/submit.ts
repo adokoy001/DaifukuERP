@@ -30,7 +30,7 @@ import {
 } from '../services/allocate.ts';
 import { entryDescription, journalLinesFor } from '../services/posting.ts';
 import { resolvePostingAccounts } from '../settings.ts';
-import { assertDirectionRole } from './validate.ts';
+import { assertDirectionRole, assertNotClearingAmendment } from './validate.ts';
 
 export const ALLOCATION_HINT =
   'Fix the allocations (see details.issues; payment.outstanding lists what can be allocated) and submit again.';
@@ -91,7 +91,15 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
       'Set a positive amount, then submit.',
     );
   await assertJpySettlement(ctx, amount, 'amount');
+  await assertNotClearingAmendment(ctx, row.amendedFrom);
   const lines = await loadAllocationLines(ctx, head.id);
+  const counterAccountId = typeof row.counterAccountId === 'string' ? row.counterAccountId : null;
+  if (counterAccountId && lines.length > 0)
+    throw new ValidationError(
+      `payment ${head.id} settles a counter account and takes no allocations`,
+      [{ path: 'lines', message: 'a clearing payment (counterAccountId) cannot be allocated to invoices' }],
+      'Remove the allocation lines; clearing payments are created by their owning document (ADR-0039).',
+    );
   const entity = invoiceEntityFor(head.direction);
   const invoices: Map<string, InvoiceSnapshot> =
     lines.length > 0
@@ -132,6 +140,7 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
     })),
     unallocated: result.unallocated,
     accounts,
+    counterAccountId,
   });
   const entry = await postFromSource(ctx, {
     sourceEntity: Payment.name,
@@ -145,8 +154,8 @@ async function beforeSubmit(ctx: Context, { row }: HookArgs): Promise<void> {
     })),
   });
   Object.assign(row, {
-    allocatedAmount: result.allocated,
-    unallocatedAmount: result.unallocated,
+    allocatedAmount: counterAccountId ? '0' : result.allocated,
+    unallocatedAmount: counterAccountId ? '0' : result.unallocated,
     journalEntryId: entry.id,
   });
 }

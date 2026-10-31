@@ -11,10 +11,12 @@ export function docstatusLabel(ds: unknown): Label {
   return ds === 1 || ds === 2 ? DOCSTATUS_LABELS[ds] : DOCSTATUS_LABELS[0];
 }
 
-export function formatTimestamp(iso: string, locale: Locale): string {
+/** `timeZone` (e.g. `Asia/Tokyo` for the audit search, which labels its times as Japan time) defaults to the browser's. */
+export function formatTimestamp(iso: string, locale: Locale, timeZone?: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-GB', {
+    ...(timeZone ? { timeZone } : {}),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

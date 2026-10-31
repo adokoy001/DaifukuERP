@@ -2,13 +2,15 @@
 // `purchase_invoice` and `sales_invoice` are registered before our entities and hooks reference them. accounting is a
 // declared dependency (sales/purchase need it) but inventory posts no journal entries (三分法, spec 目的).
 import { InventoryPeriodClose, registerPeriodCloseHooks } from './period-close.ts';
-import { defineModule, label } from '@daifuku/kernel';
+import { defineModule, label, registry } from '@daifuku/kernel';
 import { AccountingModule } from '@daifuku/mod-accounting';
+import { stockSettingsHealthCheck } from './health.ts';
 import { PartnerModule } from '@daifuku/mod-partner';
 import { ProductModule } from '@daifuku/mod-product';
 import { PurchaseModule } from '@daifuku/mod-purchase';
 import { SalesModule } from '@daifuku/mod-sales';
 import { countVarianceAction } from './actions/count-variance.ts';
+import { importOpeningStockAction } from './actions/import-opening-stock.ts';
 import { ledgerAction } from './actions/ledger.ts';
 import { stockOnHandAction } from './actions/stock-on-hand.ts';
 import { valuationAction } from './actions/valuation.ts';
@@ -25,6 +27,7 @@ import { registerEntryHooks } from './hooks/entry.ts';
 import { registerGuardHooks } from './hooks/guard.ts';
 import { registerInvoiceHooks } from './hooks/invoices.ts';
 import { registerLineHooks } from './hooks/lines.ts';
+import { registerOpeningYearHooks } from './hooks/opening-year.ts';
 import { registerSubmitHook } from './hooks/submit.ts';
 import { registerWarehouseHooks } from './hooks/warehouse.ts';
 import { seedWarehouses } from './seeds/warehouses.ts';
@@ -44,7 +47,7 @@ export const InventoryModule = defineModule({
     StockCount,
     StockCountLine,
   ],
-  actions: [stockOnHandAction, ledgerAction, valuationAction, countVarianceAction],
+  actions: [stockOnHandAction, ledgerAction, valuationAction, countVarianceAction, importOpeningStockAction],
   hooks: () => {
     registerPeriodCloseHooks();
     registerGuardHooks();
@@ -55,7 +58,9 @@ export const InventoryModule = defineModule({
     registerCancelHook();
     registerInvoiceHooks();
     registerCountHooks();
+    registerOpeningYearHooks();
     registerInventorySettings();
+    registry.registerHealthCheck(stockSettingsHealthCheck);
   },
   seed: seedWarehouses,
   menus: [

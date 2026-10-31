@@ -10,9 +10,10 @@
 | 単体 | 計算・状態・入力の境界値 | `pnpm test` |
 | DB | RLS/所属/参照/確定/並行実行の実挙動 | `pnpm test:db`、破棄可能な専用DB |
 | 統合gate | 上記を一括で再現 | `pnpm gate` |
+| 段階実行 | 編集中は変更に関係する検査だけ、完了前は全体 | `pnpm gate:quick` / `gate:light` / `gate:full`（[3段階の回帰テスト](../specs/test-tiers.md)） |
 | Web | 単体・型とproduction build | `pnpm --filter @daifuku/web test` / `typecheck` / `build` |
 | API成果物 | 型検査済みJS・固定依存・管理CLI | `pnpm build:api`、`pnpm test:deploy`、[配置の契約](compiled-api.md) |
-| E2E | 実画面の導線・失効・スマホ操作 | CONTRIBUTINGの空DB fixture + Playwright |
+| E2E | 実画面の導線・失効・スマホ操作、主要8画面のaxe（WCAG 2.1 A/AA、serious/criticalで失敗、例外は `apps/web/e2e/a11y-exceptions.json`） | CONTRIBUTINGの空DB fixture + Playwright（[e2e-a11y](../specs/e2e-a11y.md)） |
 | setup受入 | install/upgrade/backup復元/失敗再開 | 別clusterで `pnpm test:setup` |
 | 配布・機器 | 固定graph・改変検知・agent journal/実通信 | `pnpm test:deploy`、`pnpm --filter @daifuku/edge build`、専用DBで実API/TLS試験 |
 | 文書 | AI入口と現行ソースの整合 | 主要文書のリンクと構成/契約を照合 |
@@ -20,7 +21,11 @@
 | 対象限定mutation | 計算処理を壊した際の検出 | `pnpm verify:mutation`（別CI） |
 | 有限モデル | エッジ状態遷移の安全性・到達性 | `pnpm verify:edge:model`（Java 17/21、別CI） |
 
-DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。
+## 段階実行（quick / light / full）
+
+`scripts/gate.mjs` は基準点（`origin/main` との merge-base）からの変更集合を求め、quick は変更ファイルに限定した検査と vitest のモジュールグラフで選んだ unit 試験、light は全体の静的検査（API/Web の型を含む）と unit 全件に関連 DB suite と kernel の常時実行 suite を足し、full は `pnpm gate` の各工程に API/Web の型・build、中継 agent build、ブラウザ・認証試験を足します。関連 suite にはモジュールグラフに加え、vitest の setupFile が対象 suite のために読むモジュール（日本の給与 provider）と、試験が子プロセスで実行する入口の import グラフを含めます。kernel・migration・依存・設定・CI・ブラウザ設定・削除したソースを含む変更は昇格扱いで完了前の full を案内し、そのうち DB 試験に影響しうるものでは light が DB を全件にします。light は committed migration から schema を作る migration/setup suite を、schema 宣言・その package 内で宣言が読むファイル・`apps/api` の変更があるときだけ実行し、それ以外は full に回したと報告します（[DB suite 起動の短縮](../specs/db-test-startup.md)）。選択はファイル単位で、試験の skip や絞込みはしません。light は静的検査の列と DB 工程の列を同時に走らせ、選ばれた DB suite を試験 DB と `<試験DB名>_shard_<k>` に分けて shard ごとの vitest process で実行します（[light の短縮](../specs/light-tier-speed.md)。選ぶ suite の集合は同じで、`--serial` で従来の順に戻ります）。中断時は各工程・各 shard の process group ごと停止します。`pnpm gate` 自体と CI の gate job は変えず、CI には DB を使わない `quick` job を先に返す job として足しています。各実行は `.runtime/gate/` に JSON の報告を残します。
+
+DB試験は業務DB・UIデモと共有しません。TEST_DATABASE_URL_OWNERとTEST_DATABASE_URLは同じ専用DBを指し、owner/appの別roleを使います。既存roleの権限を試験の都合で変更しません。`freshDb()` は registry から作った schema を `<試験DB名>_tpl_<鍵>` のテンプレート DB に保存し、suite ごとに試験 DB を `CREATE DATABASE ... TEMPLATE` で作り直します（鍵は schema を作る全文のハッシュ）。作成・削除するのは試験 DB と自分の印を持つテンプレートだけで、DB 名に `test` の語が無い、owner に CREATEDB が無い、DB 単位の grant・設定がある、作り直しでは残り再作成では消える物（public / drizzle 以外の schema、拡張、既定権限など）を試験 DB が持つ、他のクライアントが接続している、などの場合は DB を削除せず従来どおり DB の中で作り直します（`TEST_DATABASE_TEMPLATE=off` でも同じ）。テンプレートを使うために既存 role の権限を変える必要はありません。どの経路でも catalog（RLS・grant・policy・既定権限を含む）が同じことを試験で確かめています。
 
 生成DB操作列、会社/拠点の比較、独立したシフト全探索は通常のunit/DBへ組み込みます。[検証設計](practical-verification.md)と[台帳](../verification/invariants.md)で前提と限界を確認し、変更時は `pnpm verify:assurance --changed main` から直接参照する項目を見直します。
 

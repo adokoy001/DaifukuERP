@@ -2,14 +2,18 @@
 // `product`, `tax_rate` and `journal_entry` are registered before the invoice entities reference them.
 import { SalesSettlement } from './entities/settlement.ts';
 import { registerSettlementHooks } from './settlements.ts';
-import { defineModule, label } from '@daifuku/kernel';
+import { defineModule, label, registry } from '@daifuku/kernel';
 import { PartnerModule } from '@daifuku/mod-partner';
+import { issuerHealthCheck } from './health.ts';
 import { ProductModule } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { AccountingModule } from '@daifuku/mod-accounting';
 import { arAgingAction } from './actions/ar-aging.ts';
+import { importOpeningReceivablesAction } from './actions/import-opening-receivables.ts';
 import { recordPaymentAction } from './actions/record-payment.ts';
 import { renderInvoiceHtmlAction } from './actions/render-invoice-html.ts';
+import { renderStatementHtmlAction } from './actions/render-statement-html.ts';
+import { ensurePrintLayoutSettings } from '@daifuku/mod-print-layout';
 import { SalesInvoice } from './entities/sales-invoice.ts';
 import { SalesInvoiceLine } from './entities/sales-invoice-line.ts';
 import { registerCancelHook } from './hooks/cancel.ts';
@@ -23,7 +27,13 @@ export const SalesModule = defineModule({
   label: label('販売', 'Sales'),
   depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name],
   entities: [SalesSettlement, SalesInvoice, SalesInvoiceLine],
-  actions: [renderInvoiceHtmlAction, arAgingAction, recordPaymentAction],
+  actions: [
+    renderInvoiceHtmlAction,
+    renderStatementHtmlAction,
+    arAgingAction,
+    recordPaymentAction,
+    importOpeningReceivablesAction,
+  ],
   hooks: () => {
     registerSettlementHooks();
     registerRecalcHooks();
@@ -31,6 +41,8 @@ export const SalesModule = defineModule({
     registerSubmitHooks();
     registerCancelHook();
     registerSalesSettings();
+    ensurePrintLayoutSettings();
+    registry.registerHealthCheck(issuerHealthCheck);
   },
   menus: [
     { label: label('売上請求書', 'Sales invoices'), entity: SalesInvoice.name, order: 40 },

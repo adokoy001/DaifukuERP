@@ -15,10 +15,10 @@
 ## 1機能を追加する順序
 
 1. `docs/specs/` に入力、結果、権限、状態、対象外、検証方法を書く。
-2. 必要なentity/documentをDSLで定義し、field、ref、unique、serverOwned、role、行/拠点policyを宣言する。
+2. 必要なentity/documentをDSLで定義し、field、ref、unique、serverOwned、role、行/拠点policyを宣言する。ヘッダと明細を1回で保存する形は document でも entity でも `lines` で宣言する（entity の明細は凍結されないので、履歴に効く値は module の hook で守る。[ADR-0031](../adr/0031-entity-lines.md)）。
 3. 業務actionを作り、ContextとRepositoryだけを通して処理する。数量/金額はDecimal、二重処理はbusiness lockと一意性、競合はexpectedVersionで扱う。
 4. 公開indexから必要な型/定義だけをexportし、package名で依存する。内部ソースへ相対importしない。
-5. 共通moduleはruntime catalog、業界packはruntime pack catalogへ追加する。schema生成時は全登録packを読み、runtimeで無効なpackの既存データも保持する。
+5. 共通moduleはruntime catalog、業界packはruntime pack catalogへ追加する。schema生成時は全登録packを読み、runtimeで無効なpackの既存データも保持する。新しいpackは `node scripts/pack-new.mjs <name> --register` で雛形・DBテスト・spec下書きと登録の4編集から始め、表示される順序（登録→`pnpm install`→`pnpm db:generate`→型検査とDBテスト→`pnpm gate:light`）で進める（[pack規約「雛形から始める」](../conventions/packs.md)）。
 6. メタデータで汎用UIを使うか、連続した操作に適した専用画面を作る。どちらも同じactionを呼ぶ。
 7. migrationを生成・確認し、新規DBと旧版DBからの更新を試す。
 8. 拒否/並行実行/再適用を含む試験と文書を整え、gateを通して作業ログを残す。
@@ -39,4 +39,4 @@
 
 ## 引継ぎを確認する記録
 
-既存packの自動試験と、第三者がこの手順だけで新しいpackを追加できることは別の証拠です。後者の実施記録はまだありません。実施時は、開始commit、追加したpackと業務台本、変更した層、手順で迷った箇所、権限外操作・再適用・更新を含む試験結果、PRを1つの作業記録へ残してください。実装担当と別のAIによるレビューを、人間の第三者による導入実績とは記載しません。
+既存packの自動試験と、第三者がこの手順だけで新しいpackを追加できることは別の証拠です。後者の実施記録はまだありません。第三者が始める入口は雛形生成（`scripts/pack-new.mjs`、[pack規約「雛形から始める」](../conventions/packs.md)）です。2026-10-30のB7実装では、エージェントが雛形の生成→登録→`pnpm gate:light`→画面での適用を一巡しました。登録状態の`gate:light`は、表を足すmigrationで落ちる既存の旧版更新試験2件（E2の修正を一時的に当てると成功。統合後の再確認は統合担当）と、実装者自身の単体試験3件で失敗しました。後者は修正後にunitだけを登録状態で再実行して成功し、gate:light全体は再実行していません（数値は[作業記録](../log/2026-10-30-pack-scaffold.md)）。この一巡は人間の第三者による導入ではなく業務台本もないため、この記録条件を満たしません。実施時は、開始commit、追加したpackと業務台本、変更した層、手順で迷った箇所、権限外操作・再適用・更新を含む試験結果、PRを1つの作業記録へ残してください。実装担当と別のAIによるレビューを、人間の第三者による導入実績とは記載しません。

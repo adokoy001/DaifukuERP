@@ -52,9 +52,20 @@ export function publicManagedUser(user: typeof users.$inferSelect) {
 export function actorUser(ctx: Context): string {
   return ctx.actor.type === 'agent' ? (ctx.actor.onBehalfOf ?? '') : ctx.actor.id;
 }
+/**
+ * The user id of the person behind this context, for business rules that need a human (self-service, approval by
+ * another person, preparer/confirmer). A machine credential (API key) is refused with 403 `human-actor-required`
+ * (docs/specs/machine-credentials.md AC-22). system / relay keep returning actor.id. Not to be confused with
+ * Repository's private actorUserId(), which returns null for anything but user / agent (created_by / updated_by).
+ */
+export function requireHumanUserId(ctx: Context): string {
+  if (ctx.actor.type === 'machine') throw new PermissionDenied('human_actor', 'human-actor-required', ctx.roles);
+  return actorUser(ctx);
+}
 
 /** Recheck after lock: concurrent administrator demotions are serialized, including caller revocation. */
 export async function assertAccessAdmin(ctx: Context, lock = false): Promise<void> {
+  if (ctx.actor.type === 'machine') throw new PermissionDenied('access_admin', 'manage', ctx.roles);
   if (lock)
     await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`access-admin:${ctx.tenantId}`}, 0))`);
   const [actor] = await ctx.db
@@ -113,13 +124,18 @@ export async function directoryStores(ctx: Context, companyId?: string, kind: 's
   }
   return items;
 }
+/** Zod issues as `details.issues`; an unknown item gets one issue each, with the item as its path. */
+function accessIssues(error: z.ZodError): { path: string; message: string }[] {
+  return error.issues.flatMap((i) =>
+    i.code === 'unrecognized_keys'
+      ? i.keys.map((key) => ({ path: [...i.path, key].join('.'), message: `Unrecognized key: "${key}"` }))
+      : [{ path: i.path.join('.'), message: i.message }],
+  );
+}
+
 export function parseAccess<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
   const parsed = schema.safeParse(raw);
-  if (!parsed.success)
-    throw new ValidationError(
-      'Invalid access settings',
-      parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-    );
+  if (!parsed.success) throw new ValidationError('Invalid access settings', accessIssues(parsed.error));
   return parsed.data;
 }
 

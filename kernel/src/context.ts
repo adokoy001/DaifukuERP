@@ -7,8 +7,9 @@ import type { StoragePort } from './storage.ts';
 export type Db = Parameters<Parameters<PostgresJsDatabase['transaction']>[0]>[0];
 
 export interface Actor {
-  type: 'user' | 'agent' | 'system' | 'relay';
-  /** user id, agent id, or 'system' */
+  /** `machine`: a machine credential (API key, ADR-0023 addendum); `id` is the credential id, never a user id. */
+  type: 'user' | 'agent' | 'system' | 'relay' | 'machine';
+  /** user id, agent id, credential id (machine), or 'system' */
   id: string;
   /** For agents: the user they act for. Recorded in the audit log. */
   onBehalfOf?: string;

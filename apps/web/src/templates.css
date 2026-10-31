@@ -252,8 +252,10 @@
 .business-action-page {
   max-width: 1100px;
 }
+/* Rendered by the UI kit PageHeader: keep the icon tile and the title on one row, and the old title colour. */
 .business-action-heading {
   display: flex;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 16px;
   margin: 25px 0;
@@ -262,6 +264,7 @@
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 9px;
+  color: inherit;
 }
 .business-action-heading p {
   font-size: 12px;

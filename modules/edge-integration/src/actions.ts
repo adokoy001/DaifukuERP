@@ -1,8 +1,9 @@
-import { defineAction, label } from '@daifuku/kernel';
+import { defineAction, label, todoInput, todoResult } from '@daifuku/kernel';
 import { z } from 'zod';
 import * as c from './contract.ts';
 import * as h from './human.ts';
 import { edgeBoard } from './board.ts';
+import { edgeTodo } from './todo.ts';
 const manager = { roles: ['edge_manager'] };
 const operator = { roles: ['edge_manager', 'edge_operator'] };
 const allowed = { siteAccess: true };
@@ -78,4 +79,16 @@ export const deviceActiveAction = defineAction({
   output: record,
   permission: manager,
   handler: h.setDeviceActive,
+});
+export const todoAction = defineAction({
+  ...allowed,
+  name: 'edge.todo',
+  description: label('受信箱: 結果の確認が必要な機器処理の件数', 'Inbox: device jobs whose result needs confirmation'),
+  input: todoInput,
+  output: todoResult,
+  // Only edge.resolve (manager) clears an uncertain job, so operators get no item they cannot act on (inbox AC-1).
+  permission: manager,
+  tx: 'none',
+  mutates: false,
+  handler: edgeTodo,
 });

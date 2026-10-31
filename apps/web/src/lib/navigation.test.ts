@@ -7,6 +7,7 @@ import {
   searchNavigation,
   workspaceForModule,
 } from './navigation.ts';
+import { DEDICATED_NAVIGATION } from './navigation-data.ts';
 
 const label = (ja: string, en = ja): Label => ({ ja, en });
 function entity(name: string, module: string | undefined = 'sales', extra: Partial<EntityMeta> = {}): EntityMeta {
@@ -64,6 +65,8 @@ describe('authorized navigation catalog', () => {
       ['trade.board', '/commerce/trade', 'sales'],
       ['banking.board', '/finance/banking', 'finance'],
       ['tax_filing.board', '/finance/filing', 'finance'],
+      // docs/specs/recurring-journals.md AC-24: hidden from search and the workspace without the generation action
+      ['accounting.generate_recurring', '/finance/recurring', 'finance'],
       ['pos_integration.inbox', '/commerce/pos', 'operations'],
       ['group_accounting.companies', '/commerce/group', 'finance'],
       ['franchise.board', '/commerce/franchise', 'finance'],
@@ -80,12 +83,44 @@ describe('authorized navigation catalog', () => {
       });
     }
   });
+  it('setup-wizard AC-28: /setup is a setting entry for the admin role only (not settings, not tenant admin alone)', () => {
+    expect(hrefs(meta([], [], [], ['admin']))).toContain('/setup');
+    expect(hrefs(meta([], [], [], ['admin', 'accounting']))).toContain('/setup');
+    expect(hrefs(meta([], [], [], ['settings']))).not.toContain('/setup');
+    expect(hrefs(meta([], [], [], ['sales']))).not.toContain('/setup');
+    expect(hrefs(meta(), true)).not.toContain('/setup');
+    expect(DEDICATED_NAVIGATION.find((n) => n.href === '/setup')).toMatchObject({
+      workspace: 'admin',
+      kind: 'setting',
+      condition: 'admin',
+    });
+  });
   it('keeps tenant administration separate from company settings permission', () => {
     expect(hrefs(meta([], [], [], ['admin']))).toContain('/settings');
     expect(hrefs(meta([], [], [], ['admin']))).not.toContain('/admin/users');
     expect(hrefs(meta([], [], [], ['settings']))).toContain('/settings');
     expect(hrefs(meta(), true)).toContain('/admin/users');
     expect(hrefs(meta(), true)).not.toContain('/settings');
+  });
+  it('machine-credentials AC-31 shows API keys to tenant administrators only', () => {
+    expect(hrefs(meta([], [], [], ['admin']))).not.toContain('/admin/tokens');
+    expect(hrefs(meta([], [], [], ['settings']))).not.toContain('/admin/tokens');
+    expect(hrefs(meta(), true)).toContain('/admin/tokens');
+  });
+  it('access-insight AC-21: the permission matrix and audit search are listed for the admin role only', () => {
+    for (const href of ['/admin/permissions', '/admin/audit']) {
+      expect(findNavigationEntry(buildNavigation(meta([], [], [], ['admin']), false), href)).toMatchObject({
+        workspace: 'admin',
+        kind: 'setting',
+      });
+      expect(hrefs(meta([], [], [], ['settings']))).not.toContain(href);
+      expect(hrefs(meta([], [], [], ['sales', 'viewer']))).not.toContain(href);
+      // The tenant flag alone does not list it; tenant administrators get `admin` in every selected company.
+      expect(hrefs(meta(), true)).not.toContain(href);
+    }
+    expect(
+      searchNavigation(buildNavigation(meta([], [], [], ['admin']), false), '監査', 'ja').map((e) => e.href),
+    ).toContain('/admin/audit');
   });
   it('includes every readable non-line entity and excludes declared child entities and unreadable records', () => {
     const data = meta([

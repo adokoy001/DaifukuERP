@@ -90,6 +90,15 @@ export function getCompanyId(): string | null {
   }
 }
 
+/**
+ * The signed-in tenant, user and company of this tab as one string: router history state made for one session
+ * (draft seeds, the list position of form-ergonomics AC-9) is used only in that session.
+ */
+export function sessionOwner(): string {
+  const user = getUser();
+  return `${user?.tenantId ?? ''}:${user?.id ?? ''}:${getCompanyId() ?? ''}`;
+}
+
 export function setActiveCompany(id: string): void {
   const key = companySelectionKey();
   if (!key) throw new Error('Sign in before selecting a company.');
@@ -219,11 +228,27 @@ export interface Downloaded {
   contentType: string | null;
 }
 
-/** Authenticated binary GET (attachment download). */
-export async function download(path: string): Promise<Downloaded> {
-  const res = await send(path, { method: 'GET', headers: authHeaders(false), cache: 'no-store' }, false);
+/** Authenticated binary GET (attachment download). `signal` stops it (the evidence bulk download's "stop"). */
+export async function download(path: string, signal?: AbortSignal): Promise<Downloaded> {
+  const res = await send(
+    path,
+    { method: 'GET', headers: authHeaders(false), cache: 'no-store', ...(signal ? { signal } : {}) },
+    false,
+  );
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch (e) {
+    // The body broke off after the headers arrived: a transport failure like send()'s (status 0), unless stopped.
+    if (signal?.aborted) throw e;
+    throw new ApiError(0, {
+      code: 'INTERNAL',
+      message: e instanceof Error ? e.message : 'network error',
+      hint: 'The download was interrupted. Check the connection and try again.',
+    });
+  }
   return {
-    blob: await res.blob(),
+    blob,
     contentDisposition: res.headers.get('content-disposition'),
     contentType: res.headers.get('content-type'),
   };

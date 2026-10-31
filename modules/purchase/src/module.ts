@@ -8,6 +8,7 @@ import { PartnerModule } from '@daifuku/mod-partner';
 import { ProductModule } from '@daifuku/mod-product';
 import { TaxModule } from '@daifuku/mod-tax';
 import { apAgingAction } from './actions/ap-aging.ts';
+import { importOpeningPayablesAction } from './actions/import-opening-payables.ts';
 import { recordPaymentAction } from './actions/record-payment.ts';
 import { PurchaseInvoice } from './entities/purchase-invoice.ts';
 import { PurchaseInvoiceLine } from './entities/purchase-invoice-line.ts';
@@ -22,7 +23,7 @@ export const PurchaseModule = defineModule({
   label: label('購買', 'Purchasing'),
   depends: [PartnerModule.name, ProductModule.name, TaxModule.name, AccountingModule.name],
   entities: [PurchaseSettlement, PurchaseInvoice, PurchaseInvoiceLine],
-  actions: [apAgingAction, recordPaymentAction],
+  actions: [apAgingAction, recordPaymentAction, importOpeningPayablesAction],
   hooks: () => {
     registerSettlementHooks();
     registerRecalcHooks();

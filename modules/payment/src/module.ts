@@ -5,7 +5,10 @@ import { AccountingModule } from '@daifuku/mod-accounting';
 import { PartnerModule } from '@daifuku/mod-partner';
 import { PurchaseModule } from '@daifuku/mod-purchase';
 import { SalesModule } from '@daifuku/mod-sales';
+import { ensurePrintLayoutSettings } from '@daifuku/mod-print-layout';
 import { outstandingAction } from './actions/outstanding.ts';
+import { renderPaymentNoticeHtmlAction, renderReceiptHtmlAction } from './actions/print.ts';
+import { todoAction } from './actions/todo.ts';
 import { PaymentAllocation } from './entities/payment-allocation.ts';
 import { Payment } from './entities/payment.ts';
 import { registerCancelHook } from './hooks/cancel.ts';
@@ -19,13 +22,14 @@ export const PaymentModule = defineModule({
   label: label('入出金', 'Payments'),
   depends: [PartnerModule.name, AccountingModule.name, SalesModule.name, PurchaseModule.name],
   entities: [Payment, PaymentAllocation],
-  actions: [outstandingAction],
+  actions: [outstandingAction, todoAction, renderReceiptHtmlAction, renderPaymentNoticeHtmlAction],
   hooks: () => {
     registerValidateHooks();
     registerLineHooks();
     registerSubmitHooks();
     registerCancelHook();
     for (const def of PAYMENT_SETTING_DEFS) registry.registerSetting(def);
+    ensurePrintLayoutSettings();
   },
   menus: [
     { label: label('入出金', 'Payments'), entity: Payment.name, order: 60 },

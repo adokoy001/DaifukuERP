@@ -40,6 +40,24 @@ async function release(owner: Database, reservations: Reservation[]): Promise<vo
       .set({ attempts: sql`greatest(0, ${identityLimits.attempts} - 1)` })
       .where(and(eq(identityLimits.key, reservation.key), eq(identityLimits.windowStart, reservation.start)));
 }
+/**
+ * Read-only budget check: throws 429 when the current window of `key` is exhausted, writes nothing. Callers that
+ * charge only failures (machine credentials: unknown keys) check first and charge with identityRateLimit afterwards.
+ */
+export async function assertIdentityBudget(
+  owner: Database,
+  input: IdentityAttemptLimit,
+  now = new Date(),
+): Promise<void> {
+  const seconds = input.seconds ?? 300;
+  const start = new Date(Math.floor(now.getTime() / (seconds * 1000)) * seconds * 1000);
+  const [row] = await owner.drizzle
+    .select({ attempts: identityLimits.attempts })
+    .from(identityLimits)
+    .where(and(eq(identityLimits.key, tokenHash(input.key)), eq(identityLimits.windowStart, start)))
+    .limit(1);
+  if (row && row.attempts >= input.limit) throw limited();
+}
 /** Issuance quota: successful requests also consume capacity (mail and OIDC transaction creation). */
 export async function identityRateLimit(
   owner: Database,

@@ -37,3 +37,6 @@ runtime.env
 .stryker-tmp/
 verification/edge/.cache/
 /.cache/tla/
+
+# Claude Code agent worktrees (separate checkouts)
+.claude/worktrees/

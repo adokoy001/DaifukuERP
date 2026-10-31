@@ -73,6 +73,17 @@ export const Payment = defineDocument({
       default: '0',
     }),
     note: f.text({ label: label('備考', 'Note'), multiline: true, maxLength: 2000 }),
+    // ADR-0039: set only by createClearingPayment (clearing.ts) for a payout/refund another module's document owns
+    // (expense settlement, advance). The unallocated side posts to this account instead of 前払金/前受金, the payment
+    // takes no allocation lines, and allocatedAmount = unallocatedAmount = 0 (it waits for nothing to be allocated).
+    counterAccountId: f.ref('account', {
+      serverOwned: true,
+      label: label('相手科目', 'Counter account'),
+      description: label(
+        '経費精算・仮払が作った入出金だけ。前払金・前受金の代わりにこの科目へ転記',
+        'Only on payments created by an expense settlement or advance; posts here instead of the advance account',
+      ),
+    }),
     journalEntryId: f.ref('journal_entry', {
       serverOwned: true,
       label: label('仕訳', 'Journal entry'),
@@ -97,11 +108,12 @@ export const Payment = defineDocument({
   views: {
     list: ['direction', 'partnerId', 'date', 'amount', 'allocatedAmount', 'unallocatedAmount', 'method'],
     search: ['note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['direction', 'partnerId', 'date', 'method'],
-      ['amount', 'accountId'],
-      ['allocatedAmount', 'unallocatedAmount'],
-      ['note', 'journalEntryId'],
+      { label: label('入出金', 'Payment'), fields: ['direction', 'partnerId', 'date', 'method'] },
+      { label: label('金額・口座', 'Amount and account'), fields: ['amount', 'accountId'] },
+      { label: label('消込', 'Allocation'), fields: ['allocatedAmount', 'unallocatedAmount'] },
+      { label: label('備考・仕訳', 'Note and posting'), fields: ['note', 'counterAccountId', 'journalEntryId'] },
     ],
   },
 });

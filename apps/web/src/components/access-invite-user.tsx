@@ -9,9 +9,12 @@ import '../identity.css';
 export function AccessInviteUser({
   onClose,
   onStatus,
+  onInvited,
 }: {
   onClose: () => void;
   onStatus: (status: AccessEditorStatus) => void;
+  /** setup-wizard AC-22: the invited (still inactive) user's id once the invitation exists. */
+  onInvited?: (userId: string) => void;
 }) {
   const { t } = useLocale();
   const qc = useQueryClient();
@@ -35,6 +38,7 @@ export function AccessInviteUser({
       { email, name, stepUpToken },
     );
     setDelivery(result.delivery);
+    onInvited?.(result.userId);
     setEmail('');
     setName('');
     await qc.invalidateQueries({ queryKey: ['access'] });

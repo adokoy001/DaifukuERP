@@ -2,8 +2,11 @@
 // web-phase1 AC-1: documents with `lines` render one LineGrid per line entity below the header; one request saves both.
 // web-phase15: registered ext fields in a 「追加項目」 fieldset (AC-3); the allocation picker on `*_allocation` grids and
 // the client-side 配分合計 > 金額 refusal (AC-1/AC-2).
+// form-ergonomics (docs/specs/form-ergonomics.md): labelled sections and narrow-screen tabs (AC-2), the error summary
+// with focus on the first invalid input (AC-3), required marks and helper text (AC-4), Ctrl/⌘+S and Ctrl/⌘+Enter
+// (AC-5), the bottom bar with Save / Submit on narrow screens (AC-7), unsaved-input drafts (AC-8), the shortcut list (AC-10).
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { useBlocker } from '@tanstack/react-router';
 import { isApiError } from '../api/client.ts';
 import { keys, useCreate, useMeta, useUpdate } from '../api/queries.ts';
@@ -12,23 +15,43 @@ import { useLocale } from '../i18n.tsx';
 import { ALLOCATION, allocationSummary, type AllocationConvention } from '../lib/allocation.ts';
 import { extFieldsOf, extInitialValues, isExtFieldEditable } from '../lib/ext.ts';
 import {
-  formGroups,
+  formSections,
   initialValues,
   isFieldEditable,
   issuesToFieldErrors,
+  needsInput,
+  sectionLayout,
   type EditContext,
   type FormValue,
   type FormValues,
 } from '../lib/form.ts';
+import { errorSummary, firstTarget, type SummaryItem } from '../lib/form-errors.ts';
+import { advanceAction, formShortcut, IS_MAC, shortcutLabel } from '../lib/form-shortcuts.ts';
+import { draftTarget } from '../lib/form-draft.ts';
 import { linesFromRecord, rowErrorsByKey, splitLineIssues, type GridErrors, type GridRow } from '../lib/lines.ts';
 import { lineSpecsOf, planSave, type LineSpecMeta } from '../lib/save.ts';
 import { S } from '../strings.ts';
 import { formFingerprint } from '../lib/dirty.ts';
 import { lineLockReason } from '../lib/line-lock.ts';
+import { recurringLineLock } from '../lib/recurring.ts';
+import { seededLines, seededValues, type DraftSeed } from '../lib/duplicate.ts';
 import { AllocationPicker, useAllocationConvention } from './allocation-picker.tsx';
 import { FieldWidget } from './fields/field-widget.tsx';
+import { FormDraftNotice, useFormDraft } from './form-draft.tsx';
+import { FormErrorSummary } from './form-error-summary.tsx';
+import { HeaderSections, useNarrowScreen, type HeaderSection } from './form-sections.tsx';
+import { FormShortcutsHelp } from './form-shortcuts-help.tsx';
 import { LineGrid } from './line-grid.tsx';
 import { useToast } from './toast.tsx';
+
+/** form-ergonomics AC-5/AC-7: the page's Submit (DocActions) as the form bar and Ctrl+Enter reach it. */
+export interface SubmitControl {
+  label: string;
+  /** Why it cannot be used now (unsaved changes, saving, a blocked submit); undefined when it can. */
+  blocked: string | undefined;
+  /** Opens the submit confirmation (the same dialog as the header button). */
+  onRequest: () => void;
+}
 
 export interface RecordFormProps {
   entity: EntityMeta;
@@ -38,10 +61,16 @@ export interface RecordFormProps {
   onCancel: () => void;
   onStatus?: (status: { dirty: boolean; saving: boolean }) => void;
   actionBusy?: boolean;
+  /** document-links AC-1/AC-5: initial values of a new record (複製 / quick action); ignored when `record` is given. */
+  initial?: DraftSeed | undefined;
+  /** A draft document's Submit, when the user may submit it. */
+  submit?: SubmitControl | undefined;
 }
 
 interface FormState {
   baseline: string;
+  /** The values / rows the form started from (the record, the seed or the defaults): the draft diff base (AC-8). */
+  base: { values: FormValues; lines: Record<string, GridRow[]> };
   record: RecordJson | undefined;
   values: FormValues;
   lines: Record<string, GridRow[]>;
@@ -49,32 +78,50 @@ interface FormState {
   lineErrors: Record<string, GridErrors>;
   formErrors: string[];
   conflict: boolean;
+  /** Failed save attempts with errors; 0 = no summary. A new attempt moves focus again (AC-3). */
+  attempt: number;
 }
 
-function freshState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined): FormState {
-  const values = { ...initialValues(entity.fields, record), ...extInitialValues(extFieldsOf(entity), record) };
-  const lines = linesFromRecord(specs, record);
+function freshState(
+  entity: EntityMeta,
+  specs: readonly LineSpecMeta[],
+  record: RecordJson | undefined,
+  seed?: DraftSeed,
+): FormState {
+  // A seed is the new record's starting point: the baseline, so only the user's own edits make the form dirty.
+  const seeded = !record && seed ? seed : undefined;
+  const values = seeded
+    ? seededValues(entity, seeded)
+    : { ...initialValues(entity.fields, record), ...extInitialValues(extFieldsOf(entity), record) };
+  const lines = seeded ? seededLines(specs, seeded) : linesFromRecord(specs, record);
   return {
     values,
     lines,
+    base: { values, lines },
     baseline: formFingerprint(values, lines),
     record,
     fieldErrors: {},
     lineErrors: {},
     formErrors: [],
     conflict: false,
+    attempt: 0,
   };
 }
 
-function useFormState(entity: EntityMeta, specs: readonly LineSpecMeta[], record: RecordJson | undefined) {
-  const [state, setState] = useState<FormState>(() => freshState(entity, specs, record));
+function useFormState(
+  entity: EntityMeta,
+  specs: readonly LineSpecMeta[],
+  record: RecordJson | undefined,
+  seed: DraftSeed | undefined,
+) {
+  const [state, setState] = useState<FormState>(() => freshState(entity, specs, record, seed));
   // A refetched record (after save, reload or someone else's change) resets the form; keyed on version so typing is not clobbered.
   useEffect(() => {
     setState((s) => {
-      if (formFingerprint(s.values, s.lines) === s.baseline) return freshState(entity, specs, record);
+      if (formFingerprint(s.values, s.lines) === s.baseline) return freshState(entity, specs, record, seed);
       return record?.version !== s.record?.version ? { ...s, conflict: true } : s;
     });
-  }, [entity, specs, record]);
+  }, [entity, specs, record, seed]);
   const setValue = (name: string, v: FormValue) =>
     setState((s) => {
       const fieldErrors = { ...s.fieldErrors };
@@ -148,12 +195,21 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
       const lineErrors: Record<string, GridErrors> = {};
       for (const [line, byIndex] of Object.entries(split.lines))
         lineErrors[line] = rowErrorsByKey(state.lines[line] ?? [], byIndex);
+      // form-ergonomics AC-3: a new attempt shows the summary and moves focus to the first invalid input.
       setState((s) => ({
         ...s,
         fieldErrors: { ...s.fieldErrors, ...mapped.fieldErrors },
         lineErrors,
         formErrors: mapped.formErrors,
+        attempt: s.attempt + 1,
       }));
+      // The summary is the one alert of the attempt; a toast would be a second alert read at the same time. Only a
+      // VALIDATION without any message the summary can show falls back to the toast.
+      const listed =
+        Object.keys(mapped.fieldErrors).length > 0 ||
+        mapped.formErrors.length > 0 ||
+        Object.values(lineErrors).some((rows) => Object.keys(rows).length > 0);
+      if (listed) return;
     }
     toast.error(e);
   };
@@ -162,9 +218,9 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
     e.preventDefault();
     if (inFlight.current || state.conflict || !entity.ops.includes(mode === 'create' ? 'create' : 'update')) return;
     // web-phase15 AC-2: 配分合計 > 金額 is refused before any request (the server validates again at submit).
+    // form-ergonomics AC-3: the error summary shows the message (no toast: one alert per attempt).
     if (conv && allocationSummary(state.values[ALLOCATION.amountField], state.lines[conv.lineEntity] ?? []).over) {
-      setState((s) => ({ ...s, formErrors: [t(S.overAllocated)] }));
-      toast.push({ kind: 'error', title: t(S.overAllocated) });
+      setState((s) => ({ ...s, formErrors: [t(S.overAllocated)], attempt: s.attempt + 1 }));
       return;
     }
     const plan = planSave({
@@ -178,11 +234,13 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
       requiredMessage: t(S.requiredFieldMissing),
     });
     if (plan.hasErrors) {
-      setState((s) => ({ ...s, fieldErrors: plan.fieldErrors, lineErrors: plan.lineErrors, formErrors: [] }));
-      toast.push({
-        kind: 'error',
-        title: t(Object.keys(plan.lineErrors).length > 0 ? S.linesHaveErrors : S.formHasErrors),
-      });
+      setState((s) => ({
+        ...s,
+        fieldErrors: plan.fieldErrors,
+        lineErrors: plan.lineErrors,
+        formErrors: [],
+        attempt: s.attempt + 1,
+      }));
       return;
     }
     if (!record) {
@@ -206,62 +264,110 @@ function useSave({ entity, specs, record, state, setState, onSaved, conv }: Save
   return { submit, saving: create.isPending || update.isPending };
 }
 
-interface HeaderFieldsProps {
-  entity: EntityMeta;
-  state: FormState;
-  setValue: (name: string, v: FormValue) => void;
-  editCtx: EditContext;
-  locked: boolean;
+/** Header sections from `views.form` (create mode leaves out what the user cannot enter), then the ext fields. */
+function useHeaderSections(entity: EntityMeta, mode: 'create' | 'update') {
+  return useMemo<HeaderSection[]>(() => {
+    const sections: HeaderSection[] = formSections(entity)
+      .map((s) => ({ ...s, fields: s.fields.filter((f) => mode !== 'create' || (!f.serverOwned && !f.readOnly)) }))
+      .filter((s) => s.fields.length > 0);
+    const ext = extFieldsOf(entity);
+    if (ext.length > 0) sections.push({ key: 'ext', label: S.extFields, fields: ext });
+    return sections;
+  }, [entity, mode]);
 }
 
-/** Header fieldsets from `views.form`, then the registered ext fields under 「追加項目」 (AC-3, same widgets). */
-function HeaderFields({ entity, state, setValue, editCtx, locked }: HeaderFieldsProps) {
-  const { t } = useLocale();
-  const groups = useMemo(
-    () =>
-      formGroups(entity)
-        .map((group) => group.filter((f) => editCtx.mode !== 'create' || (!f.serverOwned && !f.readOnly)))
-        .filter((group) => group.length > 0),
-    [entity, editCtx.mode],
-  );
-  const ext = useMemo(() => extFieldsOf(entity), [entity]);
-  const widget = (f: FieldMeta, editable: boolean) => (
-    <FieldWidget
-      key={f.name}
-      field={f}
-      value={state.values[f.name] ?? ''}
-      onChange={(v) => setValue(f.name, v)}
-      disabled={locked || !editable}
-      error={state.fieldErrors[f.name]}
-    />
-  );
-  const box = 'grid grid-cols-1 gap-x-4 gap-y-2 rounded border border-neutral-200 bg-white p-3 md:grid-cols-3';
-  return (
-    <>
-      {groups.map((group, gi) => (
-        <fieldset key={gi} className={box}>
-          {group.map((f) => widget(f, isFieldEditable(f, editCtx)))}
-        </fieldset>
-      ))}
-      {ext.length > 0 ? (
-        <fieldset className={box} data-testid="ext-fields" aria-label={t(S.extFields)}>
-          <legend className="px-1 text-xs font-semibold text-neutral-600">{t(S.extFields)}</legend>
-          {ext.map((f) => widget(f, isExtFieldEditable(f, editCtx)))}
-        </fieldset>
-      ) : null}
-    </>
-  );
+/**
+ * AC-3: after a failed attempt, show the input's tab (narrow screens) and focus it once it is on the screen. The
+ * focus waits for the render that shows the tab, so it runs in an effect after every render until it lands.
+ */
+function useFocusTarget(sectionOf: (item: SummaryItem) => string | undefined, selectTab: (key: string) => void) {
+  const pending = useRef<string | null>(null);
+  useEffect(() => {
+    const id = pending.current;
+    if (!id) return;
+    const element = globalThis.document?.getElementById(id);
+    if (!element) return;
+    pending.current = null;
+    element.focus();
+    element.scrollIntoView?.({ block: 'center' });
+  });
+  return (item: SummaryItem) => {
+    if (!item.targetId) return;
+    const section = sectionOf(item);
+    if (section) selectTab(section);
+    pending.current = item.targetId;
+    // Already on the screen: focus now (no re-render would follow a tab that is already selected).
+    const element = globalThis.document?.getElementById(item.targetId);
+    if (element) {
+      pending.current = null;
+      element.focus();
+      element.scrollIntoView?.({ block: 'center' });
+    }
+  };
 }
 
-export function RecordForm({ entity, record, onSaved, onCancel, onStatus, actionBusy = false }: RecordFormProps) {
+/**
+ * AC-7: the bottom bar's measured height as `--form-bar-h` on the document. Below 768px the scroll area keeps that
+ * much room under a focused input (scroll-padding-bottom) and the toasts sit above the bar, also when the bar wraps
+ * to a second row (styles.css).
+ */
+function useBarHeightVar(bar: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = bar.current;
+    const root = globalThis.document?.documentElement;
+    if (!element || !root || typeof ResizeObserver === 'undefined') return;
+    const update = () =>
+      root.style.setProperty('--form-bar-h', `${Math.ceil(element.getBoundingClientRect().height)}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--form-bar-h');
+    };
+  }, [bar]);
+}
+
+export function RecordForm({
+  entity,
+  record,
+  onSaved,
+  onCancel,
+  onStatus,
+  actionBusy = false,
+  initial,
+  submit: submitControl,
+}: RecordFormProps) {
   const { t } = useLocale();
   const qc = useQueryClient();
   const meta = useMeta();
   const mode: 'create' | 'update' = record ? 'update' : 'create';
   const specs = useMemo(() => lineSpecsOf(entity, meta.data?.entities ?? []), [entity, meta.data]);
   const conv = useAllocationConvention(entity);
-  const { state, setState, setValue, setRows } = useFormState(entity, specs, record);
+  const { state, setState, setValue, setRows } = useFormState(entity, specs, record, initial);
   const exitAllowed = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  useBarHeightVar(barRef);
+  const dirty = formFingerprint(state.values, state.lines) !== state.baseline;
+  const canWrite = entity.ops.includes(mode === 'create' ? 'create' : 'update');
+  // AC-8: unsaved input kept in this tab per entity and record (or `new`), offered when the screen opens again. The
+  // version is the one the input was made on (state.record): a refetch while the input is unsaved moves the `record`
+  // prop to the newer version but keeps state.record (and raises the conflict), so the draft still reads as stale.
+  const draft = useFormDraft({
+    entity,
+    target: draftTarget(record?.id, record ? undefined : initial?.key),
+    recordVersion: state.record?.version,
+    enabled: canWrite,
+    specs,
+    values: state.values,
+    lines: state.lines,
+    baseValues: state.base.values,
+    baseLines: state.base.lines,
+    dirty,
+    onRestore: (values, lines) =>
+      setState((s) => ({ ...s, values, lines, fieldErrors: {}, lineErrors: {}, formErrors: [], attempt: 0 })),
+  });
   const { submit, saving } = useSave({
     entity,
     specs,
@@ -270,12 +376,11 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
     setState,
     onSaved: (rec, savedMode) => {
       exitAllowed.current = true;
+      draft.clear();
       onSaved(rec, savedMode);
     },
     conv,
   });
-  const dirty = formFingerprint(state.values, state.lines) !== state.baseline;
-  const canWrite = entity.ops.includes(mode === 'create' ? 'create' : 'update');
   useEffect(() => {
     if (dirty && !saving) exitAllowed.current = false;
     onStatus?.({ dirty, saving });
@@ -286,10 +391,17 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
       (saving ||
         (dirty &&
           !globalThis.confirm(
-            t({
-              ja: '未保存の変更があります。変更を破棄して移動しますか？',
-              en: 'Discard your unsaved changes and leave?',
-            }),
+            t(
+              draft.kept
+                ? {
+                    ja: '未保存の変更があります。保存せずに移動しますか？入力はこのタブに一時保存され、この画面に戻ると復元できます。',
+                    en: 'You have unsaved changes. Leave without saving? Your input is kept in this tab and can be restored when you come back.',
+                  }
+                : {
+                    ja: '未保存の変更があります。変更を破棄して移動しますか？',
+                    en: 'Discard your unsaved changes and leave?',
+                  },
+            ),
           ))),
     enableBeforeUnload: dirty || saving,
   });
@@ -305,8 +417,96 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
     saving,
     conflict: state.conflict,
     frozen: mode === 'update' && (record?.docstatus ?? 0) !== 0,
+    locked: mode === 'update' ? recurringLineLock(entity.name, record) : undefined,
   });
   const linesReadOnly = lineLock !== undefined;
+  const locked = !canWrite || actionBusy || saving || state.conflict;
+  const canSave = canWrite && (editable || !linesReadOnly) && !actionBusy && !saving && !state.conflict;
+
+  // AC-2: sections, and tabs on a narrow screen with 4 or more labelled sections.
+  const sections = useHeaderSections(entity, mode);
+  const narrow = useNarrowScreen();
+  const layout = sectionLayout(sections, narrow);
+  const [tab, setTab] = useState(sections[0]?.key ?? '');
+
+  // AC-3: the summary of the last failed attempt, in form order; it shrinks as the user fixes the inputs.
+  const summary = useMemo(
+    () =>
+      state.attempt > 0
+        ? errorSummary({
+            sections,
+            allFields: [...entity.fields, ...extFieldsOf(entity)],
+            fieldErrors: state.fieldErrors,
+            formErrors: state.formErrors,
+            lines: specs.map((s) => ({
+              line: s.line,
+              columns: s.columns,
+              rows: state.lines[s.line.name] ?? [],
+              errors: state.lineErrors[s.line.name] ?? {},
+            })),
+          })
+        : [],
+    [state.attempt, state.fieldErrors, state.formErrors, state.lines, state.lineErrors, sections, entity, specs],
+  );
+  const errorCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of summary) if (item.section) counts[item.section] = (counts[item.section] ?? 0) + 1;
+    return counts;
+  }, [summary]);
+  const jump = useFocusTarget(
+    (item) => (layout === 'tabs' ? item.section : undefined),
+    (key) => setTab(key),
+  );
+  const lastAttempt = useRef(0);
+  useEffect(() => {
+    // A save, a reload or a restored draft starts the count again (attempt 0); the next failure is a new attempt.
+    if (state.attempt === 0) {
+      lastAttempt.current = 0;
+      return;
+    }
+    if (state.attempt === lastAttempt.current) return;
+    lastAttempt.current = state.attempt;
+    const first = firstTarget(summary);
+    if (first) jump(first);
+    // Only a new attempt moves focus; later edits that shrink the summary must not.
+  }, [state.attempt, summary, jump]);
+
+  // AC-5: Ctrl/⌘+S saves from anywhere on the record screen (never the browser's save dialog); Ctrl/⌘+Enter inside
+  // the form saves unsaved work or opens the submit confirmation of a clean draft document. While a modal dialog is
+  // open neither acts (Ctrl/⌘+S still keeps the browser's save dialog closed).
+  const keyState = useRef({ dirty, canSave, mode, submitControl });
+  keyState.current = { dirty, canSave, mode, submitControl };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const shortcut = formShortcut(event, IS_MAC);
+      if (!shortcut) return;
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) {
+        if (shortcut === 'save') event.preventDefault();
+        return;
+      }
+      const form = formRef.current;
+      if (!form) return;
+      const s = keyState.current;
+      if (shortcut === 'save') {
+        event.preventDefault();
+        if (s.canSave) form.requestSubmit();
+        return;
+      }
+      if (!(event.target instanceof Node) || !form.contains(event.target)) return;
+      const action = advanceAction({
+        isNew: s.mode === 'create',
+        dirty: s.dirty,
+        canSave: s.canSave,
+        canSubmit: s.submitControl !== undefined && s.submitControl.blocked === undefined,
+      });
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'submit') s.submitControl?.onRequest();
+      else form.requestSubmit();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // Explicit reset after refetch: if nothing changed server-side the record reference is reused (structural sharing)
   // and the effect in useFormState would not fire.
@@ -315,42 +515,61 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
     await qc.invalidateQueries({ queryKey: key });
     setState(freshState(entity, specs, qc.getQueryData<RecordJson>(key) ?? record));
   };
-  const onKey = (e: KeyboardEvent<HTMLFormElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') e.currentTarget.requestSubmit();
-  };
+  const renderField = (f: FieldMeta, section: HeaderSection) => (
+    <FieldWidget
+      key={f.name}
+      field={f}
+      value={state.values[f.name] ?? ''}
+      onChange={(v) => setValue(f.name, v)}
+      disabled={locked || !(section.key === 'ext' ? isExtFieldEditable(f, editCtx) : isFieldEditable(f, editCtx))}
+      error={state.fieldErrors[f.name]}
+      alertError={false}
+    />
+  );
+  const anyRequired = sections.some((s) =>
+    s.fields.some((f) =>
+      needsInput(f, !locked && (s.key === 'ext' ? isExtFieldEditable(f, editCtx) : isFieldEditable(f, editCtx))),
+    ),
+  );
+  const saveKeys = shortcutLabel('S', IS_MAC);
 
   return (
     <form
+      ref={formRef}
       onSubmit={(e) => {
         if (actionBusy || !canWrite) e.preventDefault();
         else submit(e);
       }}
-      onKeyDown={onKey}
       noValidate
       className="record-form flex flex-col gap-3"
       data-testid="record-form"
       data-mode={mode}
       data-dirty={dirty}
+      data-layout={layout}
     >
+      <FormDraftNotice control={draft} />
       {state.conflict ? <ConflictBanner onReload={() => void reload()} /> : null}
-      {state.formErrors.length > 0 ? (
-        <ul role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-          {state.formErrors.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-      ) : null}
+      <FormErrorSummary items={summary} attempt={state.attempt} onJump={jump} />
       {!canWrite ? (
         <p className="notice">
           {t({ ja: '閲覧モード — この記録は編集できません。', en: 'View mode — you cannot edit this record.' })}
         </p>
       ) : null}
-      <HeaderFields
-        entity={entity}
-        state={state}
-        setValue={setValue}
-        editCtx={editCtx}
-        locked={!canWrite || actionBusy || saving || state.conflict}
+      {anyRequired ? (
+        // The inputs carry `required`; the legend explains the visual mark only, so assistive technology skips it.
+        <p className="text-[11px] text-text-muted" data-testid="required-legend" aria-hidden="true">
+          <span className="text-red-600">*</span>{' '}
+          {t({ ja: 'は入力が必要な項目です', en: 'marks a field you must fill in' })}
+        </p>
+      ) : null}
+      <HeaderSections
+        sections={sections}
+        layout={layout}
+        selected={tab}
+        onSelect={setTab}
+        errorCounts={errorCounts}
+        renderField={renderField}
+        idPrefix={`form-${entity.name}`}
       />
       {specs.map((s) => {
         const rows = state.lines[s.line.name] ?? [];
@@ -378,25 +597,49 @@ export function RecordForm({ entity, record, onSaved, onCancel, onStatus, action
           </LineGrid>
         );
       })}
-      <div className="form-toolbar flex items-center gap-2">
+      <div ref={barRef} className="form-toolbar flex items-center gap-2" data-testid="form-toolbar">
         {canWrite && (editable || !linesReadOnly) ? (
           <button
             type="submit"
             className="btn btn-primary"
+            aria-keyshortcuts={saveKeys.aria}
+            title={`${t(S.save)} (${saveKeys.text})`}
             disabled={actionBusy || saving || state.conflict || (!editable && linesReadOnly)}
           >
             {saving ? t(S.saving) : t(S.save)}
           </button>
         ) : null}
+        {/* AC-7: on a narrow screen the header's Submit moves into this bar (CSS shows one of the two). */}
+        {submitControl ? (
+          <button
+            type="button"
+            className="btn btn-primary form-bar-submit"
+            data-testid="form-bar-submit"
+            disabled={submitControl.blocked !== undefined}
+            title={submitControl.blocked}
+            onClick={submitControl.onRequest}
+          >
+            {submitControl.label}
+          </button>
+        ) : null}
         {dirty ? (
+          // AC-7: below 768px the short text keeps the bar on one row (styles.css shows one of the two).
           <span className="dirty-label" role="status">
-            {t({ ja: '未保存の変更', en: 'Unsaved changes' })}
+            <span className="dirty-label-long">{t({ ja: '未保存の変更', en: 'Unsaved changes' })}</span>
+            <span className="dirty-label-short">{t({ ja: '未保存', en: 'Unsaved' })}</span>
           </span>
         ) : null}
         <button type="button" className="btn" onClick={onCancel}>
           {t(S.cancel)}
         </button>
-        {canWrite ? <span className="ml-auto text-xs text-neutral-500">Ctrl+Enter</span> : null}
+        <span className="ml-auto flex items-center gap-2">
+          {canWrite ? (
+            <span className="form-shortcut-hint text-xs text-text-muted" aria-hidden="true">
+              {saveKeys.text}
+            </span>
+          ) : null}
+          <FormShortcutsHelp />
+        </span>
       </div>
     </form>
   );

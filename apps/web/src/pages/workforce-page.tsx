@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { Link, useSearch } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { getUser } from '../api/client.ts';
 import { useMeta } from '../api/queries.ts';
 import { useManagementPortal } from '../api/workforce.ts';
@@ -33,9 +33,17 @@ const tabs: WorkforceTab[] = [
 export function WorkforcePage() {
   const { t, locale } = useLocale();
   const meta = useMeta();
-  const [period, setPeriod] = useState(() => businessToday().slice(0, 7));
+  // Inbox links (docs/specs/inbox.md) open the month of the oldest pending record and, for payroll, its tab.
+  const search = useSearch({ from: '/app/workforce' });
+  const [period, setPeriod] = useState(() => search.period ?? businessToday().slice(0, 7));
   const [siteId, setSiteId] = useState('');
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState<string>(search.tab ?? 'overview');
+  useEffect(() => {
+    if (search.period) setPeriod(search.period);
+  }, [search.period]);
+  useEffect(() => {
+    if (search.tab) setTab(search.tab);
+  }, [search.tab]);
   const [receiptId, setReceiptId] = useState<string>();
   const actions = meta.data?.actions.map((a) => a.name) ?? [];
   const allowed = actions.includes('workforce.management_portal');

@@ -57,6 +57,7 @@ async function save(ctx: Context, input: z.infer<typeof expenseSaveInput>) {
           repo(write, WorkforceExpense).create({
             ...identity(employee),
             ...patch,
+            paymentMethod: input.paymentMethod ?? 'personal',
             idempotencyKey: input.idempotencyKey,
             requestSnapshot: input,
           }),
@@ -73,7 +74,11 @@ async function save(ctx: Context, input: z.infer<typeof expenseSaveInput>) {
       );
     return command(
       await internalWrite(ctx, WorkforceExpense, (write) =>
-        repo(write, WorkforceExpense).update(row.id, patch, { expectedVersion: row.version }),
+        repo(write, WorkforceExpense).update(
+          row.id,
+          { ...patch, paymentMethod: input.paymentMethod ?? row.paymentMethod },
+          { expectedVersion: row.version },
+        ),
       ),
     );
   });

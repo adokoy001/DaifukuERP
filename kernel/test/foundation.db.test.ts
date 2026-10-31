@@ -330,7 +330,16 @@ describe('Read authority, precision and outbox atomicity', () => {
     const result = await db.run({ companyId: null }, (ctx) => deliverPending(ctx));
     expect(result.failed).toBe(1);
     expect(await db.run({ companyId: companyB }, (ctx) => repo(ctx, Owned).count())).toBe(0);
+    // event-delivery AC-4: a failed event waits for its next attempt (60 s after the first failure) instead of being
+    // retried by the very next call; once the clock passes it, the retry runs and delivers.
+    const [scheduled] = await db.owner.drizzle.execute<{ next_attempt_at: Date | string }>(
+      sql`select next_attempt_at from outbox where topic = 'foundation.atomic'`,
+    );
+    expect(new Date(String(scheduled?.next_attempt_at)).getTime()).toBeGreaterThan(Date.now() + 30_000);
     await db.run({ companyId: null }, (ctx) => deliverPending(ctx));
+    expect(await db.run({ companyId: companyB }, (ctx) => repo(ctx, Owned).count())).toBe(0);
+    const afterBackoff = new Date(Date.now() + 61_000);
+    await db.run({ companyId: null, now: () => afterBackoff }, (ctx) => deliverPending(ctx));
     expect(await db.run({ companyId: companyB }, (ctx) => repo(ctx, Owned).count())).toBe(1);
     let release!: () => void;
     let entered!: () => void;

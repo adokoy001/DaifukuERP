@@ -1,6 +1,7 @@
 // Append-only audit trail (ADR-0007). The app role has INSERT only on audit_log (see migration hooks).
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { Context } from './context.ts';
+import type { EntityDef } from './dsl/defs.ts';
 import { auditLog } from './db/system-tables.ts';
 import { newId } from './ids.ts';
 import { isAdmin } from './context.ts';
@@ -54,6 +55,24 @@ export interface AuditEntry {
   after: unknown;
 }
 
+/**
+ * The before/after filter of audit readers (the record audit panel and the audit search, access-insight AC-13): the
+ * caller's field masks and the entity's current `outputHidden` fields (ext included) are applied when the row is read,
+ * so a field hidden or restricted after it was recorded is not shown either. Rows of names outside the registry (kernel
+ * audit subjects) are returned as stored.
+ */
+export function auditSnapshotFilter(
+  ctx: Pick<Context, 'roles'>,
+  def: EntityDef | undefined,
+): (row: unknown) => Record<string, unknown> | null {
+  const mask = def ? maskedFields(ctx, def) : new Set<string>();
+  return (row) => {
+    if (row === null || typeof row !== 'object') return null;
+    const visible = Object.fromEntries(Object.entries(row).filter(([key]) => !mask.has(key)));
+    return def ? publicOutput(def, visible) : visible;
+  };
+}
+
 export async function auditTrail(ctx: Context, entity: string, recordId: string, limit = 100): Promise<AuditEntry[]> {
   const def = registry.hasEntity(entity) ? registry.entity(entity) : undefined;
   if (def) {
@@ -71,12 +90,7 @@ export async function auditTrail(ctx: Context, entity: string, recordId: string,
   ) {
     throw new PermissionDenied(entity, 'audit', ctx.roles);
   }
-  const mask = def ? maskedFields(ctx, def) : new Set<string>();
-  const filtered = (row: unknown) => {
-    if (row === null || typeof row !== 'object') return null;
-    const visible = Object.fromEntries(Object.entries(row).filter(([key]) => !mask.has(key)));
-    return def ? publicOutput(def, visible) : visible;
-  };
+  const filtered = auditSnapshotFilter(ctx, def);
   const rows = await ctx.db
     .select()
     .from(auditLog)

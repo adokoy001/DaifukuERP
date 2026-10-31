@@ -3,6 +3,8 @@
 // Sources (確認 2026-09-10): 国税庁 青色申告決算書 https://www.nta.go.jp/taxes/shiraberu/shinkoku/yoshiki/02/pdf/016.pdf,
 // 中小会計要領 https://www.chusho.meti.go.jp/zaimu/youryou/ — the expense accounts default to the tax category of their
 // typical transactions: 課税仕入 (standard) unless the spec pins another (給料/減価償却/租税公課 = 不課税, 地代家賃 = 非課税).
+// Fixed assets (docs/specs/fixed-assets.md AC-29): 1910 未収入金, 1920–1925 有形固定資産, 1929 減価償却累計額, 1930 ソフトウエア,
+// 8100 固定資産売却益 (特別利益), 8200 / 8300 売却損・除却損 (特別損失, 不課税). Codes stay clear of the industry packs' seeds.
 import { repo, type Context } from '@daifuku/kernel';
 import { Account, type AccountInsert, type AccountType, type TaxCategory, type TaxRole } from '@daifuku/mod-accounting';
 
@@ -54,7 +56,17 @@ export const JP_CHART_OF_ACCOUNTS: readonly SeedAccount[] = [
   asset('1300', '売掛金', '売掛金', { partnerRequired: true }),
   asset('1400', '商品', '棚卸資産'),
   asset('1500', '仮払消費税', '仮払消費税', { taxRole: 'input_tax' }),
+  asset('1800', '仮払金', 'その他流動資産'),
   asset('1900', '前払金', 'その他流動資産'),
+  asset('1910', '未収入金', 'その他流動資産'),
+  asset('1920', '建物', '有形固定資産'),
+  asset('1921', '建物附属設備', '有形固定資産'),
+  asset('1922', '構築物', '有形固定資産'),
+  asset('1923', '機械装置', '有形固定資産'),
+  asset('1924', '車両運搬具', '有形固定資産'),
+  asset('1925', '工具器具備品', '有形固定資産'),
+  asset('1929', '減価償却累計額', '有形固定資産'),
+  asset('1930', 'ソフトウエア', '無形固定資産'),
   liability('2100', '買掛金', '買掛金', { partnerRequired: true }),
   liability('2150', '未払金', '未払金'),
   liability('2200', '仮受消費税', '仮受消費税', { taxRole: 'output_tax' }),
@@ -64,6 +76,9 @@ export const JP_CHART_OF_ACCOUNTS: readonly SeedAccount[] = [
   equity('3000', '元入金', '元入金'),
   equity('3100', '事業主貸', '事業主勘定'),
   equity('3200', '事業主借', '事業主勘定'),
+  // docs/specs/opening-balances.md AC-28: the default of accounting.opening_balances; nets to 0 once the opening journal,
+  // receivables and payables imports agree (a balance left here is the difference between them).
+  equity('3900', '期首残高仮勘定', '期首残高仮勘定'),
   revenue('4000', '売上高', '売上', { taxCategoryDefault: 'standard' }),
   revenue('4100', '雑収入', '営業外収益'),
   expense('5000', '仕入高', '仕入', 'standard'),
@@ -80,6 +95,9 @@ export const JP_CHART_OF_ACCOUNTS: readonly SeedAccount[] = [
   expense('6960', '広告宣伝費', SGA, 'standard'),
   expense('6970', '接待交際費', SGA, 'standard'),
   expense('6980', '外注費', SGA, 'standard'),
+  revenue('8100', '固定資産売却益', '特別利益'),
+  expense('8200', '固定資産売却損', '特別損失', 'out_of_scope'),
+  expense('8300', '固定資産除却損', '特別損失', 'out_of_scope'),
 ];
 
 function toInsert(a: SeedAccount): AccountInsert {

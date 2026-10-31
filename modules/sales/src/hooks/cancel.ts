@@ -2,7 +2,7 @@
 // reversed (accounting.reverseSourceEntry, dated as the original entry so every trial-balance range is unchanged) and
 // status becomes 'cancelled'. balance keeps the spec formula (total − paidAmount); status is the gate for AR.
 import { Decimal, registry, StateError, type Context, type HookArgs, type LocalDate } from '@daifuku/kernel';
-import { reverseSourceEntry } from '@daifuku/mod-accounting';
+import { reverseOpeningSourceEntry, reverseSourceEntry } from '@daifuku/mod-accounting';
 import { SalesInvoice } from '../entities/sales-invoice.ts';
 import { assertCancellationDate } from '../settlements.ts';
 
@@ -29,7 +29,10 @@ async function beforeCancel(ctx: Context, { row, correctionDate }: HookArgs): Pr
   );
   if (typeof row.journalEntryId !== 'string')
     throw new StateError('Source posting link is missing', 'Repair the source linkage before cancelling.');
-  await reverseSourceEntry(ctx, {
+  // docs/specs/opening-balances.md AC-19: an opening invoice is reversed on the opening path (dated the opening date
+  // unless a correction date is given; a correction date follows the ordinary period rule).
+  const reverse = row.openingBalance === true ? reverseOpeningSourceEntry : reverseSourceEntry;
+  await reverse(ctx, {
     id: row.journalEntryId,
     sourceEntity: SalesInvoice.name,
     sourceId: row.id as string,

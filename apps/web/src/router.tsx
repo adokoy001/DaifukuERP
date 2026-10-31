@@ -27,16 +27,53 @@ import { EntityListPage } from './pages/entity-list-page.tsx';
 import { HomePage } from './pages/home-page.tsx';
 import { LoginPage } from './pages/login-page.tsx';
 import { ReportPage } from './pages/report-page.tsx';
-import { SettingsPage } from './pages/settings-page.tsx';
+import { parseDeliveriesSearch } from './lib/event-deliveries.ts';
+import { parseSettingsSearch, SettingsPage } from './pages/settings-page.tsx';
+import { parseSetupSearch } from './lib/setup-wizard.ts';
 import { TemplatesPage } from './pages/templates-page.tsx';
 import { ActionPage } from './pages/action-page.tsx';
 import { ReadRefreshNotice } from './components/read-refresh-notice.tsx';
 import { canRetainData } from './lib/read-recovery.ts';
 import { MetaError, NotFoundView } from './pages/status-views.tsx';
 import { ScreenTrail } from './components/screen-trail.tsx';
+import { CommandPalette } from './components/command-palette.tsx';
+import { forgetRecentNames } from './api/navigation-assist.ts';
 import { parseDirectorySearch } from './lib/menu-search.ts';
+import { parseCashSearch } from './lib/cash-forecast.ts';
+import { parseCloseSearch } from './lib/close-guide.ts';
+import { parseOpeningSearch } from './lib/opening-balances.ts';
+import { parseEvidenceSearch } from './lib/evidence-search.ts';
+import { parseDepreciationSearch } from './lib/depreciation.ts';
+import { parseEmployeeSearch, parseWorkforceSearch } from './lib/workforce.ts';
 
 const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFoundView });
+
+const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+/** The platform's own modifier only: on macOS Ctrl+K stays "delete to end of line" in text fields. */
+const PALETTE_SHORTCUT = MAC ? 'Meta+K' : 'Control+K';
+
+/**
+ * navigation-assist AC-1: Ctrl+K (⌘+K on macOS) opens the command palette anywhere in the shell, also from a form
+ * field. While another modal (a confirmation dialog, the phone drawer) is open the browser keeps the key.
+ */
+function usePaletteShortcut(open: () => void) {
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      const primary = MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      if (event.isComposing || event.altKey || event.shiftKey || !primary) return;
+      if (event.key.toLowerCase() !== 'k' && event.code !== 'KeyK') return;
+      if (document.querySelector('dialog.command-palette[open]')) {
+        event.preventDefault();
+        return;
+      }
+      if (document.querySelector('dialog[open], [aria-modal="true"]')) return;
+      event.preventDefault();
+      open();
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [open]);
+}
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -55,6 +92,10 @@ function AppLayout() {
   const { t } = useLocale();
   const [navOpen, setNavOpen] = useState(false);
   const closeNavigation = useCallback(() => setNavOpen(false), []);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  usePaletteShortcut(openPalette);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const previousPath = useRef(pathname);
   const content = useRef<HTMLDivElement>(null);
@@ -66,6 +107,7 @@ function AppLayout() {
   const logout = () => {
     void navigate({ to: '/login' }).then(() => {
       if (router.state.location.pathname !== '/login') return;
+      forgetRecentNames();
       clearSession();
       qc.clear();
     });
@@ -105,6 +147,18 @@ function AppLayout() {
                 <small>{t({ ja: '会社を切り替え', en: 'Switch company' })}</small>
               </Link>
             </div>
+            <button
+              type="button"
+              className="topbar-search"
+              aria-label={t({ ja: '画面と記録を検索', en: 'Search screens and records' })}
+              aria-haspopup="dialog"
+              aria-keyshortcuts={PALETTE_SHORTCUT}
+              onClick={openPalette}
+            >
+              <Icon name="search" size={16} />
+              <span>{t({ ja: '検索', en: 'Search' })}</span>
+              <kbd>{MAC ? '⌘K' : 'Ctrl K'}</kbd>
+            </button>
             <Link to="/account" className="topbar-right" aria-label={t({ ja: '自分のアカウント', en: 'My account' })}>
               <span>{getUser()?.name ?? getUser()?.email}</span>
               <span className="user-avatar">{(getUser()?.name ?? 'D').slice(0, 1)}</span>
@@ -134,6 +188,7 @@ function AppLayout() {
             )}
           </div>
         </main>
+        {paletteOpen ? <CommandPalette onClose={closePalette} /> : null}
       </div>
     </CompanyProvider>
   );
@@ -180,13 +235,24 @@ const newRoute = createRoute({
   path: '/e/$entity/new',
   component: () => <EntityFormPage mode="new" />,
 });
+// csv-import AC-11: master CSV import (static segment wins over $id).
+const importRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/e/$entity/import',
+  component: lazyRouteComponent(() => import('./pages/entity-import-page.tsx'), 'EntityImportPage'),
+});
 const recordRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/e/$entity/$id',
   component: () => <EntityFormPage mode="edit" />,
 });
 const reportRoute = createRoute({ getParentRoute: () => appRoute, path: '/r/$action', component: ReportPage });
-const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: '/settings', component: SettingsPage });
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings',
+  validateSearch: parseSettingsSearch,
+  component: SettingsPage,
+});
 const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: '/templates', component: TemplatesPage });
 const actionRoute = createRoute({ getParentRoute: () => appRoute, path: '/a/$action', component: ActionPage });
 
@@ -216,15 +282,71 @@ const accessRoute = createRoute({
   path: '/admin/users',
   component: lazyRouteComponent(() => import('./pages/access-page.tsx'), 'AccessPage'),
 });
+// company-admin AC-9: tenant administrators add and rename companies.
+const companiesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/companies',
+  component: lazyRouteComponent(() => import('./pages/companies-page.tsx'), 'CompaniesPage'),
+});
+// machine-credentials AC-27..AC-31: tenant administrators issue and revoke API keys.
+const tokensRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/tokens',
+  component: lazyRouteComponent(() => import('./pages/tokens-page.tsx'), 'TokensPage'),
+});
+// setup-health AC-9/AC-10: the setup check for admin or settings.
+const healthRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/health',
+  component: lazyRouteComponent(() => import('./pages/health-page.tsx'), 'HealthPage'),
+});
+// setup-wizard AC-1/AC-8: the setup wizard for company admins; `?step=` keeps the open step (known ids only).
+const setupRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/setup',
+  validateSearch: parseSetupSearch,
+  component: lazyRouteComponent(() => import('./pages/setup-page.tsx'), 'SetupPage'),
+});
+// access-insight AC-6/AC-19: the permission matrix and the audit search for admins. validateSearch keeps the known keys
+// with their raw values, whatever their type: the default search parser turns `?user=123` into a number, and the pages
+// must see it to report it as an unreadable URL condition rather than drop it silently.
+const knownSearch = (keys: readonly string[]) => (raw: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(raw).filter(([key]) => keys.includes(key))) as Record<string, unknown>;
+const permissionsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/permissions',
+  validateSearch: knownSearch(['tab', 'module', 'role', 'q', 'packs']),
+  component: lazyRouteComponent(() => import('./pages/permissions-page.tsx'), 'PermissionsPage'),
+});
+const auditRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/audit',
+  validateSearch: knownSearch(['from', 'to', 'user', 'entity', 'op', 'record', 'scope', 'cursor']),
+  component: lazyRouteComponent(() => import('./pages/audit-page.tsx'), 'AuditPage'),
+});
+// event-delivery AC-25/AC-27: company administrators manage webhook secrets and failed deliveries.
+const eventDeliveriesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/admin/event-deliveries',
+  validateSearch: parseDeliveriesSearch,
+  component: lazyRouteComponent(() => import('./pages/event-deliveries-page.tsx'), 'EventDeliveriesPage'),
+});
 const employeeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/me',
+  validateSearch: parseEmployeeSearch,
   component: lazyRouteComponent(() => import('./pages/employee-page.tsx'), 'EmployeePage'),
 });
 const workforceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/workforce',
+  validateSearch: parseWorkforceSearch,
   component: lazyRouteComponent(() => import('./pages/workforce-page.tsx'), 'WorkforcePage'),
+});
+const inboxRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/inbox',
+  component: lazyRouteComponent(() => import('./pages/inbox-page.tsx'), 'InboxPage'),
 });
 
 const shiftRoute = createRoute({
@@ -277,6 +399,48 @@ const bankingRoute = createRoute({
   path: '/finance/banking',
   component: lazyRouteComponent(() => import('./pages/banking-page.tsx'), 'BankingPage'),
 });
+const cashForecastRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/cash-forecast',
+  validateSearch: parseCashSearch,
+  component: lazyRouteComponent(() => import('./pages/cash-forecast-page.tsx'), 'CashForecastPage'),
+});
+const closeRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/close',
+  validateSearch: parseCloseSearch,
+  component: lazyRouteComponent(() => import('./pages/close-page.tsx'), 'ClosePage'),
+});
+// docs/specs/opening-balances.md AC-31 / AC-32: the opening balance import; the chosen year stays in ?fiscalYearId=.
+const openingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/opening',
+  validateSearch: parseOpeningSearch,
+  component: lazyRouteComponent(() => import('./pages/opening-balances-page.tsx'), 'OpeningBalancesPage'),
+});
+const recurringRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/recurring',
+  component: lazyRouteComponent(() => import('./pages/recurring-page.tsx'), 'RecurringPage'),
+});
+// docs/specs/evidence-search.md AC-12/AC-13: the evidence search keeps its criteria in the URL.
+const evidenceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/evidence',
+  validateSearch: parseEvidenceSearch,
+  component: lazyRouteComponent(() => import('./pages/evidence-page.tsx'), 'EvidencePage'),
+});
+const expenseSettlementRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/expenses',
+  component: lazyRouteComponent(() => import('./pages/expense-settlement-page.tsx'), 'ExpenseSettlementPage'),
+});
+const depreciationRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/finance/depreciation',
+  validateSearch: parseDepreciationSearch,
+  component: lazyRouteComponent(() => import('./pages/depreciation-page.tsx'), 'DepreciationPage'),
+});
 const taxFilingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/finance/filing',
@@ -322,6 +486,7 @@ const routeTree = rootRoute.addChildren([
     analyticsRoute,
     listRoute,
     newRoute,
+    importRoute,
     recordRoute,
     reportRoute,
     settingsRoute,
@@ -331,8 +496,16 @@ const routeTree = rootRoute.addChildren([
     edgeRoute,
     reportsRoute,
     accessRoute,
+    companiesRoute,
+    tokensRoute,
+    healthRoute,
+    setupRoute,
+    permissionsRoute,
+    auditRoute,
+    eventDeliveriesRoute,
     employeeRoute,
     workforceRoute,
+    inboxRoute,
     shiftRoute,
     fiscalRoute,
     workSystemRoute,
@@ -341,6 +514,13 @@ const routeTree = rootRoute.addChildren([
     commerceFranchiseRoute,
     tradeRoute,
     bankingRoute,
+    cashForecastRoute,
+    closeRoute,
+    openingRoute,
+    recurringRoute,
+    evidenceRoute,
+    expenseSettlementRoute,
+    depreciationRoute,
     taxFilingRoute,
   ]),
 ]);

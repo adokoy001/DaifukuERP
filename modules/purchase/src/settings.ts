@@ -27,10 +27,21 @@ export const PURCHASE_SETTING_DEFS: readonly SettingDef[] = [
     key: PURCHASE_ACCOUNTS_KEY,
     label: label('仕入の転記科目', 'Purchase posting accounts'),
     description: label(
-      '科目コードで指定: purchases=仕入高, payable=買掛金, taxReceivable=仮払消費税',
-      'By account code: purchases, payable, taxReceivable (input tax)',
+      '仕入請求書の確定（submit）で仕訳に使う勘定科目',
+      'Accounts the journal entry of a submitted purchase invoice posts to',
     ),
     schema: purchaseAccountsSchema,
+    default: PURCHASE_ACCOUNTS_DEFAULT,
+    order: 10,
+    fields: {
+      purchases: {
+        label: label('仕入高', 'Purchases'),
+        description: label('品目の明細', 'Product lines'),
+        widget: 'account-code',
+      },
+      payable: { label: label('買掛金', 'Accounts payable'), widget: 'account-code' },
+      taxReceivable: { label: label('仮払消費税', 'Input tax'), widget: 'account-code' },
+    },
   },
 ];
 

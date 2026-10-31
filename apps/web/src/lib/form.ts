@@ -1,6 +1,14 @@
 // Pure form logic: field -> widget, record <-> form values, payload building, server issues -> field errors.
 // No DOM here so it stays unit-testable (form.test.ts).
-import type { Docstatus, EntityMeta, FieldMeta, RecordJson, ValidationIssue } from '../api/types.ts';
+import type {
+  Docstatus,
+  EntityMeta,
+  FieldMeta,
+  FormGroupMeta,
+  Label,
+  RecordJson,
+  ValidationIssue,
+} from '../api/types.ts';
 
 export type Widget = 'text' | 'textarea' | 'int' | 'decimal' | 'bool' | 'date' | 'timestamp' | 'enum' | 'ref' | 'json';
 
@@ -33,26 +41,62 @@ export function widgetFor(field: FieldMeta): Widget {
   }
 }
 
-/** Groups from `views.form`; 'auto' = every non-hidden field. Fields missing from explicit groups are appended so nothing becomes un-enterable. */
-export function formGroups(entity: EntityMeta): FieldMeta[][] {
+/** One section of the generic form (form-ergonomics AC-1/AC-2). */
+export interface FormSection {
+  /** Stable within the entity: `g<n>` (position in `views.form`), `rest` (fields no group lists) or `auto`. */
+  key: string;
+  /** Heading of a labelled `{ label, fields }` group; absent for plain `string[]` groups and the leftovers. */
+  label?: Label;
+  fields: FieldMeta[];
+}
+
+/** The field names of one `views.form` group in either shape (plain `string[]` or labelled `{ label, fields }`). */
+export function formGroupFields(group: FormGroupMeta): readonly string[] {
+  return Array.isArray(group) ? group : group.fields;
+}
+
+/**
+ * Sections from `views.form`; 'auto' = one section of every non-hidden field. Unknown, hidden and repeated names are
+ * skipped, empty sections dropped, and fields no group lists are appended (`rest`) so nothing becomes un-enterable.
+ */
+export function formSections(entity: EntityMeta): FormSection[] {
   const visible = entity.fields.filter((f) => !f.hidden);
-  if (entity.views.form === 'auto') return [visible];
+  if (entity.views.form === 'auto') return visible.length > 0 ? [{ key: 'auto', fields: visible }] : [];
   const byName = new Map(visible.map((f) => [f.name, f] as const));
   const seen = new Set<string>();
-  const groups: FieldMeta[][] = [];
-  for (const names of entity.views.form) {
-    const group: FieldMeta[] = [];
-    for (const n of names) {
+  const sections: FormSection[] = [];
+  entity.views.form.forEach((group, index) => {
+    const fields: FieldMeta[] = [];
+    for (const n of formGroupFields(group)) {
       const f = byName.get(n);
       if (!f || seen.has(n)) continue;
       seen.add(n);
-      group.push(f);
+      fields.push(f);
     }
-    if (group.length > 0) groups.push(group);
-  }
+    if (fields.length === 0) return;
+    sections.push(
+      Array.isArray(group) ? { key: `g${index}`, fields } : { key: `g${index}`, label: group.label, fields },
+    );
+  });
   const rest = visible.filter((f) => !seen.has(f.name));
-  if (rest.length > 0) groups.push(rest);
-  return groups;
+  if (rest.length > 0) sections.push({ key: 'rest', fields: rest });
+  return sections;
+}
+
+/** form-ergonomics AC-2: below this many labelled sections a narrow screen still stacks them. */
+export const TAB_MIN_SECTIONS = 4;
+
+/** Tabs only on a narrow screen (< 768px) and only when the form has at least 4 labelled sections. */
+export function sectionLayout(sections: readonly { label?: Label | undefined }[], narrow: boolean): 'stack' | 'tabs' {
+  return narrow && sections.filter((s) => s.label !== undefined).length >= TAB_MIN_SECTIONS ? 'tabs' : 'stack';
+}
+
+/**
+ * form-ergonomics AC-4: whether the field needs a value from the user (the visual mark and `aria-required`): required,
+ * no default, and editable. A required field with a default (or computed by the server) is not marked.
+ */
+export function needsInput(field: FieldMeta, editable: boolean): boolean {
+  return editable && field.required && !field.hasDefault && !field.serverOwned && !field.readOnly;
 }
 
 function toFormValue(field: FieldMeta, v: unknown): FormValue {

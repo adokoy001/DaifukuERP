@@ -478,7 +478,7 @@ test('workforce: workflow-only creation, self-review denial and company cache se
   await expect(record(page, description)).toBeVisible();
 });
 
-test('workforce integration: all fifteen industry entries and searchable mobile catalog', async ({ page }) => {
+test('workforce integration: every industry entry and searchable mobile catalog', async ({ page }) => {
   page.setDefaultTimeout(15_000);
   await signIn(page);
   await page.goto('/templates');

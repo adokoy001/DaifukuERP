@@ -2,6 +2,8 @@
 
 `pnpm gate` は format:check → typecheck → ESLint → dependency-cruiser → unit → DB → deploy → docs:check → verify:assurance の順で実行する。DBテストには専用の使い捨てDBを明示する。所要時間は環境と検査対象に依存し、検査を省略して短縮しない。[検証と公開](../architecture/verification-and-release.md) も参照。
 
+編集中は `pnpm gate:quick` / `pnpm gate:light` で実行するファイルを選んで短く回せる。これは実行対象の選択であって検査の省略ではなく、完了を主張する前の `pnpm gate`（または上位集合の `pnpm gate:full`）を置き換えない（[3段階の回帰テスト](../specs/test-tiers.md)）。
+
 ## 整形と責務の分割
 
 `pnpm install --frozen-lockfile` 後に `pnpm format` で TypeScript / TSX / JavaScript / CSS を整形する。CIの `pnpm format:check` は書き換えず、不一致を失敗にする。エディターもリポジトリの固定版 Prettier と [.prettierrc.json](../../.prettierrc.json) / [.editorconfig](../../.editorconfig) を使う。

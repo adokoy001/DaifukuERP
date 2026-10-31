@@ -37,6 +37,8 @@ export const StockLedger = defineEntity({
     }),
   },
   audit: 'none',
+  // Rows come only from postings (hooks/guard.ts), so a CSV import could only fail (ADR-0028).
+  import: false,
   unique: [['productId', 'warehouseId', 'seq']],
   indexes: [['productId', 'warehouseId', 'date']],
   permissions: {

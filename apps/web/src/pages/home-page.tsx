@@ -1,19 +1,25 @@
 import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { useDocstatusCounts } from '../api/dashboard.ts';
+import { useMe } from '../api/company.tsx';
+import { useInbox } from '../api/inbox.ts';
 import { useNavigation } from '../api/navigation.ts';
 import { reportActions } from '../api/reports.ts';
 import type { EntityMeta } from '../api/types.ts';
 import { CountValue, DashboardSummary, QuickStart, type CountLookup } from '../components/dashboard-summary.tsx';
 import { Icon, moduleIcon } from '../components/icon.tsx';
+import { InboxCardView } from '../components/inbox-card.tsx';
+import { RoleHome } from '../components/role-home.tsx';
+import { SetupCard } from '../components/setup-card.tsx';
 import { WorkspaceCards } from '../components/workspace-cards.tsx';
 import { useLocale } from '../i18n.tsx';
 import { DOCSTATUSES, groupByModule, type ModuleGroup } from '../lib/dashboard.ts';
 import { DOCSTATUS_LABELS } from '../lib/format.ts';
-import { workspaceForModule } from '../lib/navigation.ts';
+import { workspaceForModule, type NavigationCatalog } from '../lib/navigation.ts';
 import { reportTitle } from '../lib/report.ts';
 import { canRetainData } from '../lib/read-recovery.ts';
 import { S } from '../strings.ts';
+import { buttonClass } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 
 function DocCard({ entity, count }: { entity: EntityMeta; count: CountLookup }) {
@@ -142,13 +148,62 @@ function DocumentStatus({ groups, reports }: { groups: ModuleGroup[]; reports: R
   );
 }
 
+/**
+ * The general home (role-home `general` view, also below the admin card): business areas first, and document counts
+ * only once "Review document status" is opened (navigation-workspaces AC-9).
+ */
+function GeneralHome({ catalog, groups, reports }: GeneralHomeProps) {
+  const { t } = useLocale();
+  const [statusOpen, setStatusOpen] = useState(false);
+  return (
+    <>
+      <section aria-label={t({ ja: '業務分野から始める', en: 'Start with a business area' })}>
+        <div className="home-intro">
+          <h2>{t({ ja: '業務分野から始める', en: 'Start with a business area' })}</h2>
+          <p>
+            {t({
+              ja: '操作画面・マスター・記録を、ひとつの入口に。',
+              en: 'Workflows, masters and records in one place.',
+            })}
+          </p>
+        </div>
+        <WorkspaceCards workspaces={catalog.workspaces} />
+      </section>
+      <details className="home-status" open={statusOpen} onToggle={(event) => setStatusOpen(event.currentTarget.open)}>
+        <summary>
+          {t({ ja: '伝票の状況を確認', en: 'Review document status' })}
+          <small>
+            {t({
+              ja: '業務を選んで、下書き・確定・取消の件数を見る',
+              en: 'Choose a module to see draft, submitted and cancelled counts',
+            })}
+          </small>
+        </summary>
+        {statusOpen ? <DocumentStatus groups={groups} reports={reports} /> : null}
+      </details>
+    </>
+  );
+}
+
+interface GeneralHomeProps {
+  catalog: NavigationCatalog;
+  groups: ModuleGroup[];
+  reports: ReturnType<typeof reportActions>;
+}
+
+/**
+ * Home (docs/specs/role-home.md): the shared header, the to-do inbox card (the home's only inbox read, AC-14), then the
+ * role-based view chosen from /meta and /auth/me. A failed /meta keeps the existing error with no view chosen (AC-1).
+ */
 export function HomePage() {
   const { t, locale } = useLocale();
   const { catalog, meta } = useNavigation();
-  const [statusOpen, setStatusOpen] = useState(false);
+  const me = useMe();
+  const inbox = useInbox();
   const groups = useMemo(() => (meta.data ? groupByModule(meta.data, S.allEntities) : []), [meta.data]);
   const reports = useMemo(() => reportActions(meta.data), [meta.data]);
   const unavailable = meta.isError && !canRetainData(meta);
+  const tenantAdmin = !me.isError && me.data?.user.tenantAdmin === true;
   const date = new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
     timeZone: 'Asia/Tokyo',
     month: 'long',
@@ -169,49 +224,35 @@ export function HomePage() {
         </div>
       </header>
       <div className="home-entry-actions">
-        <Link to="/workspaces" className="btn btn-primary">
+        <Link to="/workspaces" className={buttonClass('primary')}>
           <Icon name="search" size={18} />
           {t({ ja: 'すべての画面を探す', en: 'Find a screen' })}
         </Link>
         {catalog.entries.some((entry) => entry.href === '/me') ? (
-          <Link to="/me" className="btn">
+          <Link to="/me" className={buttonClass()}>
             <Icon name="clock" size={18} />
             {t({ ja: '自分の勤怠・申請', en: 'My workday' })}
           </Link>
         ) : null}
       </div>
+      <SetupCard />
       {unavailable ? <MetaError error={meta.error} retry={() => void meta.refetch()} /> : null}
       {meta.isPending ? <LoadingView /> : null}
       {meta.data && !unavailable ? (
         <>
-          <section aria-label={t({ ja: '業務分野から始める', en: 'Start with a business area' })}>
-            <div className="home-intro">
-              <h2>{t({ ja: '業務分野から始める', en: 'Start with a business area' })}</h2>
-              <p>
-                {t({
-                  ja: '操作画面・マスター・記録を、ひとつの入口に。',
-                  en: 'Workflows, masters and records in one place.',
-                })}
-              </p>
-            </div>
-            <WorkspaceCards workspaces={catalog.workspaces} />
-          </section>
-          <details
-            className="home-status"
-            open={statusOpen}
-            onToggle={(event) => setStatusOpen(event.currentTarget.open)}
-          >
-            <summary>
-              {t({ ja: '伝票の状況を確認', en: 'Review document status' })}
-              <small>
-                {t({
-                  ja: '業務を選んで、下書き・確定・取消の件数を見る',
-                  en: 'Choose a module to see draft, submitted and cancelled counts',
-                })}
-              </small>
-            </summary>
-            {statusOpen ? <DocumentStatus groups={groups} reports={reports} /> : null}
-          </details>
+          <InboxCardView inbox={inbox} />
+          {me.isPending ? (
+            <LoadingView />
+          ) : (
+            <RoleHome
+              meta={meta.data}
+              catalog={catalog}
+              tenantAdmin={tenantAdmin}
+              accessScope={me.data?.user.accessScope}
+              inbox={inbox}
+              general={<GeneralHome catalog={catalog} groups={groups} reports={reports} />}
+            />
+          )}
         </>
       ) : null}
     </div>

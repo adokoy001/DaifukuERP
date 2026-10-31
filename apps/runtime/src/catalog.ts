@@ -12,6 +12,7 @@ import { ContractModule } from '@daifuku/mod-contract';
 import { IndustryOperationsModule } from '@daifuku/mod-industry-operations';
 import { WorkforceModule } from '@daifuku/mod-workforce';
 import { WorkforceEvidenceModule } from '@daifuku/mod-workforce-evidence';
+import { ExpenseModule } from '@daifuku/mod-expense';
 import { PosIntegrationModule } from '@daifuku/mod-pos-integration';
 import { GroupAccountingModule } from '@daifuku/mod-group-accounting';
 import { FranchiseModule } from '@daifuku/mod-franchise';
@@ -19,6 +20,7 @@ import { EdgeIntegrationModule } from '@daifuku/mod-edge-integration';
 import { TradeModule } from '@daifuku/mod-trade';
 import { BankingModule } from '@daifuku/mod-banking';
 import { TaxFilingModule } from '@daifuku/mod-tax-filing';
+import { FixedAssetsModule } from '@daifuku/mod-fixed-assets';
 import { JapanModule } from '@daifuku/l10n-jp';
 
 export const businessModules: readonly ModuleDef[] = [
@@ -34,6 +36,7 @@ export const businessModules: readonly ModuleDef[] = [
   ContractModule,
   WorkforceModule,
   WorkforceEvidenceModule,
+  ExpenseModule,
   IndustryOperationsModule,
   PosIntegrationModule,
   GroupAccountingModule,
@@ -42,5 +45,6 @@ export const businessModules: readonly ModuleDef[] = [
   TradeModule,
   BankingModule,
   TaxFilingModule,
+  FixedAssetsModule,
   JapanModule,
 ];

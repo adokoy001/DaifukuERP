@@ -1,0 +1,18 @@
+// Idempotent masters: three tags, inserted only when their code is absent (applyPack runs this again with force).
+import { repo, type Context } from '@daifuku/kernel';
+import { __PACK_PASCAL__Tag } from './entities/__PACK_KEBAB__-tag.ts';
+
+export const SEED_TAGS: readonly { code: string; name: string }[] = [
+  { code: 'standard', name: '標準' },
+  { code: 'priority', name: '優先' },
+  { code: 'inactive', name: '休止' },
+];
+
+export async function seed__PACK_PASCAL__(ctx: Context): Promise<void> {
+  const r = repo(ctx, __PACK_PASCAL__Tag);
+  const existing = await r.list({ where: { code: { $in: SEED_TAGS.map((t) => t.code) } }, limit: SEED_TAGS.length });
+  const present = new Set(existing.items.map((t) => t.code));
+  for (const t of SEED_TAGS) {
+    if (!present.has(t.code)) await r.create(t);
+  }
+}

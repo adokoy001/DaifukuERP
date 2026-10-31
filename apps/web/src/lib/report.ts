@@ -16,6 +16,14 @@ function shorten(s: string, tail?: RegExp): string {
   return head.length > TITLE_MAX ? `${head.slice(0, TITLE_MAX)}…` : head;
 }
 
+/**
+ * A report is a table action that is not generic. Generic entity actions are never reports: `<entity>.export_rows`
+ * returns a TableResult for the list's CSV only. Shared by the report catalog and the navigation so they cannot drift.
+ */
+export function isReportAction(action: Pick<ActionMeta, 'resultKind' | 'generic'>): boolean {
+  return action.resultKind === 'table' && !action.generic;
+}
+
 /** Menu title for a report: actions only carry a description, so its first clause is used (`試算表を返します。…` -> `試算表`). */
 export function reportTitle(action: Pick<ActionMeta, 'name' | 'description'>): Label {
   const ja = shorten(action.description.ja, JA_VERB_TAIL);
@@ -124,6 +132,22 @@ export function reportInitialValues(fields: readonly SchemaField[], now = new Da
     if (field.default === undefined && value !== undefined) defaults[field.name] = value;
   }
   return defaults;
+}
+
+/**
+ * Period dates handed over in the URL (`/r/<action>?from=…&to=…`, close-guide AC-8): only date fields of the period
+ * kind, only real YYYY-MM-DD values, so a link can preset the period but never invent identifiers or other inputs.
+ */
+export function reportSearchValues(
+  fields: readonly SchemaField[],
+  search: Record<string, unknown>,
+): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of fields) {
+    const value = search[field.name];
+    if (periodField(field) === 'date' && validDate(value)) values[field.name] = value;
+  }
+  return values;
 }
 
 export function reportDateErrors(

@@ -1,12 +1,15 @@
 // web-phase1 AC-1/AC-2: one editable grid per line entity — inline widgets by kind, add/remove/reorder, Enter/Tab
-// navigation, decimal footer sums ("参考値"). Row model and arithmetic live in lib/lines.ts.
+// navigation, decimal footer sums ("参考値"). Row model and arithmetic live in lib/lines.ts. form-ergonomics AC-6:
+// Enter walks the input cells row by row and appends a row at the end; Alt+↑/↓ moves the row (lib/form-shortcuts.ts).
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { useCurrencyScale } from '../api/company.tsx';
 import { useMeta, useRecord } from '../api/queries.ts';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import { useLocale } from '../i18n.tsx';
-import { widgetFor, type FormValue } from '../lib/form.ts';
+import { needsInput, widgetFor, type FormValue } from '../lib/form.ts';
+import { altArrowLabel, fromReactKey, gridKey, IS_MAC, movedIndex, nextCell } from '../lib/form-shortcuts.ts';
+import { gridCellId } from '../lib/form-errors.ts';
 import { decimalMinScale, formatDecimal, groupDigits, shortId } from '../lib/format.ts';
 import { columnSums, moveRow, newRow, polymorphicTarget, type GridErrors, type GridRow } from '../lib/lines.ts';
 import { S } from '../strings.ts';
@@ -38,6 +41,37 @@ function focusCell(root: HTMLElement | null, rowKey: string, field: string | und
   el?.focus();
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * e2e-a11y: whether anything inside the element can take focus (editable cells, record links). Read from the DOM and
+ * re-read when it changes, because a cell's link appears only after its record loads (and not at all without access).
+ */
+function useFocusableInside(frame: RefObject<HTMLElement | null>): boolean {
+  const [inside, setInside] = useState(false);
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const update = () => setInside(element.querySelector(FOCUSABLE) !== null);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(element, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'href', 'tabindex'],
+    });
+    return () => observer.disconnect();
+  }, [frame]);
+  return inside;
+}
+
+/** Columns whose cells take input (the Enter order of form-ergonomics AC-6). */
+function editableColumns(columns: readonly FieldMeta[], readOnly: boolean): string[] {
+  return readOnly ? [] : columns.filter((c) => c.serverOwned !== true && c.readOnly !== true).map((c) => c.name);
+}
+
 function useKeyboard(rows: GridRow[], columns: FieldMeta[], readOnly: boolean, onChange: (rows: GridRow[]) => void) {
   const body = useRef<HTMLTableSectionElement>(null);
   const pending = useRef<{ rowKey: string; field: string | undefined } | null>(null);
@@ -46,27 +80,45 @@ function useKeyboard(rows: GridRow[], columns: FieldMeta[], readOnly: boolean, o
     focusCell(body.current, pending.current.rowKey, pending.current.field);
     pending.current = null;
   });
+  const editable = editableColumns(columns, readOnly);
   const addRow = (after?: number, field?: string) => {
     const row = newRow(columns);
     const next = [...rows];
     next.splice(after === undefined ? rows.length : after + 1, 0, row);
-    pending.current = { rowKey: row.key, field: field ?? columns[0]?.name };
+    pending.current = { rowKey: row.key, field: field ?? editable[0] ?? columns[0]?.name };
     onChange(next);
   };
-  // Enter on the last row appends a row; elsewhere it moves down the same column. Widgets that consume Enter
-  // (an open ref combobox) call preventDefault first, and textareas keep their newline.
+  // form-ergonomics AC-6 (lib/form-shortcuts.ts): Enter goes to the next input cell of the row, then to the first cell
+  // of the next row, and appends a row after the last cell of the last row; Alt+↑ / Alt+↓ move the row and keep the
+  // focus in the same cell. Widgets that consume Enter (a combobox with a highlighted option) call preventDefault
+  // first, textareas keep their newline and buttons their click. The Enter that confirms an IME conversion is the
+  // IME's: React's synthetic event has no `isComposing`, so the composition state comes from the native event.
   const onKeyDown = (e: KeyboardEvent<HTMLTableSectionElement>) => {
-    if (e.key !== 'Enter' || e.defaultPrevented || readOnly || e.ctrlKey || e.metaKey) return;
+    const key = gridKey(fromReactKey(e));
+    if (key === undefined || e.defaultPrevented || readOnly) return;
     const target = e.target as HTMLElement;
-    if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
+    if (target.tagName === 'BUTTON' || (key === 'next' && target.tagName === 'TEXTAREA')) return;
     const tr = target.closest<HTMLElement>('tr[data-row-key]');
     const field = target.closest<HTMLElement>('td[data-field]')?.dataset.field;
     const index = rows.findIndex((r) => r.key === tr?.dataset.rowKey);
-    if (index === -1) return;
+    const row = rows[index];
+    if (!row || field === undefined) return;
+    if (key === 'next') {
+      const to = nextCell(editable, rows.length, index, field);
+      if (to === undefined) return;
+      e.preventDefault();
+      if (to === 'add') addRow(index);
+      else {
+        const nextRow = rows[to.row];
+        if (nextRow) focusCell(body.current, nextRow.key, to.field);
+      }
+      return;
+    }
+    const to = movedIndex(index, rows.length, key);
     e.preventDefault();
-    const nextRow = rows[index + 1];
-    if (nextRow) focusCell(body.current, nextRow.key, field);
-    else addRow(index, field);
+    if (to === undefined) return;
+    pending.current = { rowKey: row.key, field };
+    onChange(moveRow(rows, index, to));
   };
   return { body, addRow, onKeyDown };
 }
@@ -110,24 +162,29 @@ function Cell({ line, row, field, columns, entities, readOnly, error, onChange, 
   const { t } = useLocale();
   const Widget = WIDGETS[widgetFor(field)];
   const target = polymorphicTarget(field, row.values, columns, entities);
+  const id = gridCellId(line.name, row.key, field.name);
+  const disabled = readOnly || field.serverOwned === true || field.readOnly === true;
   return (
     <td
       data-field={field.name}
       className={`px-1 py-0.5 align-top ${NUMERIC.has(field.kind) ? 'min-w-28' : 'min-w-36'}`}
     >
       <Widget
-        id={`l-${line.name}-${row.key}-${field.name}`}
+        id={id}
         field={field}
         value={row.values[field.name] ?? ''}
         onChange={onChange}
         onSelectRecord={onSelect}
-        disabled={readOnly || field.serverOwned === true || field.readOnly === true}
+        disabled={disabled}
         invalid={error !== undefined}
         ariaLabel={t(field.label)}
+        required={needsInput(field, !disabled)}
+        describedBy={error ? `${id}-error` : undefined}
       />
       {target ? <TargetLink entity={target.entity} id={target.id} /> : null}
+      {/* form-ergonomics AC-3: the form's error summary is the alert; the cell error is read with its input. */}
       {error ? (
-        <span role="alert" className="block text-[11px] text-red-700">
+        <span id={`${id}-error`} className="block text-[11px] text-red-700">
           {error}
         </span>
       ) : null}
@@ -157,7 +214,8 @@ function RowTools({
         type="button"
         className={btn}
         aria-label={t(S.moveUp)}
-        title={t(S.moveUp)}
+        aria-keyshortcuts="Alt+ArrowUp"
+        title={`${t(S.moveUp)} (${altArrowLabel('↑', IS_MAC)})`}
         disabled={index === 0}
         onClick={() => onMove(index - 1)}
       >
@@ -167,7 +225,8 @@ function RowTools({
         type="button"
         className={btn}
         aria-label={t(S.moveDown)}
-        title={t(S.moveDown)}
+        aria-keyshortcuts="Alt+ArrowDown"
+        title={`${t(S.moveDown)} (${altArrowLabel('↓', IS_MAC)})`}
         disabled={index >= count - 1}
         onClick={() => onMove(index + 1)}
       >
@@ -209,7 +268,7 @@ function SumsFooter({ columns, rows }: { columns: FieldMeta[]; rows: GridRow[] }
               : ''}
           </td>
         ))}
-        <td className="px-1 py-1 text-[10px] text-neutral-400">{t(S.referenceValue)}</td>
+        <td className="px-1 py-1 text-[10px] text-text-muted">{t(S.referenceValue)}</td>
       </tr>
     </tfoot>
   );
@@ -218,6 +277,8 @@ function SumsFooter({ columns, rows }: { columns: FieldMeta[]; rows: GridRow[] }
 export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReason, errors, children }: LineGridProps) {
   const { t } = useLocale();
   const { body, addRow, onKeyDown } = useKeyboard(rows, columns, readOnly, onChange);
+  const frame = useRef<HTMLDivElement>(null);
+  const focusableInside = useFocusableInside(frame);
   const entities = useMeta().data?.entities ?? NO_ENTITIES;
   const setCell = (key: string, field: string, v: FormValue) =>
     onChange(rows.map((r) => (r.key === key ? { ...r, values: { ...r.values, [field]: v } } : r)));
@@ -240,7 +301,7 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
         {readOnly ? (
           <span className="text-[11px] text-neutral-500">🔒 {readOnlyReason ?? t(S.readonly)}</span>
         ) : (
-          <span className="text-[11px] text-neutral-400">{t(S.enterAddsRow)}</span>
+          <span className="line-grid-hint text-[11px] text-text-muted">{t(S.enterAddsRow)}</span>
         )}
         {!readOnly ? (
           <button type="button" className="btn ml-auto px-2 py-0.5" onClick={() => addRow()}>
@@ -249,7 +310,20 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
         ) : null}
       </header>
       {children}
-      <div className="overflow-x-auto">
+      <div
+        ref={frame}
+        className="overflow-x-auto"
+        // e2e-a11y: when nothing inside can take focus (no rows yet, or read-only cells without record links) the
+        // scrolling frame itself does; otherwise keyboard users cannot reach the columns beyond a narrow screen
+        // (WCAG 2.1.1). With inputs or links inside it adds no extra Tab stop (docs/conventions/ui.md).
+        {...(!focusableInside
+          ? {
+              tabIndex: 0,
+              role: 'region',
+              'aria-label': t({ ja: `${line.label.ja}の表`, en: `${line.label.en} table` }),
+            }
+          : {})}
+      >
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-left text-xs text-neutral-600">
             <tr>
@@ -287,7 +361,7 @@ export function LineGrid({ line, columns, rows, onChange, readOnly, readOnlyReas
                 data-testid="line-row"
                 className="border-t border-neutral-100"
               >
-                <td className="px-2 py-1 font-mono text-xs text-neutral-400">{i + 1}</td>
+                <td className="px-2 py-1 font-mono text-xs text-text-muted">{i + 1}</td>
                 {columns.map((c) => (
                   <Cell
                     key={c.name}

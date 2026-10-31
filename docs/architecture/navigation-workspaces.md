@@ -1,6 +1,6 @@
 # 業務分野と画面ナビゲーション
 
-[受入仕様](../specs/navigation-workspaces.md) / [操作マニュアル](../manual/appendix-n-navigation.md) / [プログラム地図](program-map.md)
+[受入仕様](../specs/navigation-workspaces.md) / [パレット・最近・お気に入りの受入仕様](../specs/navigation-assist.md) / [操作マニュアル](../manual/appendix-n-navigation.md) / [プログラム地図](program-map.md)
 
 ## 責任と境界
 
@@ -40,6 +40,8 @@ flowchart TD
 
 module menuを任意のURL転送機構にしない。登録済みのアプリ内routeと、metadataに存在するentity・action・reportだけをリンクへ変換する。外部URL、query/hashを混ぜたroute、encoded pathやdot segmentを使う曖昧なrouteは採用しない。既存URLは改名しない。
 
+やること受信箱（`/inbox`、[spec](../specs/inbox.md)）は、`<module>.todo` の提供元が1つ以上実行できる場合だけ専用画面としてカタログへ入る（条件 `inbox`、分野はその他）。提供元が返す項目の `href` は、外部URL・先頭の `//`（プロトコル相対）・`\`・空白・hashを拒否し、pathnameが `findNavigationEntry` でこのカタログに解決するものだけをリンクにする。queryは移動先の画面の検索条件（例 `/workforce?period=`）として渡す。module menuの転送規則は変えない。
+
 入口の非表示は認可ではない。既存のAPI認可、会社/拠点/本人境界、項目権限、直接開いたページの権限エラーを保持する。会社切替時のquery keyと既存のmetadata再取得・エラー処理を継承し、古い会社のカタログを新しい会社用として固定保存しない。
 
 ## 検索と表示
@@ -50,7 +52,9 @@ module menuを任意のURL転送機構にしない。登録済みのアプリ内
 
 [menu-search.ts](../../apps/web/src/lib/menu-search.ts) はURLの `q`（最大120文字）、既知の `kind`、`page`（2〜10000の整数、1は省略）だけを受け入れる。画面は検索・種別変更で先頭へ戻し、結果減少時のページを末尾へ収める。入力変更は履歴を置換、ページ・分野変更は履歴を追加するため、画面を開いた後にブラウザの戻る操作で絞込状態へ戻れる。個人設定を保存する機能ではない。
 
-ホームでは分野カードを先に示す。「伝票の状況を確認」のdetailsが開いている間だけ、選択moduleの伝票を既存 `useDocstatusCounts` へ渡す。初期moduleはsales、存在しなければ最初の伝票module、それもなければ先頭module。状態ごとの `limit=1` 取得はこのmoduleに限定する。関連マスターは先頭8件、帳票は先頭5件を近道として示し、分野・分析へのリンクから残りへ到達できる。初回に全module・全伝票の状態件数を取得する構成へ戻さない。
+ホームは役割別のビューで始まる（2026-10-30、[role-home](../specs/role-home.md)）。ビューは `lib/role-home.ts` の `availableHomeLayouts` が `/meta`・画面カタログ・`tenantAdmin` から決める。従業員ビューは `/me` が画面カタログにあることを条件にする。導入管理ビューは admin・settings ロールまたは `tenantAdmin` だけを条件にし、`/settings`・`/admin/users`・`/templates`・`/admin/health`（B3）（と後続の `/setup`（B4））は画面カタログにあるものだけをリンクとして出す。カードのリンクもカタログにある画面だけを出す（`hasScreen`）。以下の分野カードと伝票件数の規則は、全体ビューと導入管理ビューの中の規則である。
+
+ホームの全体ビューでは分野カードを先に示す。「伝票の状況を確認」のdetailsが開いている間だけ、選択moduleの伝票を既存 `useDocstatusCounts` へ渡す。初期moduleはsales、存在しなければ最初の伝票module、それもなければ先頭module。状態ごとの `limit=1` 取得はこのmoduleに限定する。関連マスターは先頭8件、帳票は先頭5件を近道として示し、分野・分析へのリンクから残りへ到達できる。初回に全module・全伝票の状態件数を取得する構成へ戻さない。
 
 ## 現在位置と入力保護
 
@@ -62,7 +66,31 @@ module menuを任意のURL転送機構にしない。登録済みのアプリ内
 
 ## 保存と変更範囲
 
-ナビゲーションのための個人設定、履歴、お気に入り、localStorage/DB保存は追加しない。会社別metadataと検索中の表示状態だけを使う。ピボットの分析設定保存は独立した契約であり、このカタログへ転用しない。
+カタログ自体は保存しない（会社別metadataから毎回組み立てる）。DB保存とサーバー側の個人設定・履歴は追加しない。ブラウザ内に保存するのは、次節の最近開いた記録とお気に入りだけ。ピボットの分析設定保存は独立した契約であり、このカタログへ転用しない。
+
+## コマンドパレット・最近の記録・お気に入り・画面の説明
+
+[受入仕様](../specs/navigation-assist.md)。すべて表示層で、新しいAPI・閲覧経路・権限判定を足さない。候補と表示の可否はカタログ（認可済みmetadata）から決め、移動は既存routerを通す。
+
+```mermaid
+flowchart LR
+  C[NavigationCatalog] --> P[コマンドパレット]
+  C --> F[お気に入りの表示]
+  C --> R[最近の記録の表示]
+  V[記録の画面を開く] -->|entity・id・表示名・日時| L[(localStorage<br/>利用者・tenant・会社ごと)]
+  T[現在位置のお気に入りボタン] -->|href| L
+  L --> F
+  L --> R
+  R --> P
+  F --> P
+  H[help.ts 経路→章] --> S[現在位置の「この画面の説明」]
+```
+
+- **パレット**（[command-palette.tsx](../../apps/web/src/components/command-palette.tsx)、候補は [command-palette.ts](../../apps/web/src/lib/command-palette.ts)）: `Ctrl+K`（macOS は `⌘+K` だけ。他のモーダルが開いていないとき、入力欄からも）と上部ボタンで開く。kit の `Dialog`（native modal）が焦点の閉じ込め・Escape・開いた要素への焦点の復帰を受け持つ。入力欄は ARIA 1.2 の combobox、候補は group 付きの listbox（WAI-ARIA APG の grouped listbox）で、焦点は入力欄に残したまま `aria-activedescendant` で選択を示す。入力ありは `searchNavigation` の結果20件＋最近の記録の一致10件、入力なしはお気に入り・最近・featuredの専用画面8件（`startScreens`: `WORKSPACES` の順に分野ごと1画面ずつ巡る）。`/meta` の読込中・失敗はカタログが空になるので、「一致しない」ではなく読込中・失敗と示す。選んだら `flushSync` でパレットを閉じ（焦点を元へ戻し）てから `navigate` するので、未保存フォームの `useBlocker` の確認はパレットの外で出る。
+- **保存の境界**（[assist-storage.ts](../../apps/web/src/lib/assist-storage.ts)）: キーは `daifuku.recent.v1.` / `daifuku.favorites.v1.` ＋ `[tenantId, userId, companyId]` のJSON（[分析設定](reporting-pivot.md)と同じ形）。会社が無い・未ログインならキーを作らない。値は `{ version: 1, items }`。`localStorage` の取得・読込・書込の例外、64,000文字超、壊れたJSON、別versionは「使えない」または空として扱い、見出しとボタンを出さない。タブ間の排他はしない（最後の書込みが勝つ）。React 側（[api/navigation-assist.ts](../../apps/web/src/api/navigation-assist.ts)）は `useSyncExternalStore` で同じタブの書込み（通知）と別タブの `storage` イベントを反映する。会社切替はページを読み直すので、キーは描画ごとに求める。明示的なログアウト（router の logout、アカウント画面の全端末ログアウト・パスワード変更、認証設定の変更）は `clearSession()` の前に `forgetRecentNames()` を呼び、その利用者の全会社の `daifuku.recent.v1.` から表示名を消す（401 による自動の切断では呼ばない）。
+- **最近の記録**（[recent-records.ts](../../apps/web/src/lib/recent-records.ts)）: 汎用の記録画面（`entity-form-page.tsx` の `useRecordVisit`）が、読めた記録のentity・id・表示名（`displayField`、無ければ `number`）とその出どころ（`labelSource`）・日時を新しい順30件まで保存する。表示時は現在のmetadataを見て、`displayField` が無くなった（field groupでマスクされた）entityの表示項目由来の名前を出さない。`workforce_` と `filing_payroll_` で始まるentityは表示名を保存せず、読込時にも捨てる。表示はカタログに一覧（`/e/<entity>`）があるentityだけ。個別の記録の権限は開いたときに既存の認可が判定する。サイドバーは5件。
+- **お気に入り**（[favorites.ts](../../apps/web/src/lib/favorites.ts)）: カタログ画面のhrefだけ（スキーム・host・query・hash・dot segmentを持たないアプリ内pathに限る）を最大20件。名前は保存せずカタログから引くので、言語切替や権限の変化にそのまま従う。満杯なら表示されない（カタログに無い）hrefから外す。切替ボタンは現在位置に置き、pathnameがカタログ画面のhrefと一致するときだけ出す。
+- **画面の説明**（[help.ts](../../apps/web/src/lib/help.ts)）: 専用画面・固定route・帳票・一部のaction・entity名の規則から `docs/manual/` の章（と節アンカー）を引く。entity画面の既定は「02 画面の基本」、対応の無い画面はリンクを出さない。基点は `VITE_MANUAL_URL`（絶対http(s)、query・fragment・資格情報なし）、それ以外は公開リポジトリの `main`。正式な配布物は [deploy/build.mjs](../../deploy/build.mjs) の `releaseManualUrl` が、既定で配布物のcommitに固定した公開リポジトリ、`--manual-url` があればその値（検証して違反なら停止）を `VITE_MANUAL_URL` として渡し、manifestの `manualBase` に残す。マニュアルは日本語だけなので、リンクに `hreflang="ja"` を付ける。[help.test.ts](../../apps/web/src/lib/help.test.ts) が章ファイルと節見出しの実在、すべての専用画面（`/account` 以外）の対応を確かめるので、専用画面を足すときは対応表にも足す。
 
 ## 表示と検証の入口
 
@@ -72,10 +100,16 @@ module menuを任意のURL転送機構にしない。登録済みのアプリ内
 | 分野・画面カード | [workspace-cards.tsx](../../apps/web/src/components/workspace-cards.tsx) |
 | 検索・種類・分野・24件ページング | [workspaces-page.tsx](../../apps/web/src/pages/workspaces-page.tsx) |
 | ホーム・選択moduleの件数 | [home-page.tsx](../../apps/web/src/pages/home-page.tsx)、[dashboard.ts](../../apps/web/src/api/dashboard.ts) |
+| 役割別ホームのビューと読取 | [role-home.ts](../../apps/web/src/lib/role-home.ts)、[api/role-home.ts](../../apps/web/src/api/role-home.ts)、[role-home.tsx](../../apps/web/src/components/role-home.tsx) |
 | 共通メニュー・drawer | [sidebar.tsx](../../apps/web/src/components/sidebar.tsx)、[router.tsx](../../apps/web/src/router.tsx) |
-| 現在位置・title | [screen-trail.tsx](../../apps/web/src/components/screen-trail.tsx) |
+| 現在位置・title・お気に入りボタン・説明リンク | [screen-trail.tsx](../../apps/web/src/components/screen-trail.tsx) |
+| コマンドパレット・上部ボタン・`Ctrl+K` | [command-palette.tsx](../../apps/web/src/components/command-palette.tsx)、[router.tsx](../../apps/web/src/router.tsx) |
+| 最近・お気に入りの保存と表示 | [assist-storage.ts](../../apps/web/src/lib/assist-storage.ts)、[recent-records.ts](../../apps/web/src/lib/recent-records.ts)、[favorites.ts](../../apps/web/src/lib/favorites.ts)、[api/navigation-assist.ts](../../apps/web/src/api/navigation-assist.ts) |
+| 経路→マニュアル章 | [help.ts](../../apps/web/src/lib/help.ts) |
 | 分野の見た目とレスポンシブ表示 | [navigation.css](../../apps/web/src/navigation.css) |
 | カタログ・権限・重複・検索・URL境界 | [navigation.test.ts](../../apps/web/src/lib/navigation.test.ts) |
 | 画面間の操作・入力保護・モバイル・権限 | [navigation.spec.ts](../../apps/web/e2e/navigation.spec.ts) |
+| 保存境界・上限・失敗・候補・章の対応 | [navigation-assist.test.ts](../../apps/web/src/lib/navigation-assist.test.ts)、[help.test.ts](../../apps/web/src/lib/help.test.ts) |
+| パレット・最近・お気に入り・説明リンク・保存不可・390px | [navigation-assist.spec.ts](../../apps/web/e2e/navigation-assist.spec.ts) |
 
 受入手順は [仕様](../specs/navigation-workspaces.md)、実行結果は作業ログへ記録し、この文書を試験成功の証拠にはしない。

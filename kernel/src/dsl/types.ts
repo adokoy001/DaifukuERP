@@ -57,11 +57,23 @@ export type Naming =
     }
   | { type: 'field'; field: string };
 
+/**
+ * A labelled group of the generic form (form-ergonomics AC-1, ADR-0002 addendum): the UI shows `label` as the section
+ * heading (a tab on narrow screens when there are 4 or more labelled groups).
+ */
+export interface FormGroup {
+  label: Label;
+  fields: readonly string[];
+}
+
 export interface ViewsConfig {
   /** Columns in the generic list view. Defaults to the first 6 non-hidden fields. */
   list?: readonly string[];
-  /** Field groups in the generic form. 'auto' = all non-hidden fields in declaration order. */
-  form?: 'auto' | readonly (readonly string[])[];
+  /**
+   * Field groups in the generic form. 'auto' = all non-hidden fields in declaration order. A group is either a plain
+   * list of field names (no heading, the original form) or a labelled `{ label, fields }` group; both may be mixed.
+   */
+  form?: 'auto' | readonly (readonly string[] | FormGroup)[];
   /** Fields used by the quick search box. */
   search?: readonly string[];
 }
@@ -91,6 +103,16 @@ export interface EntityConfig<F extends FieldMap = FieldMap> {
   /** Composite unique constraints (tenant/company are prepended automatically). */
   unique?: readonly (readonly string[])[];
   indexes?: readonly (readonly string[])[];
+  /**
+   * `false`: no derived `<entity>.import` (CSV import, ADR-0028) for a master whose generic create is always refused
+   * (append-only ledgers, derived tables, rows that need server-owned input such as uploaded files).
+   */
+  import?: false;
+  /**
+   * Child line entities (each must have a ref field back to this entity, given as `parentField`). Documents freeze
+   * their lines after submit (ADR-0006); an entity's lines stay editable with update on the parent (ADR-0031).
+   */
+  lines?: readonly { entity: string; parentField: string }[];
 }
 
 export type StoreAccessPolicy =
@@ -108,8 +130,6 @@ export interface DocumentConfig<F extends FieldMap = FieldMap> extends EntityCon
   naming: Naming;
   /** Fields that may still be updated after submit (ADR-0006). */
   allowOnSubmit?: readonly string[];
-  /** Child line entities (each must have a ref field back to this document, given as `parentField`). */
-  lines?: readonly { entity: string; parentField: string }[];
   /** Named transitions in addition to the built-in submit/cancel/amend. */
   transitions?: Record<string, Transition>;
 }

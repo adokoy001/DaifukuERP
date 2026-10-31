@@ -1,6 +1,16 @@
 // Spec AC-5: REST sugar over the generic entity actions (<entity>.list/get/create/update/delete/submit/cancel/amend)
-// plus GET /api/:entity/:id/audit. No business logic here; everything delegates to the kernel.
-import { auditTrail, registry, repo, ValidationError, type Database } from '@daifuku/kernel';
+// plus GET /api/:entity/:id/related (<entity>.related) and /audit. csv-import AC-1/AC-10: POST /api/:entity/import and
+// the header template. No business logic here; everything delegates to the kernel.
+import {
+  assertImportable,
+  auditTrail,
+  IMPORT_MAX_BYTES,
+  importTemplateCsv,
+  registry,
+  repo,
+  ValidationError,
+  type Database,
+} from '@daifuku/kernel';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { callAction, parse, withRequestContext } from '../request-context.ts';
@@ -22,6 +32,7 @@ const listQuery = z.object({
   /** JSON domain expression, e.g. `{"isCustomer":true}` */
   where: z.string().max(4000).optional(),
 });
+const templateQuery = z.object({ lang: z.enum(['ja', 'en']).optional() });
 
 function entityOf(params: unknown): string {
   const { entity } = parse(entityParams, params, 'params');
@@ -112,6 +123,37 @@ export function registerRestRoutes(app: FastifyInstance, opts: { db: Database })
   app.post('/api/:entity', { schema: tag('Create a record (body = insert input)'), ...NO_VALIDATION }, async (req) =>
     act(req, `${entityOf(req.params)}.create`, req.body),
   );
+  // csv-import AC-1/AC-2: the derived <entity>.import action; 2 MB body (Fastify answers 413 above it).
+  app.post(
+    '/api/:entity/import',
+    {
+      schema: tag('Import records from CSV rows (body = { rows, mode, onExisting, keyField?, atomic? })'),
+      bodyLimit: IMPORT_MAX_BYTES,
+      ...NO_VALIDATION,
+    },
+    async (req) => {
+      const entity = registry.entity(entityOf(req.params));
+      assertImportable(entity);
+      return act(req, `${entity.name}.import`, req.body);
+    },
+  );
+  // csv-import AC-10: header-only CSV of the importable fields (UTF-8 with BOM), labels in ?lang= or the caller's locale.
+  app.get(
+    '/api/:entity/import-template.csv',
+    { schema: { ...tag('CSV header template for import (?lang=ja|en)'), querystring: templateQuery } },
+    async (req, reply) => {
+      const entity = registry.entity(entityOf(req.params));
+      const { lang } = parse(templateQuery, req.query, 'query');
+      const csv = await withRequestContext(opts.db, req, async (ctx) =>
+        importTemplateCsv(ctx, entity, lang ?? ctx.locale),
+      );
+      return reply
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${entity.name}-import-template.csv"`)
+        .header('cache-control', 'no-store')
+        .send(csv);
+    },
+  );
   app.patch(
     '/api/:entity/:id',
     { schema: tagId('Update a record (body = patch, or { patch, expectedVersion })'), ...NO_VALIDATION },
@@ -132,6 +174,15 @@ export function registerRestRoutes(app: FastifyInstance, opts: { db: Database })
       const { id, op } = parse(opParams, req.params, 'params');
       const body = parse(documentInput, req.body ?? {}, 'body');
       return act(req, `${entityOf(req.params)}.${op}`, { id, ...body });
+    },
+  );
+  // document-links AC-2/AC-3: delegates to the derived read action <entity>.related.
+  app.get(
+    '/api/:entity/:id/related',
+    { schema: tagId('Related records (referenced, referencing, amendment chain), up to 50 per entity') },
+    async (req) => {
+      const { id } = parse(idParams, req.params, 'params');
+      return act(req, `${entityOf(req.params)}.related`, { id });
     },
   );
   app.get('/api/:entity/:id/audit', { schema: tagId('Audit trail of a record (newest first)') }, async (req) => {

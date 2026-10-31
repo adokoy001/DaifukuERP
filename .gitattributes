@@ -1,0 +1,2 @@
+# Append-only JSON lines: parallel branches each append records; keep both sides on merge.
+docs/metrics/*.jsonl merge=union

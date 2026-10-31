@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EntityMeta, FieldMeta, RecordJson } from '../api/types.ts';
 import {
   diffPatch,
-  formGroups,
+  formSections,
   initialValues,
   isFieldEditable,
   issuesToFieldErrors,
@@ -81,7 +81,7 @@ describe('widgetFor (AC-4)', () => {
   });
 });
 
-describe('formGroups (AC-4)', () => {
+describe('formSections as field groups (AC-4)', () => {
   const base = {
     name: 'x',
     kind: 'entity' as const,
@@ -96,7 +96,7 @@ describe('formGroups (AC-4)', () => {
 
   it("'auto' is one group of all non-hidden fields", () => {
     const entity: EntityMeta = { ...base, views: { list: [], form: 'auto', search: [] } };
-    const groups = formGroups(entity);
+    const groups = formSections(entity).map((s) => s.fields);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.map((f) => f.name)).not.toContain('secret');
     expect(groups[0]).toHaveLength(fields.length - 1);
@@ -107,7 +107,7 @@ describe('formGroups (AC-4)', () => {
       ...base,
       views: { list: [], form: [['name', 'code', 'nope', 'secret'], ['qty']], search: [] },
     };
-    const names = formGroups(entity).map((g) => g.map((f) => f.name));
+    const names = formSections(entity).map((s) => s.fields.map((f) => f.name));
     expect(names[0]).toEqual(['name', 'code']);
     expect(names[1]).toEqual(['qty']);
     expect(names[2]).toEqual([

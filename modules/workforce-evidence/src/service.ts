@@ -5,6 +5,7 @@ import {
   PermissionDenied,
   registry,
   repo,
+  requireHumanUserId,
   StateError,
   withLock,
   withWriteCapability,
@@ -21,8 +22,9 @@ const write = defineWriteCapability({
   fields: Object.keys(WorkforceReceipt.config.fields),
   operations: ['create'],
 });
+/** The employee behind the upload; an API key is refused (machine-credentials AC-22), system / relay match nobody. */
 const actor = (ctx: Context) =>
-  ctx.actor.type === 'agent' ? ctx.actor.onBehalfOf : ctx.actor.type === 'user' ? ctx.actor.id : undefined;
+  ctx.actor.type === 'system' || ctx.actor.type === 'relay' ? undefined : requireHumanUserId(ctx);
 
 async function editableExpense(ctx: Context, expenseId: string) {
   const expense = await repo(ctx, WorkforceExpense).get(expenseId);

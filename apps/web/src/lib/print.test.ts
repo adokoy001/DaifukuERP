@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionMeta } from '../api/types.ts';
-import { htmlOf, printActionFor, withPrintBar } from './print.ts';
+import { refResolverFrom, schemaFields } from './schema.ts';
+import {
+  extraInputSchema,
+  htmlOf,
+  printActionsFor,
+  printFieldPresentation,
+  printInputOf,
+  withPrintBar,
+  type PrintAction,
+} from './print.ts';
 
 function action(name: string, over: Partial<ActionMeta> = {}): ActionMeta {
   return {
@@ -14,27 +23,129 @@ function action(name: string, over: Partial<ActionMeta> = {}): ActionMeta {
   };
 }
 
-const render = action('sales.render_invoice_html', {
-  inputSchema: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] },
+const idSchema = { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] };
+const invoicePrint = { entity: 'sales_invoice', label: { ja: '請求書を表示', en: 'View invoice' }, idInput: 'id' };
+const invoice = action('sales.render_invoice_html', { inputSchema: idSchema, print: invoicePrint });
+const receipt = action('payment.render_receipt_html', {
+  inputSchema: idSchema,
+  print: {
+    entity: 'payment',
+    label: { ja: '領収書を表示', en: 'View receipt' },
+    idInput: 'id',
+    when: { direction: 'receive' },
+  },
+});
+const notice = action('payment.render_payment_notice_html', {
+  inputSchema: idSchema,
+  print: {
+    entity: 'payment',
+    label: { ja: '支払通知書を表示', en: 'View payment notice' },
+    idInput: 'id',
+    when: { direction: 'pay' },
+  },
+});
+const statement = action('sales.render_statement_html', {
+  inputSchema: {
+    type: 'object',
+    properties: { partnerId: { type: 'string', format: 'uuid' }, closingDate: { type: 'string', format: 'date' } },
+    required: ['partnerId'],
+  },
+  print: {
+    entity: 'partner',
+    label: { ja: '合計請求書を表示', en: 'View statement' },
+    idInput: 'partnerId',
+    when: { isCustomer: true },
+    fields: {
+      closingDate: {
+        label: { ja: '締め日', en: 'Closing date' },
+        description: { ja: '空欄なら直近の締め日', en: 'Blank for the latest closing date' },
+      },
+    },
+  },
+});
+const doc = (name: string) => ({ name, kind: 'document' as const });
+const all = [action('sales.ar_aging', { resultKind: 'table' }), invoice, receipt, notice, statement];
+
+describe('printActionsFor (print-templates AC-3: declared in /meta, no web table)', () => {
+  it('AC-3 finds the actions declared for the entity, only on submitted documents', () => {
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1 }, all)).toEqual([invoice]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 0 }, all)).toEqual([]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 2 }, all)).toEqual([]);
+    expect(printActionsFor(doc('purchase_invoice'), { docstatus: 1 }, all)).toEqual([]);
+  });
+
+  it('AC-3 `when` picks the receipt or the payment notice by direction (one entity, two documents)', () => {
+    expect(printActionsFor(doc('payment'), { docstatus: 1, direction: 'receive' }, all)).toEqual([receipt]);
+    expect(printActionsFor(doc('payment'), { docstatus: 1, direction: 'pay' }, all)).toEqual([notice]);
+    expect(printActionsFor(doc('payment'), { docstatus: 1 }, all)).toEqual([]);
+  });
+
+  it('AC-3 opening-balances AC-20: the invoice declaration `when: { openingBalance: false }` hides an opening invoice', () => {
+    // the declaration as sales.render_invoice_html emits it in /meta (round 6 integration)
+    const declared = action('sales.render_invoice_html', {
+      inputSchema: idSchema,
+      print: { ...invoicePrint, when: { openingBalance: false } },
+    });
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1, openingBalance: false }, [declared])).toEqual([
+      declared,
+    ]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1, openingBalance: true }, [declared])).toEqual([]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 2, openingBalance: false }, [declared])).toEqual([]);
+  });
+
+  it('AC-3 plain entities (partner) need no docstatus; `when` compares booleans', () => {
+    const partner = { name: 'partner', kind: 'entity' as const };
+    expect(printActionsFor(partner, { isCustomer: true }, all)).toEqual([statement]);
+    expect(printActionsFor(partner, { isCustomer: false }, all)).toEqual([]);
+  });
+
+  it('AC-3 an action whose input lacks the idInput property is not offered; several matches keep /meta order', () => {
+    const broken = action('sales.render_invoice_html', {
+      inputSchema: { type: 'object', properties: { invoiceId: {} } },
+      print: invoicePrint,
+    });
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1 }, [broken])).toEqual([]);
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1 }, [action('sales.render_invoice_html')])).toEqual([]);
+    const second = action('pack.render_invoice_copy_html', { inputSchema: idSchema, print: invoicePrint });
+    expect(printActionsFor(doc('sales_invoice'), { docstatus: 1 }, [second, invoice]).map((a) => a.name)).toEqual([
+      'pack.render_invoice_copy_html',
+      'sales.render_invoice_html',
+    ]);
+  });
 });
 
-describe('printActionFor (web-polish print view, data-driven from /meta)', () => {
-  it('finds <module>.render_invoice_html whose input takes { id }', () => {
-    expect(printActionFor({ module: 'sales' }, [action('sales.ar_aging', { resultKind: 'table' }), render])).toBe(
-      render,
-    );
+describe('print input (print-templates AC-4)', () => {
+  it('AC-4 the record id goes under idInput; extra values are kept but cannot override it', () => {
+    expect(printInputOf(invoice as PrintAction, 'inv-1')).toEqual({ id: 'inv-1' });
+    expect(printInputOf(statement as PrintAction, 'p-1', { closingDate: '2026-10-20', partnerId: 'x' })).toEqual({
+      closingDate: '2026-10-20',
+      partnerId: 'p-1',
+    });
   });
-  it('ignores other modules, entities without a module, and actions without an id input', () => {
-    expect(printActionFor({ module: 'purchase' }, [render])).toBeUndefined();
-    expect(printActionFor({ module: undefined }, [render])).toBeUndefined();
-    expect(printActionFor({ module: 'sales' }, [action('sales.render_invoice_html')])).toBeUndefined();
-    expect(
-      printActionFor({ module: 'sales' }, [
-        action('sales.render_invoice_html', {
-          inputSchema: { type: 'object', properties: { invoiceId: { type: 'string' } } },
-        }),
-      ]),
-    ).toBeUndefined();
+
+  it('AC-4 extraInputSchema: undefined without extra inputs; otherwise the schema without idInput', () => {
+    expect(extraInputSchema(invoice as PrintAction)).toBeUndefined();
+    expect(extraInputSchema(statement as PrintAction)).toEqual({
+      type: 'object',
+      properties: { closingDate: { type: 'string', format: 'date' } },
+    });
+  });
+
+  it('AC-4 AC-25 the dialog fields are labelled in ja and en by print.fields (not by the schema title)', () => {
+    const fields = schemaFields(
+      extraInputSchema(statement as PrintAction),
+      refResolverFrom([]),
+      printFieldPresentation(statement as PrintAction),
+    );
+    expect(fields).toHaveLength(1);
+    expect(fields[0]).toMatchObject({
+      name: 'closingDate',
+      kind: 'date',
+      required: false,
+      label: { ja: '締め日', en: 'Closing date' },
+      help: { ja: '空欄なら直近の締め日', en: 'Blank for the latest closing date' },
+    });
+    expect(printFieldPresentation(invoice as PrintAction)).toBeUndefined();
   });
 });
 

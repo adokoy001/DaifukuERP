@@ -8,6 +8,8 @@ export function lineLockReason(state: {
   actionBusy: boolean;
   conflict: boolean;
   frozen: boolean;
+  /** An entity-specific lock with its own reason (recurring-journals AC-3: an allocation that started generating). */
+  locked?: Label | undefined;
 }): Label | undefined {
   if (state.saving) return { ja: '保存中です。完了までお待ちください', en: 'Saving. Please wait until it completes.' };
   if (state.actionBusy) return { ja: '操作を処理しています', en: 'An operation is in progress.' };
@@ -19,5 +21,5 @@ export function lineLockReason(state: {
   if (!state.canWrite)
     return { ja: '閲覧モードのため明細は変更できません', en: 'Lines cannot be changed in view mode.' };
   if (state.frozen) return S.linesFrozen;
-  return undefined;
+  return state.locked;
 }

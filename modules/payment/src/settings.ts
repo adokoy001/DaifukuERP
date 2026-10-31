@@ -38,10 +38,36 @@ export const PAYMENT_SETTING_DEFS: readonly SettingDef[] = [
     key: PAYMENT_ACCOUNTS_KEY,
     label: label('入出金の勘定科目', 'Payment accounts'),
     description: label(
-      '科目コード: cash=現金, bank=普通預金, receivable=売掛金, payable=買掛金, advanceReceived=前受金, advancePaid=前払金',
-      'Account codes: cash, bank, receivable, payable, advanceReceived (customer advances), advancePaid (supplier advances)',
+      '入金・支払の仕訳に使う勘定科目。現金・普通預金は入出金の口座を省略したときの既定',
+      'Accounts payment journal entries post to. Cash and bank are the defaults when a payment names no account',
     ),
     schema: paymentAccountsSchema,
+    default: PAYMENT_ACCOUNTS_DEFAULT,
+    order: 10,
+    fields: {
+      cash: {
+        label: label('現金', 'Cash'),
+        description: label('支払方法が現金のときの口座', 'Account for the cash method'),
+        widget: 'account-code',
+      },
+      bank: {
+        label: label('普通預金', 'Bank account'),
+        description: label('現金以外の支払方法の口座', 'Account for every other method'),
+        widget: 'account-code',
+      },
+      receivable: { label: label('売掛金', 'Accounts receivable'), widget: 'account-code' },
+      payable: { label: label('買掛金', 'Accounts payable'), widget: 'account-code' },
+      advanceReceived: {
+        label: label('前受金', 'Customer advances'),
+        description: label('入金のうち消し込まなかった額', 'Unallocated part of a receipt'),
+        widget: 'account-code',
+      },
+      advancePaid: {
+        label: label('前払金', 'Supplier advances'),
+        description: label('支払のうち消し込まなかった額', 'Unallocated part of a disbursement'),
+        widget: 'account-code',
+      },
+    },
   },
 ];
 

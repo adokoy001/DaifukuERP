@@ -8,7 +8,7 @@ import { DaifukuError } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { opaqueToken, tokenHash } from './crypto.ts';
 import { withIdentityAttempt } from './rate-limit.ts';
-export { identityRateLimit, withIdentityAttempt } from './rate-limit.ts';
+export { assertIdentityBudget, identityRateLimit, withIdentityAttempt } from './rate-limit.ts';
 export const identityDenied = (): DaifukuError =>
   new DaifukuError(
     'PERMISSION_DENIED',
@@ -18,7 +18,8 @@ export const identityDenied = (): DaifukuError =>
     401,
   );
 export async function lockIdentity(ctx: Context, sessionVersion?: number, userId = actorUser(ctx), active = true) {
-  if (ctx.actor.type === 'system') throw identityDenied();
+  // A machine credential is never a person: fail closed instead of relying on the id not matching a user row.
+  if (ctx.actor.type === 'system' || ctx.actor.type === 'machine') throw identityDenied();
   const [user] = await ctx.db
     .select()
     .from(users)

@@ -25,8 +25,11 @@ interface AppliedMigration extends DatabaseIdentity {
   hash: string;
   created_at: string;
 }
-const defaultMigrations = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
-async function expectedMigrations(directory: string) {
+/** The release migration catalog next to the API (also read by the setup health item `system.migrations`). */
+export const DEFAULT_MIGRATIONS_DIRECTORY = fileURLToPath(new URL('../../drizzle/migrations/', import.meta.url));
+const defaultMigrations = DEFAULT_MIGRATIONS_DIRECTORY;
+/** Hash and timestamp of every catalog entry, in journal order; throws on a missing or malformed catalog. */
+export async function expectedMigrations(directory: string) {
   const data = JSON.parse(await readFile(resolve(directory, 'meta/_journal.json'), 'utf8')) as {
     entries?: { idx: number; when: number; tag: string }[];
   };
@@ -43,6 +46,28 @@ async function expectedMigrations(directory: string) {
       };
     }),
   );
+}
+/** An applied row of drizzle.__drizzle_migrations: its hash and timestamp, nothing else. */
+export interface AppliedMigrationRecord {
+  hash: string;
+  created_at: string;
+}
+/**
+ * The one owner-connection read the setup health item `system.migrations` makes inside GET /meta/health (ADR-0027 §7,
+ * a recorded exception to ADR-0004): a fixed statement on drizzle.__drizzle_migrations returning the applied hashes and
+ * timestamps, or null when the table does not exist. The health check receives this function, never the owner Database.
+ */
+export function appliedMigrationsReader(owner: Database): () => Promise<AppliedMigrationRecord[] | null> {
+  return async () => {
+    const [table] = await owner.sql<
+      { name: string | null }[]
+    >`select to_regclass('drizzle.__drizzle_migrations')::text as name`;
+    if (!table?.name) return null;
+    const rows = await owner.sql<
+      AppliedMigrationRecord[]
+    >`select hash, created_at::text from drizzle.__drizzle_migrations order by created_at, id`;
+    return rows.map((row) => ({ hash: row.hash, created_at: row.created_at }));
+  };
 }
 async function query<T>(pending: PromiseLike<T> & { cancel(): void }, milliseconds: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

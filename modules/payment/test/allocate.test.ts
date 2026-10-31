@@ -244,6 +244,26 @@ describe('journal lines (AC-3)', () => {
     ]);
   });
 
+  it('expense-settlement AC-14 a clearing payment posts its whole amount to the counter account with the partner', () => {
+    const counter = { ...base, allocations: [], unallocated: '0', counterAccountId: 'acc-2150' };
+    expect(journalLinesFor({ ...counter, direction: 'pay', accountId: 'acc-1100', amount: '4930' }).map(shape)).toEqual(
+      [
+        ['acc-2150', '4930', null, P, MEMO.clearing],
+        ['acc-1100', null, '4930', P, '支払'],
+      ],
+    );
+    const refund = journalLinesFor({ ...counter, amount: '5070', counterAccountId: 'acc-1800' });
+    expect(refund.map(shape)).toEqual([
+      ['acc-1100', '5070', null, P, '入金'],
+      ['acc-1800', null, '5070', P, MEMO.clearing],
+    ]);
+    expect(imbalance(refund).toString()).toBe('0');
+    // no counter account: unchanged (advance account for the unallocated part)
+    expect(journalLinesFor({ ...counter, counterAccountId: null, unallocated: '2500' }).map(shape)[1]?.[0]).toBe(
+      'acc-2400',
+    );
+  });
+
   it('entryDescription with and without the number', () => {
     expect(entryDescription('receive', '得意先A', null)).toBe('入金 得意先A');
     expect(entryDescription('receive', '得意先A', 'PAY-2026-000001')).toBe('入金 PAY-2026-000001 得意先A');

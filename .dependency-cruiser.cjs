@@ -90,7 +90,7 @@ module.exports = {
           '^modules/workforce/src/fiscal-contract\\.ts$',
           '^modules/workforce/src/payroll-rules/contract\\.ts$',
           '^modules/workforce/src/work-system-contract\\.ts$',
-          '^modules/(group-accounting|franchise|pos-integration|edge-integration|trade|banking|tax-filing)/src/contract\\.ts$',
+          '^modules/(group-accounting|franchise|pos-integration|edge-integration|trade|banking|tax-filing|expense)/src/contract\\.ts$',
           '^modules/workforce/src/scheduling/index\\.ts$',
         ],
       },

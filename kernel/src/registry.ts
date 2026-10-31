@@ -12,6 +12,13 @@ import { Conflict, DependencyError } from './errors.ts';
 import type { Label } from './i18n.ts';
 import type { LocalDate } from './ids.ts';
 import { packIsActive } from './pack-scope.ts';
+import {
+  checkSettingDef,
+  type SettingCategory,
+  type SettingFieldDef,
+  type SettingManagedBy,
+  type SettingWidget,
+} from './setting-presentation.ts';
 
 export const HOOK_PHASES = [
   'before_validate',
@@ -46,25 +53,71 @@ export type GuardFn = (ctx: Context, row: Record<string, unknown>) => Promise<bo
 export type OverrideFn = (...args: never[]) => unknown;
 export type EventHandler = (ctx: Context, payload: unknown, meta: { topic: string; id: string }) => Promise<void>;
 
-/**
- * A company setting declared by a module (ADR-0013 L1). `key` is `<module>.<name>`; `schema` validates the value
- * stored in companies.settings (see settings.ts getSetting/setSetting) and is what the generic settings UI renders.
- */
 export interface RegistryWarning {
   kind: 'label_override';
   message: string;
 }
 
+/**
+ * A company setting declared by a module (ADR-0013 L1). `key` is `<module>.<name>`; `schema` validates the value
+ * stored in companies.settings (see settings.ts getSetting/setSetting) and is what the generic settings UI renders.
+ * `category`, `order`, `fields`, `widget` and `valueLabels` only change how the settings console shows it (ADR-0027);
+ * registerSetting checks them against the schema.
+ */
 export interface SettingDef<T = unknown> {
   key: string;
   label: Label;
   description?: Label;
   schema: z.ZodType<T>;
   /**
-   * The value the module uses when the company has none. Declaring it lets applyPack treat a stored value equal to
-   * it (e.g. written by an l10n seed) as "still the default" and replace it with the pack's default (ADR-0015).
+   * The value the module uses when the company has none (its getSetting fallback). The settings console shows it as
+   * the default; it must pass `schema`. applyPack does not compare stored values with it (it keeps every stored value).
    */
   default?: T;
+  /** Settings console tab; when omitted, derived from the key prefix (defaultSettingCategory). */
+  category?: SettingCategory;
+  /** Position inside the tab (ascending); settings without one come after, then by label. */
+  order?: number;
+  /** Object schemas only: label, help and widget of each property (keys must be schema properties). */
+  fields?: Readonly<Record<string, SettingFieldDef>>;
+  /** Scalar (non-object) schemas only: the widget of the single value. */
+  widget?: SettingWidget;
+  /** Scalar enum schemas only: labels of the enum values. */
+  valueLabels?: Readonly<Record<string, Label>>;
+  /**
+   * The screen that keeps this setting (setup-wizard AC-12, ADR-0027 §8). The settings console then shows no editor and
+   * links there instead. Presentation only: PUT / DELETE validation and permissions do not change.
+   */
+  managedBy?: SettingManagedBy;
+  /**
+   * Who may change this setting (ADR-0027 §8): setSetting / deleteSetting then also require one of these roles, on top
+   * of the usual rule (admin or `settings`, company-wide access). For records that belong to an admin-only screen, e.g.
+   * `setup.progress` (['admin']). Not presentation: unlike the attributes above it does change PUT / DELETE. Unset: the
+   * usual rule only. Reading the setting and its history is unchanged.
+   */
+  writeRoles?: readonly string[];
+}
+
+export type HealthStatus = 'ok' | 'warn' | 'fail';
+
+/** What a setup-health check found (docs/specs/setup-health.md). Labels and an in-app path only: no secrets or paths. */
+export interface HealthOutcome {
+  status: HealthStatus;
+  detail: Label;
+  /** In-app path of the screen that fixes or shows it (e.g. `/settings?tab=company`); anything else is dropped. */
+  href?: string;
+}
+
+/**
+ * A setup-health check a module contributes (ADR-0027 §7). `id` is `<module>.<name>` and stable: the setup wizard uses
+ * it as a completion condition. `run` gets the caller's Context (its permissions apply) inside a savepoint.
+ */
+export interface HealthCheckDef {
+  id: string;
+  label: Label;
+  /** Position in the report (ascending); checks without one come after, in registration order. */
+  order?: number;
+  run: (ctx: Context) => Promise<HealthOutcome>;
 }
 
 class Registry {
@@ -78,6 +131,7 @@ class Registry {
   private systemTables = new Map<string, PgTable>();
   private registrationSource: string | undefined;
   private settings = new Map<string, SettingDef>();
+  private healthDefs = new Map<string, HealthCheckDef>();
   private ext = new Map<string, Map<string, ExtFieldDef>>();
   /** entity -> stamp of its last ext registration. Stamps only grow (also across reset) so caches keyed by them stay valid. */
   private extVersions = new Map<string, number>();
@@ -335,6 +389,7 @@ class Registry {
     if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.key))
       throw new Error(`setting key "${def.key}" must look like "<module>.<name>" in snake_case`);
     if (this.settings.has(def.key)) throw new Error(`setting "${def.key}" is already registered`);
+    checkSettingDef(def as SettingDef);
     this.settings.set(def.key, def as SettingDef);
   }
   hasSetting(key: string): boolean {
@@ -350,6 +405,21 @@ class Registry {
   }
   allSettings(): SettingDef[] {
     return [...this.settings.values()];
+  }
+
+  /** Declares a setup-health check (GET /meta/health). Modules call it from their `hooks`. */
+  registerHealthCheck(def: HealthCheckDef): void {
+    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(def.id))
+      throw new Error(`health check id "${def.id}" must look like "<module>.<name>" in snake_case`);
+    if (this.healthDefs.has(def.id)) throw new Error(`health check "${def.id}" is already registered`);
+    if (!def.label?.ja?.trim() || !def.label?.en?.trim())
+      throw new Error(`health check "${def.id}": label must have non-empty ja and en text`);
+    if (def.order !== undefined && !Number.isInteger(def.order))
+      throw new Error(`health check "${def.id}": order must be an integer`);
+    this.healthDefs.set(def.id, def);
+  }
+  healthChecks(): HealthCheckDef[] {
+    return [...this.healthDefs.values()];
   }
 
   registerSystemTable(name: string, table: PgTable): void {
@@ -384,6 +454,7 @@ class Registry {
     this.guards.clear();
     this.subscriptions.clear();
     this.settings.clear();
+    this.healthDefs.clear();
     this.ext.clear();
     this.extVersions.clear();
     this.packDefs.clear();

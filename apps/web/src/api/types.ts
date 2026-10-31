@@ -37,6 +37,8 @@ export interface FieldMeta {
   refDisplayField?: string;
   hidden: boolean;
   immutable: boolean;
+  /** The value must differ per record (unique / one-field composite unique / numbering field); 複製 leaves it out. */
+  unique?: boolean;
   multiline?: boolean;
   /** Display scale. Money without an explicit scale: the company currency's minor units (6 when the API had no currency). */
   scale?: number;
@@ -46,7 +48,12 @@ export interface FieldMeta {
   searchable?: boolean;
   /** Ext fields: who registered it (registry.registerExt `source`). */
   source?: string;
+  /** Listed in a permission field group (masked for other roles); form drafts never keep its value (form-ergonomics AC-8). */
+  restricted?: boolean;
 }
+
+/** A `views.form` group: plain field names, or a labelled section (form-ergonomics AC-1). */
+export type FormGroupMeta = string[] | { label: Label; fields: string[] };
 
 export interface EntityMeta {
   name: string;
@@ -59,7 +66,7 @@ export interface EntityMeta {
   fields: FieldMeta[];
   /** Registered ext fields (ADR-0014): `name` is `ext.<key>`, values live at `row.ext[key]`. Optional for older APIs. */
   extFields?: FieldMeta[];
-  views: { list: string[]; form: 'auto' | string[][]; search: string[] };
+  views: { list: string[]; form: 'auto' | FormGroupMeta[]; search: string[] };
   ops: Op[];
   allowOnSubmit?: string[];
   transitions?: string[];
@@ -108,6 +115,18 @@ export interface JsonSchema {
 
 export type ResultKind = 'table' | 'record' | 'other';
 
+/** A render action's print declaration (docs/specs/print-templates.md AC-2): where the record page offers it. */
+export interface PrintBindingMeta {
+  entity: string;
+  label: Label;
+  /** Input property that receives the record id (default `id`, filled in by the server). */
+  idInput: string;
+  /** Field values the record must have (equality, all of them). */
+  when?: Record<string, string | number | boolean>;
+  /** ja/en label and help of the other input properties (the input dialog). */
+  fields?: Record<string, { label: Label; description?: Label }>;
+}
+
 export interface ActionMeta {
   name: string;
   module: string;
@@ -120,6 +139,8 @@ export interface ActionMeta {
   resultKind: ResultKind;
   /** JSON Schema of the input; module actions only. */
   inputSchema?: JsonSchema;
+  /** Document render actions only (print-templates). */
+  print?: PrintBindingMeta;
 }
 
 export interface AppMeta {
@@ -152,13 +173,65 @@ export interface TableResult {
 
 // ---- settings (apps/api/src/routes/settings.ts) --------------------------------------------
 
+/** Settings console tabs (kernel SETTING_CATEGORIES, ADR-0027); typed as string so a new kernel category still renders. */
+export type SettingCategory = string;
+export type SettingWidget = 'account-code' | 'warehouse-code' | 'textarea';
+
+export interface SettingFieldMeta {
+  label: Label;
+  description?: Label;
+  widget?: SettingWidget;
+  valueLabels?: Record<string, Label>;
+}
+
 export interface SettingMeta {
   key: string;
   label: Label;
   description?: Label;
   schema: JsonSchema;
-  /** null when unset. */
+  /** null when unset (or when the stored value no longer matches the schema). */
   value: unknown;
+  category: SettingCategory;
+  order?: number;
+  /** Object settings: presentation of each property. */
+  fields?: Record<string, SettingFieldMeta>;
+  /** Scalar settings: widget and enum labels of the single value. */
+  widget?: SettingWidget;
+  valueLabels?: Record<string, Label>;
+  /** The module default, when the definition declares one. */
+  defaultValue?: unknown;
+  /** True when the company has no stored value. */
+  isDefault: boolean;
+  /** A dedicated screen keeps this setting (setup-wizard AC-12): shown read-only with a link there. */
+  managedBy?: { href: string; label: Label };
+}
+
+/** One choice of a settings code picker (settings-console AC-10): an account or warehouse code and its name. */
+export interface CodeOption {
+  code: string;
+  name: string;
+}
+
+/** The first page of code choices and how many rows the API has in all (a longer list is cut off). */
+export interface CodeList {
+  options: readonly CodeOption[];
+  total: number;
+}
+
+/** GET /meta/settings/:key/audit (kernel settingHistory). `before` / `after` are the key's values (null = unset). */
+export interface SettingChange {
+  id: string;
+  at: string;
+  op: string;
+  actorType: string;
+  actorId: string;
+  /** Name of the acting user (user rows only; an agent's id is never resolved to a name). */
+  actorName: string | null;
+  onBehalfOf: string | null;
+  onBehalfOfName: string | null;
+  action: string | null;
+  before: unknown;
+  after: unknown;
 }
 
 export type ErrorCode =

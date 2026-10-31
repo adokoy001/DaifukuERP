@@ -33,10 +33,20 @@ export const CLOSING_ACCOUNTS_SETTING: SettingDef<ClosingAccountCodes> = {
   key: CLOSING_ACCOUNTS_KEY,
   label: label('月次締め（三分法）の勘定科目', 'Month-close accounts (periodic inventory)'),
   description: label(
-    '科目コード: inventory=商品, closingStock=期末商品棚卸高, openingStock=期首商品棚卸高',
-    'Account codes: inventory, closingStock (closing inventory), openingStock (opening inventory)',
+    '月次締め（retail.close_month）の三分法の振替に使う勘定科目',
+    'Accounts of the periodic-inventory transfer made by the month close (retail.close_month)',
   ),
   schema: closingAccountsSchema,
+  default: CLOSING_ACCOUNTS_DEFAULT,
+  fields: {
+    inventory: {
+      label: label('商品', 'Merchandise inventory'),
+      description: label('月末の在庫額を持つ資産科目', 'Asset account holding the month-end inventory'),
+      widget: 'account-code',
+    },
+    closingStock: { label: label('期末商品棚卸高', 'Closing inventory'), widget: 'account-code' },
+    openingStock: { label: label('期首商品棚卸高', 'Opening inventory'), widget: 'account-code' },
+  },
 };
 
 /** Company setting defaults applied by pack.apply (only for keys the company has not set; `force` overwrites). */

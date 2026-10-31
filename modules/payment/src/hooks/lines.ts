@@ -67,6 +67,12 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   const parent = await loadParent(ctx, merged(row, previous, 'paymentId'));
   if (!parent) return; // FK reports it
   if (parent.docstatus !== DOCSTATUS.draft) throw frozenError(parent);
+  if (parent.counterAccountId)
+    throw new ValidationError(
+      `payment ${parent.number ?? parent.id} settles a counter account and takes no allocations`,
+      [{ path: 'invoiceId', message: 'a clearing payment (counterAccountId) cannot be allocated to invoices' }],
+      'Clearing payments are created by an expense settlement or advance (ADR-0039); allocate an ordinary payment.',
+    );
   // a mismatched entity is reported as VALIDATION before any read the caller's roles might not be allowed to make
   const invoice =
     invoiceEntity === invoiceEntityFor(parent.direction) ? await loadInvoice(ctx, invoiceEntity, invoiceId) : null;

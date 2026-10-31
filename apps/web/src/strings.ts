@@ -17,6 +17,22 @@ export const S = {
   loading: L('読み込み中…', 'Loading…'),
   loadFailed: L('読み込みに失敗しました', 'Failed to load'),
   retry: L('再試行', 'Retry'),
+  // ui-kit: state views (AC-4/5/8)
+  technicalDetails: L('技術情報', 'Technical details'),
+  errorCode: L('エラーコード', 'Error code'),
+  errorHint: L('対処のヒント', 'Hint'),
+  noResponse: L('応答なし', 'No response'),
+  listEmptyTitle: L('まだ記録がありません', 'No records yet'),
+  listEmptyDescription: L(
+    '最初の記録を登録すると、ここに一覧で表示されます。',
+    'Records appear here once the first one is added.',
+  ),
+  listEmptyReadOnly: L(
+    'この画面から登録できる記録はありません。作成元の業務画面を確認してください。',
+    'Records are not added from this screen. Check the business screen that creates them.',
+  ),
+  listNoMatch: L('検索条件に一致する記録はありません', 'No records match the search'),
+  clearSearch: L('検索をクリア', 'Clear search'),
   unknownEntity: L(
     'このエンティティは存在しないか、閲覧権限がありません。',
     'This entity does not exist or you may not read it.',
@@ -56,6 +72,10 @@ export const S = {
   docstatus: L('状態', 'Status'),
   number: L('番号', 'Number'),
   amendedFrom: L('訂正元', 'Amended from'),
+  openingNoAmend: L(
+    '期首請求書は訂正できません。期首残高の取込（会計・資金 → 期首残高の取込）で取り込み直してください。',
+    'Opening invoices cannot be amended. Import the balance again (Accounting and finance → Opening balances).',
+  ),
   audit: L('監査ログ', 'Audit'),
   auditEmpty: L('監査ログはありません', 'No audit entries'),
   auditOp: L('操作', 'Op'),
@@ -100,7 +120,10 @@ export const S = {
   noLines: L('明細がありません', 'No lines'),
   linesFrozen: L('確定済み／取消済みのため明細は変更できません', 'Lines are frozen after submit/cancel'),
   linesHaveErrors: L('明細の入力内容を確認してください', 'Please check the highlighted line cells'),
-  enterAddsRow: L('Enter: 次の行 / 最終行では追加', 'Enter: next row / adds a row on the last one'),
+  enterAddsRow: L(
+    'Enter: 次の欄へ / 最後の欄で行を追加・Alt+↑↓: 行の移動',
+    'Enter: next cell / adds a row after the last one · Alt+↑↓: move the row',
+  ),
   // reports (AC-3)
   reports: L('レポート', 'Reports'),
   run: L('実行', 'Run'),
@@ -140,8 +163,7 @@ export const S = {
   settingSaved: L('設定を保存しました', 'Setting saved'),
   key: L('キー', 'Key'),
   rawJson: L('JSON で編集', 'Edit as JSON'),
-  // web-polish: print view
-  viewInvoice: L('請求書を表示', 'View invoice'),
+  // web-polish: print view (button labels come from the render action's print declaration)
   print: L('印刷', 'Print'),
   rendering: L('帳票を作成しています…', 'Rendering…'),
   popupBlocked: L(
@@ -149,6 +171,12 @@ export const S = {
     'Could not open a new tab. Please allow pop-ups for this site.',
   ),
   printNoHtml: L('帳票の HTML が返されませんでした', 'The action returned no HTML'),
+  // print-templates: input dialog of a render action with extra inputs (AC-4, AC-25)
+  printDialogHint: L(
+    '条件を入力して「表示」を押すと、新しいタブに帳票が開きます。',
+    'Enter the conditions and press View; the document opens in a new tab.',
+  ),
+  printDialogShow: L('表示', 'View'),
   // web-polish: home dashboard
   documents: L('伝票', 'Documents'),
   masters: L('マスタ', 'Masters'),

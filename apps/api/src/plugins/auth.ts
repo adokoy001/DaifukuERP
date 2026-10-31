@@ -1,7 +1,10 @@
 // Authentication (spec AC-1, AC-2, AC-7): JWT login, per-request principal reload, ContextParams builder.
 // The principal is re-read from the users table on every request so role changes take effect immediately.
+// `Authorization: Bearer dfk_…` is a machine credential (API key; docs/specs/machine-credentials.md): it resolves to
+// the same ContextParams shape with actor `{ type: 'machine' }` and never reaches the human-only routes.
 import {
   authenticate,
+  authenticateMachineCredential,
   changeOwnPassword,
   changeOwnPasswordSchema,
   companyBelongsToTenant,
@@ -9,6 +12,8 @@ import {
   findCompany,
   isUuid,
   loadPrincipal,
+  machineContextParams,
+  machineDenied,
   PermissionDenied,
   resolveCompanyAccess,
   revokeOwnSessions,
@@ -20,6 +25,7 @@ import {
   type Database,
   type Locale,
   type Logger,
+  type MachinePrincipal,
   type Principal,
 } from '@daifuku/kernel';
 import fastifyJwt from '@fastify/jwt';
@@ -50,6 +56,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** Set by the auth hook for authenticated routes. */
     principal: Principal | null;
+    /** Set by the auth hook when the request carries a machine credential (API key) instead of a JWT. */
+    machine: MachinePrincipal | null;
     /** Company for this request: validated `x-company-id` header, else the user's default. Set by the auth hook. */
     companyId: string | null;
     /** Builds the kernel ContextParams for this request (throws 401 when unauthenticated). */
@@ -81,6 +89,17 @@ const PUBLIC_IDENTITY = new Set([
   '/auth/invitations/accept',
 ]);
 
+/**
+ * machine-credentials AC-12: routes that need a person's operator session (account security, user / company / key
+ * administration, relay pairing). An API key gets 403 here before any lookup. Matched against the route Fastify picked
+ * (`req.routeOptions.url`), not the raw URL: the router decodes `%61dmin` to `admin` and ignores duplicate slashes.
+ */
+const HUMAN_ONLY_PREFIXES = ['/auth/', '/admin/'];
+const HUMAN_ONLY_PATHS = new Set(['/edge/pairings', '/edge/credentials/revoke']);
+export function isHumanOnlyPath(path: string): boolean {
+  return HUMAN_ONLY_PATHS.has(path) || HUMAN_ONLY_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 export const TOKEN_TTL = '12h';
 
 export class Unauthorized extends DaifukuError {
@@ -111,6 +130,44 @@ function isPublic(url: string): boolean {
     PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
   );
 }
+
+const pathOf = (url: string): string => url.split('?')[0] ?? url;
+
+/** The matched route pattern (e.g. `/admin/tokens/:id/revoke`); for an unmatched URL, its decoded path (404 follows). */
+function routedPath(req: FastifyRequest): string {
+  const routed = req.routeOptions.url;
+  if (routed) return routed;
+  const raw = pathOf(req.url);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * AC-11: a browser request. `Origin` is left off same-origin GETs, but browsers send `Sec-Fetch-Site` on every request
+ * and server-side clients do not (Node's fetch sends `Sec-Fetch-Mode: cors`, so that header is not a browser signal).
+ */
+function fromBrowser(req: FastifyRequest): boolean {
+  return req.headers.origin !== undefined || req.headers['sec-fetch-site'] !== undefined;
+}
+
+/** `Authorization: Bearer dfk_…` (case-insensitive scheme). Query strings are never read as credentials (AC-11). */
+function machineBearer(req: FastifyRequest): string | null {
+  const header = headerString(req, 'authorization')?.trim();
+  const match = header ? /^bearer\s+(dfk_\S*)$/i.exec(header) : null;
+  return match?.[1] ?? null;
+}
+
+const humanOnly = () =>
+  new DaifukuError(
+    'PERMISSION_DENIED',
+    'API keys cannot call this route.',
+    "Account security, user, company and API key administration and relay pairing need a person's session.",
+    { op: 'human-session-required' },
+    403,
+  );
 
 function localeOf(header: string | undefined): Locale {
   return header?.trim().toLowerCase().startsWith('en') ? 'en' : 'ja';
@@ -146,6 +203,13 @@ function resolveCompany(req: FastifyRequest, principal: Principal): string | nul
 
 /** ContextParams from the request (AC-2, AC-7). */
 export function buildContextParams(req: FastifyRequest): ContextParams {
+  if (req.machine)
+    return {
+      ...machineContextParams(req.machine),
+      requestId: req.id,
+      locale: localeOf(headerString(req, 'accept-language')),
+      log: requestLogger(req),
+    };
   const p = req.principal;
   if (!p) throw new Unauthorized('authentication required');
   const agentId = headerString(req, 'x-agent-id');
@@ -203,6 +267,7 @@ export async function registerAuth(
     return payload;
   });
   app.decorateRequest('principal', null);
+  app.decorateRequest('machine', null);
   app.decorateRequest('companyId', null);
   app.decorateRequest('contextParams', function (this: FastifyRequest) {
     return buildContextParams(this);
@@ -210,6 +275,28 @@ export async function registerAuth(
 
   app.addHook('onRequest', async (req) => {
     if (isPublic(req.url)) return;
+    const machineToken = machineBearer(req);
+    if (machineToken !== null) {
+      if (isHumanOnlyPath(routedPath(req))) throw humanOnly();
+      // AC-11: never from a browser (same rule as the relay credential, ADR-0023).
+      if (fromBrowser(req)) throw machineDenied();
+      // AC-10: a malformed company header is a 400 like a person's (no lookup, no audit); a key's own company in any
+      // letter case is accepted (the kernel compares case-insensitively).
+      const companyHeader = headerString(req, 'x-company-id');
+      if (companyHeader !== undefined && !isUuid(companyHeader))
+        throw new ValidationError(
+          'x-company-id must be a uuid',
+          [{ path: 'headers.x-company-id', message: 'invalid uuid' }],
+          'Omit x-company-id or send the company of the API key.',
+        );
+      req.machine = await authenticateMachineCredential(opts.owner, opts.db, machineToken, {
+        purpose: 'integration',
+        companyHeader,
+        budgetKey: `machine-auth:${req.ip}`,
+      });
+      req.companyId = req.machine.companyId;
+      return;
+    }
     req.principal = await verifyRequest(req, opts.owner);
     // Account security belongs to the authenticated tenant identity, even with no company or a stale selection.
     if (req.url.startsWith('/auth/') && !['/auth/me', '/auth/companies'].includes(req.url.split('?')[0] ?? req.url))

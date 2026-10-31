@@ -2,13 +2,17 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useAccessMutation, type AccessEditorStatus, type AccessUser } from '../api/access.ts';
 import { getUser } from '../api/client.ts';
 import { useLocale } from '../i18n.tsx';
+import { deactivationWarning } from '../lib/machine-credentials.ts';
 import { ActionConfirm } from './action-confirm.tsx';
 import { useToast } from './toast.tsx';
 export function AccessUserProfile({
   user,
+  activeApiKeys = 0,
   onStatus,
 }: {
   user: AccessUser;
+  /** machine-credentials AC-33: live API keys this user issued; deactivation or demotion revokes them. */
+  activeApiKeys?: number;
   onStatus: (status: AccessEditorStatus) => void;
 }) {
   const { t } = useLocale();
@@ -25,6 +29,9 @@ export function AccessUserProfile({
     name !== baseline.name || active !== baseline.active || tenantAdmin !== baseline.tenantAdmin || password.length > 0;
   const stale = baseline.version !== user.version;
   const busy = mutation.isPending || pending;
+  // AC-33: deactivating the user or removing tenant administration also revokes the API keys they issued.
+  const keysWarning =
+    (baseline.active && !active) || (baseline.tenantAdmin && !tenantAdmin) ? deactivationWarning(activeApiKeys) : null;
   useEffect(() => {
     onStatus({ dirty: changed, busy });
     return () => onStatus({ dirty: false, busy: false });
@@ -160,7 +167,8 @@ export function AccessUserProfile({
             t({
               ja: '入力した利用者情報とアクセス設定を適用します。',
               en: 'Apply the entered profile and access settings.',
-            })
+            }) +
+            (keysWarning ? ' ' + t(keysWarning) : '')
           }
           destructive={!active || tenantAdmin !== baseline.tenantAdmin}
           cancelDocument={false}

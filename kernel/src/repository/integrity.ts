@@ -102,7 +102,7 @@ export async function lockParents(
   const owners = registry
     .allEntities()
     .flatMap((doc) =>
-      (doc.doc?.lines ?? []).filter((l) => l.entity === entity.name).map((l) => ({ doc, field: l.parentField })),
+      (doc.config.lines ?? []).filter((l) => l.entity === entity.name).map((l) => ({ doc, field: l.parentField })),
     );
   const locks: ParentLock[] = [];
   for (const { doc, field } of owners) {
@@ -113,7 +113,8 @@ export async function lockParents(
           { path: field, message: 'create a new line under the other parent' },
         ]);
       const lifecycle = lifecycles.get(contextRoot(ctx))?.get(aggregateKey(doc.name, id));
-      const op = lifecycle ?? (operation === 'create' ? 'create' : 'update');
+      // ADR-0031: a line of an entity changes an existing, always-editable record, so even a line create needs update.
+      const op = lifecycle ?? (operation === 'create' && doc.kind === 'document' ? 'create' : 'update');
       const parent = await lockedParent(ctx, doc, id, op);
       const same =
         operation === 'update' &&
@@ -122,7 +123,7 @@ export async function lockParents(
         parent.docstatus === DOCSTATUS.submitted &&
         hasWriteCapability(ctx, entity.name, operation) &&
         Object.keys(input).every((key) => ownsField(ctx, entity.name, key));
-      if (parent.docstatus !== DOCSTATUS.draft && !same && !internal)
+      if (doc.kind === 'document' && parent.docstatus !== DOCSTATUS.draft && !same && !internal)
         throw new StateError(
           `${doc.name} ${id}: submitted/cancelled lines are frozen`,
           'Use the owning module operation, or cancel and amend.',
@@ -156,7 +157,7 @@ export async function lineCount(ctx: Context, entity: EntityDef, parentField: st
 }
 
 export async function assertAggregateLimit(ctx: Context, doc: EntityDef, id: string): Promise<void> {
-  for (const spec of doc.doc?.lines ?? []) {
+  for (const spec of doc.config.lines ?? []) {
     if ((await lineCount(ctx, registry.entity(spec.entity), spec.parentField, id)) > MAX_LINES)
       throw new StateError(
         `${doc.name} exceeds ${MAX_LINES} lines`,

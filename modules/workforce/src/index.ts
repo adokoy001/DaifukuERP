@@ -2,6 +2,23 @@ export { WorkforceModule } from './module.ts';
 export * from './entities/index.ts';
 export * from './contract.ts';
 export { seedWorkforce } from './seed.ts';
+export { renderPayslipHtmlAction, buildPayslipRenderData, PAYSLIP_HTML_OVERRIDE } from './actions/payslip.ts';
+export {
+  defaultPayslipHtml,
+  payMonthLabel,
+  hoursMinutes,
+  DEDUCTION_LABELS,
+  type PayslipRenderData,
+  type PayslipHtmlRenderer,
+  type DeductionKind,
+} from './services/payslip-html.ts';
+export {
+  settleExpensesForSource,
+  reopenExpensesForSource,
+  lockEmployeeForSettlement,
+  type SettleExpensesInput,
+  type ReopenExpensesInput,
+} from './expense-settlement.ts';
 export * from './shift-contract.ts';
 export * from './payroll-rules/port.ts';
 
@@ -12,3 +29,4 @@ export {
   supportedPayrollTaxYears,
   validatePayrollCondition,
 } from './payroll-rules/resolver.ts';
+export { payrollCashSchedule, type PayrollCashSchedule, type PayrollCashDay } from './payroll-cash.ts';

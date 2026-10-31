@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { Link, useSearch } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { useMeta } from '../api/queries.ts';
 import { useMyPortal } from '../api/workforce.ts';
 import { WorkforceAttendance, WorkforceClock } from '../components/workforce-attendance.tsx';
@@ -30,8 +30,16 @@ const tabs: WorkforceTab[] = [
 export function EmployeePage() {
   const { t } = useLocale();
   const meta = useMeta();
-  const [tab, setTab] = useState('today');
-  const [period, setPeriod] = useState(() => businessToday().slice(0, 7));
+  // Inbox links (docs/specs/inbox.md) open the tab and month of the oldest returned record.
+  const search = useSearch({ from: '/app/me' });
+  const [tab, setTab] = useState<string>(search.tab ?? 'today');
+  const [period, setPeriod] = useState(() => search.period ?? businessToday().slice(0, 7));
+  useEffect(() => {
+    if (search.period) setPeriod(search.period);
+  }, [search.period]);
+  useEffect(() => {
+    if (search.tab) setTab(search.tab);
+  }, [search.tab]);
   const actions = meta.data?.actions.map((a) => a.name) ?? [];
   const allowed = actions.includes('workforce.my_portal');
   const portal = useMyPortal(period, allowed);

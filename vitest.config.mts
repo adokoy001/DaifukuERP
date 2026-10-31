@@ -14,6 +14,7 @@ export default defineConfig({
             '**/e2e/**',
             '**/.stryker-tmp/**',
             '**/.runtime/**',
+            '.claude/worktrees/**',
           ],
         },
       },
@@ -22,7 +23,7 @@ export default defineConfig({
           name: 'db',
           setupFiles: ['./apps/api/test/payroll-provider-setup.ts'],
           include: ['**/*.db.test.ts'],
-          exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**', '**/.runtime/**'],
+          exclude: ['**/node_modules/**', '**/dist/**', '**/.stryker-tmp/**', '**/.runtime/**', '.claude/worktrees/**'],
           fileParallelism: false,
           testTimeout: 30000,
           // Each DB suite builds the full schema; allow for migration work on slower local disks.

@@ -68,9 +68,28 @@ test.describe.serial('enterprise identity with synthetic OIDC and verified TLS S
   test('explicit browser SSO linking, TOTP setup and single-use recovery login', async ({ page }) => {
     await passwordLogin(page);
     await page.goto('/account');
+    // form-ergonomics AC-8: linking ends every session (an explicit sign-out), so the tab's form drafts go.
+    const drafts = () =>
+      page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith('daifuku.form-draft.v1.')).length);
+    await page.evaluate(() =>
+      sessionStorage.setItem(
+        'daifuku.form-draft.v1.["synthetic-tenant","synthetic-user","synthetic-company","partner","new"]',
+        JSON.stringify({
+          version: 1,
+          entity: 'partner',
+          target: 'new',
+          baseVersion: null,
+          savedAt: new Date().toISOString(),
+          values: { name: 'synthetic unsaved input' },
+          lines: {},
+        }),
+      ),
+    );
+    expect(await drafts()).toBe(1);
     await page.getByRole('button', { name: '組織アカウントを紐付け', exact: true }).click();
     await verify(page);
     await expect(page.getByRole('status')).toContainText('組織アカウントを紐付けました');
+    expect(await drafts()).toBe(0);
     expect(new URL(page.url()).search).toBe('');
     await page.getByRole('link', { name: 'ログインへ', exact: true }).click();
     await page.getByRole('button', { name: '合成組織SSO' }).click();

@@ -1,5 +1,5 @@
 // Locale context: every label in the app is a `{ ja, en }` pair rendered through `tr` (docs/conventions/code-style.md).
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Label, Locale } from './api/types.ts';
 
 const LOCALE_KEY = 'daifuku.locale';
@@ -18,6 +18,15 @@ interface LocaleContextValue {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
+/** ui-kit AC-10: keep `<html lang>` equal to the displayed language (screen readers, hyphenation, fonts). */
+export function syncDocumentLang(
+  locale: Locale,
+  doc: Pick<Document, 'documentElement'> | undefined = globalThis.document,
+) {
+  const root = doc?.documentElement;
+  if (root && root.lang !== locale) root.lang = locale;
+}
+
 function readStoredLocale(): Locale {
   try {
     return globalThis.localStorage?.getItem(LOCALE_KEY) === 'en' ? 'en' : 'ja';
@@ -35,8 +44,9 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     } catch {
       // storage unavailable (private mode): the choice simply does not persist
     }
-    document.documentElement.lang = l;
   }, []);
+  // Also covers the first render with a stored English choice (index.html ships lang="ja").
+  useEffect(() => syncDocumentLang(locale), [locale]);
   const value = useMemo<LocaleContextValue>(
     () => ({ locale, setLocale, t: (label, fallback) => tr(label, locale, fallback) }),
     [locale, setLocale],

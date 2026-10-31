@@ -4,6 +4,7 @@ import { resolveAction } from './actions/resolve.ts';
 import { getSettingsAction, setSettingsAction } from './actions/settings.ts';
 import { summarizeAction } from './actions/summarize.ts';
 import { TaxRate } from './entities/tax-rate.ts';
+import { standardRateHealthCheck } from './health.ts';
 import { registerNoOverlapHook } from './hooks/no-overlap.ts';
 import { seedTaxRates } from './seeds/rates.ts';
 import { TAX_SETTING_DEFS } from './services/settings.ts';
@@ -17,6 +18,7 @@ export const TaxModule = defineModule({
   hooks: () => {
     registerNoOverlapHook();
     for (const def of TAX_SETTING_DEFS) registry.registerSetting(def);
+    registry.registerHealthCheck(standardRateHealthCheck);
   },
   seed: seedTaxRates,
   menus: [{ label: label('税率', 'Tax rates'), entity: 'tax_rate', order: 30 }],

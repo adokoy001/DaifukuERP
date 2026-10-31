@@ -1,6 +1,16 @@
 // JSON Schema (as emitted by the API's zod -> toJSONSchema) -> form fields (web-phase1 AC-3 report inputs, AC-5 settings).
-// Only flat object schemas are rendered field by field; anything else falls back to a JSON textarea. Pure; schema.test.ts.
-import type { EntityMeta, FieldMeta, JsonSchema, Label, ValidationIssue } from '../api/types.ts';
+// Only flat object schemas are rendered field by field; anything else falls back to a JSON textarea. Settings pass their
+// `fields` presentation (settings-console AC-9): its labels, help and widgets win; other properties keep the humanised
+// name. Pure; schema.test.ts.
+import type {
+  EntityMeta,
+  FieldMeta,
+  JsonSchema,
+  Label,
+  SettingFieldMeta,
+  SettingWidget,
+  ValidationIssue,
+} from '../api/types.ts';
 import { toPayload, type FormValues } from './form.ts';
 
 export type SchemaKind = 'text' | 'date' | 'enum' | 'number' | 'int' | 'bool' | 'ref' | 'json';
@@ -15,6 +25,12 @@ export interface SchemaField {
   values?: string[];
   ref?: string;
   refDisplayField?: string;
+  /** Translated help from a setting's `fields` (wins over the schema description). */
+  help?: Label;
+  /** Setting widget (`account-code`, `warehouse-code`, `textarea`). */
+  widget?: SettingWidget;
+  /** Labels of enum values. */
+  valueLabels?: Record<string, Label>;
 }
 
 function humanize(name: string): string {
@@ -102,24 +118,37 @@ function kindOf(
   return { kind: 'json' };
 }
 
-/** Fields of a flat object schema in declaration order. Returns [] for non-object schemas (caller falls back to JSON). */
-export function schemaFields(schema: JsonSchema | undefined, refOf: RefResolver): SchemaField[] {
+/**
+ * Fields of a flat object schema in declaration order. Returns [] for non-object schemas (caller falls back to JSON).
+ * `presentation` (a setting's `fields`) supplies labels, help, widgets and enum labels by property name; a code widget
+ * keeps the property a plain text value (never a ref or date by name).
+ */
+export function schemaFields(
+  schema: JsonSchema | undefined,
+  refOf: RefResolver,
+  presentation?: Readonly<Record<string, SettingFieldMeta>>,
+): SchemaField[] {
   if (!schema || schema.type !== 'object' || !schema.properties) return [];
   const required = new Set(schema.required ?? []);
   return Object.entries(schema.properties).map(([name, raw]) => {
     const s = unwrap(raw);
-    const k = kindOf(name, s, refOf);
+    const shown = presentation && Object.hasOwn(presentation, name) ? presentation[name] : undefined;
+    const codeWidget = shown?.widget === 'account-code' || shown?.widget === 'warehouse-code';
+    const k = codeWidget && s.type === 'string' ? { kind: 'text' as const } : kindOf(name, s, refOf);
     const f: SchemaField = {
       name,
       kind: k.kind,
-      label: { ja: s.title ?? humanize(name), en: s.title ?? humanize(name) },
+      label: shown?.label ?? { ja: s.title ?? humanize(name), en: s.title ?? humanize(name) },
       required: required.has(name) && s.default === undefined,
     };
     if (s.default !== undefined) f.default = s.default;
     if (typeof s.description === 'string') f.description = s.description;
     if (k.kind === 'enum') f.values = (s.enum ?? []).map(String);
-    if (k.ref) f.ref = k.ref;
-    if (k.refDisplayField) f.refDisplayField = k.refDisplayField;
+    if ('ref' in k && k.ref) f.ref = k.ref;
+    if ('refDisplayField' in k && k.refDisplayField) f.refDisplayField = k.refDisplayField;
+    if (shown?.description) f.help = shown.description;
+    if (shown?.widget) f.widget = shown.widget;
+    if (shown?.valueLabels) f.valueLabels = shown.valueLabels;
     return f;
   });
 }
@@ -146,8 +175,11 @@ export function toFieldMeta(f: SchemaField): FieldMeta {
     hidden: false,
     immutable: false,
   };
-  if (f.description) meta.description = { ja: f.description, en: f.description };
+  if (f.help) meta.description = f.help;
+  else if (f.description) meta.description = { ja: f.description, en: f.description };
   if (f.values) meta.values = f.values;
+  if (f.valueLabels) meta.valueLabels = f.valueLabels;
+  if (f.widget === 'textarea') meta.multiline = true;
   if (f.ref) meta.ref = f.ref;
   if (f.refDisplayField) meta.refDisplayField = f.refDisplayField;
   return meta;

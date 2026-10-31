@@ -58,7 +58,15 @@ export function AuditPanel({ entity, id }: { entity: EntityMeta; id: string }) {
         <div className="px-3 py-2 text-xs text-neutral-500">{t(S.auditEmpty)}</div>
       ) : null}
       {audit.data && audit.data.length > 0 ? (
-        <div className="overflow-x-auto">
+        // The table has no focusable cells, so its scroll frame is the Tab stop that lets a keyboard user scroll it
+        // sideways on a narrow screen (docs/conventions/ui.md, horizontal frames; axe scrollable-region-focusable).
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={t({ ja: '監査ログの表', en: 'Audit log table' })}
+          data-testid="audit-scroll"
+        >
           <table className="w-full text-xs">
             <thead className="bg-neutral-50 text-left text-neutral-600">
               <tr>

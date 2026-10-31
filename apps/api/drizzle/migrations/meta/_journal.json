@@ -127,6 +127,55 @@
       "when": 1789318695565,
       "tag": "0017_system_boolean_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793335987799,
+      "tag": "0018_opening_balances",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793368696628,
+      "tag": "0019_recurring_journals",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793388877672,
+      "tag": "0020_machine_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793388964823,
+      "tag": "0021_audit_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793389147430,
+      "tag": "0022_event_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793390992265,
+      "tag": "0023_expense_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793391098147,
+      "tag": "0024_fixed_assets",
+      "breakpoints": true
     }
   ]
 }

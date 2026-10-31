@@ -18,6 +18,18 @@ export const PurchaseInvoice = defineDocument({
       hidden: true,
     }),
     controlAccountId: f.ref('account', { label: label('統制勘定', 'Control account at posting'), serverOwned: true }),
+    // docs/specs/opening-balances.md D-7: set only by purchase.import_opening_payables (module write `purchase.opening`).
+    openingBalance: f.bool({
+      label: label('期首残高', 'Opening balance'),
+      description: label(
+        '期首残高の取込で作った請求書（社内の記録。不課税の明細 1 行、相手科目は期首残高仮勘定）',
+        'Created by the opening balance import (an internal record; one out-of-scope line against the clearing account)',
+      ),
+      serverOwned: true,
+      immutable: true,
+      required: true,
+      default: false,
+    }),
     settlementHistory: f.bool({
       label: label('消込履歴あり', 'Settlement history available'),
       serverOwned: true,
@@ -108,12 +120,16 @@ export const PurchaseInvoice = defineDocument({
   views: {
     list: ['date', 'partnerId', 'supplierInvoiceNo', 'total', 'balance', 'status', 'dueDate'],
     search: ['supplierInvoiceNo', 'note'],
+    // form-ergonomics AC-1: labelled sections (tabs on a narrow screen, 4 or more labelled groups).
     form: [
-      ['partnerId', 'date', 'supplierInvoiceNo', 'dueDate'],
-      ['priceIncludesTax', 'supplierTaxStatus', 'creditRatio'],
-      ['subtotal', 'taxTotal', 'deductibleTax', 'nonDeductibleTax', 'total'],
-      ['status', 'paidAmount', 'balance', 'journalEntryId'],
-      ['note'],
+      { label: label('請求', 'Bill'), fields: ['partnerId', 'date', 'supplierInvoiceNo', 'dueDate'] },
+      { label: label('税の扱い', 'Tax treatment'), fields: ['priceIncludesTax', 'supplierTaxStatus', 'creditRatio'] },
+      {
+        label: label('金額', 'Amounts'),
+        fields: ['subtotal', 'taxTotal', 'deductibleTax', 'nonDeductibleTax', 'total'],
+      },
+      { label: label('支払', 'Payment'), fields: ['status', 'paidAmount', 'balance', 'journalEntryId'] },
+      { label: label('備考', 'Note'), fields: ['note', 'openingBalance'] },
     ],
   },
 });

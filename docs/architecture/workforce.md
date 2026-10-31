@@ -9,6 +9,7 @@
 | kernel | 現在の会社所属、siteIds/storeIds、本人行条件、監査、ロック、保存port | [company-access](../../kernel/src/company-access.ts)、[scope](../../kernel/src/store-access.ts) |
 | workforce | 勤怠、有給、経費、賃金条件、給与の業務状態と計算 | [公開入口](../../modules/workforce/src/index.ts)、[module](../../modules/workforce/src/module.ts) |
 | workforce-evidence | 経費申請に従属する領収書の所有者・版・状態・内容検査 | [公開入口](../../modules/workforce-evidence/src/index.ts)、[service](../../modules/workforce-evidence/src/service.ts) |
+| expense | 承認済み経費の精算書（立替・法人カード・仮払）と仮払。確定で accounting の仕訳と payment の相手科目付き入出金を作り、workforce の公開関数で経費を精算済みにする（[ADR-0039](../adr/0039-expense-settlement-posting.md)、[仕様](../specs/expense-settlement.md)）。workforce は expense を知らない | [公開入口](../../modules/expense/src/index.ts)、[workforce 側の精算関数](../../modules/workforce/src/expense-settlement.ts) |
 | API / MCP | 同じContextを作り業務actionを実行。APIだけがバイナリmultipartを受ける | [API](../../apps/api/src/routes/workforce-evidence.ts)、[MCP session](../../apps/mcp/src/session.ts) |
 | Web | 本人のスマホ画面、担当範囲の承認画面。通信は型付きcontractを使用 | [wire contract](../../modules/workforce/src/contract.ts)、[router](../../apps/web/src/router.tsx) |
 
@@ -48,12 +49,13 @@ stateDiagram-v2
     submitted --> returned: 担当者が理由付き差戻し
     returned --> submitted: 本人が訂正して再提出
     submitted --> approved: 本人以外が承認
-    approved --> settled: 本部が精算記録を確認
+    approved --> settled: 本部が精算記録を確認、または経理が精算書を確定
+    settled --> approved: 精算書の取消（その精算書番号の経費だけ）
     draft --> cancelled: 理由付き取消
     returned --> cancelled: 理由付き取消
 ```
 
-上の図は経費の通常の流れです。正確な各状態の許可操作は [経費action](../../modules/workforce/src/actions/expenses.ts) にあります。領収書を追加できるのは本人の下書き・差戻し中だけです。申請を返さずに提出済み証憑を差し替えることはできません。
+上の図は経費の通常の流れです。正確な各状態の許可操作は [経費action](../../modules/workforce/src/actions/expenses.ts) と、精算書から呼ばれる [精算関数](../../modules/workforce/src/expense-settlement.ts)（手動精算と同じ従業員のロック・本人以外・`workforce_payroll` か admin）にあります。経費には本人が選んだ支払方法（`paymentMethod`: 立替・法人カード・仮払金から支払）があり、下書き・差戻し中だけ変更できます。領収書を追加できるのは本人の下書き・差戻し中だけです。申請を返さずに提出済み証憑を差し替えることはできません。
 
 給与は期間付きの賃金条件と計算policy、承認済みの原資料から下書きを作り、控除・手当・根拠の確認後に確定します。東京の暦日をまたぐ勤務は、暦日ごとの休日区分モデルがない初版では給与自動計算を明示的に拒否します。本人へ公開するのは確定明細です。拠点管理者へ給与金額を一括公開しません。原資料の更新と確定が競合しないよう、従業員単位のロックと確定期間の記録を使います。
 

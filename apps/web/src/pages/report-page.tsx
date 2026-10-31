@@ -1,4 +1,6 @@
-import { Link, useParams } from '@tanstack/react-router';
+// /r/:action — table report: conditions, run, result browsing and export. ui-kit: PageHeader, kit buttons, Badge and
+// EmptyState; the dedicated operations.css classes keep the current look.
+import { Link, useParams, useRouterState } from '@tanstack/react-router';
 import { useMemo, useState, type FormEvent } from 'react';
 import { isApiError } from '../api/client.ts';
 import { useMeta } from '../api/queries.ts';
@@ -19,10 +21,12 @@ import {
   reportPeriodLabel,
   reportPeriodOptions,
   reportPeriodValues,
+  reportSearchValues,
   reportTitle,
 } from '../lib/report.ts';
 import { refResolverFrom, schemaFields } from '../lib/schema.ts';
 import { S } from '../strings.ts';
+import { Badge, Button, EmptyState, PageHeader } from '../ui/index.ts';
 import { LoadingView, MetaError } from './status-views.tsx';
 interface RunInput {
   input: Record<string, unknown>;
@@ -44,9 +48,9 @@ function ResultHeader({ action, snapshot, stale }: { action: ActionMeta; snapsho
         </span>
       </div>
       {snapshot.result.meta?.truncated === true ? (
-        <span role="status" className="status-pill is-attention">
+        <Badge tone="warning" role="status" className="status-pill is-attention">
           {t(S.reportTruncated)}
-        </span>
+        </Badge>
       ) : null}
       <ReportExport
         actionName={action.name}
@@ -64,7 +68,13 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
     () => reportInputFields(schemaFields(action.inputSchema, refResolverFrom(meta.entities, action.module))),
     [action.inputSchema, action.module, meta.entities],
   );
-  const initialValues = useMemo(() => reportInitialValues(fields), [fields]);
+  // close-guide AC-8: links may preset the period (`?from=&to=` or `?asOf=`); the page still waits for 実行.
+  const search = useRouterState({ select: (state) => state.location.search as Record<string, unknown> });
+  const [linked] = useState(() => search);
+  const initialValues = useMemo(
+    () => ({ ...reportInitialValues(fields), ...reportSearchValues(fields, linked) }),
+    [fields, linked],
+  );
   const periodOptions = useMemo(() => reportPeriodOptions(fields), [fields]);
   const form = useSchemaForm(fields, {
     current: initialValues,
@@ -119,14 +129,14 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
       <Link className="control-back" to="/reports">
         ← {t({ ja: 'レポートセンター', en: 'Report center' })}
       </Link>
-      <header className="control-heading compact">
-        <div>
-          <span className="eyebrow">REPORTS & EVIDENCE</span>
-          <h1 data-testid="report-name">{t(reportTitle(action))}</h1>
-          <p>{t(action.description)}</p>
-        </div>
-        <Icon name="chart" size={32} />
-      </header>
+      <PageHeader
+        className="control-heading compact"
+        eyebrow="REPORTS & EVIDENCE"
+        title={t(reportTitle(action))}
+        titleTestId="report-name"
+        subtitle={t(action.description)}
+        actions={<Icon name="chart" size={32} />}
+      />
       <form
         onSubmit={submit}
         noValidate
@@ -139,9 +149,7 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
           {form.canToggle ? (
             <details>
               <summary>{t({ ja: '詳細入力', en: 'Advanced input' })}</summary>
-              <button type="button" className="btn" onClick={form.toggleJson}>
-                {t(form.state.jsonMode ? S.conditions : S.rawJson)}
-              </button>
+              <Button onClick={form.toggleJson}>{t(form.state.jsonMode ? S.conditions : S.rawJson)}</Button>
             </details>
           ) : null}
         </div>
@@ -153,10 +161,8 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
               aria-label={t({ ja: '期間の簡単入力', en: 'Quick period selection' })}
             >
               {periodOptions.map((period) => (
-                <button
+                <Button
                   key={period}
-                  type="button"
-                  className="btn"
                   disabled={run.isPending}
                   onClick={() => {
                     for (const [name, value] of Object.entries(reportPeriodValues(fields, period)))
@@ -164,7 +170,7 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
                   }}
                 >
                   {t(reportPeriodLabel(fields, period))}
-                </button>
+                </Button>
               ))}
             </div>
             <p className="report-browse-note">
@@ -178,9 +184,9 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
         {fields.length > 0 || form.state.jsonMode ? (
           <SchemaFields fields={fields} form={form} disabled={run.isPending} idPrefix="r" />
         ) : null}
-        <button type="submit" className="btn btn-primary" disabled={run.isPending}>
+        <Button type="submit" variant="primary" disabled={run.isPending}>
           {t(run.isPending ? S.running : S.run)}
-        </button>
+        </Button>
       </form>
       {stale ? (
         <p role="status" className="notice-strip">
@@ -212,18 +218,20 @@ function ReportView({ action, meta }: { action: ActionMeta; meta: AppMeta }) {
           <ReportTable result={snapshot.result} />
         </section>
       ) : !run.isPending ? (
-        <div className="report-ready">
-          <Icon name="chart" size={40} />
-          <h2>
-            {t({ ja: '条件を選んで、数字の動きを確かめましょう。', en: 'Choose your filters to explore the numbers.' })}
-          </h2>
-          <p>
-            {t({
-              ja: '集計結果と元データへの参照をここに表示します。',
-              en: 'Results and references to source records appear here.',
-            })}
-          </p>
-        </div>
+        <EmptyState
+          className="report-ready"
+          testId="report-ready"
+          icon={<Icon name="chart" size={40} />}
+          titleAs="h2"
+          title={t({
+            ja: '条件を選んで、数字の動きを確かめましょう。',
+            en: 'Choose your filters to explore the numbers.',
+          })}
+          description={t({
+            ja: '集計結果と元データへの参照をここに表示します。',
+            en: 'Results and references to source records appear here.',
+          })}
+        />
       ) : (
         <LoadingView />
       )}

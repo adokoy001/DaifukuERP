@@ -9,12 +9,15 @@
 //   state. No Σ <= amount check here: the generic update saves the header before its lines and the replace-all line
 //   save creates before it deletes, so an intermediate Σ may legitimately exceed the amount; submit is the gate.
 // after_lines_saved (phase15-cleanup AC-4): a replace-all line save touches the header once, whatever the line count.
+// Clearing payments (counterAccountId, ADR-0039): allocated = unallocated = 0 on every path, and a draft amended from a
+//   clearing payment cannot be saved (the amend copy drops the server-owned counter account; see assertNotClearingAmendment).
 import {
   Decimal,
   DOCSTATUS,
   PermissionDenied,
   registry,
   repo,
+  StateError,
   todayLocal,
   ValidationError,
   type Context,
@@ -40,7 +43,30 @@ import { defaultAccountIdFor, PAYMENT_ACCOUNTS_KEY } from '../settings.ts';
 type Raw = Record<string, unknown>;
 
 /** Fields the caller never controls on a draft. */
-export const SYSTEM_OWNED_FIELDS = ['allocatedAmount', 'unallocatedAmount', 'journalEntryId'] as const;
+export const SYSTEM_OWNED_FIELDS = [
+  'allocatedAmount',
+  'unallocatedAmount',
+  'journalEntryId',
+  'counterAccountId',
+] as const;
+
+export const CLEARING_AMEND_HINT =
+  'Cancel and amend the expense settlement or advance that created the original payment; it creates the new payment.';
+
+/**
+ * ADR-0039 / expense-settlement AC-14: kernel amend copies only caller-owned fields, so a copy of a clearing payment
+ * would lose its counter account and post an ordinary advance (前払金/前受金). Refuse saving or submitting such a copy.
+ */
+export async function assertNotClearingAmendment(ctx: Context, amendedFrom: unknown): Promise<void> {
+  if (typeof amendedFrom !== 'string') return;
+  const source = await repo(ctx, Payment).find(amendedFrom);
+  if (source?.counterAccountId)
+    throw new StateError(
+      `payment ${source.number ?? source.id} was created by another document's settlement and cannot be amended here`,
+      CLEARING_AMEND_HINT,
+      { amendedFrom, counterAccountId: source.counterAccountId },
+    );
+}
 
 export const DIRECTION_HINT =
   'Use a context whose roles cover this direction (accounting: both; sales: receive; purchasing: pay).';
@@ -94,11 +120,13 @@ async function beforeValidate(ctx: Context, { row, previous }: HookArgs): Promis
   const direction = row.direction !== undefined ? row.direction : previous?.direction;
   assertDirectionRole(ctx, direction, previous ? 'update' : 'create');
   assertPositiveAmount(row, previous);
+  if (previous && previous.docstatus === DOCSTATUS.draft) await assertNotClearingAmendment(ctx, previous.amendedFrom);
   if (!previous) {
-    // a new draft has no lines yet: everything is unallocated
+    // a new draft has no lines yet: everything is unallocated (a clearing payment has nothing to allocate)
+    const clearing = typeof row.counterAccountId === 'string';
     Object.assign(row, {
       allocatedAmount: '0',
-      unallocatedAmount: tryDecimal(row.amount)?.toString() ?? '0',
+      unallocatedAmount: clearing ? '0' : (tryDecimal(row.amount)?.toString() ?? '0'),
       journalEntryId: null,
     });
     if (row.date === undefined || row.date === null) row.date = todayLocal(ctx.now());
@@ -114,9 +142,10 @@ async function beforeUpdate(ctx: Context, { row }: HookArgs): Promise<void> {
   const lines = await repo(ctx, PaymentAllocation).list({ where: { paymentId: row.id as string }, limit: 500 });
   const allocated = allocatedOf(lines.items);
   const amount = row.amount instanceof Decimal ? row.amount : Decimal.from(String(row.amount ?? '0'));
+  const clearing = typeof row.counterAccountId === 'string';
   Object.assign(row, {
-    allocatedAmount: allocated,
-    unallocatedAmount: unallocatedOf(amount, allocated),
+    allocatedAmount: clearing ? Decimal.zero() : allocated,
+    unallocatedAmount: clearing ? Decimal.zero() : unallocatedOf(amount, allocated),
     journalEntryId: null,
   });
 }

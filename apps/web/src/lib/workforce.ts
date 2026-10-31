@@ -15,6 +15,21 @@ export const workforceStatuses: Record<string, Label> = {
   settled: { ja: '精算済み', en: 'Settled' },
   confirmed: { ja: '確定済み', en: 'Confirmed' },
 };
+/** workforce_expense.paymentMethod (docs/specs/expense-settlement.md AC-1, AC-22): how the employee paid. */
+export const EXPENSE_PAYMENT_METHODS = ['personal', 'corporate_card', 'advance'] as const;
+export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
+export const DEFAULT_EXPENSE_PAYMENT_METHOD: ExpensePaymentMethod = 'personal';
+export const expensePaymentMethods: Record<ExpensePaymentMethod, Label> = {
+  personal: { ja: '立替', en: 'Paid personally' },
+  corporate_card: { ja: '法人カード', en: 'Corporate card' },
+  advance: { ja: '仮払金から支払', en: 'Paid from an advance' },
+};
+/** The label of a stored method; an unknown or missing value reads as the default (records older than the field). */
+export function expensePaymentMethodLabel(method: string | null | undefined): Label {
+  return (EXPENSE_PAYMENT_METHODS as readonly string[]).includes(method ?? '')
+    ? expensePaymentMethods[method as ExpensePaymentMethod]
+    : expensePaymentMethods[DEFAULT_EXPENSE_PAYMENT_METHOD];
+}
 export function workforceTone(status: string): 'positive' | 'pending' | 'negative' | undefined {
   if (['working', 'approved', 'settled', 'confirmed', 'accepted'].includes(status)) return 'positive';
   if (['break', 'pending', 'submitted'].includes(status)) return 'pending';
@@ -43,6 +58,35 @@ export function dateTimeInput(timestamp: string): string {
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return '';
   return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 19);
+}
+export const WORKFORCE_TABS = ['overview', 'attendance', 'expenses', 'people', 'payroll'] as const;
+export type WorkforceTabId = (typeof WORKFORCE_TABS)[number];
+export interface WorkforceSearch {
+  period?: string;
+  tab?: WorkforceTabId;
+}
+/** `/workforce?period=YYYY-MM&tab=…` (inbox links open the month of the oldest pending record); bad values are dropped. */
+export function parseWorkforceSearch(raw: Record<string, unknown>): WorkforceSearch {
+  const out: WorkforceSearch = {};
+  if (typeof raw.period === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(raw.period)) out.period = raw.period;
+  if (typeof raw.tab === 'string' && (WORKFORCE_TABS as readonly string[]).includes(raw.tab))
+    out.tab = raw.tab as WorkforceTabId;
+  return out;
+}
+export const EMPLOYEE_TABS = ['today', 'shifts', 'attendance', 'leave', 'expenses', 'fiscal', 'payroll'] as const;
+export type EmployeeTabId = (typeof EMPLOYEE_TABS)[number];
+export interface EmployeeSearch {
+  period?: string;
+  tab?: EmployeeTabId;
+}
+/** `/me?period=YYYY-MM&tab=…` (the inbox opens the month of the oldest returned record); bad values are dropped. */
+export function parseEmployeeSearch(raw: Record<string, unknown>): EmployeeSearch {
+  const out: EmployeeSearch = {};
+  const month = parseWorkforceSearch({ period: raw.period }).period;
+  if (month) out.period = month;
+  if (typeof raw.tab === 'string' && (EMPLOYEE_TABS as readonly string[]).includes(raw.tab))
+    out.tab = raw.tab as EmployeeTabId;
+  return out;
 }
 export const leavePortions: Record<string, Label> = {
   full: { ja: '1日', en: 'Full day' },

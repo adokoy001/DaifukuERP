@@ -1,6 +1,6 @@
 import { canEditSettings } from '../api/settings.ts';
 import type { ActionMeta, AppMeta, EntityMeta, Label, Locale, MenuItem } from '../api/types.ts';
-import { reportTitle } from './report.ts';
+import { isReportAction, reportTitle } from './report.ts';
 import { DEDICATED_NAVIGATION, WORKSPACES, workspaceForModule, type DedicatedNavigation } from './navigation-data.ts';
 import type { NavigationCatalog, NavigationEntry, NavigationWorkspace } from './navigation-types.ts';
 export { WORKSPACES, workspaceForModule } from './navigation-data.ts';
@@ -36,12 +36,20 @@ function add(entries: Map<string, NavigationEntry>, entry: NavigationEntry): voi
   // Dedicated screens and the first ordered menu keep their canonical names; later labels remain searchable.
   entries.set(entry.href, { ...previous, aliases: uniqueLabels([...previous.aliases, entry.label, ...entry.aliases]) });
 }
+const TODO_ACTION = /^[a-z][a-z0-9_]*\.todo$/;
+/** Inbox provider (docs/conventions/ui.md): a read-only, non-generic `<module>.todo` action the caller may run. */
+export function isTodoProvider(action: ActionMeta): boolean {
+  return TODO_ACTION.test(action.name) && !action.mutates && !action.generic;
+}
 function allowedDedicated(definition: DedicatedNavigation, meta: AppMeta, tenantAdmin: boolean): boolean {
   if (definition.action && !meta.actions.some((action) => action.name === definition.action)) return false;
+  if (definition.condition === 'inbox') return meta.actions.some(isTodoProvider);
   if (definition.condition === 'reports')
-    return meta.actions.some((action) => ACTION_NAME.test(action.name) && action.resultKind === 'table');
+    return meta.actions.some((action) => ACTION_NAME.test(action.name) && isReportAction(action));
   if (definition.condition === 'settings') return canEditSettings(meta.roles);
   if (definition.condition === 'tenant-admin') return tenantAdmin;
+  // setup-wizard AC-28 / access-insight AC-21: the API also refuses store- or site-limited admins; the screen explains.
+  if (definition.condition === 'admin') return meta.roles.includes('admin');
   return true;
 }
 function dedicatedEntry(definition: DedicatedNavigation, meta: AppMeta): NavigationEntry {
@@ -111,7 +119,7 @@ function menuEntry(
   const match = /^\/(r|a)\/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/.exec(path);
   const action = match?.[2] ? actions.get(match[2]) : undefined;
   if (!action) return undefined;
-  if (match?.[1] === 'r') return action.resultKind === 'table' ? actionEntry(action, meta, item.label) : undefined;
+  if (match?.[1] === 'r') return isReportAction(action) ? actionEntry(action, meta, item.label) : undefined;
   // Keep the generated action page's own visibility contract: internal/generic and pack setup are not forms here.
   return !action.generic && action.resultKind !== 'table' && action.module !== 'pack'
     ? actionEntry(action, meta, item.label)
@@ -140,7 +148,7 @@ export function buildNavigation(meta: AppMeta | undefined, tenantAdmin: boolean)
       if (entry) add(entries, entry);
     }
   for (const entity of entities.values()) add(entries, recordEntry(entity, meta));
-  for (const action of actions.values()) if (action.resultKind === 'table') add(entries, actionEntry(action, meta));
+  for (const action of actions.values()) if (isReportAction(action)) add(entries, actionEntry(action, meta));
   const all = [...entries.values()];
   return {
     entries: all,
@@ -151,17 +159,20 @@ export function buildNavigation(meta: AppMeta | undefined, tenantAdmin: boolean)
   };
 }
 
-/** NFKC joins width/voicing variants; map katakana to hiragana so Japanese labels can be found with either script. */
-function normalize(value: string, locale: Locale): string {
+/**
+ * NFKC joins width/voicing variants; map katakana to hiragana so Japanese labels can be found with either script.
+ * Exported for the command palette's recent-record matching, which must normalize exactly like screen search.
+ */
+export function normalizeSearchText(value: string, locale: Locale): string {
   return value
     .normalize('NFKC')
     .toLocaleLowerCase(locale === 'ja' ? 'ja-JP' : 'en-US')
     .replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
 }
 function searchRank(entry: NavigationEntry, terms: string[], locale: Locale): number | undefined {
-  const label = normalize(entry.label[locale], locale);
+  const label = normalizeSearchText(entry.label[locale], locale);
   const other = locale === 'ja' ? 'en' : 'ja';
-  const content = normalize(
+  const content = normalizeSearchText(
     [
       entry.label[locale],
       entry.label[other],
@@ -181,7 +192,7 @@ function searchRank(entry: NavigationEntry, terms: string[], locale: Locale): nu
 }
 /** Search every authorized destination. Pagination belongs to the directory UI, never to this reachability catalog. */
 export function searchNavigation(catalog: NavigationCatalog, query: string, locale: Locale): NavigationEntry[] {
-  const terms = normalize(query, locale).trim().split(/\s+/).filter(Boolean);
+  const terms = normalizeSearchText(query, locale).trim().split(/\s+/).filter(Boolean);
   if (!terms.length) return [...catalog.entries];
   const collator = new Intl.Collator(locale === 'ja' ? 'ja-JP' : 'en-US', { numeric: true });
   return catalog.entries

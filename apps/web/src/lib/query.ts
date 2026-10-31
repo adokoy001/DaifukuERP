@@ -56,6 +56,29 @@ export interface ListSearch {
   q?: string;
   sort?: string;
   page?: number;
+  /** Applied filters as a JSON object (list-workbench AC-2); validated per entity by lib/list-filters.ts. */
+  f?: Record<string, unknown>;
+  /** Link contract of other screens (AC-3, the close guide): rewritten into `f` on the next filter change. */
+  status?: string;
+  from?: string;
+  to?: string;
+}
+
+/** Longest filter value kept from the URL; the REST `where` parameter accepts 4,000 characters. */
+export const MAX_FILTER_JSON = 3000;
+
+function filterObject(raw: unknown): Record<string, unknown> | undefined {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const json = JSON.stringify(value);
+  return json.length > 2 && json.length <= MAX_FILTER_JSON ? (value as Record<string, unknown>) : undefined;
 }
 
 /** Validates router search params (unknown keys dropped, bad values ignored). */
@@ -65,6 +88,12 @@ export function parseListSearch(raw: Record<string, unknown>): ListSearch {
   if (typeof raw.sort === 'string' && parseSort(raw.sort)) out.sort = raw.sort;
   const page = typeof raw.page === 'number' ? raw.page : typeof raw.page === 'string' ? Number(raw.page) : NaN;
   if (Number.isInteger(page) && page > 1) out.page = page;
+  const f = filterObject(raw.f);
+  if (f) out.f = f;
+  for (const key of ['status', 'from', 'to'] as const) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.length > 0 && value.length <= 100) out[key] = value;
+  }
   return out;
 }
 
@@ -76,14 +105,27 @@ export function toListState(s: ListSearch): ListState {
   return out;
 }
 
-/** Applies a patch to the URL search; empty/undefined values remove the key, and changing q or sort resets the page. */
-export function updateSearch(
-  prev: ListSearch,
-  patch: { q?: string | undefined; sort?: string | undefined; page?: number | undefined },
-): ListSearch {
+export interface SearchPatch {
+  q?: string | undefined;
+  sort?: string | undefined;
+  page?: number | undefined;
+  /** New applied filters; they replace the link parameters (`status` / `from` / `to`), which are dropped. */
+  f?: Record<string, unknown> | undefined;
+}
+
+/**
+ * Applies a patch to the URL search; empty/undefined values remove the key, and changing q, sort or the filters resets
+ * the page.
+ */
+export function updateSearch(prev: ListSearch, patch: SearchPatch): ListSearch {
   const merged: Record<string, unknown> = { ...prev };
   for (const [k, v] of Object.entries(patch)) merged[k] = v;
-  if (('q' in patch || 'sort' in patch) && !('page' in patch)) merged.page = undefined;
+  if ('f' in patch) {
+    merged.status = undefined;
+    merged.from = undefined;
+    merged.to = undefined;
+  }
+  if (('q' in patch || 'sort' in patch || 'f' in patch) && !('page' in patch)) merged.page = undefined;
   return parseListSearch(merged);
 }
 

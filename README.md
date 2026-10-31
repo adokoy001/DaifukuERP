@@ -98,6 +98,9 @@ AWSで既存システムからリソースを分けて試す場合は、[AWS試�
 
 ```bash
 pnpm gate                          # 型、lint、依存境界、単体、DB試験、配布回帰、文書リンク
+pnpm gate:quick                    # 編集中: 変更ファイルの検査と関連する単体試験
+pnpm gate:light                    # push 前: 全体の静的検査・単体全件と関連 DB 試験
+pnpm gate:full                     # 完了前: pnpm gate の全工程 + API/Web build + ブラウザ・認証試験
 pnpm --filter @daifuku/web test
 pnpm --filter @daifuku/web typecheck
 pnpm --filter @daifuku/web build
@@ -105,7 +108,7 @@ pnpm --filter @daifuku/web build
 
 ブラウザー試験は [専用の空DBから再現する手順](CONTRIBUTING.md#ブラウザ試験を新規環境で再現する) を使います。業界テンプレートの適用を先行する順序も設定済みです。認証のブラウザー試験は別の空DBと合成IdP/TLS SMTPを使う `pnpm test:identity:e2e` で実行します（[手順](CONTRIBUTING.md#認証ブラウザ試験)）。
 
-DB試験は `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` の専用DBを初期化します。UIや業務用DBと共用しないでください。導入・復元の実受入は [専用clusterでのセットアップ検証](docs/operations/setup.md#5-セットアップ自身の受入を再現する) を参照してください。CIの実行結果は [Actions](https://github.com/adokoy001/DaifukuERP/actions) で確認できます。
+DB試験は `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` の専用DBを初期化します（suite ごとにその DB を作り直し、同じサーバーに `<試験DB名>_tpl_*` のテンプレート DB を残します。[手順](CONTRIBUTING.md#型単体dbweb-の検証)）。UIや業務用DBと共用しないでください。導入・復元の実受入は [専用clusterでのセットアップ検証](docs/operations/setup.md#5-セットアップ自身の受入を再現する) を参照してください。CIの実行結果は [Actions](https://github.com/adokoy001/DaifukuERP/actions) で確認できます。
 
 ## 構造と文書
 

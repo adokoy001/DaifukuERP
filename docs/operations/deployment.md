@@ -12,6 +12,8 @@ node scripts/build-release.mjs   --source /home/builder/DaifukuERP   --output /h
 
 出力先は未作成ディレクトリに限る。実行者の環境から DB URL、JWT、SMTP、OIDC、Square、機器 token 等は build 子プロセスへ渡さない。個人の npm 設定を読み込まず、公開 registry を指定する。tracked の `.env`・秘密鍵・DB dump・運用ディレクトリ・外部へ出る symlink は拒否する。ただし名前による拒否は内容の秘密検査の代替ではなく、公開前の source/履歴 scan が必要である。build 自体は OS sandbox ではないため、実行する source をレビューし、秘密を置かない専用 build ユーザー/環境を用いる。
 
+Web の各画面の「この画面の説明」は、既定でこの配布物の commit の公開リポジトリ `docs/manual/`（`https://github.com/adokoy001/DaifukuERP/blob/<commit>/docs/manual/`）を開く。社内の写しを使う場合は `--manual-url https://docs.example.jp/daifuku/manual/` を加える（絶対 http(s) URL、query・fragment・資格情報なし。違反は構築前に停止）。章ファイル名は `docs/manual/` と同じに保つ。使った基点は manifest の `manualBase` に残る。公開リポジトリに無い commit から作る場合は、`--manual-url` を指定しないとリンク先が見つからない。
+
 生成される archive は `bundle/source`（source + lockfile + docs/license）、`bundle/web`（Web成果物 + LICENSE + THIRD_PARTY_NOTICES.txt + 依存版一覧）、`bundle/runtime`（API と実行依存）、`bundle/edge/`（edge.mjs とライセンス通知）、`bundle/manifest.json` を持つ。`SHA256SUMS` と `manifest.sha256` を別の信頼できる経路でも確認する。`--candidate` は検証用の未公開候補であることを manifest とファイル名に明示し、通常の配備計画では拒否する。候補の許可は受入環境だけで行う。
 
 Node 本体・Caddy・PostgreSQL・systemd は含まない。同じ CPU architecture の両配備先へ**同じ archive**を持ち込み、接続先の違いを秘密設定と profile で表す。archive の SHA256 を確認してから、新しい空ディレクトリへ一般ユーザーで展開し、直後に manifest を確認する。既存 release へ上書き展開しない。
@@ -49,6 +51,8 @@ IDENTITY_ENCRYPTION_KEY=<別途生成した32バイト乱数の標準Base64>
 ```
 
 `PUBLIC_WEB_URL` を設定する場合は `IDENTITY_ENCRYPTION_KEY` も同時に必須です。上の鍵プレースホルダーを、JWT とは別に生成した暗号学的乱数32バイトの標準 Base64 表現に置き換えてください。URL だけの設定、不正な鍵、path/query 付きの URL は API 起動時に拒否されます。鍵を Git・ログ・shell 引数に残さず、0600 の runtime.env と秘密保管先で保護します。暗号化した MFA 等の情報と対応するため、更新・復元時にも同じ鍵を保持し、既存 DB に対して無条件に生成し直さないでください。詳細は [認証運用](enterprise-identity.md) を参照してください。
+
+業務イベントの配送 worker（[ADR-0037](../adr/0037-business-event-delivery.md)、[管理マニュアル](../manual/08-admin.md#イベント配送と-webhook)）は既定で無効で、API を起動しただけでは外部へ何も送らない。使う場合は 1 つ以上の API process の runtime.env に `EVENT_WORKER_ENABLED=true` を足す（複数の process で有効にしても二重には送らない）。間隔は `EVENT_WORKER_INTERVAL_MS`（既定 10000、1000〜3600000）、受信箱の件数の点検は `EVENT_INBOX_CHECK_MINUTES`（既定 15、5〜1440）。Webhook の送信には `IDENTITY_ENCRYPTION_KEY`（署名鍵の暗号化に共用）、受信箱のメールにはさらに SMTP と `PUBLIC_WEB_URL` が要る。暗号鍵の無い process は Webhook を送らず（起動時に警告）、メール送信の無い process はメールを送らない（送れる process に任せる）。`EVENT_WEBHOOK_ALLOW_LOOPBACK` は開発・試験用で、`NODE_ENV=production` では起動を拒否する。常駐させずにスケジューラで動かす場合は、`runtime/apps/api` を作業ディレクトリにして `node --env-file=/absolute/path/to/runtime.env dist/events/cli.js` を定期実行する（API と同じ runtime.env を渡すこと。CLI は API と同じ module と `DAIFUKU_PACKS` の pack を読み込んでから配送する。件数だけを出力し、終了コードは tenant の失敗で 1、暗号鍵・SMTP が無く送れない行があると 2）。暗号鍵を変えると既存の署名鍵を復号できず、Webhook は失敗に止まる（管理者が再発行して再送する）。
 
 生成済みの DB URL と JWT を保持する。Node の環境変数は env-file より優先されるため、手動起動時には同名の古い shell 変数を残さない。systemd の専用 service はログイン shell の env を読み込まない。必要に応じ SMTP/OIDC/Square 設定を同じ保護 env へ追加する。Web に秘密を渡す `VITE_*` は使わない。
 

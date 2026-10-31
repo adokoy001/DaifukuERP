@@ -4,6 +4,7 @@ import {
   PermissionDenied,
   StateError,
   repo,
+  requireHumanUserId,
   withLock,
   type Context,
   type Domain,
@@ -14,8 +15,8 @@ import {
 import { WorkforceEmployee, WorkforcePayPolicy, WorkforceSite } from './entities/index.ts';
 import { jstDate } from './services/time.ts';
 import { stableJson } from './services/json.ts';
-export const userId = (ctx: Context): string =>
-  ctx.actor.type === 'agent' ? (ctx.actor.onBehalfOf ?? '') : ctx.actor.id;
+/** The person behind the request; an API key (machine actor) is refused (machine-credentials AC-22). */
+export const userId = (ctx: Context): string => requireHumanUserId(ctx);
 export const D = Decimal.from;
 export function expectVersion(actual: number, expected: number): void {
   if (actual !== expected)

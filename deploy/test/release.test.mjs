@@ -10,6 +10,7 @@ import { digest, inventory, restrictedSource, verifyRelease } from '../files.mjs
 import { copyRuntime } from '../runtime.mjs';
 import { writeWebNotices } from '../web-notices.mjs';
 import { renderProfile } from '../profile.mjs';
+import { buildRelease, releaseManualUrl } from '../build.mjs';
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'daifuku-deploy-test-'));
   const release = join(root, 'release');
@@ -172,6 +173,35 @@ test('runtime copies the installed production graph exactly, preserves portable 
   }
 });
 
+test('navigation-assist AC-6: the release links help to the manual of its own commit, or to a validated mirror', async () => {
+  const commit = 'a1b2c3d4'.repeat(5);
+  assert.equal(releaseManualUrl(commit), `https://github.com/adokoy001/DaifukuERP/blob/${commit}/docs/manual/`);
+  assert.equal(releaseManualUrl(commit, ''), `https://github.com/adokoy001/DaifukuERP/blob/${commit}/docs/manual/`);
+  assert.equal(
+    releaseManualUrl(commit, 'https://docs.example.jp/daifuku/manual'),
+    'https://docs.example.jp/daifuku/manual/',
+  );
+  assert.equal(releaseManualUrl(commit, 'http://intranet.local/manual/'), 'http://intranet.local/manual/');
+  assert.throws(() => releaseManualUrl('main'), /full Git hash/);
+  for (const bad of [
+    'docs/manual/',
+    'javascript:alert(1)',
+    'https://x.example/?a=1',
+    'https://x.example/#a',
+    'https://u:p@x.example/',
+  ])
+    assert.throws(() => releaseManualUrl(commit, bad), /--manual-url/);
+  // A bad mirror stops the build before any source, store or output is touched.
+  await assert.rejects(
+    buildRelease({
+      source: '/nonexistent-daifuku-source',
+      output: '/nonexistent-daifuku-output',
+      manualUrl: 'ftp://x/',
+    }),
+    /--manual-url/,
+  );
+});
+
 test('all release command help paths exit successfully without reading a release, configuration or database', () => {
   for (const name of ['build-release', 'verify-release', 'deploy-plan']) {
     const script = fileURLToPath(new URL(`../../scripts/${name}.mjs`, import.meta.url));
@@ -184,7 +214,9 @@ test('real main/worker Web build includes React/TanStack full licenses and fixed
   const root = await mkdtemp(join(tmpdir(), 'daifuku-web-notices-'));
   const output = join(root, 'web');
   try {
-    const env = { NODE_ENV: 'production', VITE_API_URL: '/api' };
+    // navigation-assist AC-6: the manual base the release builder passes reaches the bundle as a literal.
+    const manualBase = releaseManualUrl('f'.repeat(40));
+    const env = { NODE_ENV: 'production', VITE_API_URL: '/api', VITE_MANUAL_URL: manualBase };
     for (const key of ['PATH', 'HOME', 'USER', 'PNPM_HOME']) if (process.env[key]) env[key] = process.env[key];
     execFileSync('pnpm', ['--filter', '@daifuku/web', 'exec', 'vite', 'build', '--outDir', output], {
       cwd: stage,
@@ -192,6 +224,12 @@ test('real main/worker Web build includes React/TanStack full licenses and fixed
       stdio: 'pipe',
       maxBuffer: 8 * 1024 * 1024,
     });
+    const scripts = (await readdir(join(output, 'assets'))).filter((name) => name.endsWith('.js'));
+    const bundled = await Promise.all(scripts.map((name) => readFile(join(output, 'assets', name), 'utf8')));
+    assert.ok(
+      bundled.some((text) => text.includes(manualBase)),
+      'VITE_MANUAL_URL must be baked into the Web bundle',
+    );
     const evidence = await readdir(join(output, '.license-inputs'));
     assert.ok(evidence.length >= 2, 'both main and recommendation worker builds must report contributing inputs');
     for (const file of evidence) {

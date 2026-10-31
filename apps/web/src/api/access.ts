@@ -26,6 +26,8 @@ export interface AccessCatalog {
   roles: string[];
   stores: { id: string; companyId: string; name: string }[];
   sites: { id: string; companyId: string; name: string }[];
+  /** machine-credentials AC-33: live API keys per issuer (user id -> count). Absent on older servers. */
+  activeApiKeys?: Record<string, number>;
 }
 export interface AccessAuditEntry {
   id: string;

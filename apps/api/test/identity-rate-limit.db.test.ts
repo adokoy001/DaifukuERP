@@ -46,11 +46,17 @@ describe('authentication budgets for shared networks', () => {
     expect((await login()).statusCode).toBe(200);
   });
   it('retains failed login limits across IPs and does not charge another identity or read-only provider listing', async () => {
-    for (let index = 0; index < 10; index++)
-      expect((await login('wrong', 'absent@example.com', `192.0.2.${index + 10}`)).statusCode).toBe(401);
-    expect((await login('wrong', 'absent@example.com', '192.0.2.99')).statusCode).toBe(429);
-    expect((await login()).statusCode).toBe(200);
-    expect((await app.inject({ url: '/auth/oidc/providers', remoteAddress: '192.0.2.99' })).statusCode).toBe(200);
+    // The failed-login budget is a fixed wall-clock window; pin Date so the 11 KDF-bound attempts cannot straddle a boundary.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      for (let index = 0; index < 10; index++)
+        expect((await login('wrong', 'absent@example.com', `192.0.2.${index + 10}`)).statusCode).toBe(401);
+      expect((await login('wrong', 'absent@example.com', '192.0.2.99')).statusCode).toBe(429);
+      expect((await login()).statusCode).toBe(200);
+      expect((await app.inject({ url: '/auth/oidc/providers', remoteAddress: '192.0.2.99' })).statusCode).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('limits password spraying per IP without disabling other networks or provider discovery', async () => {
     // Keep every attempt in one quota window; real scrypt and its callback timers remain asynchronous.
@@ -67,6 +73,15 @@ describe('authentication budgets for shared networks', () => {
     }
   }, 120000);
   it('bounds administrator invitation issuance separately from successful authentication', async () => {
+    // The invitation budget is a fixed wall-clock window; pin Date so the 31 attempts cannot straddle a boundary.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await assertInvitationBudget();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  async function assertInvitationBudget(): Promise<void> {
     const token = (await login()).json<{ token: string }>().token;
     const headers = { authorization: `Bearer ${token}` };
     for (let index = 0; index < 31; index++) {
@@ -91,7 +106,7 @@ describe('authentication budgets for shared networks', () => {
     }
     expect((await login()).statusCode).toBe(200);
     expect((await app.inject({ url: '/auth/security', headers })).statusCode).toBe(200);
-  });
+  }
   it('does not accumulate successful step-up proofs as failures', async () => {
     const token = (await login()).json<{ token: string }>().token;
     for (let index = 0; index < 12; index++) {

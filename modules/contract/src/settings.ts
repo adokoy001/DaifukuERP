@@ -18,19 +18,27 @@ export const CONTRACT_SETTING_DEFS: readonly SettingDef[] = [
     key: CONTRACT_DEFAULT_PRORATION_KEY,
     label: label('契約の日割り（既定）', 'Default contract proration'),
     description: label(
-      '新しい契約の prorationRule の既定値: daily = 当月の実日数で日割り, none = 満額',
-      'Default prorationRule of new contracts: daily = prorate by the actual days of the month, none = full price',
+      '新しい契約の日割り方法の既定値。日割り = 当月の実日数で日割り、なし = 満額',
+      'Default proration of new contracts. Daily = prorate by the actual days of the month; none = full price',
     ),
     schema: contractDefaultProrationSchema,
+    default: CONTRACT_DEFAULT_PRORATION_DEFAULT,
+    order: 10,
+    valueLabels: {
+      daily: label('日割り（当月の実日数）', 'Daily (actual days of the month)'),
+      none: label('なし（満額）', 'None (full price)'),
+    },
   },
   {
     key: CONTRACT_AUTO_SUBMIT_KEY,
     label: label('契約請求書を自動で確定', 'Auto-submit contract invoices'),
     description: label(
-      'contract.generate_invoices で submit を省略したとき、作った請求書を確定（submit）するか',
+      '契約から請求書を作る操作（contract.generate_invoices）で確定の指定を省略したとき、作った請求書を確定するか',
       'Whether contract.generate_invoices submits the invoices it creates when `submit` is omitted',
     ),
     schema: contractAutoSubmitSchema,
+    default: CONTRACT_AUTO_SUBMIT_DEFAULT,
+    order: 20,
   },
 ];
 

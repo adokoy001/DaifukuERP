@@ -27,6 +27,8 @@ import {
 } from '@daifuku/mod-tax';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  JAPAN_FIXED_ASSET_RULES,
+  JAPAN_FIXED_ASSET_RULES_OVERRIDE,
   EXEMPT_SUPPLIER_CREDIT_RATIO_OVERRIDE,
   INVOICE_HTML_OVERRIDE,
   JP_CHART_OF_ACCOUNTS,
@@ -77,6 +79,10 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
     expect(ratio({ supplierTaxStatus: 'exempt', date: '2026-10-15' }).toString()).toBe('0.7');
     expect(ratio({ supplierTaxStatus: 'exempt', date: '2026-09-15' }).toString()).toBe('0.8');
     expect(ratio({ supplierTaxStatus: 'registered', date: '2026-10-15' }).toString()).toBe('1');
+
+    // fixed-assets AC-29: the Japanese rule set at the module's override point (type-only import of the module)
+    const rules = registry.override<() => unknown>(JAPAN_FIXED_ASSET_RULES_OVERRIDE, () => null)();
+    expect(rules).toBe(JAPAN_FIXED_ASSET_RULES);
 
     const htmlFallback: InvoiceHtmlRenderer = () => '<p>default</p>';
     const render = registry.override(INVOICE_HTML_OVERRIDE, htmlFallback);
@@ -188,11 +194,27 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
       subtype: '仮払消費税',
       partnerRequired: false,
     });
+    // expense-settlement AC-19 / D13: 仮払金 for advances to employees (expense.accounts.advance)
+    expect(pick('1800')).toMatchObject({
+      name: '仮払金',
+      type: 'asset',
+      subtype: 'その他流動資産',
+      partnerRequired: false,
+    });
     expect(pick('2200')).toMatchObject({ name: '仮受消費税', type: 'liability', subtype: '仮受消費税' });
     expect(pick('2300')).toMatchObject({ name: '未払消費税', type: 'liability' });
     expect(pick('3000')).toMatchObject({ name: '元入金', type: 'equity', subtype: '元入金' });
     expect(pick('3100')).toMatchObject({ name: '事業主貸', type: 'equity', subtype: '事業主勘定' });
     expect(pick('3200')).toMatchObject({ name: '事業主借', type: 'equity', subtype: '事業主勘定' });
+    // opening-balances AC-28: the default clearing account of accounting.opening_balances (no partner, no tax role)
+    expect(pick('3900')).toEqual({
+      name: '期首残高仮勘定',
+      type: 'equity',
+      subtype: '期首残高仮勘定',
+      partnerRequired: false,
+      taxCategoryDefault: null,
+      isActive: true,
+    });
     expect(pick('4000')).toEqual({
       name: '売上高',
       type: 'revenue',
@@ -230,7 +252,21 @@ describe('l10n/jp module (docs/specs/l10n-jp.md)', () => {
     expect(all.items.filter((a) => a.partnerRequired).map((a) => a.code)).toEqual(['1300', '2100']);
     const types = new Map<string, number>();
     for (const a of all.items) types.set(a.type, (types.get(a.type) ?? 0) + 1);
-    expect(Object.fromEntries(types)).toEqual({ asset: 6, liability: 6, equity: 3, revenue: 2, expense: 14 });
+    // 16 assets: 1800 仮払金 (expense-settlement D13) and fixed-assets AC-29's 1910, 1920–1925, 1929, 1930; 4 equity: 3900
+    // 期首残高仮勘定 (opening-balances); fixed-assets AC-29 also added 8100 (revenue), 8200, 8300 (expense)
+    expect(Object.fromEntries(types)).toEqual({ asset: 16, liability: 6, equity: 4, revenue: 3, expense: 16 });
+    expect(pick('1925')).toMatchObject({ name: '工具器具備品', type: 'asset', subtype: '有形固定資産' });
+    expect(pick('1929')).toMatchObject({ name: '減価償却累計額', type: 'asset', subtype: '有形固定資産' });
+    expect(pick('1930')).toMatchObject({ name: 'ソフトウエア', type: 'asset', subtype: '無形固定資産' });
+    expect(pick('1910')).toMatchObject({ name: '未収入金', type: 'asset', subtype: 'その他流動資産' });
+    expect(pick('8100')).toMatchObject({
+      name: '固定資産売却益',
+      type: 'revenue',
+      subtype: '特別利益',
+      taxCategoryDefault: null,
+    });
+    expect(pick('8200')).toMatchObject({ name: '固定資産売却損', type: 'expense', taxCategoryDefault: 'out_of_scope' });
+    expect(pick('8300')).toMatchObject({ name: '固定資産除却損', type: 'expense', taxCategoryDefault: 'out_of_scope' });
     // codes are the primary key of the seed: the table itself has no duplicates
     expect(new Set(JP_CHART_OF_ACCOUNTS.map((a) => a.code)).size).toBe(JP_CHART_OF_ACCOUNTS.length);
   });

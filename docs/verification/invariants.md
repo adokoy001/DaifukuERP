@@ -153,3 +153,33 @@
 - 根拠: 生成→出力→受取人口座更新→再出力→取消→出力拒否を行い、元bytes/snapshotと入出金/仕訳件数を照合する。
 - 失効条件: snapshot固定、format/改行、状態遷移、支払予約/取消、銀行送信の追加。
 - 限界: 実際の銀行受理や振込実行を確認しない。申告の鮮度再検査とは別の契約。
+
+## PV-PACK-SCAFFOLD-01
+- 条件: `scripts/pack-new.mjs`が生成するpackは編集なしで型検査を通り、生成したDBテスト（登録、初回適用と再適用の書込ゼロ、force/sample、権限（admin限定の適用、店舗・拠点限定の文脈の拒否を含む）、適用済み会社間と未適用会社の境界、extの検証/検索、/meta）が現在のkernelとpartnerに対して成功する。
+- 前提: 一時workspaceへ生成し、`node_modules`を`packs/example/node_modules`へリンクする。runtime catalogへの登録、migration生成、画面での適用は含まない。
+- 仕様: [pack雛形生成](../specs/pack-scaffold.md)
+- 実装: [生成器](../../scripts/pack-new.mjs)、[packテンプレート](../../scripts/pack-template/src/pack.ts.tmpl)、[マスタのテンプレート](../../scripts/pack-template/src/entities/tag.ts.tmpl)、[actionのテンプレート](../../scripts/pack-template/src/actions/count-tags.ts.tmpl)、[seedのテンプレート](../../scripts/pack-template/src/seed.ts.tmpl)、[sampleのテンプレート](../../scripts/pack-template/src/sample.ts.tmpl)、[公開indexのテンプレート](../../scripts/pack-template/src/index.ts.tmpl)、[生成テストのテンプレート](../../scripts/pack-template/test/pack.db.test.ts.tmpl)、[生成specのテンプレート](../../scripts/pack-template/spec.md.tmpl)、[適用](../../kernel/src/pack.ts)、[pack action](../../kernel/src/actions/pack.ts)、[actionの権限](../../kernel/src/actions/run.ts)、[entityの権限](../../kernel/src/permissions.ts)、[meta](../../kernel/src/meta.ts)、[試験基盤](../../kernel/src/testing.ts)
+- 試験: [生成・拒否・型検査](../../scripts/test/pack-new.test.ts)、[生成packのDBテスト実行](../../scripts/test/pack-new.db.test.ts)
+- 根拠: 子プロセスのvitestが生成テスト11件を実行し、生成ACごとに成功を照合する。テンプレートの型を壊すとunitの型検査が、viewerに作成権限を足すとDB実行が失敗することを実装時に確認した。
+- 失効条件: テンプレート、definePack/applyPack/pack action/権限/meta/freshDbの契約、partnerの公開API、登録先（runtime catalog、runtimeテストの一覧、workforceの件数表示）の形の変更。変更時は規約の手順で登録経路を一巡し直す。
+- 限界: 登録後のmigration同期・`gate:light`・画面での適用は作業記録の一巡でのみ確認する。生成packへ足す業種固有の業務規則の正しさは保証しない。
+
+## PV-EXPENSE-01
+- 条件: 経費精算書の確定は、経費の仕訳・入出金とその仕訳・経費の精算済み・仮払の消込をすべて作るか、何も作らない。1 件の経費は取消されていない精算書 1 枚、1 件の仮払は確定済みの精算書 1 枚にだけ入り、仮払金と未払金の取引先別残高は「計上 → 支払・返金」で 0 に戻る。
+- 前提: 同じ会社・JPY・確定者は accounting と workforce_payroll の両方を持ち経費の本人でない。税率・経過措置の率は期間付きデータ、端数処理は会社設定。銀行照合済みの入出金は banking が取消を拒む。
+- 仕様: [経費精算の仕様](../specs/expense-settlement.md)、[ADR-0039](../adr/0039-expense-settlement-posting.md)
+- 実装: [精算書の hook](../../modules/expense/src/hooks/settlement.ts)、[転記の純関数](../../modules/expense/src/services/posting.ts)、[相手科目付き入出金](../../modules/payment/src/clearing.ts)
+- 試験: [確定・巻戻し・競合・取消](../../modules/expense/test/settlement.db.test.ts)、[golden](../../modules/expense/test/posting.test.ts)、[相手科目付き入出金](../../modules/payment/test/clearing.db.test.ts)
+- 根拠: golden 11 件（3 種類 × 仮払の差額、丸め単位・配分・経過措置・書類なし・明細なしの仮払）を純関数と実 DB の転記の両方で照合し、入出金の hook に注入した失敗・締め済み期間・科目欠落で巻戻しを、`Promise.allSettled` の並行操作で勝者 1 つを確かめる。
+- 失効条件: 精算書・仮払・入出金の hook の順序、kernel の `findDependents`・訂正の写し方、payment の転記規則、税の丸め単位・控除率の扱い、従業員のロックのキーの変更。
+- 限界: 帳簿のみ保存・少額特例・経過措置の書類の要件（一次資料で未確認）と、精算日で計上することによる消費税の期間帰属の正しさは保証しない。銀行照合済みの拒否は試験内の hook で代替した。
+
+## PV-FIXED-ASSETS-01
+- 条件: 減価償却の全年度の合計が「取得価額 − 備忘価額」に一致し、帳簿価額が備忘価額を下回らず、年度内の月の配分の合計がその年度の償却額に一致し、同じ年度の期間をどの順・どの間隔で実行しても年度の合計が同じになる。
+- 前提: 12 か月の暦月の会計年度、Decimal、年額の円未満切捨て、率は国別パックの規則データ（引数）。合計の性質は 1 年分の額が 1 円以上の資産に限る（定額法は 取得価額 × 償却率 ≧ 1 円、定率法は加えて 改定取得価額 × 改定償却率 ≧ 1 円）。これを下回る取得価額は年額が 0 に切り捨てられ、償却が終わらない（AC-9。性質の試験は取得価額 10,000 円以上を生成する）。
+- 仕様: [固定資産仕様](../specs/fixed-assets.md)
+- 実装: [償却計算](../../modules/fixed-assets/src/services/schedule.ts)、[期間の計画](../../modules/fixed-assets/src/services/plan.ts)
+- 試験: [golden と性質](../../modules/fixed-assets/test/schedule.test.ts)、[実行の DB 試験](../../modules/fixed-assets/test/depreciation.db.test.ts)
+- 根拠: 手計算の golden G1〜G11・D1〜D8（G10・G11・D8 は年額と除却の限度額が円単位にならず、切捨ての向きを決める。G11・D8 は端数が 0.5 以上で、四捨五入とも区別する）と、fast-check による 200 件の生成入力（償却方法・耐用年数・取得価額・年度の開始月・供用月・実行を飛ばす月）。DB 試験で同じ期間の 2 回実行・2 トランザクションの同時実行・飛ばした月のまとめ計上を確認する。計上済み額の集計は会計年度ごとに行い、集計の上限に達したら部分的な合計で続けず `history_too_large` で止める（scale.db.test.ts）。最初の会計年度より前に供用した移行値の無い資産は計上しない（`opening_required`）。
+- 失効条件: 月割・切捨て・保証額の比較・改定取得価額・備忘価額・期首帳簿価額の求め方・移行時の値・除却の年の限度額の変更、率表の形式の変更。
+- 限界: 率表の値そのものが一次資料と一致することは保証しない（照合は `verifiedOn` と会社の照合記録で別に扱う）。1 年未満の事業年度・特別償却は対象外。

@@ -2,7 +2,7 @@
 
 DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三者コード・データには、それぞれの権利者のライセンスが適用されます。本書は依存物を一括して MIT に変更するものではありません。
 
-更新日: 2026-09-13。依存一覧の全量確認は店舗機器・配備追加時点（2026-09-12）の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。今回の申告準備で使う直接依存と加工した公開資料の帰属は末尾に追記しています。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
+更新日: 2026-10-29（末尾にアクセシビリティ自動検査の追加依存を追記）。依存一覧の全量確認は店舗機器・配備追加時点（2026-09-12）の `pnpm-lock.yaml`、pnpm 10.28.0、Linux x64 上のインストール結果です。今回の申告準備で使う直接依存と加工した公開資料の帰属は末尾に追記しています。`node_modules`・ブラウザバイナリ・ビルド成果物はソースリポジトリへ同梱していません。配布物に依存コードやバイナリを含める場合は、各パッケージの `LICENSE`、`NOTICE`、著作権表示も保持してください。
 
 ## ソースに含めたアイコン
 
@@ -329,3 +329,16 @@ DaifukuERP の独自コードは [MIT License](LICENSE) です。以下の第三
 これらの資料をDaifukuERPが抽出・加工し、[国内コード定義](l10n/jp/src/filing/data.ts) と [形式回帰用の抜粋](l10n/jp/test/fixtures/hot010-v3-general.json) を作成しました。必要な科目コード・名称・行種別・階層に限定し、元のExcelプログラムや文書一式は同梱していません。加工した定義・出力は国税庁が作成・認定したものではありません。
 
 [e-Taxのコンテンツ利用条件](https://www.e-tax.nta.go.jp/chuijiko/chosakuken.htm) は [国税庁の利用規約](https://www.nta.go.jp/chuijiko/copy.htm) を参照しています。同規約は別の権利表示がない場合に公共データ利用規約（第1.0版）に準拠し、出典と編集・加工の表示を求めています。元資料の条件は本プロジェクトのMITと区別し、この出典・加工表示を保持してください。
+
+## アクセシビリティ自動検査の追加依存
+
+2026-10-29に `apps/web` の devDependency へ [@axe-core/playwright 4.13.0](https://github.com/dequelabs/axe-core-npm) を固定版で追加しました（[spec](docs/specs/e2e-a11y.md)）。lockfile に追加された名前と版の組は次の2件です。実インストールの `package.json` と `LICENSE` で宣言を確認しました。上の全量集計を今回再実施したという意味ではありません。
+
+| package | version | license | 用途 |
+| --- | --- | --- | --- |
+| `@axe-core/playwright` | 4.13.0 | MPL-2.0 | ブラウザ試験から axe を呼ぶ（dev） |
+| `axe-core` | 4.13.0 | MPL-2.0 | 検査エンジン（上の依存、dev） |
+
+- どちらも [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/)（ファイル単位の copyleft）です。`axe-core` の `axe.js` の表示は「Copyright (c) 2015 - 2026 Deque Systems, Inc.」で、この表示をファイルの複製に残すよう求めています。`@axe-core/playwright` は [axe-core-npm](https://github.com/dequelabs/axe-core-npm)（Deque Systems）の配布で、package の `LICENSE` に MPL-2.0 の全文があります。ブラウザ試験の実行時に試験用ブラウザへ注入するだけで、Web 配布物（Vite の chunk）・API・中継 agent には含めません。改変していません。
+- `axe-core` の配布物には MIT（colorjs.io、core-js-pure、css-selector-parser、doT.js、emoji-regex ほか）と ISC（es5-ext、memoizee ほか）の内包コードの通知 `LICENSE-3RD-PARTY.txt` が同梱されています。これらを再配布する場合は、package の `LICENSE` と `LICENSE-3RD-PARTY.txt` を保持し、MPL-2.0 の対象ファイルのソース入手先を示してください（[MPL 2.0 FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)）。
+- peer dependency の `playwright-core` 1.63.0 は既存の `@playwright/test` と同じ版で、新しい版ではありません。

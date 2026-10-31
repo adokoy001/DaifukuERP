@@ -6,6 +6,8 @@ import type { FiscalPeriod } from './entities/fiscal-period.ts';
 import type { FiscalYear } from './entities/fiscal-year.ts';
 import type { JournalEntry } from './entities/journal-entry.ts';
 import type { JournalLine } from './entities/journal-line.ts';
+import type { RecurringJournal, RecurringJournalLine } from './entities/recurring-journal.ts';
+import type { RecurringJournalRun } from './entities/recurring-journal-run.ts';
 
 export { AccountingModule } from './module.ts';
 export {
@@ -23,6 +25,73 @@ export { FiscalYear } from './entities/fiscal-year.ts';
 export { FiscalPeriod } from './entities/fiscal-period.ts';
 export { JournalEntry } from './entities/journal-entry.ts';
 export { JournalLine } from './entities/journal-line.ts';
+export {
+  RecurringJournal,
+  RecurringJournalLine,
+  RECURRING_KINDS,
+  RECURRING_FREQUENCIES,
+  RECURRING_KIND_LABELS,
+  RECURRING_FREQUENCY_LABELS,
+} from './entities/recurring-journal.ts';
+export { RecurringJournalRun } from './entities/recurring-journal-run.ts';
+export {
+  generateRecurring,
+  generateRecurringAction,
+  generateRecurringInput,
+  generateRecurringOutput,
+  assertCanGenerate,
+  entryDescription,
+  MAX_RECURRING_ENTRIES,
+  RECURRING_GENERATED_EVENT,
+  RUN_STATUSES,
+  RUN_STOP_REASONS,
+  type GenerateRecurringInput,
+  type GenerateRecurringResult,
+  type RunStatus,
+  type RunStopReason,
+} from './actions/generate-recurring.ts';
+export {
+  recurringSchedule,
+  recurringScheduleAction,
+  RECURRING_SCHEDULE_COLUMNS,
+} from './actions/recurring-schedule.ts';
+export { accountingTodoAction } from './actions/todo.ts';
+export {
+  ACCOUNTING_SETTING_DEFS,
+  RECURRING_AUTO_SUBMIT_KEY,
+  RECURRING_AUTO_SUBMIT_DEFAULT,
+  recurringAutoSubmitSchema,
+  registerAccountingSettings,
+  loadRecurringAutoSubmit,
+} from './settings.ts';
+export { RECURRING_DELETE_HINT, RECURRING_DUPLICATE_HINT, RECURRING_RUN_HINT } from './hooks/recurring.ts';
+export {
+  allocationAmount,
+  allocationShares,
+  allocationTotal,
+  checkHeader,
+  checkLines,
+  checkTemplate,
+  dueOccurrences,
+  intervalMonths,
+  lastAllocationDate,
+  minorUnit,
+  nextOccurrence,
+  occurrenceAt,
+  periodState,
+  planTemplate,
+  slotDate,
+  PLAN_STATUSES,
+  STOP_REASONS,
+  type Occurrence,
+  type PlanStatus,
+  type PlannedOccurrence,
+  type RecurringFrequency,
+  type RecurringKind,
+  type Schedule,
+  type StopReason,
+  type TemplateLine,
+} from './services/recurrence.ts';
 
 export {
   openFiscalYear,
@@ -42,6 +111,25 @@ export { trialBalanceAction, movementsByAccount, TRIAL_BALANCE_COLUMNS } from '.
 export { generalLedgerAction, GENERAL_LEDGER_COLUMNS } from './actions/general-ledger.ts';
 export { taxPeriodSummaryAction, TAX_PERIOD_SUMMARY_COLUMNS } from './actions/tax-period-summary.ts';
 export { closePeriodAction, reopenPeriodAction } from './actions/close-period.ts';
+export {
+  closeReadiness,
+  closeReadinessAction,
+  closeReadinessItem,
+  closeReadinessOutput,
+  NO_FISCAL_PERIOD,
+  type CloseReadiness,
+  type CloseReadinessItem,
+} from './actions/close-readiness.ts';
+export {
+  CLOSE_DATE_FIELDS,
+  blockingCount,
+  closeDateField,
+  closeReady,
+  defaultClosePeriod,
+  isBlockingDraft,
+  previousPeriod,
+  type ClosePeriodLike,
+} from './services/close.ts';
 export {
   lineInput,
   entryWithLinesJson,
@@ -124,7 +212,109 @@ export type JournalEntryRow = Infer<typeof JournalEntry>;
 export type JournalEntryInsert = InsertInput<typeof JournalEntry>;
 export type JournalLineRow = Infer<typeof JournalLine>;
 export type JournalLineInsert = InsertInput<typeof JournalLine>;
+export type RecurringJournalRow = Infer<typeof RecurringJournal>;
+export type RecurringJournalLineRow = Infer<typeof RecurringJournalLine>;
+export type RecurringJournalRunRow = Infer<typeof RecurringJournalRun>;
 
 export { reverseSourceEntry } from './actions/reverse-source.ts';
+// Opening balances (docs/specs/opening-balances.md, ADR-0030): shared by the sales/purchase/inventory imports.
+export {
+  importOpeningBalances,
+  importOpeningBalancesAction,
+  importOpeningBalancesInput,
+  openingBalanceStatus,
+  openingBalanceStatusAction,
+  openingBalanceStatusOutput,
+  reverseOpeningBalancesAction,
+  OPENING_JOURNAL_MAX_LINES,
+  OPENING_JOURNAL_MAX_ROWS,
+  OPENING_SOURCE,
+  type ImportOpeningBalancesInput,
+  type OpeningBalanceStatus,
+} from './actions/opening-balances.ts';
+export {
+  assertNotOpeningAmend,
+  assertOpeningCurrency,
+  assertOpeningInputSize,
+  assertOpeningInvoice,
+  assertOpeningOps,
+  attempt as attemptOpeningUnit,
+  clearingAccountState,
+  clearingBalanceAt,
+  clearingUsedNotice,
+  foreignClearingPostings,
+  lookupByCode,
+  openingCell,
+  openingImportResult,
+  openingMode,
+  openingYearJson,
+  OPENING_INPUT_BYTES,
+  OPENING_ROLES,
+  postOpeningFromSource,
+  resolveOpeningClearingAccount,
+  reverseOpeningSourceEntry,
+  rowFailureMessages,
+  rowResult,
+  runOpeningImport,
+  type ClearingAccountState,
+  type Lookup,
+  type OpeningDocument,
+  type OpeningImportResult,
+  type OpeningInvoiceLine,
+} from './opening.ts';
+export {
+  importOpeningInvoices,
+  openingInvoiceNote,
+  openingInvoicesInput,
+  OPENING_INVOICE_MAX_ROWS,
+  type OpeningInvoiceRow,
+  type OpeningInvoiceSpec,
+  type OpeningInvoicesInput,
+} from './opening-invoices.ts';
+export {
+  ACCOUNTING_PERIODS_LOCK,
+  assertOpeningYear,
+  assertOpeningYearLocked,
+  earliestFiscalYear,
+  openingDateAllowed,
+  openingYearError,
+  openingYearProblem,
+  OPENING_REOPEN_HINT,
+  type OpeningYear,
+  type OpeningYearReason,
+} from './opening-year.ts';
+export {
+  accountRowIssue,
+  classifyJournalAmounts,
+  clearingMemo,
+  fieldMessage as openingFieldMessage,
+  isBlank as isBlankCell,
+  isMessage as isOpeningMessage,
+  isWholeYen,
+  journalIssues,
+  journalTotals,
+  openingDateOf,
+  readCode as readOpeningCode,
+  readDate as readOpeningDate,
+  readDecimal as readOpeningDecimal,
+  readOpeningAmount,
+  readOpeningQuantity,
+  readOpeningUnitCost,
+  summarize as summarizeOpeningRows,
+  OPENING_SCALE,
+  type JournalAmount,
+  type OpeningMessage,
+  type OpeningRowResult,
+  type OpeningRowStatus,
+  type OpeningSummary,
+} from './services/opening.ts';
+export {
+  OPENING_BALANCES_DEFAULT,
+  OPENING_BALANCES_KEY,
+  openingBalancesSchema,
+  openingBalancesSetting,
+  type OpeningBalancesSetting,
+} from './settings.ts';
 export { assertJpySettlement } from './money-contract.ts';
 export { postingDimensions } from './dimensions.ts';
+export { fiscalPeriodHealthCheck, FISCAL_PERIOD_HORIZON_DAYS } from './health.ts';

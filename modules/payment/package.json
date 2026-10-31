@@ -24,6 +24,7 @@
     "@daifuku/mod-partner": "workspace:*",
     "@daifuku/mod-accounting": "workspace:*",
     "@daifuku/mod-sales": "workspace:*",
-    "@daifuku/mod-purchase": "workspace:*"
+    "@daifuku/mod-purchase": "workspace:*",
+    "@daifuku/mod-print-layout": "workspace:*"
   }
 }

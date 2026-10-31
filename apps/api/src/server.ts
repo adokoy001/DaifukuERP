@@ -5,6 +5,7 @@ import { newId, type Database } from '@daifuku/kernel';
 import fastifyCors from '@fastify/cors';
 import fastify, { LogController, type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { validatorCompiler } from 'fastify-type-provider-zod';
+import { appliedMigrationsReader } from './deployment/readiness.ts';
 import { validateIdentityOptions, type IdentityOptions } from './identity/config.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { registerErrorHandler } from './plugins/errors.ts';
@@ -15,6 +16,12 @@ import { registerMetaRoutes } from './routes/meta.ts';
 import { registerRestRoutes } from './routes/rest.ts';
 import { registerAttachmentRoutes } from './routes/attachments.ts';
 import { registerAccessAdminRoutes } from './routes/access-admin.ts';
+import { registerAccessInsightRoutes } from './routes/access-insight.ts';
+import { registerCompanyAdminRoutes } from './routes/company-admin.ts';
+import { registerMachineCredentialRoutes } from './routes/machine-credentials.ts';
+import { registerEventDeliveryRoutes } from './routes/event-deliveries.ts';
+import { registerHealthRoutes } from './routes/health.ts';
+import { registerSetupStatusRoutes } from './routes/setup-status.ts';
 import type { SquareConnection } from './adapters/square-pos.ts';
 import { registerSquarePosRoutes } from './routes/square-pos.ts';
 import { registerWorkforceEvidenceRoutes } from './routes/workforce-evidence.ts';
@@ -30,6 +37,12 @@ export interface ServerOptions {
   readiness?: () => Promise<{ ready: boolean }>;
   identity?: IdentityOptions;
   squarePosConnections?: SquareConnection[];
+  /** Attachment storage directory (DAIFUKU_STORAGE_DIR); the setup health report says whether it is writable. */
+  storageDirectory?: string;
+  /** Release migration catalog for the setup health report; defaults to the API's drizzle/migrations. */
+  migrationsDirectory?: string;
+  /** Whether this process runs the event delivery worker (EVENT_WORKER_ENABLED); shown on /admin/webhooks. */
+  eventWorker?: { enabledHere: boolean };
   /** Exact browser origins. Omitted means same-origin only; main passes validated environment policy. */
   corsOrigins?: readonly string[];
   logger?: FastifyServerOptions['logger'];
@@ -74,6 +87,25 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   registerRestRoutes(server, { db: opts.app });
   registerAttachmentRoutes(server, { db: opts.app });
   registerAccessAdminRoutes(server, { db: opts.app });
+  registerCompanyAdminRoutes(server, { db: opts.app });
+  registerMachineCredentialRoutes(server, { db: opts.app });
+  registerAccessInsightRoutes(server, { db: opts.app });
+  registerEventDeliveryRoutes(server, {
+    db: opts.app,
+    ...(opts.identity ? { encryptionKey: opts.identity.encryptionKey } : {}),
+    mailConfigured: Boolean(opts.identity?.mailTransport),
+    workerEnabled: opts.eventWorker?.enabledHere ?? false,
+  });
+  registerHealthRoutes(server, {
+    db: opts.app,
+    platform: {
+      appliedMigrations: appliedMigrationsReader(opts.owner),
+      ...(opts.identity ? { identity: opts.identity } : {}),
+      ...(opts.storageDirectory ? { storageDirectory: opts.storageDirectory } : {}),
+      ...(opts.migrationsDirectory ? { migrationsDirectory: opts.migrationsDirectory } : {}),
+    },
+  });
+  registerSetupStatusRoutes(server, { db: opts.app });
   registerWorkforceEvidenceRoutes(server, { db: opts.app });
   registerAnalyticsRoutes(server, { db: opts.app });
   await registerSquarePosRoutes(server, {

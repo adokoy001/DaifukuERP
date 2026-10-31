@@ -1,4 +1,5 @@
-// Generic per-entity actions (ADR-0009): <entity>.list/get/create/update/delete (+ submit/cancel/amend).
+// Generic per-entity actions (ADR-0009): <entity>.list/get/create/update/delete (+ submit/cancel/amend, + import), and
+// the list's CSV rows <entity>.export_rows (export-rows.ts).
 import { z } from 'zod';
 import { defineAction } from '../dsl/action.ts';
 import type { EntityDef } from '../dsl/entity.ts';
@@ -10,9 +11,15 @@ import { registry } from '../registry.ts';
 import { listQuerySchema, type ListQuery } from '../repository/query.ts';
 import { repo } from '../repository/repository.ts';
 import { snapshot } from '../repository/rows.ts';
+import { markReplacing } from '../repository/integrity.ts';
+import type { Context } from '../context.ts';
 import { ValidationError } from '../errors.ts';
 import { createInputSchema, followExtFields, hasLines, recordJsonSchema, updateInputSchema } from './crud-schemas.ts';
 import { publicOutput } from '../public-output.ts';
+import { isImportable } from '../import-values.ts';
+import { registerImportAction } from './import.ts';
+import { registerExportRowsAction } from './export-rows.ts';
+import { registerRelatedActions } from './related.ts';
 
 const idInput = z.object({ id: z.uuid() });
 const versionInput = idInput.extend({ expectedVersion: z.number().int().min(1).optional() });
@@ -34,14 +41,22 @@ async function withLines(
   return { ...jsonOf(entity, row), lines: publicLines };
 }
 
-/** Registers generic CRUD actions for every entity that has none yet. Call once after all modules are imported. */
+/**
+ * Registers generic CRUD actions (with `<entity>.export_rows`) for every entity that has none yet, `<entity>.import`
+ * for importable masters (csv-import AC-1, ADR-0028) and the related-record actions (related.ts). Call once after all
+ * modules are imported (line entities are known only then).
+ */
 export function registerCrudActions(): void {
   for (const entity of registry.allEntities()) {
-    if (registry.hasAction(`${entity.name}.list`)) continue;
-    registerReadActions(entity);
-    registerWriteActions(entity);
-    if (entity.kind === 'document') registerDocumentActions(entity);
+    if (!registry.hasAction(`${entity.name}.list`)) {
+      registerReadActions(entity);
+      registerWriteActions(entity);
+      if (entity.kind === 'document') registerDocumentActions(entity);
+      registerExportRowsAction(entity);
+    }
+    if (!registry.hasAction(`${entity.name}.import`) && isImportable(entity)) registerImportAction(entity);
   }
+  registerRelatedActions();
 }
 
 function registerReadActions(entity: EntityDef): void {
@@ -88,6 +103,20 @@ function registerReadActions(entity: EntityDef): void {
     },
     { generic: true },
   );
+}
+
+/**
+ * ADR-0031: while the header of an update that also carries `lines` is written, the aggregate is marked as replacing, so
+ * a parent `before_update` hook sees `isSavingLines(...) === true`, checks only header rules and leaves the line rules
+ * to `after_lines_saved` (which sees the new lines). Without lines the flag stays false and the hook checks saved lines.
+ */
+async function asReplacing<T>(ctx: Context, entity: string, id: string, work: () => Promise<T>): Promise<T> {
+  markReplacing(ctx, entity, id, true);
+  try {
+    return await work();
+  } finally {
+    markReplacing(ctx, entity, id, false);
+  }
 }
 
 /** Generic update input as it arrives (lenient): id is checked here, the patch by the Repository. */
@@ -173,9 +202,12 @@ function registerWriteActions(entity: EntityDef): void {
           const before = await r.lock(id);
           if (expectedVersion !== undefined && before.version !== expectedVersion) await r.touch(id, expectedVersion);
         }
+        const updateHead = () => r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {});
         const updated =
           Object.keys(head).length > 0 || !lineRows
-            ? await r.update(id, head as never, expectedVersion !== undefined ? { expectedVersion } : {})
+            ? lineRows
+              ? await asReplacing(ctx, name, id, updateHead)
+              : await updateHead()
             : await r.get(id);
         if (lineRows) await saveLines(ctx, entity, id, lineRows);
         return withLines(ctx, entity, lineRows ? await r.get(id) : updated);

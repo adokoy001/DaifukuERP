@@ -73,6 +73,8 @@ export const Attachment = defineEntity({
     },
   },
   displayField: 'filename',
+  // Rows need an uploaded file (server-owned storageKey, sha256, ...), so only the upload route creates them (ADR-0028).
+  import: false,
   indexes: [['linkedEntity', 'linkedId']],
   views: {
     list: ['filename', 'kind', 'txnDate', 'amount', 'partnerId', 'supersededById'],
