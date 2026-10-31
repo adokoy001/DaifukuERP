@@ -1,6 +1,6 @@
 # 完成度を高めるための改善・拡張候補
 
-更新: 2026-10-29。対象は `main` の `431dda5`（PR #16 統合後）。現在の実装範囲は [STATUS](STATUS.md)、品質の優先順位は [品質改善の計画](quality-roadmap.md)、開発方針は [PLAN](../PLAN.md) を正本にする。
+更新: 2026-10-30（STATUS の第7波まで統合: 採用した候補と各章の「現状」表の解決した行に済の印を付け、8 章に実装で残った判断待ちを追加。済の印は統合ブランチの状態で、`main` には未統合）。候補の洗い出し（2026-10-29）と各章の「現状」表の基準は `main` の `431dda5`（PR #16 統合後）。現在の実装範囲は [STATUS](STATUS.md)、品質の優先順位は [品質改善の計画](quality-roadmap.md)、開発方針は [PLAN](../PLAN.md) を正本にする。
 
 この文書は「次に何を作ると完成度が上がるか」の候補一覧であり、日程や対応範囲を約束するものではない。採用した候補の作業単位・順序・設計は [完成度向上の実装計画](completion-plan.md) にまとめている。候補を採用するときは、[spec](specs/_template.md) → 実装 → [作業記録](log/_template.md) の単位（CLAUDE.md 規約9）に分け、既存の不変条件（権限バイパスなし、Decimal、確定伝票の不変、module から DB 直結なし）を緩めない。
 
@@ -8,23 +8,23 @@
 
 ソースと文書を読んで判断した。測定や利用者調査は行っていない。主に読んだのは、Web の [router](../apps/web/src/router.tsx)・[画面カタログ](../apps/web/src/lib/navigation-data.ts)・[汎用一覧](../apps/web/src/pages/entity-list-page.tsx)・[汎用フォーム](../apps/web/src/pages/entity-form-page.tsx)・[伝票操作](../apps/web/src/components/doc-actions.tsx)・[設定画面](../apps/web/src/pages/settings-page.tsx)・[テンプレート画面](../apps/web/src/pages/templates-page.tsx)・[ホーム](../apps/web/src/pages/home-page.tsx)、API の [setup CLI](../apps/api/src/setup/cli.ts)・[管理 API](../apps/api/src/routes/access-admin.ts)、kernel の [bootstrap](../kernel/src/auth.ts)・[registry](../kernel/src/registry.ts)・[events](../kernel/src/events.ts)・[document](../kernel/src/document.ts)、マニュアルの [初期設定](manual/03-setup.md)・[制限事項](manual/10-limitations.md)、[調査ノート04](../research/04-domain-scope-japan.md) である。
 
-強みは明確である。DSL から派生する汎用画面と REST/MCP、14 の専用画面、15 業界 pack、監査・採番・楽観ロック、別 DB 実復元付きの安全な setup、生成検査や mutation を含む検証基盤が揃っている。一方で、専門機能の厚みに比べて次の 2 点が薄い。
+強みは明確である。DSL から派生する汎用画面と REST/MCP、14 の専用画面、15 業界 pack、監査・採番・楽観ロック、別 DB 実復元付きの安全な setup、生成検査や mutation を含む検証基盤が揃っている。一方で、洗い出し時点（2026-10-29、`431dda5`）では専門機能の厚みに比べて次の 2 点が薄かった。どちらも [完成度向上の実装計画](completion-plan.md) で 2026-10-30 までに大半を実装した（各節の見出しの「済」と未実施の範囲を参照）。
 
-1. **導入の最初の 1 時間**。初回の会社・管理者は CLI でしか作れず、2 社目以降を追加する画面も API もない。初期設定は key 別のカードに分かれ、細目名は英語のまま、順序の案内がない。
-2. **毎日の一覧・伝票画面の生産性**。汎用一覧は検索・並べ替え・ページ送りだけで、絞り込み・列選択・CSV・一括操作がない。伝票の複製、関連伝票の一覧、モジュール横断の「やること」受信箱、業務通知もない。
+1. **導入の最初の 1 時間**。当時は初回の会社・管理者を CLI でしか作れず、2 社目以降を追加する画面も API もなく、初期設定は key 別のカードで細目名が英語、順序の案内もなかった。現在は会社の追加と名称変更（`/admin/companies`、1-2）、分類タブと日英の細目ラベルを持つ設定画面（1-3）、9 段階のセットアップウィザード（`/setup`、1-1）がある。テナントと最初の会社・管理者の作成は引き続き `pnpm run setup install`（CLI）だけである。
+2. **毎日の一覧・伝票画面の生産性**。当時の汎用一覧は検索・並べ替え・ページ送りだけで、伝票の複製・関連伝票・モジュール横断の「やること」受信箱・業務通知もなかった。現在は絞り込み・列選択・本人用の保存ビュー・CSV 出力・一括操作（2-1）、伝票の複製・関連記録・クイック操作（2-2）、受信箱（`/inbox`、2-3）、受信箱のメール通知と Webhook の配送（5 章、[event-delivery](specs/event-delivery.md)）がある。
 
-以下、1〜5 章が候補、6 章が優先順位、7 章が進め方の注意である。各候補に「現状の根拠」と「使える足場」を付け、推測は【推測】と記す。
+以下、1〜5 章が候補、6 章が優先順位、7 章が進め方の注意、8 章が実装で残った判断待ちである。各候補に「現状の根拠」と「使える足場」を付け、推測は【推測】と記す。
 
 ## 1. 導入・初期設定（セットアップウィザード）
 
 | 現状 | 根拠 |
 | --- | --- |
 | テナント・最初の会社・管理者は `pnpm run setup install` の引数でだけ作る | [setup options](../apps/api/src/setup/options.ts)、[bootstrap](../kernel/src/auth.ts) |
-| 2 社目以降を追加する画面・API がない（デモ会社は開発用 seed のみ） | [管理 API](../apps/api/src/routes/access-admin.ts) に会社作成なし、[industry-demos](../apps/api/src/db/industry-demos.ts) |
+| （済: 2026-10-30、[company-admin](specs/company-admin.md)）2 社目以降を追加する画面・API がない（デモ会社は開発用 seed のみ） | [管理 API](../apps/api/src/routes/access-admin.ts) に会社作成なし、[industry-demos](../apps/api/src/db/industry-demos.ts) |
 | 会社の住所・電話・決算月などは `companies.settings` の JSON に散在し、会社の正式な列は code/name/country/currency のみ | [settings port](../kernel/src/settings.ts) |
-| 設定画面は module が登録した key ごとのカードで、順序や完了状態の案内がない。JSON Schema の `title` が単一文字列のため細目名は英語 | [設定画面](../apps/web/src/pages/settings-page.tsx)、[schema 変換](../apps/web/src/lib/schema.ts)、[マニュアル 03](manual/03-setup.md) |
+| （済: 2026-10-30、[settings-console](specs/settings-console.md)・[setup-wizard](specs/setup-wizard.md)）設定画面は module が登録した key ごとのカードで、順序や完了状態の案内がない。JSON Schema の `title` が単一文字列のため細目名は英語 | [設定画面](../apps/web/src/pages/settings-page.tsx)、[schema 変換](../apps/web/src/lib/schema.ts)、[マニュアル 03](manual/03-setup.md) |
 | 会計年度の作成は `accounting.open_fiscal_year` を汎用アクション画面から呼ぶ。勤怠の初期制度は専用ボタン、業界テンプレートは別画面 | [open-fiscal-year](../modules/accounting/src/actions/open-fiscal-year.ts)、[WorkforceInitialize](../apps/web/src/components/workforce-initialize.tsx)、[テンプレート画面](../apps/web/src/pages/templates-page.tsx) |
-| マスタ・期首残高の CSV 取込がない（CSV 取込は銀行明細のみ） | [banking imports](../modules/banking/src/imports.ts) |
+| （済: 2026-10-30、[csv-import](specs/csv-import.md)・[opening-balances](specs/opening-balances.md)）マスタ・期首残高の CSV 取込がない（CSV 取込は銀行明細のみ） | [banking imports](../modules/banking/src/imports.ts) |
 
 ### 1-1. 初回セットアップウィザード（画面）（済: 2026-10-30、[setup-wizard](specs/setup-wizard.md)）
 
@@ -69,14 +69,14 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 | 現状 | 根拠 |
 | --- | --- |
-| 汎用一覧は全文検索・列ヘッダ並べ替え・ページ送りのみ。状態・期間・取引先・金額の絞り込み、列選択、保存ビュー、CSV、一括操作がない | [汎用一覧](../apps/web/src/pages/entity-list-page.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
-| 伝票操作は確定・取消・改訂・削除のみ。複製、前後レコード移動、共通ショートカットがない | [伝票操作](../apps/web/src/components/doc-actions.tsx)、[フォーム](../apps/web/src/components/record-form.tsx) |
-| 承認待ちは `/workforce` の「確認待ち」タブと店舗日次報告に分かれ、横断の受信箱・通知がない | [workforce-page](../apps/web/src/pages/workforce-page.tsx)、[operations-page](../apps/web/src/pages/operations-page.tsx) |
+| （会社共有の保存ビューを除き済: 2026-10-30、[list-workbench](specs/list-workbench.md)）汎用一覧は全文検索・列ヘッダ並べ替え・ページ送りのみ。状態・期間・取引先・金額の絞り込み、列選択、保存ビュー、CSV、一括操作がない | [汎用一覧](../apps/web/src/pages/entity-list-page.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
+| （済: 2026-10-30、[document-links](specs/document-links.md)・[form-ergonomics](specs/form-ergonomics.md)）伝票操作は確定・取消・改訂・削除のみ。複製、前後レコード移動、共通ショートカットがない | [伝票操作](../apps/web/src/components/doc-actions.tsx)、[フォーム](../apps/web/src/components/record-form.tsx) |
+| （済: 2026-10-30、[inbox](specs/inbox.md)・[event-delivery](specs/event-delivery.md)。ブラウザ通知は未実施）承認待ちは `/workforce` の「確認待ち」タブと店舗日次報告に分かれ、横断の受信箱・通知がない | [workforce-page](../apps/web/src/pages/workforce-page.tsx)、[operations-page](../apps/web/src/pages/operations-page.tsx) |
 | （済: 2026-10-30、[print-templates](specs/print-templates.md)）汎用の印刷は `sales.render_invoice_html` の適格請求書だけ。見積書・納品書・注文書・領収書・支払明細・合計請求書の帳票がない | [print-button](../apps/web/src/components/print-button.tsx) |
-| ホームは module 別の伝票件数と導線。役割別の「今日やること」はない | [ホーム](../apps/web/src/pages/home-page.tsx) |
+| （済: 2026-10-30、[role-home](specs/role-home.md)）ホームは module 別の伝票件数と導線。役割別の「今日やること」はない | [ホーム](../apps/web/src/pages/home-page.tsx) |
 | PWA manifest・オフライン打刻・ダークモードはない | `apps/web/public` に manifest なし |
 
-### 2-1. 一覧の強化（済: 2026-10-30、[list-workbench](specs/list-workbench.md)）
+### 2-1. 一覧の強化（絞り込み・列の選択・本人用の保存ビュー（端末内）・金額列のページ合計・CSV・一括操作は済: 2026-10-30、[list-workbench](specs/list-workbench.md)。会社共有の保存ビューと条件全体の合計は未実施）
 
 - 絞り込み: 伝票状態、日付範囲、取引先、金額範囲、担当拠点。REST の `where` と `orderBy` は既にあるので、UI と URL 状態（`?where=`）の追加で済む。
 - 列の選択と順序、保存ビュー（本人用と会社共有）。`views.list` を既定にし、保存先は本人設定か company setting。
@@ -94,7 +94,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 ### 2-3. 「やること」受信箱（Inbox）（済: 2026-10-30、[inbox](specs/inbox.md)）
 
-各 module が「自分宛ての未処理」を返す action（例: `*.todo`）を公開し、ホームと専用画面で集約する。対象は、承認待ちの勤怠訂正・有給・経費、店舗日次報告の差戻し/承認、シフト希望の未提出、期限超過の請求、未消込入金、照合待ちの銀行明細、結果不明の機器ジョブ、確定待ちの給与。件数と「開く」だけで始め、通知は後段（4-5）に回す。権限は既存の read 権限で評価し、受信箱が新しい閲覧経路にならないようにする。
+各 module が「自分宛ての未処理」を返す action（例: `*.todo`）を公開し、ホームと専用画面で集約する。対象は、承認待ちの勤怠訂正・有給・経費、店舗日次報告の差戻し/承認、シフト希望の未提出、期限超過の請求、未消込入金、照合待ちの銀行明細、結果不明の機器ジョブ、確定待ちの給与。件数と「開く」だけで始め、通知は後段（5 章の「業務イベントの配送」）に回す（受信箱の件数が増えたときの本人宛てメールは F1 で済: [event-delivery](specs/event-delivery.md)）。権限は既存の read 権限で評価し、受信箱が新しい閲覧経路にならないようにする。
 
 ### 2-4. 役割別ホーム（済: 2026-10-30、[role-home](specs/role-home.md)）
 
@@ -117,14 +117,14 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 現状 | 根拠 |
 | --- | --- |
 | 汎用画面（一覧・フォーム・設定・アクション・状態表示）は Tailwind ユーティリティの直書き、専用画面は 13 本・6,469 行の手書き CSS。色は hex 直書きが多く、画面幅の分岐点は 12 種類ある | `apps/web/src/*.css`、[設定画面](../apps/web/src/pages/settings-page.tsx) |
-| `<html lang="ja">` が英語表示でも固定 | [index.html](../apps/web/index.html)、[i18n](../apps/web/src/i18n.tsx) |
-| 読込中は文字だけ、一覧の再取得中は半透明。0 件は「該当なし」の 1 行で、次の操作への導線がない | [状態表示](../apps/web/src/pages/status-views.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
-| エラー表示は `code: message — hint` の順で技術者向け。成功トーストに次の操作へのリンクがない | [トースト](../apps/web/src/components/toast.tsx) |
+| （済: 2026-10-29、[ui-kit](specs/ui-kit.md)。言語切替で `lang` を同期）`<html lang="ja">` が英語表示でも固定 | [index.html](../apps/web/index.html)、[i18n](../apps/web/src/i18n.tsx) |
+| （汎用画面は済: 3-4 を参照）読込中は文字だけ、一覧の再取得中は半透明。0 件は「該当なし」の 1 行で、次の操作への導線がない | [状態表示](../apps/web/src/pages/status-views.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
+| （エラーの順序は汎用画面で済。成功トーストの次操作は未実施: 3-4）エラー表示は `code: message — hint` の順で技術者向け。成功トーストに次の操作へのリンクがない | [トースト](../apps/web/src/components/toast.tsx) |
 | 確認ダイアログは native `<dialog>` で焦点管理が良いが、Workforce / Commerce / Control の 3 系統のダイアログが並存する | `apps/web/src/components/*-dialog.tsx` |
-| フォームは項目の平坦な並びで、節・タブ・エラー要約・必須マーク・保存や確定のショートカットがない。明細グリッドのキー操作は Enter のみ | [フォーム](../apps/web/src/components/record-form.tsx)、[明細グリッド](../apps/web/src/components/line-grid.tsx) |
-| aria 属性は 160 か所以上で使われ、スキップリンクと経路変更時の焦点移動はあるが、自動検査（axe）は無い | [router](../apps/web/src/router.tsx)、`apps/web/e2e` |
+| （済: 2026-10-30、[form-ergonomics](specs/form-ergonomics.md)）フォームは項目の平坦な並びで、節・タブ・エラー要約・必須マーク・保存や確定のショートカットがない。明細グリッドのキー操作は Enter のみ | [フォーム](../apps/web/src/components/record-form.tsx)、[明細グリッド](../apps/web/src/components/line-grid.tsx) |
+| （axe の自動検査は済: 2026-10-30、[e2e-a11y](specs/e2e-a11y.md)）aria 属性は 160 か所以上で使われ、スキップリンクと経路変更時の焦点移動はあるが、自動検査（axe）は無い | [router](../apps/web/src/router.tsx)、`apps/web/e2e` |
 | `/me` と一部の専用画面は 390px を検証済み。汎用一覧・フォームは広い画面を前提にしている | `apps/web/e2e` の viewport 指定 |
-| 画面内ヘルプ、最近開いた記録、お気に入り、コマンドパレットがない（全画面検索はある） | [サイドバー](../apps/web/src/components/sidebar.tsx)、[画面カタログ](../apps/web/src/lib/navigation.ts) |
+| （済: 2026-10-30、[navigation-assist](specs/navigation-assist.md)）画面内ヘルプ、最近開いた記録、お気に入り、コマンドパレットがない（全画面検索はある） | [サイドバー](../apps/web/src/components/sidebar.tsx)、[画面カタログ](../apps/web/src/lib/navigation.ts) |
 
 ### 3-1. UI キットと意味トークン（済: 2026-10-29、[ui-kit](specs/ui-kit.md)。専用画面の CSS は触った画面から移行）
 
@@ -178,8 +178,8 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | 権限（権限マトリクスは済: 2026-10-30、[access-insight](specs/access-insight.md)。実行時のカスタムロールは未実施） | ロールは module が宣言し、entity ごとに role×op を固定。実行時のカスタムロールなし | 権限マトリクス閲覧画面（誰が何をできるか）、ロールの雛形（経理・店長・従業員）、所属一覧の CSV |
 | 監査（横断検索は済: 2026-10-30、[access-insight](specs/access-insight.md)） | レコード単位の監査パネルと管理操作の監査一覧 | 期間・利用者・entity・操作種別で横断検索する監査画面、設定変更の履歴 |
 | 外部システム用資格情報（済: 2026-10-30、[machine-credentials](specs/machine-credentials.md)） | 人の JWT と機器用資格情報のみ。API キー/サービスアカウントなし | 期限・権限範囲付きの機械用トークン（MCP/連携用）、失効、監査。ADR-0023 の機械認可の考え方を一般化 |
-| 業務イベントの配送（済: 2026-10-30、[event-delivery](specs/event-delivery.md)） | transactional outbox はあるが業務 module の購読者は 0。メール配送は認証用に限定 | 汎用の配送 worker（メール・Webhook・ブラウザ通知）、再試行と失敗の可視化、2-3 の受信箱と接続 |
-| 運用 | バックアップ・復元は CLI、監視は導入先 | 管理画面でのバックアップ状態・移行状態・outbox 滞留の表示、1-4 と統合 |
+| 業務イベントの配送（配送 worker・メール・Webhook・再試行と失敗の可視化・受信箱のメール通知は済: 2026-10-30、[event-delivery](specs/event-delivery.md)。ブラウザ通知は未実施） | transactional outbox はあるが業務 module の購読者は 0。メール配送は認証用に限定 | 汎用の配送 worker（メール・Webhook・ブラウザ通知）、再試行と失敗の可視化、2-3 の受信箱と接続 |
+| 運用（移行状態・outbox 滞留の表示は導入チェックで済: 2026-10-30、[setup-health](specs/setup-health.md)。配送失敗の再送は [event-delivery](specs/event-delivery.md)。バックアップ状態は未実施） | バックアップ・復元は CLI、監視は導入先 | 管理画面でのバックアップ状態・移行状態・outbox 滞留の表示、1-4 と統合 |
 | 個人情報 | 従業員・本人条件の列マスクはある | 退職者データの保持期間と匿名化、アクセスログの本人開示 |
 
 ## 6. 優先順位の提案
@@ -207,7 +207,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 - CSV 取込・一括操作は 1 行ずつ結果を返し、部分成功を明示する。確定済み伝票の直接更新は行わない（規約4）。
 - 日本の制度（固定資産の償却、返還請求書、住民税など）は `docs/domain/` に出典と確認日を置き、値は期間付きデータにする（規約10）。
 - 各候補は spec の EARS 受入基準と検証手順を先に書き、実装後の log で「何をどう検証したか」を残す（規約9・11）。UI 変更はブラウザ試験（390px を含む）を既存の E2E に追加する。
-- 文書は [文書の管理方法](architecture/documentation-contract.md) に従い、採用した候補は STATUS と PLAN に移し、この一覧からは削除する。
+- 採用した候補は STATUS と PLAN に記録し、この一覧では見出しに（済: 日付、spec へのリンク）を付けて残す（4・5 章の表は「領域」の列に、1〜3 章の「現状」表は解決した行の先頭に付ける）。一部だけ実施したものは未実施の範囲を書く（例: 1-6、2-6、3-4）。
 
 ## 8. 実装で残った判断待ち（2026-10-30）
 
@@ -217,10 +217,10 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | --- | --- | --- |
 | 設定画面 | `settings` ロールに勘定科目・倉庫の読取を与えてコード選択を使えるようにするか。`packs.applied` などの記録用設定に読取専用の表示属性を足すか。pack の設定を pack ごとのタブに分けるか | [settings-console](specs/settings-console.md) |
 | CSV 取込 | MCP に取込を出し続けるか（現状は dry-run を先に行うよう案内）。追加項目（ext）の取込、空欄で値を消す指定、kernel の検証文言の日本語化 | [csv-import](specs/csv-import.md) |
-| 一覧 | 一括取消で訂正日を指定できるようにするか。CSV に id・コード列を出すか（取込との往復用）。出力の監査を見る画面（F3 で扱う想定） | [list-workbench](specs/list-workbench.md) |
+| 一覧 | 一括取消で訂正日を指定できるようにするか。CSV に id・コード列を出すか（取込との往復用）。（出力の監査は F3 の `/admin/audit` で `op=export` により閲覧可: 済） | [list-workbench](specs/list-workbench.md) |
 | 複製 | 今日を既定とする日付以外を空にする規則でよいか。`<x>Entity`/`<x>Id` の関連規約を ADR にするか | [document-links](specs/document-links.md) |
 | 締めガイド | 注意項目（未消込・未照合）を会社設定で阻止項目にするか。`accounting.close_period` 自体が阻止項目の残りを拒否するか。在庫期間の締めと未転記の原資料を項目に足すか | [close-guide](specs/close-guide.md) |
-| 受信箱 | 大きな会社での応答時間（未計測）。役割別ホーム（C6）での置き場所 | [inbox](specs/inbox.md) |
+| 受信箱 | 大きな会社での応答時間（未計測）。restaurant_chain の未提出が上限（10,000 店舗×日）を超える規模での知らせ方 | [inbox](specs/inbox.md) |
 | ナビゲーション | 個人データの台帳を名前の接頭辞で判定する規則を DSL の属性にするか（ADR 要）。「最近」の消去操作、サイドバーでの位置 | [navigation-assist](specs/navigation-assist.md) |
 | アクセシビリティ | moderate / minor の違反をいつ失敗にするか。ダイアログ・390px のメニュー・明細ありの伝票など操作後の状態を検査するか。axe の判定保留（グラデーション上の文字など）の目視確認 | [e2e-a11y](specs/e2e-a11y.md) |
 | DB 試験 | 試験 DB ごとに約 0.7 GB のテンプレート（上限 80）を許容するか。in-place 再作成の経路でも名前に `test` を要求するか | [db-test-startup](specs/db-test-startup.md) |
@@ -229,7 +229,7 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 | フォーム | 狭い画面のタブ（計画時の spec は目次）と `Ctrl+Enter` の新しい意味でよいか。行削除のショートカットを置くなら衝突しないキーを決める | [form-ergonomics](specs/form-ergonomics.md) |
 | 期首残高 | 経理だけの利用者に売掛金・買掛金・在庫の取込を許すか（現状は不可。管理者が行うか一時的に役割を足す）。売掛・買掛の 1 ファイル 200 行でよいか（請求書 1 件約 0.15 秒の転記を速くすれば上げられる）。締めガイドに期首残高仮勘定の残高の検査を、申告の科目対応に 3900 を足すか。導入チェックに仮勘定の残高を警告として出すか（`accounting.opening_balance_status` で読める）。小売パックの最初の月次締めで期首の在庫額を前回の締めとみなすか | [opening-balances](specs/opening-balances.md) |
 | 定期仕訳 | 1 回ごとの再生成・飛ばし、締めガイドの未生成の期日、複数行の按分、洗替（翌月の戻し）を足すか（いずれも現状は無し）。期日での自動生成を F1 の worker から `generateRecurring` を呼ぶ形にするか。消費税法基本通達 11-3-1 などの本文は未確認 | [recurring-journals](specs/recurring-journals.md) |
-| 証憑の検索 | **証憑の行・履歴・ダウンロードをリンク先の記録の読取規則に従わせるか**（現状は従わない。閉じるには kernel の行規則の拡張と ADR が要る。F3 と関係）。ダウンロードを監査するか（推奨は F3 で扱う）。一括 50 件・100 MB の上限がスマートフォンで妥当か（実機は未計測）。既存の添付の出力から `storageKey` を隠すか、取引先の自由記述欄を足すか、導入チェックに 3 項目の欠けた証憑の件数を出すか | [evidence-search](specs/evidence-search.md) |
+| 証憑の検索 | **証憑の行・履歴・ダウンロードをリンク先の記録の読取規則に従わせるか**（現状は従わない。閉じるには kernel の行規則の拡張と ADR が要る。F3 と関係）。ダウンロード（1 件・一括）を監査に記録するか（現状は記録しない。F3 は監査の検索だけを実装し、ダウンロードの記録は扱っていない）。一括 50 件・100 MB の上限がスマートフォンで妥当か（実機は未計測）。既存の添付の出力から `storageKey` を隠すか、取引先の自由記述欄を足すか、導入チェックに 3 項目の欠けた証憑の件数を出すか | [evidence-search](specs/evidence-search.md) |
 | 役割別ホーム | chain_staff に店舗の表示を、管理者だけの利用者に経理の表示を出すか。人事・給与・営業の表示を足すか（いずれも現状は無し）。大きな会社でのホームの読取量（キャッシュや要約の読取。ADR 要） | [role-home](specs/role-home.md) |
 | セットアップウィザード | ホームのカードを「表示しない」操作を置くか（現状は理由付きのスキップ）。勤怠・給与の段階を使う会社だけに出すか。`packs.applied` にも `managedBy` を付けるか。設定の PUT に版の検査を足すか。seed が作る暦年の会計年度を決算月に合わせて置き換える手段（短い初年度など）。確認だけの段階を確認するまで未完了にするか。期首残高の取込（B6）への導線と「通常の入出庫より先に期首在庫を取り込む」案内を足すか（現状はスコープ外）。店舗・拠点に限った admin では `/meta/setup-status` が 403 でカードが出ない（spec の想定）。`/setup` を共通の axe 検査の画面一覧に入れるか | [setup-wizard](specs/setup-wizard.md) |
 | 帳票 | 領収書の記載事項と印紙税の注意（国税庁の一次資料を確認してから）。給与明細の法定の文言。売上請求書も `print_layout.date_style` に従うか。合計請求書の前回請求額・入金額・繰越（期首残高を含む）。API の言語が画面の言語ではなくブラウザの Accept-Language に従う点（全体の課題） | [print-templates](specs/print-templates.md) |

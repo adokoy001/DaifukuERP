@@ -6,7 +6,7 @@ This file is a MAP, not a manual. The system of record is `docs/`. Read the doc 
 
 ## Layout (dependencies flow downward only; enforced by `pnpm lint:boundaries`)
 ```
-apps/      api (Fastify), web (React), mcp (MCP server), runtime      -> may import everything below
+apps/      api (Fastify), web (React), mcp (MCP server), edge (store-LAN agent), runtime  -> may import everything below
 packs/     customization packs (per customer/scenario; small)          -> kernel, modules, l10n
 l10n/      country packs (jp first)                                    -> kernel, modules
 modules/   core business modules (partner, product, accounting, ...)   -> kernel, other modules (public index only)
@@ -19,10 +19,10 @@ docs/      adr/ conventions/ domain/ specs/ log/ metrics/  <- READ THESE, WRITE 
 - `pnpm format` / `pnpm format:check` — format source with pinned Prettier / verify formatting without changes.
 - `pnpm gate` — format check + typecheck + lint/boundaries + unit + DB + deployment tests + documentation links + assurance checks. **Must pass before any PR/commit claiming "done".**
 - `pnpm gate:quick` — changed-file format/lint + boundaries + typecheck + related unit tests (~1 min). Use while editing. See [test tiers](docs/specs/test-tiers.md).
-- `pnpm gate:light` — whole static checks + all unit + related DB suites (needs `TEST_DATABASE_URL_*`; static and DB lanes run side by side, DB suites split over `<db>` and `<db>_shard_2`; `GATE_DB_SHARDS=1` or `--serial` for one DB). Use before push.
+- `pnpm gate:light` — whole static checks + all unit + related DB suites (needs `TEST_DATABASE_URL_*`; static and DB lanes run side by side; on 4+ CPUs the DB suites are split by default over `<db>` and `<db>_shard_2`, below 4 CPUs one DB; `--db-shards <n>` / `GATE_DB_SHARDS=<n>` (1-8) to change, `GATE_DB_SHARDS=1` or `--serial` for one DB). Use before push.
 - `pnpm gate:full` — a superset of `pnpm gate`: every gate step in the same order + API/Web typecheck/builds + browser + identity suites (`--provision` creates loopback fixtures). Passing it satisfies the `pnpm gate` rule above plus the browser verification; run it before claiming "done" and for escalated changes.
 - `pnpm e2e:smoke` — the `@smoke` browser tests (plus the industry dependency project) against running servers.
-- `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm test:db` (needs Postgres: `DATABASE_URL` in `.env`, see `.env.example`)
+- `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm test:db` (needs a disposable Postgres test DB: `TEST_DATABASE_URL_OWNER` / `TEST_DATABASE_URL` in the environment or `.env`, see `.env.example`; the suites recreate that database. `DATABASE_URL` is the dev DB and is not used by `test:db`. `pnpm test:db:templates [-- --drop]` lists or drops its schema templates)
 - `pnpm db:schema && pnpm db:generate && pnpm db:migrate` — regenerate drizzle schema from the entity registry, generate migration, apply
 - `pnpm dev:api`, `pnpm dev:web`
 - `pnpm metrics:add -- --feature <slug> --tokens N --minutes N --human-minutes N --rework-lines N` — record a data point (docs/metrics/)

@@ -1,21 +1,23 @@
 # 完成度向上の実装計画（設計・作業一覧・引継ぎ）
 
-更新: 2026-10-30（第7波まで統合: E6 以外の全項目を実装。E4 は行の読取規則、E1 は率表の一次資料での照合が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。次の実装セッションはこの文書から始める。
+更新: 2026-10-30（STATUS の第7波まで統合: E6 以外の全項目を実装。E4 は行の読取規則、E1 は率表の一次資料での照合が判断待ち）。作成時の対象は `main` の `431dda5`。候補の洗い出しは [改善・拡張候補](improvement-candidates.md)、現在地は [STATUS](STATUS.md)、方針は [PLAN](../PLAN.md)。この文書は、候補の中から実施するものを選び、作業単位・順序・設計・完了条件を決めた実行計画である。新しい作業項目を足すときと E6 を再開するときは、この文書の 8 章の手順から始める。
 
 ## 0. この文書の使い方
 
 - 作業項目は ID（A1、B2 など）で呼ぶ。1 項目 = 1 spec（`docs/specs/<slug>.md`）= 1 ブランチ（`feat/<slug>`）= 1 PR = 1 作業記録（`docs/log/`）。CLAUDE.md 規約 9 のとおり。
 - 各項目の「設計」はこの文書で決めた範囲であり、spec を書くときに EARS の受入基準へ写す。spec で変えた判断はこの文書へ反映する。
-- 実装中の検査は [3 段階の回帰テスト](specs/test-tiers.md)（A1）を使う。A1 が終わるまでは `pnpm test`、`pnpm --filter @daifuku/web test`、`pnpm gate` を使う。
-- 完了した項目は STATUS と PLAN に移し、この文書と候補一覧から消す。
+- 実装中の検査は [3 段階の回帰テスト](specs/test-tiers.md)（A1）を使う（編集中は `pnpm gate:quick`、push 前は `pnpm gate:light`、「完了」の前は `pnpm gate:full`。fixture は `--provision` か CONTRIBUTING の手順で用意する）。
+- 完了した項目は STATUS と PLAN に記録する。この文書では 3 章の一覧に **済** を付け、5 章の該当項目に実装済みの段落（spec と記録へのリンク。詳細と設計からの変更は spec と記録を正とする）を足して残す。候補一覧では該当する見出しに（済: 日付、spec へのリンク）を付けて残す。
 
-## 1. 実測した現状
+## 1. 計画作成時（431dda5）の実測
+
+この表は計画作成時（`main` の `431dda5`）の基準値で、テスト件数の行だけ STATUS の統合の回（第N波）ごとの値を追記している。2026-10-30（STATUS の第7波の統合後）の状態: 会社の作成と名称変更は `/admin/companies`（B2）。設定画面は分類タブと日英の細目ラベル（B1）。汎用一覧は絞り込み・列・本人用の保存ビュー・CSV 出力・一括操作（C1）。outbox は配送 worker（`EVENT_WORKER_ENABLED`、既定 off）と Webhook・受信箱メールの購読（F1）。Web の CSS は 16 ファイル 7,351 行で、@media の分岐点は 380〜1500 px の 18 種類（トークンは 480 / 768 / 1024 / 1280 px）。
 
 | 指標 | 値 | 出典 |
 | --- | --- | --- |
-| 単体テスト | 1,003 件（Web 36 ファイルを含む）。波0統合後 1,207 件、第2・第3波の統合後 1,547 件、第4波の統合後 1,693 件、第5波の統合後 1,881 件、第6波の統合後 2,045 件、第7波の統合後 2,337 件 | STATUS、`vitest.config.mts` の unit project |
-| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。第2・第3波の統合後 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波の統合後 883 件・134 ファイル、第5波の統合後 1,005 件・146 ファイル、第6波の統合後 1,075 件・152 ファイル、第7波の統合後 1,350 件・178 ファイル | STATUS、`kernel/src/testing.ts` |
-| ブラウザ試験 | 69 件、Playwright 1 worker。波0統合後 87 件（industry 3 件を含む）と認証 3 件。第2・第3波の統合後 160 件、第4波の統合後 182 件、第5波の統合後 195 件、第6波の統合後 203 件、第7波の統合後 227 件 | `apps/web/e2e`、`playwright.config.ts` |
+| 単体テスト | 1,003 件（Web 36 ファイルを含む）。統合の回（STATUS の第N波。この計画の 3・4 章の「波」とは項目が異なる）ごとに、第1波（計画の波0のうち A1・D1）1,207 件、第2・第3波 1,547 件、第4波 1,693 件、第5波 1,881 件、第6波 2,045 件、第7波 2,337 件 | STATUS、`vitest.config.mts` の unit project |
+| DB テスト | 668 件、約 90 suite（suite ごとに schema を再作成）。STATUS の統合の回ごとに、第1波 701 件、第2・第3波 822 件・131 ファイル（A3 以降はテンプレート DB から複製）、第4波 883 件・134 ファイル、第5波 1,005 件・146 ファイル、第6波 1,075 件・152 ファイル、第7波 1,350 件・178 ファイル | STATUS、`kernel/src/testing.ts` |
+| ブラウザ試験 | 69 件、Playwright 1 worker。STATUS の統合の回ごとに、第1波 87 件（industry 3 件を含む）と認証 3 件、第2・第3波 160 件、第4波 182 件、第5波 195 件、第6波 203 件、第7波 227 件と認証 5 件 | `apps/web/e2e`、`playwright.config.ts` |
 | CI `pnpm gate` | 13 分 19 秒 | run #44（2026-09-14） |
 | CI ブラウザ試験 | 8 分 42 秒 | 同上 |
 | CI 認証試験 / セットアップ受入 | 37 秒 / 32 秒 | 同上 |
@@ -75,12 +77,14 @@
 
 | 波 | 項目 | ねらい |
 | --- | --- | --- |
-| 0 基盤 | A1 → D1 → A2 | 以後の全作業を速く安全にする。D1 は汎用画面の置き換えまで |
-| 1 導入 | B1 → B2 → B3 → B4 | 2 社目を画面から作れ、初期設定を順番に完了できる |
-| 2 データ | B5 → B6 → C1 | 実データの持込みと、毎日の一覧操作 |
-| 3 日常 | C2 → C3 → C4 → D2 → D3 | 伝票 1 件あたりの手数と承認・締めの漏れを減らす |
-| 4 帳票・拡張 | C5 → C6 → E4 → E2 → B7 | 紙の運用、証憑検索、定期仕訳、第三者の pack 追加 |
-| 5 機能の穴 | E1、E3、E5、E6、F1、F2、F3、必要なら A3 | 中小企業の決算・運用に必要な残り |
+| 0 基盤 | A1 → D1 → A2、A3 → A4（A1・A3 の計測で前倒し・追加）**済** | 以後の全作業を速く安全にする。D1 は汎用画面の置き換えまで |
+| 1 導入 | B1 → B2 → B3 → B4 **済** | 2 社目を画面から作れ、初期設定を順番に完了できる |
+| 2 データ | B5 → B6 → C1 **済** | 実データの持込みと、毎日の一覧操作 |
+| 3 日常 | C2 → C3 → C4 → D2 → D3 **済** | 伝票 1 件あたりの手数と承認・締めの漏れを減らす |
+| 4 帳票・拡張 | C5 → C6 → E4 → E2 → B7 **済**（E4 の AC-6 は判断待ち） | 紙の運用、証憑検索、定期仕訳、第三者の pack 追加 |
+| 5 機能の穴 | E1、E3、E5、F1、F2、F3 **済**（E1 の率表の一次資料での照合は判断待ち）、E6 **保留（公表待ち）** | 中小企業の決算・運用に必要な機能 |
+
+2026-10-30 の統合（STATUS の第7波）までに、E6 を除く全項目を実装済み。E4（AC-6 の行の読取規則）と E1（率表の照合）は利用者の判断待ち。
 
 波 0 と 1 は順番どおりに進める。波 2 以降は依存が無ければ入れ替えてよい。1 セッションで複数項目を進めるときも、ブランチと PR は項目ごとに分ける。
 
@@ -90,7 +94,7 @@
 
 実装済み（2026-10-29）。設計からの変更点（vitest の Node API による選択、setupFile と子プロセスの依存規則、AC-15〜AC-18、`--provision`、認証試験用の `GATE_IDENTITY_DATABASE_URL*`）と実測は [spec](specs/test-tiers.md) と [記録](log/2026-10-29-test-tiers.md) を正とする。light は module 変更で 10〜13 分かかり目標 6 分に届かないため、A3 を波0に前倒しした。
 
-spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
+spec は [test-tiers](specs/test-tiers.md)（implemented）。計画時の要点:
 
 - `scripts/gate.mjs` に `--tier quick|light|full` を実装し、`pnpm gate:quick` / `gate:light` / `gate:full` を追加する。`pnpm gate` は不変。
 - quick は変更ファイル限定の Prettier / ESLint、変更 package の typecheck、`vitest --project unit --changed <base>`。light は全体の静的検査と unit 全件に、`vitest list --project db --changed` の関連 suite と kernel の番人 suite 4 件を足す。full は `gate` に API/Web の typecheck・build とブラウザ試験 2 種を足す。
@@ -119,7 +123,7 @@ spec は [test-tiers](specs/test-tiers.md) に作成済み（draft）。要点:
 
 実装済み（2026-10-30 統合）。light は静的検査の lane と DB の lane を並行に走らせ、DB suite を `<試験DB>` と `<試験DB>_shard_2` に分ける（`--serial` か `GATE_DB_SHARDS=1` で従来の順序）。同じ時間帯の実測で banking 761→328 秒、sales 813→462 秒、kernel 1,260→655 秒。sales は負荷平均 9〜11 で目標 6 分に届かない。選択する suite の集合と full は変えていない。詳細と設計からの変更は [spec](specs/light-tier-speed.md) と [記録](log/2026-10-30-light-tier-speed.md) を正とする。
 
-A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 分、kernel 変更で約 15 分。DB が大半）。選択する suite の集合は変えずに、(1) 静的検査・単体と DB の並行実行、(2) DB suite を複数の試験 DB に分けて並行実行（各 DB 内は `fileParallelism: false` のまま）、(3) import の依存から影響が無いと証明できる suite だけの絞り込み、を計測して選ぶ。中断時の子プロセス停止、`.runtime/gate` の報告、full の対象範囲は変えない。spec は `docs/specs/light-tier-speed.md`（実装時に作成）。
+計画時の検討: A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 分、kernel 変更で約 15 分。DB が大半）。選択する suite の集合は変えずに、(1) 静的検査・単体と DB の並行実行、(2) DB suite を複数の試験 DB に分けて並行実行（各 DB 内は `fileParallelism: false` のまま）、(3) import の依存から影響が無いと証明できる suite だけの絞り込み、を計測して選ぶ。中断時の子プロセス停止、`.runtime/gate` の報告、full の対象範囲は変えない。spec は [light-tier-speed](specs/light-tier-speed.md)（implemented）。
 
 ### D1. UI キットとデザイントークン、状態表示の統一
 
@@ -326,7 +330,7 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - entity `recurring_journal`（名称、周期、開始/終了、明細テンプレート、次回日付）と action `accounting.generate_recurring { asOf }` が期日到来分の仕訳を下書きで作る（確定は人が行う。設定で自動確定を選べるが既定は off）。前払費用の按分は期間と金額から明細を生成する。
 - 受入基準の骨子: WHEN 生成を 2 回実行した THE SYSTEM SHALL 同じ期日の仕訳を重複して作らない。
 
-実装済み（2026-10-30 統合）。kernel の `defineEntity` が明細（`lines`）を持てるようにした（[ADR-0031](adr/0031-entity-lines.md)。伝票の明細の処理を使い、凍結は伝票だけ）。accounting に `recurring_journal`（定額・按分、月次・四半期・年次、日 31 は月末）、`accounting.generate_recurring { asOf }`、予定 `accounting.recurring_schedule`、`accounting.todo`、`/finance/recurring` を足した。生成は（定期仕訳, 回の日付）の一意索引とロックで、2 本の同時実行でも重複しない。締めた期間の回は理由付きで止める。按分は最小単位へ切り捨て、端数を最終回に寄せる。自動確定の設定 `accounting.recurring_auto_submit` は既定 off。期日での自動生成は F1（worker）を待つ。詳細と設計からの変更は [spec](specs/recurring-journals.md) と [記録](log/2026-10-30-recurring-journals.md) を正とする。
+実装済み（2026-10-30 統合）。kernel の `defineEntity` が明細（`lines`）を持てるようにした（[ADR-0031](adr/0031-entity-lines.md)。伝票の明細の処理を使い、凍結は伝票だけ）。accounting に `recurring_journal`（定額・按分、月次・四半期・年次、日 31 は月末）、`accounting.generate_recurring { asOf }`、予定 `accounting.recurring_schedule`、`accounting.todo`、`/finance/recurring` を足した。生成は（定期仕訳, 回の日付）の一意索引とロックで、2 本の同時実行でも重複しない。締めた期間の回は理由付きで止める。按分は最小単位へ切り捨て、端数を最終回に寄せる。自動確定の設定 `accounting.recurring_auto_submit` は既定 off。期日での自動生成は無い（生成は人が画面・API・MCP から呼ぶ）。F1 の配送 worker（STATUS の第7波）は定期仕訳の生成を含まず、worker から `generateRecurring` を呼ぶかは判断待ち（[候補一覧の8章](improvement-candidates.md#8-実装で残った判断待ち2026-10-30)）。詳細と設計からの変更は [spec](specs/recurring-journals.md) と [記録](log/2026-10-30-recurring-journals.md) を正とする。
 
 ### E1. 固定資産台帳と減価償却
 
@@ -341,7 +345,7 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - action `finance.cash_forecast { from, to }` が、売上請求の支払期日、仕入請求の支払期日、契約請求予定、給与の支払日、銀行振込予約を日別に集計し、入金予定・支払予定・残高推移を返す。督促状は C5 の帳票として `sales.render_reminder_html`。
 - 受入基準の骨子: THE SYSTEM SHALL 確定済み伝票だけを予定に含め、下書きは別色で任意表示とする。
 
-実装済み（2026-10-30 統合）。action は banking の `banking.cash_forecast` / `banking.cash_schedule`（計画の `finance.*` には module が無い）。確定済みの売上・仕入請求書の期日別の未消込残高、契約の請求予定、給与の支払日（給与を読める利用者だけ。読めなければ除いたと表示）、振込予約、銀行残高の期首から日ごとの入金・出金・残高を出す。下書きは別に印を付けて任意表示。`/finance/cash-forecast` に表とグラフ。経費精算・固定資産・定期仕訳の資金への影響は対象外。詳細と設計からの変更は [spec](specs/cash-forecast.md) と [記録](log/2026-10-30-cash-forecast.md) を正とする。
+実装済み（2026-10-30 統合）。action は banking の `banking.cash_forecast` / `banking.cash_schedule`（計画の `finance.*` には module が無い）。確定済みの売上・仕入請求書の期日別の未消込残高、契約の請求予定、給与の支払日（給与を読める利用者だけ。読めなければ除いたと表示）、振込予約、銀行残高の期首から日ごとの入金・出金・残高を出す。下書きは別に印を付けて任意表示。`/finance/cash-forecast` に表とグラフ。経費精算・固定資産・定期仕訳の資金への影響は対象外。督促状（`sales.render_reminder_html`）は E3 の対象外とし（spec のスコープ外）、C5 の帳票にも含めていないため未実装（[候補一覧の4章](improvement-candidates.md#4-機能面の穴汎用-erp-として一般的だが未実装)の資金繰りの行）。詳細と設計からの変更は [spec](specs/cash-forecast.md) と [記録](log/2026-10-30-cash-forecast.md) を正とする。
 
 ### E5. 経費精算の一般化
 
@@ -377,12 +381,12 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 
 実装済み（2026-10-30 統合）。`/admin/permissions` は registry の権限定義から entity × ロール × 操作の表を導出し、行の規則・項目のまとまりを注記する。`/admin/audit` は期間・利用者・対象・操作・レコード id で監査を検索する（会社またはテナントの範囲、カーソルで頁送り、CSV 出力の監査を含む）。検索に出す対象は閉じた許可リストで、読めない entity の行は返さない。監査表に索引 3 本（ADR-0007 の追補。ADR-0038 は使っていない）。詳細と設計からの変更は [spec](specs/access-insight.md) と [記録](log/2026-10-30-access-insight.md) を正とする。
 
-## 6. 横断する設計決定（ADR 候補）
+## 6. 横断する設計決定（採用した ADR と追補）
 
-| 候補 | 内容 | 必要性 |
+| ADR | 内容 | 必要性 |
 | --- | --- | --- |
-| ADR-0027 設定定義の表示属性と会社プロフィール | `SettingDef` の `category` / `order` / `fields`、kernel 登録の `company.profile` と `setup.progress`、`DELETE /meta/settings/:key` | B1、B2、B4 |
-| ADR-0028 取込 port | dry-run を savepoint で実行し、`Repository` を通す。権限・上限・document は下書きのみ | B5、B6 |
+| ADR-0027 設定定義の表示属性と会社プロフィール | `SettingDef` の `category` / `order` / `fields`、kernel 登録の `company.profile` と `setup.progress`、`DELETE /meta/settings/:key`、§7 導入チェックの登録 port、§9 `integration.webhooks` | B1、B2、B3、B4、F1 |
+| ADR-0028 取込 port | dry-run を savepoint で実行し、`Repository` を通す。権限・上限。document と明細 entity は対象外 | B5（B6 は port を使わず手順と型を再利用する。ADR-0030 決定 7） |
 | ADR-0029 会社作成と初期データ | テナント管理者の会社作成で module seed を system context で実行する境界 | B2 |
 | ADR-0030 期首残高 | 期首残高日付・期首残高仮勘定・開始仕訳と module ごとの期首伝票への分割 | B6 |
 | ADR-0031 entity の明細 | `defineEntity` の `lines`（伝票以外の明細。凍結は伝票だけ） | E2 |
@@ -390,7 +394,8 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 | ADR-0039 経費精算の転記 | 精算書の確定で仕訳と相手科目付きの入出金を同じトランザクションで作る | E5 |
 | ADR-0023・ADR-0007 の追補 | API キー（machine の actor、人だけの操作の拒否）、権限マトリクスと監査の検索 | F2、F3 |
 | ADR-0002 追補 `views.form` のラベル付きグループ | DSL の後方互換な拡張 | D3 |
-| 規約追加（ui.md） | `*.todo` provider、`render_<document>_html`、一覧 export の監査、UI キットの使用 | C3、C5、C1、D1 |
+| ADR-0009 の追補 | action の `print` 宣言と `@daifuku/mod-print-layout`（帳票）、汎用の `<entity>.related` | C5、C2 |
+| 規約追加（ui.md） | `*.todo` provider、帳票の `print` 宣言（名前は `<module>.render_<document>_html`）、一覧 export の監査、UI キットの使用 | C3、C5、C1、D1 |
 | 規約追加（testing.md、verification-and-release.md） | 3 段階の使い分け、`@smoke`、axe の例外ファイル | A1、A2 |
 
 ## 7. 完了の定義と記録
@@ -398,21 +403,22 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 各項目は次を満たしたときに完了とする。
 
 1. spec の状態が `implemented` になり、受入基準ごとにテスト名へ `AC-n` が入っている。
-2. 開発中は `gate:quick` / `gate:light`、完了前に `pnpm gate:full`（A1 以前は `pnpm gate` とブラウザ試験）が成功している。昇格パターンに触れた変更は full が必須。
+2. 開発中は `gate:quick` / `gate:light`、完了前に `pnpm gate:full` が成功している。昇格パターンに触れた変更は full が必須。
 3. マニュアル（該当章または付録）と、必要なら `docs/domain/` の出典を更新した。
 4. `docs/log/<date>-<slug>.md` に、決めたこと、実行した検証とその方法（測定か目視か）、未検証の範囲、計測した所要時間を書いた。`pnpm metrics:add` で数値を残す。
-5. STATUS と PLAN を更新し、この文書と候補一覧から項目を消した。
+5. STATUS と PLAN を更新し、この文書の 3 章の一覧に **済** を、5 章の該当項目に実装済みの段落（spec と記録へのリンク）を付け、候補一覧の該当する見出しに（済: 日付、spec）を付けた。
 6. PR の CI が全 job 成功している。
+
+第1〜第7波（2026-10-29〜30）は、この定義と 0 章の手順どおりには進めていない。各項目は `wip/<slug>` ブランチで実装し、波ごとにまとめて（第2・第3波以降は統合ブランチ `int/round*` を経て）`claude/peaceful-keller-wzfa0f` に積んだ。項目ごとの `feat/<slug>` ブランチと PR は作っていない（最後に統合した PR は #16）。この文書の **済** は「1・3・4 を満たし、統合後の `gate:full --provision` が成功し（2）、5 のとおり STATUS・PLAN・この文書・候補一覧を更新した」の意味である（5 は当初「この文書と候補一覧から項目を消す」としていたが、実際に行った **済** の印を付けて残す形に改めた）。6（PR の CI）は未確認で、統合ブランチの PR の GitHub Actions で確かめる。
 
 ## 8. 引継ぎメモ（次の実装セッション向け）
 
 開始手順:
 
 1. `AI_INDEX.md` → この文書 → 着手する項目の設計 → 関連する既存 spec / 規約 / ソースの順で読む。過去 log の全読込はしない。
-2. `git fetch origin main` し、`feat/<slug>` を main から切る。既存の作業ブランチを上書きしない。
+2. 第1〜第7波の実装は統合ブランチ `claude/peaceful-keller-wzfa0f`（373555c 時点）にあり、`main`（431dda5）にはまだ入っていない。統合ブランチが main に入るまでは、`git fetch origin claude/peaceful-keller-wzfa0f` し、新しい項目（E6 など）の `feat/<slug>` を統合ブランチの先端から切る（main に入った後は `origin/main` から切る）。既存の作業ブランチ（`int/round*`、`wip/*` を含む）を上書きしない。
 3. spec を `docs/specs/_template.md` から作り、この文書の「受入基準の骨子」を EARS に展開し、未決事項を書く。判断が必要で止まる場合は、未決事項を残して他の部分を進める。
-4. 実装 → `pnpm gate:quick`（A1 完了後）→ テスト追加 → `pnpm gate:light` → マニュアル → `pnpm gate:full` → log → PR。
-5. A1 が未完了の間は `pnpm test`、`pnpm --filter @daifuku/web test`、`pnpm gate`、CONTRIBUTING のブラウザ試験手順を使う。
+4. 実装 → `pnpm gate:quick` → テスト追加 → `pnpm gate:light` → マニュアル → `pnpm gate:full` → log → PR。
 
 環境:
 
@@ -428,4 +434,4 @@ A3 の後も light は目標 6 分に届かない（module 変更で 6.8〜9.8 �
 - 推測で書いた設計（RLS の挿入可否、`aggregate` API の有無、`vitest list` の挙動）は実装時に確認し、結果を spec に記す。
 - 1 つの PR に複数の項目を混ぜない。波 0 の A1 と D1 は特に分ける。
 
-順番に迷ったら: A1 → D1 → A2 → B1 → B2 → B3 → B4 → B5 → C1。
+計画の作業項目は E6（給与 2027 年版。公表待ちで保留）を除いてすべて実装済み。次のセッションは、まず [候補一覧の8章](improvement-candidates.md#8-実装で残った判断待ち2026-10-30) の判断待ち（E4 の証憑の行の読取規則、E1 の率表の一次資料での照合）を利用者に確認する。新しい作業は候補一覧の 6 章の第 4 波から選び、この計画に項目と設計を足してから始める。
