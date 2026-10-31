@@ -21,9 +21,9 @@
 | --- | --- |
 | テナント・最初の会社・管理者は `pnpm run setup install` の引数でだけ作る | [setup options](../apps/api/src/setup/options.ts)、[bootstrap](../kernel/src/auth.ts) |
 | （済: 2026-10-30、[company-admin](specs/company-admin.md)）2 社目以降を追加する画面・API がない（デモ会社は開発用 seed のみ） | [管理 API](../apps/api/src/routes/access-admin.ts) に会社作成なし、[industry-demos](../apps/api/src/db/industry-demos.ts) |
-| 会社の住所・電話・決算月などは `companies.settings` の JSON に散在し、会社の正式な列は code/name/country/currency のみ | [settings port](../kernel/src/settings.ts) |
+| （済: 2026-10-30、[company-admin](specs/company-admin.md)。会社の列は変えず kernel の設定 `company.profile` に集約）会社の住所・電話・決算月などは `companies.settings` の JSON に散在し、会社の正式な列は code/name/country/currency のみ | [settings port](../kernel/src/settings.ts) |
 | （済: 2026-10-30、[settings-console](specs/settings-console.md)・[setup-wizard](specs/setup-wizard.md)）設定画面は module が登録した key ごとのカードで、順序や完了状態の案内がない。JSON Schema の `title` が単一文字列のため細目名は英語 | [設定画面](../apps/web/src/pages/settings-page.tsx)、[schema 変換](../apps/web/src/lib/schema.ts)、[マニュアル 03](manual/03-setup.md) |
-| 会計年度の作成は `accounting.open_fiscal_year` を汎用アクション画面から呼ぶ。勤怠の初期制度は専用ボタン、業界テンプレートは別画面 | [open-fiscal-year](../modules/accounting/src/actions/open-fiscal-year.ts)、[WorkforceInitialize](../apps/web/src/components/workforce-initialize.tsx)、[テンプレート画面](../apps/web/src/pages/templates-page.tsx) |
+| （済: 2026-10-30、[setup-wizard](specs/setup-wizard.md) の段階 2・7・9 から実行）会計年度の作成は `accounting.open_fiscal_year` を汎用アクション画面から呼ぶ。勤怠の初期制度は専用ボタン、業界テンプレートは別画面 | [open-fiscal-year](../modules/accounting/src/actions/open-fiscal-year.ts)、[WorkforceInitialize](../apps/web/src/components/workforce-initialize.tsx)、[テンプレート画面](../apps/web/src/pages/templates-page.tsx) |
 | （済: 2026-10-30、[csv-import](specs/csv-import.md)・[opening-balances](specs/opening-balances.md)）マスタ・期首残高の CSV 取込がない（CSV 取込は銀行明細のみ） | [banking imports](../modules/banking/src/imports.ts) |
 
 ### 1-1. 初回セットアップウィザード（画面）（済: 2026-10-30、[setup-wizard](specs/setup-wizard.md)）
@@ -116,14 +116,14 @@ STATUS が述べるとおり、第三者が手順だけで新規 pack を完走�
 
 | 現状 | 根拠 |
 | --- | --- |
-| 汎用画面（一覧・フォーム・設定・アクション・状態表示）は Tailwind ユーティリティの直書き、専用画面は 13 本・6,469 行の手書き CSS。色は hex 直書きが多く、画面幅の分岐点は 12 種類ある | `apps/web/src/*.css`、[設定画面](../apps/web/src/pages/settings-page.tsx) |
+| （汎用画面は UI キットで済: 2026-10-29、[ui-kit](specs/ui-kit.md)。専用画面の CSS は触った画面から移行中で未完了）汎用画面（一覧・フォーム・設定・アクション・状態表示）は Tailwind ユーティリティの直書き、専用画面は 13 本・6,469 行の手書き CSS。色は hex 直書きが多く、画面幅の分岐点は 12 種類ある | `apps/web/src/*.css`、[設定画面](../apps/web/src/pages/settings-page.tsx) |
 | （済: 2026-10-29、[ui-kit](specs/ui-kit.md)。言語切替で `lang` を同期）`<html lang="ja">` が英語表示でも固定 | [index.html](../apps/web/index.html)、[i18n](../apps/web/src/i18n.tsx) |
 | （汎用画面は済: 3-4 を参照）読込中は文字だけ、一覧の再取得中は半透明。0 件は「該当なし」の 1 行で、次の操作への導線がない | [状態表示](../apps/web/src/pages/status-views.tsx)、[DataTable](../apps/web/src/components/data-table.tsx) |
 | （エラーの順序は汎用画面で済。成功トーストの次操作は未実施: 3-4）エラー表示は `code: message — hint` の順で技術者向け。成功トーストに次の操作へのリンクがない | [トースト](../apps/web/src/components/toast.tsx) |
 | 確認ダイアログは native `<dialog>` で焦点管理が良いが、Workforce / Commerce / Control の 3 系統のダイアログが並存する | `apps/web/src/components/*-dialog.tsx` |
 | （済: 2026-10-30、[form-ergonomics](specs/form-ergonomics.md)）フォームは項目の平坦な並びで、節・タブ・エラー要約・必須マーク・保存や確定のショートカットがない。明細グリッドのキー操作は Enter のみ | [フォーム](../apps/web/src/components/record-form.tsx)、[明細グリッド](../apps/web/src/components/line-grid.tsx) |
 | （axe の自動検査は済: 2026-10-30、[e2e-a11y](specs/e2e-a11y.md)）aria 属性は 160 か所以上で使われ、スキップリンクと経路変更時の焦点移動はあるが、自動検査（axe）は無い | [router](../apps/web/src/router.tsx)、`apps/web/e2e` |
-| `/me` と一部の専用画面は 390px を検証済み。汎用一覧・フォームは広い画面を前提にしている | `apps/web/e2e` の viewport 指定 |
+| （一部済: 2026-10-30、汎用一覧・フォームの 390px は [e2e-a11y](specs/e2e-a11y.md)・[list-workbench](specs/list-workbench.md)・[form-ergonomics](specs/form-ergonomics.md) で検証。全画面の 390px 検証は未実施）`/me` と一部の専用画面は 390px を検証済み。汎用一覧・フォームは広い画面を前提にしている | `apps/web/e2e` の viewport 指定 |
 | （済: 2026-10-30、[navigation-assist](specs/navigation-assist.md)）画面内ヘルプ、最近開いた記録、お気に入り、コマンドパレットがない（全画面検索はある） | [サイドバー](../apps/web/src/components/sidebar.tsx)、[画面カタログ](../apps/web/src/lib/navigation.ts) |
 
 ### 3-1. UI キットと意味トークン（済: 2026-10-29、[ui-kit](specs/ui-kit.md)。専用画面の CSS は触った画面から移行）
